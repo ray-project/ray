@@ -1,9 +1,9 @@
 # This configuration can expect to reach -160 reward in 10k-20k timesteps.
 pendulum-ddpg:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: DDPG
     stop:
-        episode_reward_mean: -500
+        episode_reward_mean: -600
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

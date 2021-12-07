@@ -17,6 +17,8 @@
 
 #include "../config_internal.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
+#include "util.h"
 
 namespace ray {
 namespace internal {
@@ -28,8 +30,7 @@ class ProcessHelper {
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop();
   void StartRayNode(const int redis_port, const std::string redis_password,
-                    const int num_cpus = -1, const int num_gpus = -1,
-                    const std::unordered_map<std::string, int> resources = {});
+                    const std::vector<std::string> &head_args = {});
   void StopRayNode();
 
   static ProcessHelper &GetInstance() {
@@ -37,11 +38,15 @@ class ProcessHelper {
     return processHelper;
   }
 
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
+      const std::string &redis_address, const std::string &redis_password);
+
   ProcessHelper(ProcessHelper const &) = delete;
   void operator=(ProcessHelper const &) = delete;
 
  private:
   ProcessHelper(){};
 };
+
 }  // namespace internal
 }  // namespace ray

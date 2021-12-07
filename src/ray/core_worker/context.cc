@@ -14,13 +14,15 @@
 
 #include "ray/core_worker/context.h"
 
+#include <google/protobuf/util/json_util.h>
+
 namespace ray {
 namespace core {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_counter_(0) {}
+  explicit WorkerThreadContext(const JobID &job_id)
+      : current_task_id_(TaskID::FromRandom(job_id)), task_index_(0), put_counter_(0) {}
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
@@ -122,7 +124,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
-      main_thread_id_(boost::this_thread::get_id()) {
+      main_thread_id_(boost::this_thread::get_id()),
+      mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -143,6 +146,14 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
+int64_t WorkerContext::GetTaskDepth() const {
+  auto task_spec = GetCurrentTask();
+  if (task_spec) {
+    return task_spec->GetDepth();
+  }
+  return 0;
+}
+
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
@@ -150,6 +161,7 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
 }
 
 const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
+  absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return current_actor_placement_group_id_;
@@ -159,6 +171,7 @@ const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
 }
 
 bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
+  absl::ReaderMutexLock lock(&mutex_);
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return placement_group_capture_child_tasks_;
@@ -168,30 +181,38 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
 }
 
 const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
-  return serialized_runtime_env_;
+  absl::ReaderMutexLock lock(&mutex_);
+  return runtime_env_info_.serialized_runtime_env();
 }
 
-const std::unordered_map<std::string, std::string>
-    &WorkerContext::GetCurrentOverrideEnvironmentVariables() const {
-  return override_environment_variables_;
+std::shared_ptr<rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return runtime_env_;
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
 
+void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {
+  absl::WriterMutexLock lock(&mutex_);
+  if (!current_actor_id_.IsNil()) {
+    RAY_CHECK(current_actor_id_ == actor_id);
+    return;
+  }
+  current_actor_id_ = actor_id;
+}
+
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
+  absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set serialized_runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(current_actor_id_.IsNil());
+    if (!current_actor_id_.IsNil()) {
+      RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
+    }
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
@@ -199,12 +220,22 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-    serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
-    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
+  }
+  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
+    runtime_env_info_ = task_spec.RuntimeEnvInfo();
+    if (!runtime_env_info_.serialized_runtime_env().empty()) {
+      runtime_env_.reset(new rpc::RuntimeEnv());
+      RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                    runtime_env_info_.serialized_runtime_env(), runtime_env_.get())
+                    .ok());
+    }
   }
 }
 
@@ -214,7 +245,10 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
 
-const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
+const ActorID &WorkerContext::GetCurrentActorID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_id_;
+}
 
 bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
@@ -232,24 +266,33 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
 
 // TODO(edoakes): simplify these checks now that we only support direct call mode.
 bool WorkerContext::CurrentActorIsDirectCall() const {
+  absl::ReaderMutexLock lock(&mutex_);
   return current_actor_is_direct_call_;
 }
 
 bool WorkerContext::CurrentTaskIsDirectCall() const {
+  absl::ReaderMutexLock lock(&mutex_);
   return current_task_is_direct_call_ || current_actor_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {
+  absl::ReaderMutexLock lock(&mutex_);
   return current_actor_max_concurrency_;
 }
 
-bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
+bool WorkerContext::CurrentActorIsAsync() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_actor_is_asyncio_;
+}
 
-bool WorkerContext::CurrentActorDetached() const { return is_detached_actor_; }
+bool WorkerContext::CurrentActorDetached() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return is_detached_actor_;
+}
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
-    thread_context_ = std::make_unique<WorkerThreadContext>();
+    thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
   }
 
   return *thread_context_;

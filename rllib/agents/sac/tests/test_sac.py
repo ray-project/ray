@@ -1,6 +1,5 @@
-import copy
 from gym import Env
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import re
 import unittest
@@ -16,14 +15,16 @@ from ray.rllib.examples.models.batch_norm_model import KerasBatchNormModel, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+    check_train_results, framework_iterator
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray import tune
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -70,9 +71,8 @@ class TestSAC(unittest.TestCase):
         config = sac.DEFAULT_CONFIG.copy()
         config["Q_model"] = sac.DEFAULT_CONFIG["Q_model"].copy()
         config["num_workers"] = 0  # Run locally.
+        config["n_step"] = 3
         config["twin_q"] = True
-        config["clip_actions"] = False
-        config["normalize_actions"] = True
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
@@ -81,6 +81,8 @@ class TestSAC(unittest.TestCase):
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
         config["buffer_size"] = 40000
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -90,22 +92,28 @@ class TestSAC(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3, ))
 
-        for fw in framework_iterator(config):
+        tune.register_env(
+            "random_dict_env", lambda _: RandomEnv({
+                "observation_space": Dict({
+                    "a": simple_space,
+                    "b": Discrete(2),
+                    "c": image_space, }),
+                "action_space": Box(-1.0, 1.0, shape=(1, )), }))
+        tune.register_env(
+            "random_tuple_env", lambda _: RandomEnv({
+                "observation_space": Tuple([
+                    simple_space, Discrete(2), image_space]),
+                "action_space": Box(-1.0, 1.0, shape=(1, )), }))
+
+        for fw in framework_iterator(config, with_eager_tracing=True):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                    RandomEnv,
-                    "MsPacmanNoFrameskip-v4",
+                    "random_dict_env",
+                    "random_tuple_env",
+                    # "MsPacmanNoFrameskip-v4",
                     "CartPole-v0",
             ]:
                 print("Env={}".format(env))
-                if env == RandomEnv:
-                    config["env_config"] = {
-                        "observation_space": Tuple((simple_space, Discrete(2),
-                                                    image_space)),
-                        "action_space": Box(-1.0, 1.0, shape=(1, )),
-                    }
-                else:
-                    config["env_config"] = {}
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config["Q_model"]["custom_model"] = "batch_norm{}".format(
@@ -114,35 +122,26 @@ class TestSAC(unittest.TestCase):
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
+                    check_train_results(results)
                     print(results)
                 check_compute_single_action(trainer)
+
+                # Test, whether the replay buffer is saved along with
+                # a checkpoint (no point in doing it for all frameworks since
+                # this is framework agnostic).
+                if fw == "tf" and env == "CartPole-v0":
+                    checkpoint = trainer.save()
+                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer.restore(checkpoint)
+                    # Get some data from the buffer and compare.
+                    data = trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    new_data = new_trainer.local_replay_buffer.replay_buffers[
+                        "default_policy"]._storage[:42 + 42]
+                    check(data, new_data)
+                    new_trainer.stop()
+
                 trainer.stop()
-
-    def test_sac_fake_multi_gpu_learning(self):
-        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(sac.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        config["clip_actions"] = False
-        config["initial_alpha"] = 0.001
-        config["prioritized_replay"] = True
-        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
-        config["env_config"] = {"config": {"repeat_delay": 0}}
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = sac.SACTrainer(config=config, env=env)
-            num_iterations = 50
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(f"R={results['episode_reward_mean']}")
-                if results["episode_reward_mean"] > 30.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
-            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -314,8 +313,10 @@ class TestSAC(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, e, t = policy.critic_loss, policy.actor_loss, \
-                    policy.alpha_loss, policy.model.td_error
+                c, a, e, t = policy.get_tower_stats("critic_loss")[0], \
+                    policy.get_tower_stats("actor_loss")[0], \
+                    policy.get_tower_stats("alpha_loss")[0], \
+                    policy.get_tower_stats("td_error")[0]
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
@@ -399,7 +400,7 @@ class TestSAC(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     updated_weights = policy.get_weights()
@@ -418,7 +419,7 @@ class TestSAC(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     # Compare updated model.

@@ -18,7 +18,7 @@ def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
         if Path(local).is_file():
             cli_logger.warning(
                 f"File Mount: ({remote}:{local}) refers to a file.\n To ensure"
-                "this mount updates properly, please use a directory.")
+                " this mount updates properly, please use a directory.")
 
 
 def validate_docker_config(config: Dict[str, Any]) -> None:

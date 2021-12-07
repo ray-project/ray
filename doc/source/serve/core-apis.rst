@@ -2,6 +2,15 @@
 Core API: Deployments
 =====================
 
+This section should help you:
+
+- create, query, update and configure deployments
+- configure resources of your deployments
+- specify different Python dependencies across different deployment using Runtime Environments
+
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 .. contents::
 
 Creating a Deployment
@@ -35,7 +44,14 @@ Deployments can be exposed in two ways: over HTTP or in Python via the :ref:`ser
 By default, HTTP requests will be forwarded to the ``__call__`` method of the class (or the function) and a ``Starlette Request`` object will be the sole argument.
 You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See :ref:`serve-fastapi-http` for details.
 
-We can also list all available deployments and dynamically get a reference to them:
+To serve multiple deployments defined by the same class, use the ``name`` option:
+
+.. code-block:: python
+
+  MyFirstDeployment.options(name="hello_service").deploy("Hello!")
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+
+You can also list all available deployments and dynamically get references to them:
 
 .. code-block:: python
 
@@ -63,7 +79,7 @@ Here's an example:
     def __call__(self, request):
         return "Hello world!"
 
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
+After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 .. code-block:: python
@@ -71,7 +87,7 @@ We can query the model to verify that it's working.
   import requests
   print(requests.get("http://127.0.0.1:8000/api").text)
 
-We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 .. code-block:: python
 
@@ -147,6 +163,47 @@ To scale out a deployment to many processes, simply configure the number of repl
 
   # Scale back down to 1 replica.
   func.options(num_replicas=1).deploy()
+
+Autoscaling
+^^^^^^^^^^^
+
+Serve also has experimental support for a demand-based replica autoscaler.
+It reacts to traffic spikes via observing queue sizes and making scaling decisions.
+To configure it, you can set the ``_autoscaling`` field in deployment options.
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through `Github Issues <https://github.com/ray-project/ray/issues>`_ or our `discussion forum <https://discuss.ray.io/>`_!
+
+.. code-block:: python
+
+  @serve.deployment(
+      _autoscaling_config={
+          "min_replicas": 1,
+          "max_replicas": 5,
+          "target_num_ongoing_requests_per_replica": 10,
+      },
+      version="v1")
+  def func(_):
+      time.sleep(1)
+      return ""
+  
+  func.deploy() # The func deployment will now autoscale based on requests demand.
+
+The ``min_replicas`` and ``max_replicas`` fields configure the range of replicas which the
+Serve autoscaler chooses from.  Deployments will start with ``min_replicas`` initially.
+
+The ``target_num_ongoing_requests_per_replica`` configuration specifies how aggressively the
+autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
+of requests being processed and waiting in the queue. For example, if your processing time is ``10ms``
+and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replica so
+the last requests can finish within the latency constraint. We recommend you benchmark your application
+code and set this number based on end to end latency objective.
+
+.. note::
+  The ``version`` field is required for autoscaling. We are actively working on removing
+  this limitation.
+
 
 .. _`serve-cpus-gpus`:
 
@@ -231,34 +288,38 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
-Currently this is supported on Mac OS and Linux using `conda <https://docs.conda.io/en/latest/>`_
-via Ray's built-in ``runtime_env`` option for actors.
-As with all other actor options, pass these in via ``ray_actor_options`` in
-your deployment.
-You must have a conda environment set up for each set of
-dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes. Also, the Python patch version
-(e.g. 3.8.10) must be identical on all nodes (this is a requirement for any Ray cluster).
-See :ref:`runtime-environments` for details.
+This is supported on Mac OS and Linux using Ray's :ref:`runtime-environments` feature.
+As with all other Ray actor options, pass the runtime environment in via ``ray_actor_options`` in
+your deployment.  Be sure to first run ``pip install "ray[default]"`` to ensure the
+Runtime Environments feature is installed.
 
-Here's an example script.  For it to work, first create a conda
-environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
-and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
-Python versions must be the same in both environments.
+Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
+
+.. note::
+  When using a Ray library (for example, Ray Serve) in a runtime environment, it must
+  explicitly be included in the dependencies, as in the above example.  This is not
+  required when just using Ray Core.
+
+.. tip::
+  Avoid dynamically installing packages that install from source: these can be slow and
+  use up all resources while installing, leading to problems with the Ray cluster.  Consider
+  precompiling such packages in a private repository or Docker image.
 
 The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
 calls). In this case, you should use a delayed import within the class to avoid
-importing unavailable packages in the driver.
+importing unavailable packages in the driver.  This applies even when not
+using runtime environments.
+
 Example:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/delayed_import.py

@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional
 from ray import cloudpickle
 from ray.serve.common import (EndpointInfo, EndpointTag)
 from ray.serve.long_poll import LongPollNamespace
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
@@ -16,8 +16,7 @@ class EndpointState:
     called with a lock held.
     """
 
-    def __init__(self, kv_store: RayInternalKVStore,
-                 long_poll_host: LongPollHost):
+    def __init__(self, kv_store: KVStoreBase, long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._endpoints: Dict[EndpointTag, EndpointInfo] = dict()
@@ -80,7 +79,6 @@ class EndpointState:
         for endpoint, info in self._endpoints.items():
             endpoints[endpoint] = {
                 "route": info.route,
-                "python_methods": info.python_methods,
             }
         return endpoints
 

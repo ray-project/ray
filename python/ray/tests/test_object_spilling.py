@@ -15,7 +15,7 @@ from ray.tests.conftest import (file_system_object_spilling_config,
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray._private.test_utils import wait_for_condition
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
 
 
@@ -387,7 +387,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux", reason="Failing on Windows/macOS.")
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_async", [False, True])
 async def test_spill_during_get(object_spilling_config, shutdown_only,
@@ -440,9 +440,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
         print(obj.shape)
         del obj
 
-    # In CI, Mac.metal suffers from EBS code start problem. Increase
-    # the timeout to 90.
-    timeout_seconds = 90 if platform.system() == "Darwin" else 30
+    timeout_seconds = 30
     duration = datetime.now() - start
     assert duration <= timedelta(
         seconds=timeout_seconds
@@ -603,8 +601,7 @@ def test_pull_spilled_object_failure(object_spilling_config,
     assert hash_value == hash_value1
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
     object_spilling_config, temp_folder = object_spilling_config
     cluster = Cluster()

@@ -217,10 +217,9 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, 
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
-    JNIEnv *env, jclass, jbyteArray objectId) {
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env, jclass,
+                                                                    jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ObjectID>(env, objectId);
-  CoreWorkerProcess::GetCoreWorker().PromoteObjectToPlasma(object_id);
   rpc::Address address;
   // TODO(ekl) send serialized object status to Java land.
   std::string serialized_object_status;

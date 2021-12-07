@@ -203,7 +203,7 @@ class BayesOptSearch(Searcher):
             self.register_analysis(self._analysis)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)
@@ -243,12 +243,6 @@ class BayesOptSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
-
-        # If we have more active trials than the allowed maximum
-        total_live_trials = len(self._live_trial_mapping)
-        if self.max_concurrent and self.max_concurrent <= total_live_trials:
-            # we stop the suggestion and return None.
-            return None
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)

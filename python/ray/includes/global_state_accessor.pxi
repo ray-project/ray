@@ -67,21 +67,6 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllProfileInfo()
         return result
 
-    def get_object_table(self):
-        cdef c_vector[c_string] result
-        with nogil:
-            result = self.inner.get().GetAllObjectInfo()
-        return result
-
-    def get_object_info(self, object_id):
-        cdef unique_ptr[c_string] object_info
-        cdef CObjectID cobject_id = CObjectID.FromBinary(object_id.binary())
-        with nogil:
-            object_info = self.inner.get().GetObjectInfo(cobject_id)
-        if object_info:
-            return c_string(object_info.get().data(), object_info.get().size())
-        return None
-
     def get_all_resource_usage(self):
         """Get newest resource usage of all nodes from GCS service."""
         cdef unique_ptr[c_string] result

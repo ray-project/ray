@@ -26,9 +26,9 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
-    LocalOptimizer, ModelGradients, PolicyID
+    LocalOptimizer, ModelGradients
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -97,10 +97,8 @@ def get_distribution_inputs_and_class(
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, ActionDistribution, List[TensorType]]:
-    model_out, _ = model({
-        "obs": obs_batch,
-        "is_training": is_training,
-    }, [], None)
+    model_out, _ = model(
+        SampleBatch(obs=obs_batch, _is_training=is_training), [], None)
     dist_inputs = model.get_policy_output(model_out)
 
     if isinstance(policy.action_space, Simplex):
@@ -121,14 +119,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     huber_threshold = policy.config["huber_threshold"]
     l2_reg = policy.config["l2_reg"]
 
-    input_dict = {
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": True,
-    }
-    input_dict_next = {
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": True,
-    }
+    input_dict = SampleBatch(
+        obs=train_batch[SampleBatch.CUR_OBS], _is_training=True)
+    input_dict_next = SampleBatch(
+        obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True)
 
     model_out_t, _ = model(input_dict, [], None)
     model_out_tp1, _ = model(input_dict_next, [], None)
@@ -429,17 +423,17 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid: PolicyID, observation_space: gym.spaces.Space,
+def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "DDPG.".format(action_space, pid))
+            "DDPG.".format(action_space, policy))
     elif len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
-            "{}. ".format(action_space, pid, action_space.shape) +
+            "{}. ".format(action_space, policy, action_space.shape) +
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 

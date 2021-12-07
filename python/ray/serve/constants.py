@@ -13,11 +13,23 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Controller checkpoint path
+DEFAULT_CHECKPOINT_PATH = "ray://"
+
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
+# How often to call the control loop on the controller.
+CONTROL_LOOP_PERIOD_S = 0.1
+
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
+
+#: Max retry count for allowing failures in replica constructor.
+#: If no replicas at target version is running by the time we're at
+#: max construtor retry count, deploy() is considered failed.
+#: By default we set threshold as min(num_replicas * 3, this value)
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
@@ -35,10 +47,18 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
-#: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+#: Name of deployment reconfiguration method implemented by user.
+RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Number of historically deleted deployments to store in the checkpoint.
 MAX_NUM_DELETED_DEPLOYMENTS = 1000
+
+#: Limit the number of cached handles because each handle has long poll
+#: overhead. See https://github.com/ray-project/ray/issues/18980
+MAX_CACHED_HANDLES = 100
+
+#: Because ServeController will accept one long poll request per handle, its
+#: concurrency needs to scale as O(num_handles)
+CONTROLLER_MAX_CONCURRENCY = 15000

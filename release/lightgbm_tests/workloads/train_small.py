@@ -20,7 +20,7 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_small")
     if addr.startswith("anyscale://"):
-        ray.client(address=addr).job_name(job_name).connect()
+        ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")
 
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def train():
         os.environ["TEST_OUTPUT_JSON"] = output
         os.environ["TEST_STATE_JSON"] = state

@@ -12,9 +12,7 @@ if __name__ == "__main__":
     abs_yaml_path = Path(__file__).parent
     print("abs_yaml_path={}".format(abs_yaml_path))
 
-    # This pattern match is kind of hacky. Avoids cluster.yaml to get sucked
-    # into this.
-    yaml_files = abs_yaml_path.rglob("*test*.yaml")
+    yaml_files = abs_yaml_path.rglob("*.yaml")
     yaml_files = sorted(
         map(lambda path: str(path.absolute()), yaml_files), reverse=True)
 

@@ -34,6 +34,20 @@ The following steps are then performed:
 Then the script exits. If an error occurs at any time, a fail result is
 written to the database.
 
+Exit codes
+----------
+The script exits with code 0 on success, i.e. if the test has been run
+end to end without failures and the subsequent results checks have passed.
+In all other cases, an exit code > 0 is returned.
+
+Exit code 1 is the general failure exit code returned by Python when we
+encounter an error that isn't caught by the rest of the script.
+
+Generally, we try to catch errors as they occur, and return a specific exit
+code that can be used in automation tools to e.g. retry a test when nodes
+didn't come up in time.
+
+These exit codes are defined in the ``ExitCode`` enum below.
 
 Writing a new release test
 --------------------------
@@ -81,22 +95,14 @@ only want to trigger rebuilds once per day, use `DATESTAMP` instead:
 
 Local testing
 -------------
-For local testing, make sure to authenticate with the ray-ossci AWS user
-(e.g. by setting the respective environment variables obtained from go/aws),
-or use the `--no-report` command line argument.
-
-Also make sure to set these environment variables:
+Make sure to set these environment variables:
 
 - ANYSCALE_CLI_TOKEN (should contain your anyscale credential token)
 - ANYSCALE_PROJECT (should point to a project ID you have access to)
 
 A test can then be run like this:
 
-python e2e.py --no-report --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
-
-The `--no-report` option disables storing the results in the DB and
-artifacts on S3. If you set this option, you do not need access to the
-ray-ossci AWS user.
+python e2e.py --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
 
 Using Compilation on Product + App Config Override
 --------------------------------------------------
@@ -109,7 +115,7 @@ After kicking off the app build, you can give the app config ID to this script
 as an app config override, where the indicated app config will be used instead
 of the app config given in the test config. E.g., running
 
-python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+python e2e.py --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
 
 would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
 app config instead of the app config given in
@@ -179,6 +185,8 @@ Release test yaml example
 
 """  # noqa: E501
 import argparse
+import enum
+
 import boto3
 import collections
 import copy
@@ -193,6 +201,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import re
 import tempfile
 import time
 from queue import Empty
@@ -216,6 +225,13 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
+def _format_link(link: str):
+    # Use ANSI escape code to allow link to be clickable
+    # https://buildkite.com/docs/pipelines/links-and-images
+    # -in-log-output
+    return r"\033]1339;url='" + link + r"'\a\n"
+
+
 def getenv_default(key: str, default: Optional[str] = None):
     """Return environment variable with default value"""
     # If the environment variable is set but "", still return default
@@ -230,7 +246,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
-        "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
+        "cld_4F7k8814aZzGG8TNUGPKnc"),  # anyscale_default_cloud
     "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
     "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
     "RAY_REPO": getenv_default("RAY_REPO",
@@ -251,6 +267,8 @@ GLOBAL_CONFIG = {
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
+    "RELEASE_RESULTS_DIR": getenv_default("RELEASE_RESULTS_DIR",
+                                          "/tmp/ray_release_test_artifacts"),
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
     "EXPIRATION_1D": str((datetime.datetime.now() +
@@ -259,14 +277,50 @@ GLOBAL_CONFIG = {
                           datetime.timedelta(days=2)).strftime("%Y-%m-%d")),
     "EXPIRATION_3D": str((datetime.datetime.now() +
                           datetime.timedelta(days=3)).strftime("%Y-%m-%d")),
+    "REPORT_RESULT": getenv_default("REPORT_RESULT", ""),
 }
 
 REPORT_S = 30
+RETRY_MULTIPLIER = 2
+
+
+class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
+    UNSPECIFIED = 2
+    UNKNOWN = 3
+    RUNTIME_ERROR = 4
+    COMMAND_ERROR = 5
+    COMMAND_TIMEOUT = 6
+    PREPARE_TIMEOUT = 7
+    FILESYNC_TIMEOUT = 8
+    SESSION_TIMEOUT = 9
+    PREPARE_ERROR = 10
+    APPCONFIG_BUILD_ERROR = 11
+    INFRA_ERROR = 12
+
+
+def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
+                              max_retries):
+    retry_cnt = 0
+    retry_delay_s = initial_retry_delay_s
+    while True:
+        try:
+            return f()
+        except retry_exceptions as e:
+            retry_cnt += 1
+            if retry_cnt > max_retries:
+                raise
+            logger.info(f"Retry function call failed due to {e} "
+                        f"in {retry_delay_s} seconds...")
+            time.sleep(retry_delay_s)
+            retry_delay_s *= RETRY_MULTIPLIER
 
 
 def maybe_fetch_api_token():
     if GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] is None:
-        print("Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
+        logger.info(
+            "Missing ANYSCALE_CLI_TOKEN, retrieving from AWS secrets store")
         # NOTE(simon) This should automatically retrieve
         # release-automation@anyscale.com's anyscale token
         GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"] = boto3.client(
@@ -277,7 +331,19 @@ def maybe_fetch_api_token():
             "anyscale-token20210505220406333800000001-BcUuKB")["SecretString"]
 
 
-class ReleaseTestTimeoutError(RuntimeError):
+class PrepareCommandRuntimeError(RuntimeError):
+    pass
+
+
+class ReleaseTestRuntimeError(RuntimeError):
+    pass
+
+
+class ReleaseTestInfraError(ReleaseTestRuntimeError):
+    pass
+
+
+class ReleaseTestTimeoutError(ReleaseTestRuntimeError):
     pass
 
 
@@ -294,6 +360,11 @@ class CommandTimeoutError(ReleaseTestTimeoutError):
 
 
 class PrepareCommandTimeoutError(ReleaseTestTimeoutError):
+    pass
+
+
+# e.g., App config failure.
+class AppConfigBuildFailure(RuntimeError):
     pass
 
 
@@ -342,6 +413,31 @@ def wheel_exists(ray_version, git_branch, git_commit):
     return requests.head(url).status_code == 200
 
 
+def commit_or_url(commit_or_url: str) -> str:
+    if commit_or_url.startswith("http"):
+        url = None
+        # Directly return the S3 url
+        if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
+            url = commit_or_url
+        # Resolve the redirects for buildkite artifacts
+        # This is needed because otherwise pip won't recognize the file name.
+        elif "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            url = requests.head(commit_or_url, allow_redirects=True).url
+        if url is not None:
+            # Extract commit from url so that we can do the
+            # commit sanity check later.
+            p = re.compile("/([a-f0-9]{40})/")
+            m = p.search(url)
+            if m is not None:
+                os.environ["RAY_COMMIT"] = m.group(1)
+            return url
+
+    # Else, assume commit
+    os.environ["RAY_COMMIT"] = commit_or_url
+    return wheel_url(GLOBAL_CONFIG["RAY_VERSION"], GLOBAL_CONFIG["RAY_BRANCH"],
+                     commit_or_url)
+
+
 def get_latest_commits(repo: str, branch: str = "master") -> List[str]:
     cur = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -381,11 +477,23 @@ def find_ray_wheels(repo: str, branch: str, version: str):
         if wheel_exists(version, branch, commit):
             url = wheel_url(version, branch, commit)
             os.environ["RAY_WHEELS"] = url
+            os.environ["RAY_COMMIT"] = commit
             logger.info(
                 f"Found wheels URL for Ray {version}, branch {branch}: "
                 f"{url}")
             break
     return url
+
+
+def populate_wheels_sanity_check(commit: Optional[str] = None):
+    if not commit:
+        cmd = ("python -c 'import ray; print("
+               "\"No commit sanity check available, but this is the "
+               "Ray wheel commit:\", ray.__commit__)'")
+    else:
+        cmd = (f"python -c 'import ray; "
+               f"assert ray.__commit__ == \"{commit}\", ray.__commit__'")
+    os.environ["RAY_WHEELS_SANITY_CHECK"] = cmd
 
 
 def _check_stop(stop_event: multiprocessing.Event, timeout_type: str):
@@ -442,7 +550,29 @@ def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
 
-def report_result(test_suite: str, test_name: str, status: str, logs: str,
+def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
+    # If we get a result dict, check if any alerts should be raised
+    from alert import SUITE_TO_FN, default_handle_result
+
+    logger.info("Checking if results are valid...")
+
+    # Copy dict because we modify kwargs here
+    handle_result_kwargs = result_dict.copy()
+    handle_result_kwargs["created_on"] = None
+
+    test_suite = handle_result_kwargs.get("test_suite", None)
+
+    handle_fn = SUITE_TO_FN.get(test_suite, None)
+    if not handle_fn:
+        logger.warning(f"No handle for suite {test_suite}")
+        alert = default_handle_result(**handle_result_kwargs)
+    else:
+        alert = handle_fn(**handle_result_kwargs)
+
+    return alert
+
+
+def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
                   results: Dict[Any, Any], artifacts: Dict[Any, Any],
                   category: str):
     now = datetime.datetime.utcnow()
@@ -456,67 +586,88 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
         f"results, artifacts, category) "
         f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
         f":results, :artifacts, :category)")
+    parameters = [{
+        "name": "created_on",
+        "typeHint": "TIMESTAMP",
+        "value": {
+            "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
+        },
+    }, {
+        "name": "test_suite",
+        "value": {
+            "stringValue": test_suite
+        }
+    }, {
+        "name": "test_name",
+        "value": {
+            "stringValue": test_name
+        }
+    }, {
+        "name": "status",
+        "value": {
+            "stringValue": status
+        }
+    }, {
+        "name": "last_logs",
+        "value": {
+            "stringValue": last_logs
+        }
+    }, {
+        "name": "results",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(results)
+        },
+    }, {
+        "name": "artifacts",
+        "typeHint": "JSON",
+        "value": {
+            "stringValue": json.dumps(artifacts)
+        },
+    }, {
+        "name": "category",
+        "value": {
+            "stringValue": category
+        }
+    }]
 
-    rds_data_client.execute_statement(
-        database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
-        parameters=[
-            {
-                "name": "created_on",
-                "typeHint": "TIMESTAMP",
-                "value": {
-                    "stringValue": now.strftime("%Y-%m-%d %H:%M:%S")
-                },
-            },
-            {
-                "name": "test_suite",
-                "value": {
-                    "stringValue": test_suite
-                }
-            },
-            {
-                "name": "test_name",
-                "value": {
-                    "stringValue": test_name
-                }
-            },
-            {
-                "name": "status",
-                "value": {
-                    "stringValue": status
-                }
-            },
-            {
-                "name": "last_logs",
-                "value": {
-                    "stringValue": logs
-                }
-            },
-            {
-                "name": "results",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(results)
-                },
-            },
-            {
-                "name": "artifacts",
-                "typeHint": "JSON",
-                "value": {
-                    "stringValue": json.dumps(artifacts)
-                },
-            },
-            {
-                "name": "category",
-                "value": {
-                    "stringValue": category
-                }
-            },
-        ],
-        secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
-        resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
-        schema=schema,
-        sql=sql,
-    )
+    # Default boto3 call timeout is 45 seconds.
+    retry_delay_s = 64
+    MAX_RDS_RETRY = 3
+    exponential_backoff_retry(
+        lambda: rds_data_client.execute_statement(
+            database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
+            parameters=parameters,
+            secretArn=GLOBAL_CONFIG["RELEASE_AWS_DB_SECRET_ARN"],
+            resourceArn=GLOBAL_CONFIG["RELEASE_AWS_DB_RESOURCE_ARN"],
+            schema=schema,
+            sql=sql),
+        retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
+        initial_retry_delay_s=retry_delay_s,
+        max_retries=MAX_RDS_RETRY)
+    logger.info("Result has been persisted to the database")
+
+
+def log_results_and_artifacts(result: Dict):
+    results = result.get("results", {})
+    if results:
+        msg = "Observed the following results:\n\n"
+
+        for key, val in results.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any results."
+    logger.info(msg)
+
+    artifacts = result.get("artifacts", {})
+    if artifacts:
+        msg = "Saved the following artifacts:\n\n"
+
+        for key, val in artifacts.items():
+            msg += f"  {key} = {val}\n"
+    else:
+        msg = "Did not find any artifacts."
+    logger.info(msg)
 
 
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
@@ -540,6 +691,32 @@ def search_running_session(sdk: AnyscaleSDK, project_id: str,
         logger.info("Found existing session.")
         session_id = result.results[0].id
     return session_id
+
+
+def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
+                       _repeat: bool = True) -> Optional[str]:
+    cloud_id = None
+    logger.info(f"Looking up cloud with name `{cloud_name}`. ")
+
+    paging_token = None
+    while not cloud_id:
+        result = sdk.search_clouds(
+            clouds_query=dict(
+                paging=dict(count=50, paging_token=paging_token)))
+
+        paging_token = result.metadata.next_paging_token
+
+        for res in result.results:
+            if res.name == cloud_name:
+                cloud_id = res.id
+                logger.info(
+                    f"Found cloud with name `{cloud_name}` as `{cloud_id}`")
+                break
+
+        if not paging_token or cloud_id or not len(result.results):
+            break
+
+    return cloud_id
 
 
 def create_or_find_compute_template(
@@ -666,6 +843,20 @@ def create_or_find_app_config(
     return app_config_id, app_config_name
 
 
+def run_bash_script(local_dir: str, bash_script: str):
+    previous_dir = os.getcwd()
+
+    bash_script_local_dir = os.path.dirname(bash_script)
+    file_name = os.path.basename(bash_script)
+
+    full_local_dir = os.path.join(local_dir, bash_script_local_dir)
+    os.chdir(full_local_dir)
+
+    subprocess.run("./" + file_name, shell=True, check=True)
+
+    os.chdir(previous_dir)
+
+
 def install_app_config_packages(app_config: Dict[Any, Any]):
     os.environ.update(app_config.get("env_vars", {}))
     packages = app_config["python"]["pip_packages"]
@@ -706,15 +897,16 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             continue
 
         if build.status == "succeeded":
-            logger.info(f"Link to app config build: "
-                        f"{anyscale_app_config_build_url(build_id)}")
+            logger.info(
+                f"Link to app config build: "
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
             return build_id
 
     if last_status == "failed":
-        raise RuntimeError("App config build failed.")
+        raise AppConfigBuildFailure("App config build failed.")
 
     if not build_id:
-        raise RuntimeError("No build found for app config.")
+        raise AppConfigBuildFailure("No build found for app config.")
 
     # Build found but not failed/finished yet
     completed = False
@@ -734,7 +926,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         build = result.result
 
         if build.status == "failed":
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"App config build failed. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -745,7 +937,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
         completed = build.status not in ["in_progress", "pending"]
 
         if completed:
-            raise RuntimeError(
+            raise AppConfigBuildFailure(
                 f"Unknown build status: {build.status}. Please see "
                 f"{anyscale_app_config_build_url(build_id)} for details")
 
@@ -759,9 +951,7 @@ def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             script_args: List[str], env_vars: Dict[str, str],
             autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
-    address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
-               "&&update=True"
+    address = f"anyscale://{cluster_name}?autosuspend={autosuspend}"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -789,6 +979,7 @@ def create_and_wait_for_session(
         stop_event: multiprocessing.Event,
         session_name: str,
         session_options: Dict[Any, Any],
+        project_id: str,
 ) -> str:
     # Create session
     logger.info(f"Creating session {session_name}")
@@ -799,7 +990,7 @@ def create_and_wait_for_session(
     logger.info(f"Starting session {session_name} ({session_id})")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
     sop_id = result.result.id
@@ -810,6 +1001,14 @@ def create_and_wait_for_session(
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        session_operation_response = sdk.get_session_operation(
+            sop_id, _request_timeout=30)
+        session_operation = session_operation_response.result
+        completed = session_operation.completed
+
         _check_stop(stop_event, "session")
         now = time.time()
         if now > next_report:
@@ -817,11 +1016,12 @@ def create_and_wait_for_session(
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
-        session_operation_response = sdk.get_session_operation(
-            sop_id, _request_timeout=30)
-        session_operation = session_operation_response.result
-        completed = session_operation.completed
-        time.sleep(1)
+    result = sdk.get_session(session_id)
+    if not result.result.state != "Active":
+        raise ReleaseTestInfraError(
+            f"Cluster did not come up - most likely the nodes are currently "
+            f"not available. Please check the cluster startup logs: "
+            f"{anyscale_session_url(project_id, session_id)}")
 
     return session_id
 
@@ -838,7 +1038,7 @@ def run_session_command(sdk: AnyscaleSDK,
     logger.info(f"Running command in session {session_id}: \n" f"{full_cmd}")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
         dict(session_id=session_id, shell_command=full_cmd))
@@ -857,6 +1057,16 @@ def wait_for_session_command_to_complete(create_session_command_result,
     start_wait = time.time()
     next_report = start_wait + REPORT_S
     while not completed:
+        # Sleep 1 sec before next check.
+        time.sleep(1)
+
+        result = exponential_backoff_retry(
+            lambda: sdk.get_session_command(session_command_id=scd_id),
+            retry_exceptions=Exception,
+            initial_retry_delay_s=10,
+            max_retries=3)
+        completed = result.result.finished_at
+
         if state_str == "CMD_RUN":
             _check_stop(stop_event, "command")
         elif state_str == "CMD_PREPARE":
@@ -868,16 +1078,16 @@ def wait_for_session_command_to_complete(create_session_command_result,
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
 
-        result = sdk.get_session_command(session_command_id=scd_id)
-        completed = result.result.finished_at
-        time.sleep(1)
-
     status_code = result.result.status_code
     runtime = time.time() - start_wait
 
     if status_code != 0:
-        raise RuntimeError(
-            f"Command returned non-success status: {status_code}")
+        if state_str == "CMD_RUN":
+            raise RuntimeError(
+                f"Command returned non-success status: {status_code}")
+        elif state_str == "CMD_PREPARE":
+            raise PrepareCommandRuntimeError(
+                f"Prepare command returned non-success status: {status_code}")
 
     return status_code, runtime
 
@@ -885,10 +1095,14 @@ def wait_for_session_command_to_complete(create_session_command_result,
 def get_command_logs(session_controller: SessionController,
                      scd_id: str,
                      lines: int = 50):
-    result = session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
-        session_command_id=scd_id,
-        start_line=-1 * lines,
-        end_line=0)
+    result = exponential_backoff_retry(
+        lambda: session_controller.api_client.get_execution_logs_api_v2_session_commands_session_command_id_execution_logs_get(  # noqa: E501
+            session_command_id=scd_id,
+            start_line=-1 * lines,
+            end_line=0),
+        retry_exceptions=Exception,
+        initial_retry_delay_s=10,
+        max_retries=3)
 
     return result.result.lines
 
@@ -1044,6 +1258,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        keep_results_dir: bool = False,
         app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
@@ -1057,18 +1272,6 @@ def run_test_config(
                 Key: Name
                 Value: S3 URL
     """
-    # Todo (mid-term): Support other cluster definitions
-    #  (not only cluster configs)
-    cluster_config_rel_path = test_config["cluster"].get(
-        "cluster_config", None)
-    cluster_config = _load_config(local_dir, cluster_config_rel_path)
-
-    app_config_rel_path = test_config["cluster"].get("app_config", None)
-    app_config = _load_config(local_dir, app_config_rel_path)
-
-    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
-    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
-
     stop_event = multiprocessing.Event()
     result_queue = multiprocessing.Queue()
 
@@ -1110,6 +1313,34 @@ def run_test_config(
         ),
         anyscale_api_client=sdk.api_client,
     )
+
+    cloud_id = test_config["cluster"].get("cloud_id", None)
+    cloud_name = test_config["cluster"].get("cloud_name", None)
+    if cloud_id and cloud_name:
+        raise RuntimeError(
+            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
+            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
+            f"Please provide only one.")
+    elif cloud_name and not cloud_id:
+        cloud_id = find_cloud_by_name(sdk, cloud_name)
+        if not cloud_id:
+            raise RuntimeError(
+                f"Couldn't find cloud with name `{cloud_name}`.")
+    else:
+        cloud_id = cloud_id or GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"]
+
+    # Overwrite global config so that `_load_config` sets the correct cloud
+    GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"] = cloud_id
+
+    cluster_config_rel_path = test_config["cluster"].get(
+        "cluster_config", None)
+    cluster_config = _load_config(local_dir, cluster_config_rel_path)
+
+    app_config_rel_path = test_config["cluster"].get("app_config", None)
+    app_config = _load_config(local_dir, app_config_rel_path)
+
+    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
+    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
 
     timeout = test_config["run"].get("timeout", 1800)
     if "RELEASE_OVERRIDE_TIMEOUT" in os.environ:
@@ -1168,8 +1399,13 @@ def run_test_config(
         _update_results(results)
 
         if scd_id:
-            logs = get_command_logs(session_controller, scd_id,
-                                    test_config.get("log_lines", 50))
+            try:
+                logs = get_command_logs(session_controller, scd_id,
+                                        test_config.get("log_lines", 50))
+            except Exception as e:
+                raise ReleaseTestInfraError(
+                    f"Could not fetch command logs: {e}. This is an "
+                    f"infrastructure error on the Anyscale side.")
         else:
             logs = "No command found to fetch logs for"
 
@@ -1193,6 +1429,7 @@ def run_test_config(
         results["_runtime"] = runtime
         results["_session_url"] = session_url
         results["_commit_url"] = commit_url
+        results["_stable"] = test_config.get("stable", True)
         result_queue.put(
             State(
                 "END",
@@ -1251,6 +1488,7 @@ def run_test_config(
         session_url = None
         runtime = None
         anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        test_uses_ray_connect = test_config["run"].get("use_connect")
 
         session_id = None
         scd_id = None
@@ -1271,8 +1509,7 @@ def run_test_config(
                     logging.info("Starting session with cluster config")
                     cluster_config_str = json.dumps(cluster_config)
                     session_options["cluster_config"] = cluster_config_str
-                    session_options["cloud_id"] = (
-                        GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"], )
+                    session_options["cloud_id"] = cloud_id
                     session_options["uses_app_config"] = False
                 else:
                     logging.info("Starting session with app/compute config")
@@ -1282,8 +1519,10 @@ def run_test_config(
                         create_or_find_compute_template(
                             sdk, project_id, compute_tpl)
 
-                    logger.info(f"Link to compute template: "
-                                f"{anyscale_compute_tpl_url(compute_tpl_id)}")
+                    url = _format_link(
+                        anyscale_compute_tpl_url(compute_tpl_id))
+
+                    logger.info(f"Link to compute template: {url}")
 
                     # Find/create app config
                     if app_config_id is None:
@@ -1307,17 +1546,72 @@ def run_test_config(
                     session_options["build_id"] = build_id
                     session_options["uses_app_config"] = True
 
-                if not test_config["run"].get("use_connect"):
-                    session_id = create_and_wait_for_session(
-                        sdk=sdk,
-                        stop_event=stop_event,
-                        session_name=session_name,
-                        session_options=session_options,
-                    )
+                # Start session
+                session_id = create_and_wait_for_session(
+                    sdk=sdk,
+                    stop_event=stop_event,
+                    session_name=session_name,
+                    session_options=session_options,
+                    project_id=project_id,
+                )
 
-            if test_config["run"].get("use_connect"):
-                assert compute_tpl_name, "Compute template must exist."
-                assert app_config_name, "Cluster environment must exist."
+            prepare_command = test_config["run"].get("prepare")
+
+            # Write test state json
+            test_state_file = os.path.join(local_dir, "test_state.json")
+            with open(test_state_file, "wt") as f:
+                json.dump({
+                    "start_time": time.time(),
+                    "test_name": test_name
+                }, f)
+
+            if prepare_command or not test_uses_ray_connect:
+                if test_uses_ray_connect:
+                    logger.info("Found a prepare command, so pushing it "
+                                "to the session.")
+                # Rsync up
+                logger.info("Syncing files to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=None,
+                    target=None,
+                    config=None,
+                    all_nodes=False,
+                )
+
+                logger.info("Syncing test state to session...")
+                session_controller.push(
+                    session_name=session_name,
+                    source=test_state_file,
+                    target=state_json,
+                    config=None,
+                    all_nodes=False,
+                )
+
+                session_url = anyscale_session_url(
+                    project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
+                    session_id=session_id)
+                _check_stop(stop_event, "file_sync")
+
+                # Optionally run preparation command
+                if prepare_command:
+                    logger.info(
+                        f"Running preparation command: {prepare_command}")
+                    scd_id, result = run_session_command(
+                        sdk=sdk,
+                        session_id=session_id,
+                        cmd_to_run=prepare_command,
+                        result_queue=result_queue,
+                        env_vars=env_vars,
+                        state_str="CMD_PREPARE")
+                    _, _ = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_PREPARE")
+
+            if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
                 if smoke_test:
                     script_args += ["--smoke-test"]
@@ -1327,7 +1621,7 @@ def run_test_config(
                 # Build completed, use job timeout
                 result_queue.put(State("CMD_RUN", time.time(), None))
                 returncode, logs = run_job(
-                    cluster_name=test_name,
+                    cluster_name=session_name,
                     compute_tpl_name=compute_tpl_name,
                     cluster_env_name=app_config_name,
                     job_name=session_name,
@@ -1338,56 +1632,6 @@ def run_test_config(
                     autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
-
-            # Write test state json
-            test_state_file = os.path.join(local_dir, "test_state.json")
-            with open(test_state_file, "wt") as f:
-                json.dump({
-                    "start_time": time.time(),
-                    "test_name": test_name
-                }, f)
-
-            # Rsync up
-            logger.info("Syncing files to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=None,
-                target=None,
-                config=None,
-                all_nodes=False,
-            )
-
-            logger.info("Syncing test state to session...")
-            session_controller.push(
-                session_name=session_name,
-                source=test_state_file,
-                target=state_json,
-                config=None,
-                all_nodes=False,
-            )
-
-            session_url = anyscale_session_url(
-                project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
-                session_id=session_id)
-            _check_stop(stop_event, "file_sync")
-
-            # Optionally run preparation command
-            prepare_command = test_config["run"].get("prepare")
-            if prepare_command:
-                logger.info(f"Running preparation command: {prepare_command}")
-                scd_id, result = run_session_command(
-                    sdk=sdk,
-                    session_id=session_id,
-                    cmd_to_run=prepare_command,
-                    result_queue=result_queue,
-                    env_vars=env_vars,
-                    state_str="CMD_PREPARE")
-                _, _ = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_PREPARE")
 
             # Run release test command
             cmd_to_run = test_config["run"]["script"] + " "
@@ -1445,34 +1689,56 @@ def run_test_config(
                 _process_finished_command(
                     session_controller=session_controller, scd_id=scd_id)
             else:
-                timeout_type = ""
                 runtime = None
                 if isinstance(e, CommandTimeoutError):
-                    timeout_type = "timeout"
+                    error_type = "timeout"
                     runtime = 0
-                elif (isinstance(e, PrepareCommandTimeoutError)
-                      or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)):
-                    timeout_type = "infra_timeout"
+                    exit_code = ExitCode.COMMAND_TIMEOUT
+                elif isinstance(e, PrepareCommandTimeoutError):
+                    error_type = "infra_timeout"
                     runtime = None
+                    exit_code = ExitCode.PREPARE_TIMEOUT
+                elif isinstance(e, FileSyncTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.FILESYNC_TIMEOUT
+                elif isinstance(e, SessionTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.SESSION_TIMEOUT
+                elif isinstance(e, PrepareCommandRuntimeError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.PREPARE_ERROR
+                elif isinstance(e, AppConfigBuildFailure):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.APPCONFIG_BUILD_ERROR
+                elif isinstance(e, ReleaseTestInfraError):
+                    error_type = "infra_error"
+                    exit_code = ExitCode.INFRA_ERROR
                 elif isinstance(e, RuntimeError):
-                    timeout_type = "runtime_error"
+                    error_type = "runtime_error"
                     runtime = 0
+                    exit_code = ExitCode.RUNTIME_ERROR
                 else:
-                    timeout_type = "unknown timeout"
+                    error_type = "unknown timeout"
                     runtime = None
+                    exit_code = ExitCode.UNKNOWN
 
                 # Add these metadata here to avoid changing SQL schema.
                 results = {}
                 results["_runtime"] = runtime
                 results["_session_url"] = session_url
                 results["_commit_url"] = commit_url
+                results["_stable"] = test_config.get("stable", True)
                 result_queue.put(
                     State(
                         "END", time.time(), {
-                            "status": timeout_type,
+                            "status": error_type,
                             "last_logs": logs,
-                            "results": results
+                            "results": results,
+                            "exit_code": exit_code.value
                         }))
         finally:
             if no_terminate:
@@ -1608,10 +1874,11 @@ def run_test_config(
             target=_check_progress, args=(logger, ))
 
     build_timeout = test_config["run"].get("build_timeout", 1800)
+    prepare_timeout = test_config["run"].get("prepare_timeout", timeout)
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
-    logger.info(f"Link to project: {project_url}")
+    logger.info(f"Link to project: {_format_link(project_url)}")
 
     msg = f"This will now run test {test_name}."
     if smoke_test:
@@ -1621,7 +1888,8 @@ def run_test_config(
     logger.info(msg)
 
     logger.info(f"Starting process with timeout {timeout} "
-                f"(build timeout {build_timeout})")
+                f"(prepare timeout {prepare_timeout}, "
+                f"build timeout {build_timeout})")
     process.start()
 
     # The timeout time will be updated after the build finished
@@ -1662,7 +1930,7 @@ def run_test_config(
 
         if state.state == "CMD_PREPARE":
             # Reset timeout after build finished
-            timeout_time = state.timestamp + timeout
+            timeout_time = state.timestamp + prepare_timeout
 
         if state.state == "CMD_RUN":
             # Reset timeout after prepare command or build finished
@@ -1684,7 +1952,29 @@ def run_test_config(
 
     logger.info(f"Final results: {result}")
 
-    shutil.rmtree(temp_dir)
+    log_results_and_artifacts(result)
+
+    if not keep_results_dir:
+        logger.info(f"Removing results dir {temp_dir}")
+        shutil.rmtree(temp_dir)
+    else:
+        # Write results.json
+        with open(os.path.join(temp_dir, "results.json"), "wt") as fp:
+            json.dump(result, fp)
+
+        out_dir = os.path.expanduser(GLOBAL_CONFIG["RELEASE_RESULTS_DIR"])
+
+        logger.info(f"Moving results dir {temp_dir} to persistent location "
+                    f"{out_dir}")
+
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -1697,12 +1987,13 @@ def run_test(test_config_file: str,
              smoke_test: bool = False,
              no_terminate: bool = False,
              kick_off_only: bool = False,
-             check_progress=False,
-             report=True,
-             session_name=None,
-             app_config_id_override=None):
+             check_progress: bool = False,
+             report: bool = True,
+             keep_results_dir: bool = False,
+             session_name: Optional[str] = None,
+             app_config_id_override=None) -> Dict[str, Any]:
     with open(test_config_file, "rt") as f:
-        test_configs = yaml.load(f, Loader=yaml.FullLoader)
+        test_configs = yaml.safe_load(f)
 
     test_config_dict = {}
     for test_config in test_configs:
@@ -1736,6 +2027,11 @@ def run_test(test_config_file: str,
                 "Saving artifacts are not yet supported when running with "
                 "Anyscale connect.")
 
+    # Perform necessary driver side setup.
+    driver_setup_script = test_config.get("driver_setup", None)
+    if driver_setup_script:
+        run_bash_script(local_dir, driver_setup_script)
+
     result = run_test_config(
         local_dir,
         project_id,
@@ -1748,6 +2044,7 @@ def run_test(test_config_file: str,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
         upload_artifacts=report,
+        keep_results_dir=keep_results_dir,
         app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
@@ -1758,18 +2055,18 @@ def run_test(test_config_file: str,
 
         logger.info("Kicked off test. It's now up to the `--check` "
                     "part of the script to track its process.")
-        return
+        return {}
     else:
         # `--check` or no kick off only
 
         if status == "nosession":
             logger.info(f"No running session found for test {test_name}, so "
                         f"assuming everything is fine.")
-            return
+            return {}
 
         if status == "kickoff":
             logger.info(f"Test {test_name} is still running.")
-            return
+            return {}
 
         last_logs = result.get("last_logs", "No logs.")
 
@@ -1779,22 +2076,53 @@ def run_test(test_config_file: str,
             test_suite=test_suite,
             test_name=test_name,
             status=status,
-            logs=last_logs,
+            last_logs=last_logs,
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
         )
 
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
+
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
+
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
+
         if report:
-            report_result(**report_kwargs)
+            try:
+                report_result(**report_kwargs)
+            except Exception as e:
+                # On database error the test should still pass
+                # Todo: flag somewhere else?
+                logger.error(f"Error persisting results to database: {e}")
         else:
             logger.info(f"Usually I would now report the following results:\n"
                         f"{report_kwargs}")
 
         if has_errored(result):
-            raise RuntimeError(last_logs)
+            # If the script terminates due to an uncaught error, it
+            # will return exit code 1, so we use 2 per default to
+            # catch these cases.
+            exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
+            logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
+            sys.exit(exit_code)
 
-    return
+        return report_kwargs
 
 
 if __name__ == "__main__":
@@ -1812,7 +2140,7 @@ if __name__ == "__main__":
         default=False,
         help="Don't terminate session after failure")
     parser.add_argument(
-        "--no-report",
+        "--report",
         action="store_true",
         default=False,
         help="Do not report any results or upload to S3")
@@ -1826,6 +2154,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Check (long running) status")
+    parser.add_argument(
+        "--keep-results-dir",
+        action="store_true",
+        default=False,
+        help="Keep results in directory (named RELEASE_RESULTS_DIR), e.g. "
+        "for Buildkite artifact upload.")
     parser.add_argument(
         "--category",
         type=str,
@@ -1850,11 +2184,16 @@ if __name__ == "__main__":
         raise RuntimeError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
-    maybe_fetch_api_token()
+    ray_wheels = args.ray_wheels or os.environ.get("RAY_WHEELS", "")
 
-    if args.ray_wheels:
-        os.environ["RAY_WHEELS"] = str(args.ray_wheels)
-        url = str(args.ray_wheels)
+    maybe_fetch_api_token()
+    if ray_wheels:
+        logger.info(f"Using Ray wheels provided from URL/commit: "
+                    f"{ray_wheels}")
+        url = commit_or_url(str(ray_wheels))
+        logger.info(f"Resolved url link is: {url}")
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
     elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
@@ -1866,7 +2205,17 @@ if __name__ == "__main__":
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
+    # RAY_COMMIT is set by commit_or_url and find_ray_wheels
+    populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
+
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
+
+    # Override it from the global variable.
+    report = GLOBAL_CONFIG["REPORT_RESULT"]
+    if report.lower() == "1" or report.lower() == "true":
+        report = True
+    else:
+        report = args.report
 
     run_test(
         test_config_file=test_config_file,
@@ -1878,7 +2227,8 @@ if __name__ == "__main__":
         no_terminate=args.no_terminate or args.kick_off_only,
         kick_off_only=args.kick_off_only,
         check_progress=args.check,
-        report=not args.no_report,
+        report=report,
         session_name=args.session_name,
+        keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )

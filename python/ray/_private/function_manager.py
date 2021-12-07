@@ -20,11 +20,10 @@ from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
     check_oversized_function,
-    decode,
     ensure_str,
     format_error_message,
-    push_error_to_driver,
 )
+from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
     is_function_or_method,
     is_class_method,
@@ -36,6 +35,11 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
+
+
+def make_export_key(pos):
+    # big-endian for ordering in binary
+    return b"Exports:" + pos.to_bytes(8, "big")
 
 
 class FunctionActorManager:
@@ -76,7 +80,14 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
+
         self.execution_infos = {}
+        # This is the counter to keep track of how many keys have already
+        # been exported so that we can find next key quicker.
+        self._num_exported = 0
+        # This is to protect self._num_exported when doing exporting
+        self._export_lock = threading.Lock()
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -127,6 +138,29 @@ class FunctionActorManager:
         except Exception:
             return None
 
+    def export_key(self, key):
+        """Export a key so it can be imported by other workers"""
+
+        # It's going to check all the keys until if reserve one key not
+        # existing in the cluster.
+        # One optimization is that we can use importer counter since
+        # it's sure keys before this counter has been allocated.
+        with self._export_lock:
+            self._num_exported = max(self._num_exported,
+                                     self._worker.import_thread.num_imported)
+            while True:
+                self._num_exported += 1
+                holder = make_export_key(self._num_exported)
+                # This step is atomic since internal kv is a single thread
+                # atomic db.
+                if self._worker.gcs_client.internal_kv_put(
+                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
+                    break
+        if self._worker.gcs_pubsub_enabled:
+            self._worker.gcs_publisher.publish_function_key(key)
+        else:
+            self._worker.redis_client.lpush("Exports", "a")
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
         Args:
@@ -144,41 +178,57 @@ class FunctionActorManager:
                     module_name, function_name) is not None:
                 return
         function = remote_function._function
-        pickled_function = pickle.dumps(function)
+        pickled_function = remote_function._pickled_function
 
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        self._worker.redis_client.hset(
-            key,
-            mapping={
-                "job_id": self._worker.current_job_id.binary(),
-                "function_id": remote_function._function_descriptor.
-                function_id.binary(),
-                "function_name": remote_function._function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "collision_identifier": self.compute_collision_identifier(
-                    function),
-                "max_calls": remote_function._max_calls
-            })
-        self._worker.redis_client.rpush("Exports", key)
+        if self._worker.gcs_client.internal_kv_exists(
+                key, KV_NAMESPACE_FUNCTION_TABLE):
+            return
+        val = pickle.dumps({
+            "job_id": self._worker.current_job_id.binary(),
+            "function_id": remote_function._function_descriptor.function_id.
+            binary(),
+            "function_name": remote_function._function_name,
+            "module": function.__module__,
+            "function": pickled_function,
+            "collision_identifier": self.compute_collision_identifier(
+                function),
+            "max_calls": remote_function._max_calls
+        })
+        self._worker.gcs_client.internal_kv_put(key, val, True,
+                                                KV_NAMESPACE_FUNCTION_TABLE)
+        self.export_key(key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
+        vals = self._worker.gcs_client.internal_kv_get(
+            key, KV_NAMESPACE_FUNCTION_TABLE)
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
+        fields = [
+            "job_id", "function_id", "function_name", "function", "module",
+            "max_calls"
+        ]
         (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(
-             key, [
-                 "job_id", "function_id", "function_name", "function",
-                 "module", "max_calls"
-             ])
+         module, max_calls) = (vals.get(field) for field in fields)
+
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id_str != self._worker.current_job_id.binary():
+            # A worker only executes tasks from the assigned job.
+            # TODO(jjyao): If fetching unrelated remote functions
+            # becomes a perf issue, we can also consider having export
+            # queue per job.
+            return
+
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
-        function_name = decode(function_name)
         max_calls = int(max_calls)
-        module = decode(module)
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
@@ -190,9 +240,17 @@ class FunctionActorManager:
                 function = pickle.loads(serialized_function)
             except Exception:
 
+                # If an exception was thrown when the remote function was
+                # imported, we record the traceback and notify the scheduler
+                # of the failure.
+                traceback_str = format_error_message(traceback.format_exc())
+
                 def f(*args, **kwargs):
                     raise RuntimeError(
-                        "This function was not imported properly.")
+                        "The remote function failed to import on the "
+                        "worker. This may be because needed library "
+                        "dependencies are not installed in the worker "
+                        "environment:\n\n{}".format(traceback_str))
 
                 # Use a placeholder method when function pickled failed
                 self._function_execution_info[function_id] = (
@@ -200,11 +258,10 @@ class FunctionActorManager:
                         function=f,
                         function_name=function_name,
                         max_calls=max_calls))
-                # If an exception was thrown when the remote function was
-                # imported, we record the traceback and notify the scheduler
-                # of the failure.
-                traceback_str = format_error_message(traceback.format_exc())
-                # Log the error message.
+
+                # Log the error message. Log at DEBUG level to avoid overly
+                # spamming the log on import failure. The user gets the error
+                # via the RuntimeError message above.
                 logger.debug("Failed to unpickle the remote function "
                              f"'{function_name}' with "
                              f"function ID {function_id.hex()}. "
@@ -222,10 +279,6 @@ class FunctionActorManager:
                         function=function,
                         function_name=function_name,
                         max_calls=max_calls))
-                # Add the function to the function table.
-                self._worker.redis_client.rpush(
-                    b"FunctionTable:" + function_id.binary(),
-                    self._worker.worker_id)
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -340,8 +393,11 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.redis_client.hset(key, mapping=actor_class_info)
-        self._worker.redis_client.rpush("Exports", key)
+        self._worker.gcs_client.internal_kv_put(key,
+                                                pickle.dumps(actor_class_info),
+                                                True,
+                                                KV_NAMESPACE_FUNCTION_TABLE)
+        self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
@@ -367,11 +423,20 @@ class FunctionActorManager:
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
+        try:
+            serialized_actor_class = pickle.dumps(Class)
+        except TypeError as e:
+            msg = (
+                "Could not serialize the actor class "
+                f"{actor_creation_function_descriptor.repr}. "
+                "Check https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                "for more information.")
+            raise TypeError(msg) from e
         actor_class_info = {
             "class_name": actor_creation_function_descriptor.class_name.split(
                 ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
-            "class": pickle.dumps(Class),
+            "class": serialized_actor_class,
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
@@ -468,14 +533,17 @@ class FunctionActorManager:
         else:
             return None
 
-    def _create_fake_actor_class(self, actor_class_name, actor_method_names):
+    def _create_fake_actor_class(self, actor_class_name, actor_method_names,
+                                 traceback_str):
         class TemporaryActor:
             pass
 
         def temporary_actor_method(*args, **kwargs):
-            raise RuntimeError(f"The actor with name {actor_class_name} "
-                               "failed to be imported, "
-                               "and so cannot execute this method.")
+            raise RuntimeError(
+                f"The actor with name {actor_class_name} "
+                "failed to import on the worker. This may be because "
+                "needed library dependencies are not installed in the "
+                f"worker environment:\n\n{traceback_str}")
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
@@ -492,13 +560,28 @@ class FunctionActorManager:
         # up in an infinite loop here, but we should push an error to
         # the driver if too much time is spent here.
         while key not in self.imported_actor_classes:
-            time.sleep(0.001)
+            try:
+                # If we're in the process of deserializing an ActorHandle
+                # and we hold the function_manager lock, we may be blocking
+                # the import_thread from loading the actor class. Use cv.wait
+                # to temporarily yield control to the import thread.
+                self.cv.wait()
+            except RuntimeError:
+                # We don't hold the function_manager lock, just sleep regularly
+                time.sleep(0.001)
 
         # Fetch raw data from GCS.
+        vals = self._worker.gcs_client.internal_kv_get(
+            key, KV_NAMESPACE_FUNCTION_TABLE)
+        fields = [
+            "job_id", "class_name", "module", "class", "actor_method_names"
+        ]
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
         (job_id_str, class_name, module, pickled_class,
-         actor_method_names) = self._worker.redis_client.hmget(
-             key,
-             ["job_id", "class_name", "module", "class", "actor_method_names"])
+         actor_method_names) = (vals.get(field) for field in fields)
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
@@ -510,27 +593,15 @@ class FunctionActorManager:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.exception("Failed to load actor class %s.", class_name)
+            logger.debug("Failed to load actor class %s.", class_name)
+            # If an exception was thrown when the actor was imported, we record
+            # the traceback and notify the scheduler of the failure.
+            traceback_str = format_error_message(traceback.format_exc())
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
             actor_class = self._create_fake_actor_class(
-                class_name, actor_method_names)
-            # If an exception was thrown when the actor was imported, we record
-            # the traceback and notify the scheduler of the failure.
-            traceback_str = ray._private.utils.format_error_message(
-                traceback.format_exc())
-            # Log the error message.
-            push_error_to_driver(
-                self._worker,
-                ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                f"Failed to unpickle actor class '{class_name}' "
-                f"for actor ID {self._worker.actor_id.hex()}. "
-                f"Traceback:\n{traceback_str}",
-                job_id=job_id)
-            # TODO(rkn): In the future, it might make sense to have the worker
-            # exit here. However, currently that would lead to hanging if
-            # someone calls ray.get on a method invoked on the actor.
+                class_name, actor_method_names, traceback_str)
 
         # The below line is necessary. Because in the driver process,
         # if the function is defined in the file where the python script

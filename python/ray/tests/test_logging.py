@@ -4,11 +4,12 @@ import re
 from datetime import datetime
 from collections import defaultdict, Counter
 from pathlib import Path
+import pytest
 
 import ray
 from ray import ray_constants
-from ray._private.test_utils import (wait_for_condition, init_log_pubsub,
-                                     get_log_message)
+from ray._private.test_utils import (get_log_batch, wait_for_condition,
+                                     init_log_pubsub, get_log_message)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -184,6 +185,37 @@ def test_worker_id_names(shutdown_only):
         assert count == 3
 
 
+def test_log_pid_with_hex_job_id(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+
+    def submit_job():
+        # Connect a driver to the Ray cluster.
+        ray.init(address=cluster.address, ignore_reinit_error=True)
+        p = init_log_pubsub()
+        # It always prints the monitor messages.
+        logs = get_log_message(p, 1)
+
+        @ray.remote
+        def f():
+            print("remote func")
+
+        ray.get(f.remote())
+
+        def matcher(log_batch):
+            return log_batch["task_name"] == "f"
+
+        logs = get_log_batch(p, 1, matcher=matcher)
+        # It should logs with pid of hex job id instead of None
+        assert logs[0]["pid"] is not None
+        ray.shutdown()
+
+    # NOTE(xychu): loop ten times to make job id from 01000000 to 0a000000,
+    #              in order to trigger hex pattern
+    for _ in range(10):
+        submit_job()
+
+
 def test_log_monitor_backpressure(ray_start_cluster):
     update_interval = 3
     os.environ["LOG_NAME_UPDATE_INTERVAL_S"] = str(update_interval)
@@ -223,8 +255,72 @@ def test_log_monitor_backpressure(ray_start_cluster):
     assert (datetime.now() - now).seconds >= update_interval
 
 
+def test_ignore_windows_access_violation(ray_start_regular_shared):
+    @ray.remote
+    def print_msg():
+        print("Windows fatal exception: access violation\n")
+
+    @ray.remote
+    def print_after(_obj):
+        print("done")
+
+    p = init_log_pubsub()
+    print_after.remote(print_msg.remote())
+    msgs = get_log_message(
+        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex())
+
+    assert len(msgs) == 1, msgs
+    assert msgs.pop() == "done"
+
+
+def test_log_redirect_to_stdout(shutdown_only):
+    os.environ["GLOG_logtostderr"] = "1"
+    ray.init()
+
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_components = [
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    for component in log_components:
+        for path in paths:
+            filename = path.stem
+            assert component not in filename
+
+
+def test_segfault_stack_trace(ray_start_cluster, capsys):
+    @ray.remote
+    def f():
+        import ctypes
+        ctypes.string_at(0)
+
+    with pytest.raises(
+            ray.exceptions.WorkerCrashedError,
+            match="The worker died unexpectedly"):
+        ray.get(f.remote())
+
+    stderr = capsys.readouterr().err
+    assert "*** SIGSEGV received at" in stderr, \
+        f"C++ stack trace not found in stderr: {stderr}"
+    assert "Fatal Python error: Segmentation fault" in stderr, \
+        f"Python stack trace not found in stderr: {stderr}"
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

@@ -1,79 +1,46 @@
 # coding: utf-8
-from abc import ABCMeta, abstractmethod
-from functools import lru_cache
+from abc import abstractmethod
 import logging
-import os
-import time
 from typing import Dict, List, Optional
+import warnings
 
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.error import TuneError
-from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
 
-@lru_cache()
-def _get_warning_threshold() -> float:
-    if is_ray_cluster():
-        return float(
-            os.environ.get(
-                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
-    else:
-        return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
-
-
-@lru_cache()
-def _get_warning_msg() -> str:
-    if is_ray_cluster():
-        return (
-            f"If autoscaler is still scaling up, ignore this message. No "
-            f"trial is running and no new trial has been started within at "
-            f"least the last {_get_warning_threshold()} seconds. "
-            f"This could be due to the cluster not having enough "
-            f"resources available to start the next trial. Please stop the "
-            f"tuning job and readjust resources_per_trial argument passed "
-            f"into tune.run() as well as max_workers and worker_nodes "
-            f"InstanceType specified in cluster.yaml.")
-    else:
-        return (f"No trial is running and no new trial has been started within"
-                f" at least the last {_get_warning_threshold()} seconds. "
-                f"This could be due to the cluster not having enough "
-                f"resources available to start the next trial. Please stop "
-                f"the tuning job and readjust resources_per_trial argument "
-                f"passed into tune.run() and/or start a cluster with more "
-                f"resources.")
+# Signals when a class is directly inherited from TrialExecutor.
+# A warning is printed to inform users of TrialExecutor deprecation.
+class _WarnOnDirectInheritanceMeta(type):
+    def __new__(mcls, name, bases, module, **kwargs):
+        if name not in ("RayTrialExecutor", "_MockTrialExecutor",
+                        "TrialExecutor") and "TrialExecutor" in tuple(
+                            base.__name__ for base in bases):
+            deprecation_msg = (
+                f"{name} inherits from TrialExecutor, which is being "
+                "deprecated. "
+                "RFC: https://github.com/ray-project/ray/issues/17593. "
+                "Please reach out on the Ray Github if you have any concerns.")
+            warnings.warn(deprecation_msg, DeprecationWarning)
+        cls = super().__new__(mcls, name, bases, module, **kwargs)
+        return cls
 
 
 @DeveloperAPI
-class TrialExecutor(metaclass=ABCMeta):
+class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     """Module for interacting with remote trainables.
 
     Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials: bool = False):
+    def __init__(self):
         """Initializes a new TrialExecutor.
-
-        Args:
-            queue_trials (bool): Whether to queue trials when the cluster does
-                not currently have enough resources to launch one. This should
-                be set to True when running on an autoscaling cluster to enable
-                automatic scale-up.
         """
-        self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
-        # The start time since when all active trials have been in PENDING
-        # state, or since last time we output a resource insufficent
-        # warning message, whichever comes later.
-        # -1 means either the TrialExecutor is just initialized without any
-        # trials yet, or there are some trials in RUNNING state.
-        self._no_running_trials_since = -1
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -93,25 +60,10 @@ class TrialExecutor(metaclass=ABCMeta):
                          trial.status, status)
         trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
-            self.try_checkpoint_metadata(trial)
-
-    def try_checkpoint_metadata(self, trial: Trial) -> None:
-        """Checkpoints trial metadata.
-
-        Args:
-            trial (Trial): Trial to checkpoint.
-        """
-        if trial.checkpoint.storage == Checkpoint.MEMORY:
-            logger.debug("Trial %s: Not saving data for memory checkpoint.",
-                         trial)
-            return
-        try:
-            logger.debug("Trial %s: Saving trial metadata.", trial)
-            # Lazy cache trials
             self._trials_to_cache.add(trial)
-        except Exception:
-            logger.exception("Trial %s: Error checkpointing trial metadata.",
-                             trial)
+
+    def mark_trial_to_checkpoint(self, trial: Trial) -> None:
+        self._trials_to_cache.add(trial)
 
     def get_checkpoints(self) -> Dict[str, str]:
         """Returns a copy of mapping of the trial ID to pickled metadata."""
@@ -126,17 +78,11 @@ class TrialExecutor(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def start_trial(self,
-                    trial: Trial,
-                    checkpoint: Optional[Checkpoint] = None,
-                    train: bool = True) -> bool:
+    def start_trial(self, trial: Trial) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint (Checkpoint): A Python object or path storing the state
-            of trial.
-            train (bool): Whether or not to start training.
 
         Returns:
             True if trial started successfully, False otherwise.
@@ -147,8 +93,7 @@ class TrialExecutor(metaclass=ABCMeta):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   error_msg: Optional[str] = None) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -158,8 +103,6 @@ class TrialExecutor(metaclass=ABCMeta):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
-            group should be destroyed if it cannot replace any staged ones.
 
         """
         pass
@@ -182,11 +125,6 @@ class TrialExecutor(metaclass=ABCMeta):
         except Exception:
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
-
-    def unpause_trial(self, trial: Trial) -> None:
-        """Sets PAUSED trial to pending to allow scheduler to start."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.set_status(trial, Trial.PENDING)
 
     def resume_trial(self, trial: Trial) -> None:
         """Resumes PAUSED trials. This is a blocking call."""
@@ -236,54 +174,6 @@ class TrialExecutor(metaclass=ABCMeta):
     def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
-    def _may_warn_insufficient_resources(self, all_trials):
-        if not any(trial.status == Trial.RUNNING for trial in all_trials):
-            if self._no_running_trials_since == -1:
-                self._no_running_trials_since = time.monotonic()
-            elif time.monotonic(
-            ) - self._no_running_trials_since > _get_warning_threshold():
-                # TODO(xwjiang): We should ideally output a more helpful msg.
-                # https://github.com/ray-project/ray/issues/17799
-                logger.warning(_get_warning_msg())
-                self._no_running_trials_since = time.monotonic()
-        else:
-            self._no_running_trials_since = -1
-
-    def on_no_available_trials(self, trials: List[Trial]) -> None:
-        """
-        Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
-                providing TrialRunner directly here.
-        """
-
-        if self._queue_trials:
-            return
-        self._may_warn_insufficient_resources(trials)
-        for trial in trials:
-            if trial.uses_placement_groups:
-                return
-            if trial.status == Trial.PENDING:
-                if not self.has_resources_for_trial(trial):
-                    resource_string = trial.resources.summary_string()
-                    trial_resource_help_msg = trial.get_trainable_cls(
-                    ).resource_help(trial.config)
-                    autoscaling_msg = ""
-                    if is_ray_cluster():
-                        autoscaling_msg = (
-                            "Pass `queue_trials=True` in ray.tune.run() or "
-                            "on the command line to queue trials until the "
-                            "cluster scales up or resources become available. "
-                        )
-                    raise TuneError(
-                        "Insufficient cluster resources to launch trial: "
-                        f"trial requested {resource_string}, but the cluster "
-                        f"has only {self.resource_string()}. "
-                        f"{autoscaling_msg}"
-                        f"{trial_resource_help_msg} ")
-            elif trial.status == Trial.PAUSED:
-                raise TuneError("There are paused trials, but no more pending "
-                                "trials with sufficient resources.")
-
     @abstractmethod
     def get_next_available_trial(self) -> Optional[Trial]:
         """Blocking call that waits until one result is ready.
@@ -317,11 +207,6 @@ class TrialExecutor(metaclass=ABCMeta):
     @abstractmethod
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
-        pass
-
-    @abstractmethod
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
         pass
 
     @abstractmethod

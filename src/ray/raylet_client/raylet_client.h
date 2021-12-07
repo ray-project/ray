@@ -62,10 +62,16 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
+  /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
-  /// \return ray::Status
   virtual void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
+  virtual void RequestWorkerLease(
+      const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
 
@@ -88,6 +94,14 @@ class WorkerLeaseInterface {
   virtual void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) = 0;
+
+  /// Report the backlog size of a given worker and a given scheduling class to the
+  /// raylet.
+  /// \param worker_id The ID of the worker that reports the backlog size.
+  /// \param backlog_reports The backlog report for each scheduling class
+  virtual void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -117,7 +131,7 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
   virtual void ReleaseUnusedBundles(
@@ -170,6 +184,10 @@ class RayletClientInterface : public PinObjectsInterface,
 
   virtual void GetGcsServerAddress(
       const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
+
+  virtual void ShutdownRaylet(
+      const NodeID &node_id, bool graceful,
+      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -196,6 +214,8 @@ class RayletConnection {
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
+  /// Shutdown the raylet if the local connection is disconnected.
+  void ShutdownIfLocalRayletDisconnected(const Status &status);
   /// The connection to raylet.
   std::shared_ptr<ServerConnection> conn_;
   /// A mutex to protect stateful operations of the raylet client.
@@ -227,13 +247,16 @@ class RayletClient : public RayletClientInterface {
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
   /// \param worker_shim_pid The PID of the process for setup worker runtime env.
+  /// \param startup_token The startup token of the process assigned to
+  /// it during startup as a command line argument.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
+               int *port, std::string *serialized_job_config, pid_t worker_shim_pid,
+               StartupToken startup_token);
 
   /// Connect to the raylet via grpc only.
   ///
@@ -334,12 +357,6 @@ class RayletClient : public RayletClientInterface {
   ray::Status PushError(const ray::JobID &job_id, const std::string &type,
                         const std::string &error_message, double timestamp);
 
-  /// Store some profile events in the GCS.
-  ///
-  /// \param profile_events A batch of profiling event information.
-  /// \return ray::Status.
-  ray::Status PushProfileEvents(const ProfileTableData &profile_events);
-
   /// Free a list of objects from object stores.
   ///
   /// \param object_ids A list of ObjectsIDs to be deleted.
@@ -347,14 +364,6 @@ class RayletClient : public RayletClientInterface {
   /// or send it to all the object stores.
   /// \return ray::Status.
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
-
-  /// Sets a resource with the specified capacity and client id
-  /// \param resource_name Name of the resource to be set
-  /// \param capacity Capacity of the resource
-  /// \param node_id NodeID where the resource is to be set
-  /// \return ray::Status
-  ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -366,13 +375,26 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
+    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
+                       backlog_size);
+  }
+
+  void RequestWorkerLease(
+      const rpc::TaskSpec &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  /// Implements WorkerLeaseInterface.
+  void ReportWorkerBacklog(
+      const WorkerID &worker_id,
+      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
   void ReleaseUnusedWorkers(
@@ -397,7 +419,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
-      BundleSpecification &bundle_spec,
+      const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
@@ -409,6 +431,10 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+
+  void ShutdownRaylet(
+      const NodeID &node_id, bool graceful,
+      const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
@@ -452,6 +478,9 @@ class RayletClient : public RayletClientInterface {
 
   /// The number of object ID pin RPCs currently in flight.
   std::atomic<int64_t> pins_in_flight_{0};
+
+ protected:
+  RayletClient() {}
 };
 
 }  // namespace raylet

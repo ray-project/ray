@@ -15,13 +15,13 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
+
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
 
 #include "absl/time/clock.h"
-
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
@@ -160,9 +160,10 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeTask() {
-  std::string data(kLength, 0);
+TaskID TaskID::FromRandom(const JobID &job_id) {
+  std::string data(kLength - JobID::kLength, 0);
   FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
 
@@ -234,6 +235,22 @@ ObjectID ObjectID::FromRandom() {
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
   return ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id),
                              /*return_index=*/1);
+}
+
+bool ObjectID::IsActorID(const ObjectID &object_id) {
+  for (size_t i = 0; i < (TaskID::kLength - ActorID::kLength); ++i) {
+    if (object_id.id_[i] != 0xff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+ActorID ObjectID::ToActorID(const ObjectID &object_id) {
+  auto beg = reinterpret_cast<const char *>(object_id.id_) + ObjectID::kLength -
+             ActorID::kLength - ObjectID::kIndexBytesLength;
+  std::string actor_id(beg, beg + ActorID::kLength);
+  return ActorID::FromBinary(actor_id);
 }
 
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,

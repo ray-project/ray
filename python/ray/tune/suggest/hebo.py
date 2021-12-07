@@ -34,13 +34,14 @@ class HEBOSearch(Searcher):
 
     HEBO is a cutting edge black-box optimization framework created
     by Huawei's Noah Ark. More info can be found here:
-    https://github.com/huawei-noah/noah-research/tree/master/HEBO.
+    https://github.com/huawei-noah/HEBO/tree/master/HEBO.
 
-    You will need to install HEBO via the following:
+    You will need to install HEBO via the following (dependencies are
+    pinned to avoid HEBO 0.1.0 errors):
 
     .. code-block:: bash
 
-        pip install HEBO
+        pip install "scipy<1.7.0" "pymoo<0.5.0" "HEBO==0.1.0"
 
     `space` can either be a HEBO's `DesignSpace` object or a dict of Tune
     search spaces.
@@ -49,9 +50,11 @@ class HEBOSearch(Searcher):
     to kickstart the search process. In order to achieve good results,
     we recommend setting the number of trials to at least 16.
 
-    Maximum number of concurrent trials is determined by `max_concurrent`
-    argument. Trials will be done in batches of `max_concurrent` trials.
-    It is not recommended to use this Searcher in a `ConcurrencyLimiter`.
+    Maximum number of concurrent trials is determined by ``max_concurrent``
+    argument. Trials will be done in batches of ``max_concurrent`` trials.
+    If this Searcher is used in a ``ConcurrencyLimiter``, the
+    ``max_concurrent`` value passed to it will override the value passed
+    here.
 
     Args:
         space (dict|hebo.design_space.design_space.DesignSpace):
@@ -78,6 +81,9 @@ class HEBOSearch(Searcher):
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
         max_concurrent (int, 8): Number of maximum concurrent trials.
+            If this Searcher is used in a ``ConcurrencyLimiter``, the
+            ``max_concurrent`` value passed to it will override the
+            value passed here.
         **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
@@ -127,8 +133,10 @@ class HEBOSearch(Searcher):
             max_concurrent: int = 8,
             **kwargs):
         assert hebo is not None, (
-            "HEBO must be installed!. You can install HEBO with"
-            " the command: `pip install HEBO`.")
+            "HEBO must be installed! You can install HEBO with"
+            " the command: `pip install 'scipy<1.7.0' 'pymoo<0.5.0'"
+            " 'HEBO==0.1.0'`. This error may also be caused if HEBO"
+            " dependencies have bad versions.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         assert isinstance(max_concurrent, int) and max_concurrent >= 1, (
@@ -169,6 +177,10 @@ class HEBOSearch(Searcher):
         self._opt = None
         if space:
             self._setup_optimizer()
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        self._max_concurrent = max_concurrent
+        return True
 
     def _setup_optimizer(self):
         # HEBO internally minimizes, so "max" => -1
@@ -213,11 +225,12 @@ class HEBOSearch(Searcher):
                 self._initial_points = self._points_to_evaluate
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
         self._space = space
+
         if metric:
             self._metric = metric
         if mode:

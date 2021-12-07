@@ -7,7 +7,6 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.common cimport (
     CLanguage,
-    ResourceSet,
 )
 from ray.includes.unique_ids cimport (
     CActorID,

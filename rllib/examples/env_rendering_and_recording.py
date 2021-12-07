@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     # Example config causing
     config = {
-        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v0".
+        # Also try common gym envs like: "CartPole-v0" or "Pendulum-v1".
         "env": (MultiAgentCustomRenderedEnv
                 if args.multi_agent else CustomRenderedEnv),
         "env_config": {
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         # Evaluate once per training iteration.
         "evaluation_interval": 1,
         # Run evaluation on (at least) two episodes
-        "evaluation_num_episodes": 2,
+        "evaluation_duration": 2,
         # ... using one evaluation worker (setting this to 0 will cause
         # evaluation to run on the local evaluation worker, blocking
         # training until evaluation is done).

@@ -155,6 +155,13 @@ class SegmentTree:
         assert 0 <= idx < self.capacity
         return self.value[idx + self.capacity]
 
+    def get_state(self):
+        return self.value
+
+    def set_state(self, state):
+        assert len(state) == self.capacity * 2
+        self.value = state
+
 
 class SumSegmentTree(SegmentTree):
     """A SegmentTree with the reduction `operation`=operator.add."""

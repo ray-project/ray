@@ -16,8 +16,9 @@ import uuid
 from pdb import Pdb
 import setproctitle
 import traceback
-
+from typing import Callable
 import ray
+from ray import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
 
@@ -60,6 +61,20 @@ class LF2CRLF_FileWrapper(object):
     def writelines(self, lines, nl_rex=re.compile("\r?\n")):
         for line in lines:
             self.write(line, nl_rex)
+
+
+class PdbWrap(Pdb):
+    """Wrap PDB to run a custom exit hook on continue."""
+
+    def __init__(self, exit_hook: Callable[[], None]):
+        self._exit_hook = exit_hook
+        Pdb.__init__(self)
+
+    def do_continue(self, arg):
+        self._exit_hook()
+        return Pdb.do_continue(self, arg)
+
+    do_c = do_cont = do_continue
 
 
 class RemotePdb(Pdb):
@@ -139,7 +154,7 @@ class RemotePdb(Pdb):
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
 
-    do_c = do_continue
+    do_c = do_cont = do_continue
 
     def set_trace(self, frame=None):
         if frame is None:
@@ -171,8 +186,10 @@ class RemotePdb(Pdb):
         data = json.dumps({
             "job_id": ray.get_runtime_context().job_id.hex(),
         })
-        _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         data)
+        _internal_kv_put(
+            "RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
+            data,
+            namespace=ray_constants.KV_NAMESPACE_PDB)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -232,9 +249,14 @@ def connect_ray_pdb(host=None,
         "job_id": ray.get_runtime_context().job_id.hex(),
     }
     _internal_kv_put(
-        "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
+        "RAY_PDB_{}".format(breakpoint_uuid),
+        json.dumps(data),
+        overwrite=True,
+        namespace=ray_constants.KV_NAMESPACE_PDB)
     rdb.listen()
-    _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid))
+    _internal_kv_del(
+        "RAY_PDB_{}".format(breakpoint_uuid),
+        namespace=ray_constants.KV_NAMESPACE_PDB)
 
     return rdb
 
@@ -260,12 +282,30 @@ def set_trace(breakpoint_uuid=None):
         rdb.set_trace(frame=frame)
 
 
+def _driver_set_trace():
+    """The breakpoint hook to use for the driver.
+
+    This disables Ray driver logs temporarily so that the PDB console is not
+    spammed: https://github.com/ray-project/ray/issues/18172
+    """
+    print("*** Temporarily disabling Ray worker logs ***")
+    ray.worker._worker_logs_enabled = False
+
+    def enable_logging():
+        print("*** Re-enabling Ray worker logs ***")
+        ray.worker._worker_logs_enabled = True
+
+    pdb = PdbWrap(enable_logging)
+    frame = sys._getframe().f_back
+    pdb.set_trace(frame)
+
+
 def post_mortem():
     rdb = connect_ray_pdb(
         host=None,
         port=None,
         patch_stdstreams=False,
-        quet=None,
+        quiet=None,
         debugger_external=ray.worker.global_worker.ray_debugger_external)
     rdb.post_mortem()
 

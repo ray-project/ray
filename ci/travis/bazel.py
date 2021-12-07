@@ -98,35 +98,45 @@ class Bazel(object):
         return result
 
     def aquery(self, *args):
-        lines = self._call("aquery", "--output=textproto", *args).splitlines()
-        return textproto_parse(lines, self.encoding, json.JSONEncoder())
+        out = self._call("aquery", "--output=jsonproto", *args)
+        return json.loads(out.decode(self.encoding))
 
 
 def parse_aquery_shell_calls(aquery_results):
     """Extracts and yields the command lines representing the genrule() rules
     from Bazel aquery results.
     """
-    for (key, val) in aquery_results:
-        if key == "actions":
-            [mnemonic] = [pair[1] for pair in val if pair[0] == "mnemonic"]
-            if mnemonic == "Genrule":
-                yield [pair[1] for pair in val if pair[0] == "arguments"]
+    for action in aquery_results["actions"]:
+        if action["mnemonic"] != "Genrule":
+            continue
+        yield action["arguments"]
 
 
 def parse_aquery_output_artifacts(aquery_results):
     """Extracts and yields the file paths representing the output artifact
     from the provided Bazel aquery results.
+
+    To understand the output of aquery command in textproto format, try:
+        bazel aquery --include_artifacts=true --output=jsonproto \
+            'mnemonic("Genrule", deps(//:*))'
     """
+    fragments = {}
+    for fragment in aquery_results["pathFragments"]:
+        fragments[fragment["id"]] = fragment
+
     artifacts = {}
-    for (key, val) in aquery_results:
-        if key == "artifacts":
-            [artifact_id] = [pair[1] for pair in val if pair[0] == "id"]
-            [exec_path] = [pair[1] for pair in val if pair[0] == "exec_path"]
-            artifacts[artifact_id] = exec_path
-        elif key == "actions":
-            output_ids = [pair[1] for pair in val if pair[0] == "output_ids"]
-            for output_id in output_ids:
-                yield artifacts[output_id]
+    for artifact in aquery_results["artifacts"]:
+        artifacts[artifact["id"]] = artifact
+
+    def _path(fragment_id):
+        fragment = fragments[fragment_id]
+        parent = _path(fragment["parentId"]) if "parentId" in fragment else []
+        return parent + [fragment["label"]]
+
+    for action in aquery_results["actions"]:
+        for output_id in action["outputIds"]:
+            path = os.path.join(*_path(artifacts[output_id]["pathFragmentId"]))
+            yield path
 
 
 def textproto2json(infile, outfile):

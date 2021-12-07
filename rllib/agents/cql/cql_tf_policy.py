@@ -12,7 +12,7 @@ import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import \
     apply_gradients as sac_apply_gradients, \
     compute_and_clip_gradients as sac_compute_and_clip_gradients,\
-    get_distribution_inputs_and_class, build_sac_model, \
+    get_distribution_inputs_and_class, _get_dist_class, build_sac_model, \
     postprocess_trajectory, setup_late_mixins, stats, validate_spaces, \
     ActorCriticOptimizerMixin as SACActorCriticOptimizerMixin, \
     ComputeTDErrorMixin, TargetNetworkMixin
@@ -89,23 +89,18 @@ def cql_loss(policy: Policy, model: ModelV2,
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    model_out_t, _ = model({
-        "obs": obs,
-        "is_training": True,
-    }, [], None)
+    model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
-    model_out_tp1, _ = model({
-        "obs": next_obs,
-        "is_training": True,
-    }, [], None)
+    model_out_tp1, _ = model(
+        SampleBatch(obs=next_obs, _is_training=True), [], None)
 
-    target_model_out_tp1, _ = policy.target_model({
-        "obs": next_obs,
-        "is_training": True,
-    }, [], None)
+    target_model_out_tp1, _ = policy.target_model(
+        SampleBatch(obs=next_obs, _is_training=True), [], None)
 
-    action_dist_t = policy.dist_class(
-        model.get_policy_output(model_out_t), policy.model)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
+    action_dist_t = action_dist_class(
+        model.get_policy_output(model_out_t), model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = tf.expand_dims(log_pis_t, -1)
 
@@ -132,8 +127,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = policy.dist_class(
-        model.get_policy_output(model_out_tp1), policy.model)
+    action_dist_tp1 = action_dist_class(
+        model.get_policy_output(model_out_tp1), model)
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
     q_t = model.get_q_values(model_out_t, actions)
@@ -171,13 +166,13 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions, _ = policy._random_action_generator.get_exploration_action(
-        action_distribution=policy.dist_class(
+        action_distribution=action_dist_class(
             tf.tile(action_dist_tp1.inputs, (num_actions, 1)), model),
         timestep=0,
         explore=True)
-    curr_actions, curr_logp = policy_actions_repeat(model, policy.dist_class,
+    curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
                                                     model_out_t, num_actions)
-    next_actions, next_logp = policy_actions_repeat(model, policy.dist_class,
+    next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
                                                     model_out_tp1, num_actions)
 
     q1_rand = q_values_repeat(model, model_out_t, rand_actions)

@@ -8,8 +8,8 @@ import itertools
 import collections
 import logging.handlers
 
-from ray.new_dashboard.modules.event import event_consts
-from ray.new_dashboard.utils import async_loop_forever, create_task
+from ray.dashboard.modules.event import event_consts
+from ray.dashboard.utils import async_loop_forever, create_task
 
 logger = logging.getLogger(__name__)
 

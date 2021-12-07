@@ -1,10 +1,11 @@
 ===================
 Deploying Ray Serve
 ===================
+This section should help you:
 
-In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
-This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your Serve application over time.
+- understand how Ray Serve runs on a Ray cluster beyond the basics mentioned in :doc:`core-apis`
+- deploy and update your Serve application over time
+- monitor your Serve application using the Ray Dashboard and logging
 
 .. contents:: Deploying Ray Serve
 
@@ -25,7 +26,7 @@ to update the Serve instance, you can run another script that connects to the sa
 
 All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the ``serve`` namespace.
 
-If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run ``serve.start()``. 
+If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run ``serve.start()``.
 
 Deploying on a Single Node
 ==========================
@@ -40,6 +41,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   import ray
   from ray import serve
+  import time
 
   # This will start Ray locally and start Serve on top of it.
   serve.start()
@@ -75,6 +77,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
     return "hello"
 
   my_func.deploy()
+
 
 Deploying on Kubernetes
 =======================
@@ -193,12 +196,12 @@ Now we can try querying the service by sending an HTTP request to the service fr
     # Get a shell inside of the head node.
     $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-    # Query the Ray Serve endpoint. This can be run from anywhere in the
+    # Query the Ray Serve deployment. This can be run from anywhere in the
     # Kubernetes cluster.
     $ curl -X GET http://$RAY_HEAD_SERVICE_HOST:8000/hello
     hello world
 
-In order to expose the Ray Serve endpoint externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
+In order to expose the Ray Serve deployment externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
 Please refer to the Kubernetes documentation for more information.
 
 .. _`Kubernetes default config`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
@@ -206,6 +209,62 @@ Please refer to the Kubernetes documentation for more information.
 .. _`Ingress`: https://kubernetes.io/docs/concepts/services-networking/ingress/
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
+
+Failure Recovery
+================
+Ray Serve is resilient to any component failures within the Ray cluster out of the box.
+You can checkout the detail of how process and worker node failure handled at :ref:`serve-ft-detail`.
+However, when the Ray head node goes down, you would need to recover the state by creating a new
+Ray cluster and re-deploys all Serve deployments into that cluster.
+
+.. note::
+  Ray currently cannot survive head node failure and we recommend using application specific
+  failure recovery solutions. Although Ray is not currently highly available (HA), it is on
+  the long term roadmap and being actively worked on.
+
+Ray Serve added an experimental feature to help recovering the state.
+This features enables Serve to write all your deployment configuration and code into a storage location.
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
+
+Here is how to use it:
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through github issues or discussion forum!
+
+
+You can use both the start argument and the CLI to specify it:
+
+.. code-block:: python
+
+    serve.start(_checkpoint_path=...)
+
+or
+
+.. code-block:: shell
+
+    serve start --checkpoint-path ...
+
+
+The checkpoint path argument accepts the following format:
+
+- ``file://local_file_path``
+- ``s3://bucket/path``
+- ``gs://bucket/path``
+- ``custom://importable.custom_python.Class/path``
+
+While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
+
+In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
+For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
+Alternatively, you can also directly write to object store like S3.
+
+You can easily try to plug into your own implementation using the ``custom://`` path and inherit the `KVStoreBase`_ class.
+Feel free to open new github issues and contribute more storage backends!
+
+.. _`Persistent Volumes`: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+
+.. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
 
 .. _serve-monitoring:
 
@@ -244,9 +303,8 @@ To automatically include the current deployment and replica in your logs, simply
 ``logger = logging.getLogger("ray")``, and use ``logger`` within your deployment code:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
-  :lines: 1, 9, 11-13, 15-16
 
-Querying a Serve endpoint with the above deployment will produce a log line like the following:
+Querying the above deployment will produce a log line like the following:
 
 .. code-block:: bash
 
@@ -290,7 +348,7 @@ Save the following file as ``promtail-local-config.yaml``:
       job: ray
       __path__: /tmp/ray/session_latest/logs/*.*
 
-The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.  
+The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.
 The expression ``*.*`` will match all files, but not directories, which cause an error with Promtail.
 
 We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
@@ -334,7 +392,7 @@ Now click "Explore" in the left-side panel.  You are ready to run some queries!
 
 To filter all these Ray logs for the ones relevant to our deployment, use the following `LogQL <https://grafana.com/docs/loki/latest/logql/>`__ query:
 
-.. code-block:: shell 
+.. code-block:: shell
 
   {job="ray"} |= "deployment=Counter"
 
@@ -377,7 +435,7 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries`` 
+   * - ``serve_deployment_queued_queries``
      - The number of queries for this deployment waiting to be assigned to a replica.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
@@ -395,11 +453,12 @@ For example, after running the script for some time and refreshing ``localhost:8
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your deployment, and tag it with the current deployment or replica.
+You can even define a :ref:`custom metric <application-level-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-  :lines: 11-23
+  :start-after: __custom_metrics_deployment_start__
+  :end-before: __custom_metrics_deployment_end__
 
 See the
-`Ray Metrics documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
+:ref:`Ray Metrics documentation <ray-metrics>` for more details, including instructions for scraping these metrics using Prometheus.

@@ -13,7 +13,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, sequence_mask
+from ray.rllib.utils.torch_utils import huber_loss, sequence_mask
 from ray.rllib.utils.typing import \
     ModelInputDict, TensorType, TrainerConfigDict
 
@@ -215,28 +215,28 @@ def actor_critic_loss(
     assert state_batches
     seq_lens = train_batch.get(SampleBatch.SEQ_LENS)
 
-    model_out_t, state_in_t = model({
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "prev_actions": train_batch[SampleBatch.PREV_ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.PREV_REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    model_out_t, state_in_t = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.CUR_OBS],
+            prev_actions=train_batch[SampleBatch.PREV_ACTIONS],
+            prev_rewards=train_batch[SampleBatch.PREV_REWARDS],
+            _is_training=True), state_batches, seq_lens)
     states_in_t = model.select_state(state_in_t, ["policy", "q", "twin_q"])
 
-    model_out_tp1, state_in_tp1 = model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "prev_actions": train_batch[SampleBatch.ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    model_out_tp1, state_in_tp1 = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS],
+            prev_actions=train_batch[SampleBatch.ACTIONS],
+            prev_rewards=train_batch[SampleBatch.REWARDS],
+            _is_training=True), state_batches, seq_lens)
     states_in_tp1 = model.select_state(state_in_tp1, ["policy", "q", "twin_q"])
 
-    target_model_out_tp1, target_state_in_tp1 = target_model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "prev_actions": train_batch[SampleBatch.ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    target_model_out_tp1, target_state_in_tp1 = target_model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS],
+            prev_actions=train_batch[SampleBatch.ACTIONS],
+            prev_rewards=train_batch[SampleBatch.REWARDS],
+            _is_training=True), state_batches, seq_lens)
     target_states_in_tp1 = target_model.select_state(state_in_tp1,
                                                      ["policy", "q", "twin_q"])
 
@@ -371,6 +371,7 @@ def actor_critic_loss(
         critic_loss.append(
             reduce_mean_valid(
                 train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
+    td_error = td_error * seq_mask
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -401,26 +402,21 @@ def actor_critic_loss(
         actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t -
                                        q_t_det_policy)
 
-    # Save for stats function.
-    policy.q_t = q_t * seq_mask[..., None]
-    policy.policy_t = policy_t * seq_mask[..., None]
-    policy.log_pis_t = log_pis_t * seq_mask[..., None]
-
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error * seq_mask
-
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-    policy.alpha_loss = alpha_loss
-    policy.log_alpha_value = model.log_alpha
-    policy.alpha_value = alpha
-    policy.target_entropy = model.target_entropy
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["q_t"] = q_t * seq_mask[..., None]
+    model.tower_stats["policy_t"] = policy_t * seq_mask[..., None]
+    model.tower_stats["log_pis_t"] = log_pis_t * seq_mask[..., None]
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    model.tower_stats["alpha_loss"] = alpha_loss
+    # Store per time chunk (b/c we need only one mean
+    # prioritized replay weight per stored sequence).
+    model.tower_stats["td_error"] = torch.mean(
+        td_error.reshape([-1, T]), dim=-1)
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss])
 
 
 RNNSACTorchPolicy = SACTorchPolicy.with_updates(

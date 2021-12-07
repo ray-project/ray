@@ -9,8 +9,10 @@ import pexpect
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
+from ray import ray_constants
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private import services
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -24,14 +26,16 @@ def test_ray_debugger_breakpoint(shutdown_only):
     result = f.remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 1
 
     # Now continue execution:
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
     host, port = session["pdb_address"].split(":")
     assert host == "localhost"  # Should be private by default.
 
@@ -159,12 +163,16 @@ f.remote()
 time.sleep(5)
 """.format(address)
 
-    assert not len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+    assert not len(
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     run_string_as_driver(driver_script)
 
     def one_active_session():
-        return len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+        return len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     wait_for_condition(one_active_session)
 
@@ -174,7 +182,8 @@ time.sleep(5)
 
     def no_active_sessions():
         return not len(
-            ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     wait_for_condition(no_active_sessions)
 
@@ -207,17 +216,20 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     result = f.remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_",
+            namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 1
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
 
     host, port = session["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host not in ["localhost", "127.0.0.1"], host
+        assert host == services.get_node_ip_address(), host
     else:
         assert host == "localhost", host
 
@@ -229,8 +241,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     c = Cluster(
@@ -255,25 +266,28 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     worker_node_result = f.options(num_cpus=1).remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) == 2)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) == 2)
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_")
+        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 2
     session1 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
     session2 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[1]))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[1], namespace=ray_constants.KV_NAMESPACE_PDB))
 
     host1, port1 = session1["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host1 not in ["localhost", "127.0.0.1"], host1
+        assert host1 == services.get_node_ip_address(), host1
     else:
         assert host1 == "localhost", host1
 
     host2, port2 = session2["pdb_address"].split(":")
     if ray_debugger_external:
-        assert host2 not in ["localhost", "127.0.0.1"], host2
+        assert host2 == services.get_node_ip_address(), host2
     else:
         assert host2 == "localhost", host2
 

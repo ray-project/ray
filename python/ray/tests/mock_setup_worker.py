@@ -31,25 +31,16 @@ parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
 parser.add_argument(
-    "--worker-entrypoint",
-    type=str,
-    help="the worker entrypoint: python,java etc. ")
-
-parser.add_argument(
-    "--worker-language",
-    type=str,
-    help="the worker entrypoint: python,java,cpp etc.")
+    "--language", type=str, help="the language type of the worker")
 
 args, remaining_args = parser.parse_known_args()
 
 # add worker-shim-pid argument
 remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
-env_vars = {"worker-shim-pid": str(os.getpid())}
-os.environ.update(env_vars)
 py_executable: str = sys.executable
 command_str = " ".join([f"exec {py_executable}"] + remaining_args)
 child_pid = os.fork()
-print("shim pid:{} , worker pid:{}", os.getpid(), child_pid)
+print(f"shim pid:{os.getpid()} , worker pid:{child_pid}")
 if child_pid == 0:
     # child process
     os.execvp("bash", ["bash", "-c", command_str])

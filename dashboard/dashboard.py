@@ -9,19 +9,21 @@ import os
 import platform
 import traceback
 
-import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.head as dashboard_head
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.head as dashboard_head
+import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.new_dashboard.optional_deps import aiohttp
+from ray.dashboard.optional_deps import aiohttp
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -135,6 +137,11 @@ if __name__ == "__main__":
         default=0,
         help="The retry times to select a valid port.")
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -223,18 +230,29 @@ if __name__ == "__main__":
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
-        # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = f"The dashboard on node {platform.uname()[1]} " \
                   f"failed with the following " \
                   f"error:\n{traceback_str}"
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, FrontendNotFoundError):
             logger.warning(message)
         else:
             logger.error(message)
             raise e
+
+        # Something went wrong, so push an error to all drivers.
+        redis_client = ray._private.services.create_redis_client(
+            args.redis_address, password=args.redis_password)
+        gcs_publisher = None
+        if args.gcs_address:
+            gcs_publisher = GcsPublisher(address=args.gcs_address)
+        elif gcs_pubsub_enabled():
+            gcs_publisher = GcsPublisher(
+                address=gcs_utils.get_gcs_address_from_redis(redis_client))
+        ray._private.utils.publish_error_to_driver(
+            redis_client,
+            ray_constants.DASHBOARD_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)

@@ -25,7 +25,8 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
@@ -56,10 +57,10 @@ parser.add_argument(
 
 
 def custom_training_workflow(workers: WorkerSet, config: dict):
-    local_replay_buffer = LocalReplayBuffer(
+    local_replay_buffer = MultiAgentReplayBuffer(
         num_shards=1,
         learning_starts=1000,
-        buffer_size=50000,
+        capacity=50000,
         replay_batch_size=64)
 
     def add_ppo_metrics(batch):
@@ -133,7 +134,7 @@ if __name__ == "__main__":
                        if args.torch else DQNTFPolicy, None, None, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id, episode, **kwargs):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

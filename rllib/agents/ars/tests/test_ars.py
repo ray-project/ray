@@ -7,9 +7,16 @@ from ray.rllib.utils.test_utils import framework_iterator, \
 
 
 class TestARS(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=3)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_ars_compilation(self):
         """Test whether an ARSTrainer can be built on all frameworks."""
-        ray.init(num_cpus=3)
         config = ars.DEFAULT_CONFIG.copy()
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
@@ -30,7 +37,6 @@ class TestARS(unittest.TestCase):
 
             check_compute_single_action(trainer)
             trainer.stop()
-        ray.shutdown()
 
 
 if __name__ == "__main__":

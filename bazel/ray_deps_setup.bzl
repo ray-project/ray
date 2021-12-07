@@ -151,8 +151,8 @@ def ray_deps_setup():
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee",
-        url = "https://boostorg.jfrog.io/artifactory/main/release/1.71.0/source/boost_1_71_0.tar.bz2",
+        sha256 = "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1",
+        url = "https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
         ],
@@ -161,10 +161,9 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        url = "https://github.com/nelhage/rules_boost/archive/2613d04ab3d22dfc4543ea0a083d9adeaa0daf09.tar.gz",
-        sha256 = "512f913240e026099d4ca4a98b1ce8048c99de77fdc8e8584e9e2539ee119ca2",
+        url = "https://github.com/nelhage/rules_boost/archive/652b21e35e4eeed5579e696da0facbe8dba52b1f.tar.gz",
+        sha256 = "c1b8b2adc3b4201683cf94dda7eef3fc0f4f4c0ea5caa3ed3feffe07e1fb5b15",
         patches = [
-            "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
         ],
     )
@@ -177,8 +176,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_google_googletest",
-        url = "https://github.com/google/googletest/archive/3306848f697568aacf4bcca330f6bdd5ce671899.tar.gz",
-        sha256 = "79ae337dab8e9ee6bd97a9f7134929bb1ddc7f83be9a564295b895865efe7dba",
+        url = "https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz",
+        sha256 = "b4870bf121ff7795ba20d20bcdd8627b8e088f2d1dab299a031c1034eddc93d5",
     )
 
     auto_http_archive(
@@ -208,8 +207,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20210324.2.tar.gz",
-        sha256 = "59b862f50e710277f8ede96f083a5bb8d7c9595376146838b9580be90374ee1f",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.tar.gz",
+        sha256 = "dcf71b9cba8dc0ca9940c4b316a0c796be8fab42b070bb6b7cab62b48f0e66c4",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -278,3 +277,9 @@ def ray_deps_setup():
         build_file = "@com_github_ray_project_ray//bazel:BUILD.nlohmann_json",
     )
 
+    auto_http_archive(
+        name = "rapidjson",
+        url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
+        build_file = True,
+        sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
+    )

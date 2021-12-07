@@ -1,5 +1,9 @@
 package io.ray.serve.poll;
 
+import com.google.protobuf.ByteString;
+import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.generated.EndpointSet;
+import io.ray.serve.generated.UpdatedObject;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -7,28 +11,39 @@ import org.testng.annotations.Test;
 
 public class LongPollClientTest {
 
+  @SuppressWarnings("unchecked")
   @Test
   public void test() throws Throwable {
 
-    KeyType keyType = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "backendTag");
-    int[] a = new int[] {0};
+    String[] a = new String[] {"test"};
+
+    // Construct a listener map.
+    KeyType keyType = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-    keyListeners.put(keyType, (object) -> a[0] = (Integer) object);
+    keyListeners.put(
+        keyType, (object) -> a[0] = String.valueOf(((Map<String, EndpointInfo>) object).size()));
+
+    // Initialize LongPollClient.
     LongPollClient longPollClient = new LongPollClient(null, keyListeners);
 
+    // Construct updated object.
+    EndpointSet.Builder endpointSet = EndpointSet.newBuilder();
+    endpointSet.putEndpoints("1", EndpointInfo.newBuilder().build());
+    endpointSet.putEndpoints("2", EndpointInfo.newBuilder().build());
     int snapshotId = 10;
-    int objectSnapshot = 20;
-    UpdatedObject updatedObject = new UpdatedObject();
+    UpdatedObject.Builder updatedObject = UpdatedObject.newBuilder();
     updatedObject.setSnapshotId(snapshotId);
-    updatedObject.setObjectSnapshot(objectSnapshot);
+    updatedObject.setObjectSnapshot(ByteString.copyFrom(endpointSet.build().toByteArray()));
 
+    // Process update.
     Map<KeyType, UpdatedObject> updates = new HashMap<>();
-    updates.put(keyType, updatedObject);
+    updates.put(keyType, updatedObject.build());
     longPollClient.processUpdate(updates);
 
+    // Validation.
     Assert.assertEquals(longPollClient.getSnapshotIds().get(keyType).intValue(), snapshotId);
     Assert.assertEquals(
-        ((Integer) longPollClient.getObjectSnapshots().get(keyType)).intValue(), objectSnapshot);
-    Assert.assertEquals(a[0], objectSnapshot);
+        ((Map<String, EndpointInfo>) longPollClient.getObjectSnapshots().get(keyType)).size(), 2);
+    Assert.assertEquals(a[0], String.valueOf(endpointSet.getEndpointsMap().size()));
   }
 }

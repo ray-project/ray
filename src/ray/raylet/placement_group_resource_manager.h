@@ -120,7 +120,7 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.
-  std::unordered_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>
       pg_bundles_;
 };
 

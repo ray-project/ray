@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Coroutine
+from typing import Dict, Optional, Union, Coroutine
 import threading
 from enum import Enum
 
@@ -75,14 +75,12 @@ class RayServeHandle:
             endpoint_name: EndpointTag,
             handle_options: Optional[HandleOptions] = None,
             *,
-            known_python_methods: List[str] = [],
             _router: Optional[Router] = None,
             _internal_pickled_http_request: bool = False,
     ):
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
         self.handle_options = handle_options or HandleOptions()
-        self.known_python_methods = known_python_methods
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
         self._pickled_http_request = _internal_pickled_http_request
 
@@ -105,6 +103,19 @@ class RayServeHandle:
             event_loop=asyncio.get_event_loop(),
         )
 
+    @property
+    def is_polling(self) -> bool:
+        """Whether this handle is actively polling for replica updates."""
+        return self.router.long_poll_client.is_running
+
+    @property
+    def is_same_loop(self) -> bool:
+        """Whether the caller's asyncio loop is the same loop for handle.
+
+        This is only useful for async handles.
+        """
+        return asyncio.get_event_loop() == self.router._event_loop
+
     def options(
             self,
             *,
@@ -116,10 +127,10 @@ class RayServeHandle:
         """Set options for this handle.
 
         Args:
-            method_name(str): The method to invoke on the backend.
+            method_name(str): The method to invoke.
             http_method(str): The HTTP method to use for the request.
             shard_key(str): A string to use to deterministically map this
-                request to a backend if there are multiple for this endpoint.
+                request to a deployment if there are multiple.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -181,25 +192,21 @@ class RayServeHandle:
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
-            "known_python_methods": self.known_python_methods,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
 
     def __getattr__(self, name):
-        if name not in self.known_python_methods:
-            raise AttributeError(
-                f"ServeHandle for endpoint {self.endpoint_name} doesn't have "
-                f"python method {name}. If you used the "
-                f"get_handle('{self.endpoint_name}', missing_ok=True) flag, "
-                f"Serve cannot know all methods for {self.endpoint_name}. "
-                "You can set the method manually via "
-                f"handle.options(method_name='{name}').remote().")
-
         return self.options(method_name=name)
 
 
 class RayServeSyncHandle(RayServeHandle):
+    @property
+    def is_same_loop(self) -> bool:
+        # NOTE(simon): For sync handle, the caller doesn't have to be in the
+        # same loop as the handle's loop, so we always return True here.
+        return True
+
     def _make_router(self) -> Router:
         # Delayed import because ray.serve.api depends on handles.
         return Router(
@@ -220,7 +227,7 @@ class RayServeSyncHandle(RayServeHandle):
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
                 If it's a Starlette Request object, it will be passed in to the
-                backend directly, unmodified. Otherwise, the data will be
+                handler directly, unmodified. Otherwise, the data will be
                 available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
@@ -237,7 +244,6 @@ class RayServeSyncHandle(RayServeHandle):
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
-            "known_python_methods": self.known_python_methods,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
         return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )

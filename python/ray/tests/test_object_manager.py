@@ -6,7 +6,7 @@ import time
 import warnings
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
@@ -296,8 +296,7 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
-# TODO(ekl) this sometimes takes much longer (10+s) due to a higher level
-# pull retry. We should try to resolve these hangs in the chunk transfer logic.
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -331,6 +330,7 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)
@@ -355,6 +355,7 @@ def test_pull_bundles_pinning(shutdown_only):
     ray.get(foo.remote(*task_args))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
@@ -401,6 +402,7 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     del allocated
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -433,6 +435,7 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -603,6 +606,52 @@ def test_object_directory_failure(ray_start_cluster):
     for t in tasks:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(t, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "worker_lease_timeout_milliseconds": 0,
+            "object_manager_pull_timeout_ms": 20000,
+            "object_spilling_threshold": 1.0,
+        }
+    }],
+    indirect=True)
+def test_maximize_concurrent_pull_race_condition(ray_start_cluster_head):
+    # Test if https://github.com/ray-project/ray/issues/18062 is mitigated
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=8, object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    class RemoteObjectCreator:
+        def put(self, i):
+            return np.random.rand(i * 1024 * 1024)  # 8 MB data
+
+        def idle(self):
+            pass
+
+    @ray.remote
+    def f(x):
+        print(f"timestamp={time.time()} pulled {len(x)*8} bytes")
+        time.sleep(1)
+        return
+
+    remote_obj_creator = RemoteObjectCreator.remote()
+    remote_refs = [remote_obj_creator.put.remote(1) for _ in range(7)]
+    print(remote_refs)
+    # Make sure all objects are created.
+    ray.get(remote_obj_creator.idle.remote())
+
+    local_refs = [ray.put(np.random.rand(1 * 1024 * 1024)) for _ in range(20)]
+    remote_tasks = [f.remote(x) for x in local_refs]
+
+    start = time.time()
+    ray.get(remote_tasks)
+    end = time.time()
+    assert end - start < 20, "Too much time spent in pulling objects, " \
+                             "check the amount of time in retries"
 
 
 if __name__ == "__main__":

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "config_internal.h"
+
 #include <boost/dll/runtime_symbol_info.hpp>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
-
-#include "config_internal.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
@@ -48,9 +49,13 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-/// flag serialized_runtime_env is added in setup_runtime_env.py.
-ABSL_FLAG(std::string, serialized_runtime_env, "{}",
-          "The serialized parsed runtime env dict.");
+ABSL_FLAG(std::string, ray_head_args, "",
+          "The command line args to be appended as parameters of the `ray start` "
+          "command. It takes effect only if Ray head is started by a driver. Run `ray "
+          "start --help` for details.");
+
+ABSL_FLAG(int64_t, startup_token, -1,
+          "The startup token assigned to this worker process by the raylet.");
 
 namespace ray {
 namespace internal {
@@ -66,14 +71,8 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
-  if (config.num_cpus >= 0) {
-    num_cpus = config.num_cpus;
-  }
-  if (config.num_gpus >= 0) {
-    num_gpus = config.num_gpus;
-  }
-  if (!config.resources.empty()) {
-    resources = config.resources;
+  if (!config.head_args.empty()) {
+    head_args = config.head_args;
   }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
@@ -111,6 +110,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
+    if (!FLAGS_ray_head_args.CurrentValue().empty()) {
+      std::vector<std::string> args =
+          absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
+      head_args.insert(head_args.end(), args.begin(), args.end());
+    }
+    startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (redis_ip.empty()) {

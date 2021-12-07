@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Dict, Optional, List
 
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -85,8 +86,8 @@ class Searcher:
                 "Early stopped trials are now always used. If this is a "
                 "problem, file an issue: https://github.com/ray-project/ray.")
         if max_concurrent is not None:
-            logger.warning(
-                "DeprecationWarning: `max_concurrent` is deprecated for this "
+            raise DeprecationWarning(
+                "`max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
 
@@ -111,7 +112,7 @@ class Searcher:
             raise ValueError("Mode most either be a list or string")
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -124,10 +125,12 @@ class Searcher:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         return False
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
         """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
@@ -148,7 +151,7 @@ class Searcher:
     def on_trial_complete(self,
                           trial_id: str,
                           result: Optional[Dict] = None,
-                          error: bool = False):
+                          error: bool = False) -> None:
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -263,6 +266,22 @@ class Searcher:
         """
         raise NotImplementedError
 
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        """Set max concurrent trials this searcher can run.
+
+        This method will be called on the wrapped searcher by the
+        ``ConcurrencyLimiter``. It is intended to allow for searchers
+        which have custom, internal logic handling max concurrent trials
+        to inherit the value passed to ``ConcurrencyLimiter``.
+
+        If this method returns False, it signifies that no special
+        logic for handling this case is present in the searcher.
+
+        Args:
+            max_concurrent (int): Number of maximum concurrent trials.
+        """
+        return False
+
     def get_state(self) -> Dict:
         raise NotImplementedError
 
@@ -340,6 +359,13 @@ class Searcher:
 class ConcurrencyLimiter(Searcher):
     """A wrapper algorithm for limiting the number of concurrent trials.
 
+    Certain Searchers have their own internal logic for limiting
+    the number of concurrent trials. If such a Searcher is passed to a
+    ``ConcurrencyLimiter``, the ``max_concurrent`` of the
+    ``ConcurrencyLimiter`` will override the ``max_concurrent`` value
+    of the Searcher. The ``ConcurrencyLimiter`` will then let the
+    Searcher's internal logic take over.
+
     Args:
         searcher (Searcher): Searcher object that the
             ConcurrencyLimiter will manage.
@@ -369,6 +395,7 @@ class ConcurrencyLimiter(Searcher):
         self.live_trials = set()
         self.num_unfinished_live_trials = 0
         self.cached_results = {}
+        self._limit_concurrency = True
 
         if not isinstance(searcher, Searcher):
             raise RuntimeError(
@@ -376,10 +403,33 @@ class ConcurrencyLimiter(Searcher):
                 f"objects (got {type(searcher)}). Please try to pass "
                 f"`max_concurrent` to the search generator directly.")
 
+        self._set_searcher_max_concurrency()
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
+    def _set_searcher_max_concurrency(self):
+        # If the searcher has special logic for handling max concurrency,
+        # we do not do anything inside the ConcurrencyLimiter
+        self._limit_concurrency = not self.searcher.set_max_concurrency(
+            self.max_concurrent)
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        # Determine if this behavior is acceptable, or if it should
+        # raise an exception.
+        self.max_concurrent = max_concurrent
+        return True
+
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
+        self._set_searcher_max_concurrency()
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config, **spec)
+
     def suggest(self, trial_id: str) -> Optional[Dict]:
+        if not self._limit_concurrency:
+            return self.searcher.suggest(trial_id)
+
         assert trial_id not in self.live_trials, (
             f"Trial ID {trial_id} must be unique: already found in set.")
         if len(self.live_trials) >= self.max_concurrent:
@@ -399,6 +449,10 @@ class ConcurrencyLimiter(Searcher):
                           trial_id: str,
                           result: Optional[Dict] = None,
                           error: bool = False):
+        if not self._limit_concurrency:
+            return self.searcher.on_trial_complete(
+                trial_id, result=result, error=error)
+
         if trial_id not in self.live_trials:
             return
         elif self.batch:
@@ -420,6 +474,9 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
             self.num_unfinished_live_trials -= 1
+
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
+        self.searcher.on_trial_result(trial_id, result)
 
     def add_evaluated_point(self,
                             parameters: Dict,
@@ -443,13 +500,3 @@ class ConcurrencyLimiter(Searcher):
 
     def restore(self, checkpoint_path: str):
         self.searcher.restore(checkpoint_path)
-
-    def on_pause(self, trial_id: str):
-        self.searcher.on_pause(trial_id)
-
-    def on_unpause(self, trial_id: str):
-        self.searcher.on_unpause(trial_id)
-
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)

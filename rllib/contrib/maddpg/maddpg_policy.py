@@ -1,6 +1,6 @@
 import ray
-from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip
+from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -8,6 +8,7 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 
 import logging
 from gym.spaces import Box, Discrete
@@ -34,12 +35,8 @@ class MADDPGPostprocessing:
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
-            _adjust_nstep(self.config["n_step"], self.config["gamma"],
-                          sample_batch[SampleBatch.CUR_OBS],
-                          sample_batch[SampleBatch.ACTIONS],
-                          sample_batch[SampleBatch.REWARDS],
-                          sample_batch[SampleBatch.NEXT_OBS],
-                          sample_batch[SampleBatch.DONES])
+            adjust_nstep(self.config["n_step"], self.config["gamma"],
+                         sample_batch)
 
         return sample_batch
 
@@ -326,10 +323,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model_n = [
-                    ModelCatalog.get_model({
-                        SampleBatch.OBS: obs,
-                        "is_training": self._get_is_training_placeholder(),
-                    }, obs_space, act_space, 1, self.config["model"])
+                    ModelCatalog.get_model(
+                        SampleBatch(
+                            obs=obs,
+                            _is_training=self._get_is_training_placeholder()),
+                        obs_space, act_space, 1, self.config["model"])
                     for obs, obs_space, act_space in zip(
                         obs_n, obs_space_n, act_space_n)
                 ]
@@ -357,10 +355,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              scope=None):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
-                model = ModelCatalog.get_model({
-                    SampleBatch.OBS: obs,
-                    "is_training": self._get_is_training_placeholder(),
-                }, obs_space, act_space, 1, self.config["model"])
+                model = ModelCatalog.get_model(
+                    SampleBatch(
+                        obs=obs,
+                        _is_training=self._get_is_training_placeholder()),
+                    obs_space, act_space, 1, self.config["model"])
                 out = model.last_layer
             else:
                 model = None

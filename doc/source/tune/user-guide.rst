@@ -47,10 +47,13 @@ Even if the trial cannot be scheduled right now, Ray Tune will still try to star
 the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
 
+It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
+
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
 :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
-for further information.
+for further information. This also applies if you are using other libraries making use of Ray, such
+as Modin. Failure to set resources correctly may result in a deadlock, "hanging" the cluster.
 
 Using GPUs
 ~~~~~~~~~~
@@ -218,60 +221,373 @@ During training, Tune will automatically log the below metrics in addition to th
 
 All of these metrics can be seen in the ``Trial.last_result`` dictionary.
 
-.. _tune-checkpoint:
+.. _tune-reproducible:
 
-Checkpointing
--------------
+Reproducible runs
+-----------------
+Exact reproducibility of machine learning runs is hard to achieve. This
+is even more true in a distributed setting, as more non-determinism is
+introduced. For instance, if two trials finish at the same time, the
+convergence of the search algorithm might be influenced by which trial
+result is processed first. This depends on the searcher - for random search,
+this shouldn't make a difference, but for most other searchers it will.
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. This allows you to:
+If you try to achieve some amount of reproducibility, there are two
+places where you'll have to set random seeds:
 
- * save intermediate models throughout training
- * use pre-emptible machines (by automatically restoring from last checkpoint)
- * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
+1. On the driver program, e.g. for the search algorithm. This will ensure
+   that at least the initial configurations suggested by the search
+   algorithms are the same.
 
-To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
+2. In the trainable (if required). Neural networks are usually initialized
+   with random numbers, and many classical ML algorithms, like GBDTs, make use of
+   randomness. Thus you'll want to make sure to set a seed here
+   so that the initialization is always the same.
+
+Here is an example that will always produce the same result (except for trial
+runtimes).
 
 .. code-block:: python
 
-    import os
-    import time
+    import numpy as np
     from ray import tune
 
-    def train_func(config, checkpoint_dir=None):
-        start = 0
-        if checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                state = json.loads(f.read())
-                start = state["step"] + 1
 
-        for step in range(start, 100):
-            time.sleep(1)
+    def train(config):
+        # Set seed for trainable random result.
+        # If you remove this line, you will get different results
+        # each time you run the trial, even if the configuration
+        # is the same.
+        np.random.seed(config["seed"])
+        random_result = np.random.uniform(0, 100, size=1).item()
+        tune.report(result=random_result)
 
-            # Obtain a checkpoint directory
-            with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": step}))
 
-            tune.report(hello="world", ray="tune")
+    # Set seed for Ray Tune's random search.
+    # If you remove this line, you will get different configurations
+    # each time you run the script.
+    np.random.seed(1234)
+    tune.run(
+        train,
+        config={
+            "seed": tune.randint(0, 1000)
+        },
+        search_alg=tune.suggest.BasicVariantGenerator(),
+        num_samples=10)
 
-    tune.run(train_func)
+Some searchers use their own random states to sample new configurations.
+These searchers usually accept a ``seed`` parameter that can be passed on
+initialization. Other searchers use Numpy's ``np.random`` interface -
+these seeds can be then set with ``np.random.seed()``. We don't offer an
+interface to do this in the searcher classes as setting a random seed
+globally could have side effects. For instance, it could influence the
+way your dataset is split. Thus, we leave it up to the user to make
+these global configuration changes.
 
-In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
+.. _tune-checkpoint-syncing:
 
-You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change whatever experiments' configuration such as the experiment's name:
+Checkpointing and synchronization
+---------------------------------
+
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. This allows you to:
+
+* save intermediate models throughout training
+* use pre-emptible machines (by automatically restoring from last checkpoint)
+* Pausing trials when using Trial Schedulers such as HyperBand and PBT.
+
+Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
+this means that some trial checkpoints may be on the head node and others are not.
+
+When trials are restored (e.g. after a failure or when the experiment was paused), they may be scheduled on
+different nodes, but still would need access to the latest checkpoint. To make sure this works, Ray Tune
+comes with facilities to synchronize trial checkpoints between nodes.
+
+Generally we consider three cases:
+
+1. When using a shared directory (e.g. via NFS)
+2. When using cloud storage (e.g. S3 or GS)
+3. When using neither
+
+The default option here is 3, which will be automatically used if nothing else is configured.
+
+Using a shared directory
+~~~~~~~~~~~~~~~~~~~~~~~~
+If all Ray nodes have access to a shared filesystem, e.g. via NFS, they can all write to this directory.
+In this case, we don't need any synchronization at all, as it is implicitly done by the operating system.
+
+For this case, we only need to tell Ray Tune not to do any syncing at all (as syncing is the default):
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        local_dir="/path/to/shared/storage/",
+        sync_config=tune.SyncConfig(
+            syncer=None  # Disable syncing
+        )
+    )
+
+Note that the driver (on the head node) will have access to all checkpoints locally (in the
+shared directory) for further processing.
+
+
+.. _tune-cloud-checkpointing:
+
+Using cloud storage
+~~~~~~~~~~~~~~~~~~~
+If all nodes have access to cloud storage, e.g. S3 or GS, the remote trials can automatically synchronize their
+checkpoints. For the filesyste, we end up with a similar situation as in the first case,
+only that the consolidated directory including all logs and checkpoints lives on cloud storage.
+
+This approach is especially useful when training a large number of distributed trials,
+as logs and checkpoints are otherwise synchronized via SSH, which quickly can become a performance bottleneck.
+
+For this case, we tell Ray Tune to use an ``upload_dir`` to store checkpoints at.
+This will automatically store both the experiment state and the trial checkpoints at that directory:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://bucket-name/sub-path/"
+        )
+    )
+
+We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
+a string if you want to use a custom command:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://bucket-name/sub-path/",
+            syncer="aws s3 sync {source} {target}",  # Custom sync command
+        )
+    )
+
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``,
+as demonstrated in the example above.
+
+The consolidated data will live be available in the cloud bucket. This means that the driver
+(on the head node) will not have access to all checkpoints locally. If you want to process
+e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+
+
+Default syncing (no shared/cloud storage)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
+default syncing mechanisms, which utilizes ``rsync`` (via SSH) to synchronize checkpoints across
+nodes.
+
+Please note that this approach is likely the least efficient one - you should always try to use
+shared or cloud storage if possible when training on a multi node cluster.
+
+For the syncing to work, the head node must be able to SSH into the worker nodes. If you are using
+the Ray cluster launcher this is usually the case (note that Kubernetes is an exception, but
+:ref:`see here for more details <tune-kubernetes>`).
+
+If you don't provide a ``tune.SyncConfig`` at all, rsync-based syncing will be used.
+
+If you want to customize syncing behavior, you can again specify a custom sync template:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            # Do not specify an upload dir here
+            syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
+        )
+    )
+
+
+Alternatively, a function can be provided with the following signature:
+
+.. code-block:: python
+
+    def custom_sync_func(source, target):
+        sync_cmd = "rsync {source} {target}".format(
+            source=source,
+            target=target)
+        sync_process = subprocess.Popen(sync_cmd, shell=True)
+        sync_process.wait()
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            syncer=custom_sync_func,
+            sync_period=60  # Synchronize more often
+        )
+    )
+
+When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
+
+Note that we adjusted the sync period in the example above. Setting this to a lower number will pull
+checkpoints from remote nodes more often. This will lead to more robust trial recovery,
+but it will also lead to more synchronization overhead (as SHH is usually slow).
+
+As in the first case, the driver (on the head node) will have access to all checkpoints locally
+for further processing.
+
+Checkpointing examples
+----------------------
+
+Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
+
+A simple (cloud) checkpointing example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons.
+It also enables checkpointing if using Ray on Kubernetes, which does not work out of the box with rsync-based sync,
+which relies on SSH. If you'd rather checkpoint locally or use rsync based checkpointing, see :ref:`here <rsync-checkpointing>`.
+
+Prerequisites to use cloud checkpointing in Ray Tune for the example below:
+
+Your ``my_trainable`` is either a:
+
+1. **Model with an existing Ray integration**
+
+  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+  * Pytorch (:ref:`example <tune-pytorch-lightning>`)
+  * Pytorch Lightning (:ref:`example <ray-lightning-tuning>`)
+  * Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
+  * Tensorflow (:ref:`example <ray-train-tftrainer-example>`)
+  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
+
+2. **Custom training function**
+
+  * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/custom_func_checkpointing>`, it's quite simple to do.
+
+Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster via ``ray.init()``, making your script on your laptop the "driver".
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from your_module import my_trainable
+
+    ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
+
+    # configure how checkpoints are sync'd to the scheduler/sampler 
+    # we recommend cloud storage checkpointing as it survives the cluster when
+    # instances are terminated, and has better performance
+    sync_config = tune.syncConfig(
+        upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
+    )
+
+    # this starts the run!
+    tune.run(
+        my_trainable,
+
+        # name of your experiment 
+        name="my-tune-exp",
+
+        # a directory where results are stored before being
+        # sync'd to head node/cloud storage
+        local_dir="/tmp/mypath",
+
+        # see above! we will sync our checkpoints to S3 directory
+        sync_config=sync_config,
+
+        # we'll keep the best five checkpoints at all times
+        # checkpoints (by AUC score, reported by the trainable, descending)
+        checkpoint_score_attr="max-auc",
+        keep_checkpoints_num=5,
+
+        # a very useful trick! this will resume from the last run specified by
+        # sync_config (if one exists), otherwise it will start a new tuning run
+        resume="AUTO",
+    )
+
+In this example, checkpoints will be saved:
+
+* **Locally**: not saved! Nothing will be sync'd to the driver (your laptop) automatically (because cloud syncing is enabled)
+* **S3**: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
+* **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
+* **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
+
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
+
+If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
 
 .. code-block:: python
 
     # Restored previous trial from the given checkpoint
     tune.run(
-        "PG",
-        name="RestoredExp", # The name can be different.
-        stop={"training_iteration": 10}, # train 5 more iterations than previous
-        restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
-        config={"env": "CartPole-v0"},
+        # our same trainable as before
+        my_trainable,
+
+        # The name can be different from your original name
+        name="my-tune-exp-restart",
+
+        # our same config as above!
+        restore=sync_config,
     )
 
+.. _rsync-checkpointing:
+
+A simple local/rsync checkpointing example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Local or rsync checkpointing can be a good option if:
+
+1. You want to tune on a single laptop Ray cluster
+2. You aren't using Ray on Kubernetes (rsync doesn't work with Ray on Kubernetes)
+3. You don't want to use S3
+
+Let's take a look at an example:
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from your_module import my_trainable
+
+    ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
+
+    # configure how checkpoints are sync'd to the scheduler/sampler 
+    sync_config = tune.syncConfig()  # the default mode is to use use rsync
+
+    # this starts the run!
+    tune.run(
+        my_trainable,
+
+        # name of your experiment 
+        name="my-tune-exp",
+
+        # a directory where results are stored before being
+        # sync'd to head node/cloud storage
+        local_dir="/tmp/mypath",
+
+        # sync our checkpoints via rsync
+        # you don't have to pass an empty sync config - but we
+        # do it here for clarity and comparison
+        sync_config=sync_config,
+
+        # we'll keep the best five checkpoints at all times
+        # checkpoints (by AUC score, reported by the trainable, descending)
+        checkpoint_score_attr="max-auc",
+        keep_checkpoints_num=5,
+
+        # a very useful trick! this will resume from the last run specified by
+        # sync_config (if one exists), otherwise it will start a new tuning run
+        resume="AUTO",
+    )
 
 .. _tune-distributed-checkpointing:
 
@@ -280,18 +596,18 @@ Distributed Checkpointing
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a model type with a built-in Ray Tune integration as described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
-:func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
-Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
+:ref:`cloud checkpointing <tune-sync-config>` or a shared filesystem for checkpoint sharing.
+Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
 
 .. code-block:: python
 
-    sync_config = tune.SyncConfig(sync_to_driver=False)
+    sync_config = tune.SyncConfig(syncer=None)
     tune.run(func, sync_config=sync_config)
 
 
@@ -399,7 +715,6 @@ In the example below, each trial will be stopped either when it completes 10 ite
 For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
 
 .. code-block:: python
-
 
     def stopper(trial_id, result):
         return result["mean_accuracy"] / result["training_iteration"] > 5
@@ -560,7 +875,7 @@ If an upload directory is provided, Tune will automatically sync results from th
         sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
     )
 
-You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
 
 .. code-block:: python
 
@@ -568,7 +883,7 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         MyTrainableClass,
         sync_config=tune.SyncConfig(
             upload_dir="s3://my-log-dir",
-            sync_to_cloud=custom_sync_str_or_func
+            syncer=custom_sync_str_or_func
         )
     )
 
@@ -584,10 +899,12 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period.
+By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
 
-Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
+Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the sync period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+Make sure that worker nodes have the write access to the cloud storage. Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
+For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes. Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 .. _tune-docker:
 
@@ -598,13 +915,13 @@ containers as needed.
 
 To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
 with docker containers, you will need to pass a
-``DockerSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 
 .. code-block:: python
 
     from ray.tune.integration.docker import DockerSyncer
     sync_config = tune.SyncConfig(
-        sync_to_driver=DockerSyncer)
+        syncer=DockerSyncer)
 
     tune.run(train, sync_config=sync_config)
 
@@ -620,7 +937,7 @@ especially when running many trials in parallel.
 Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
 is necessary. There are two main options.
 
-First, you can use a :func:`DurableTrainable <ray.tune.durable>` to store your
+First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
 logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
 
 .. code-block:: python
@@ -631,7 +948,6 @@ logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
         tune.durable(train_fn),
         # ...,
         sync_config=tune.SyncConfig(
-            sync_to_driver=False,
             upload_dir="s3://your-s3-bucket/durable-trial/"
         )
     )
@@ -647,22 +963,22 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
         # ...,
         local_dir="/path/to/shared/storage",
         sync_config=tune.SyncConfig(
-            # Do not sync to driver because we are on shared storage
-            sync_to_driver=False
+            # Do not sync because we are on shared storage
+            syncer=None
         )
     )
 
 
 Lastly, if you still want to use ssh for trial synchronization, but are not running
 on the Ray cluster launcher, you might need to pass a
-``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
 .. code-block:: python
 
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
     sync_config = tune.SyncConfig(
-        sync_to_driver=NamespacedKubernetesSyncer("ray")
+        syncer=NamespacedKubernetesSyncer("ray")
     )
 
     tune.run(train, sync_config=sync_config)
@@ -805,6 +1121,10 @@ These are the environment variables Ray Tune currently considers:
   Ctrl+C) to gracefully shutdown and do a final checkpoint. Setting this variable
   to ``1`` will disable signal handling and stop execution right away. Defaults to
   ``0``.
+* **TUNE_FORCE_TRIAL_CLEANUP_S**: By default, Ray Tune will gracefully terminate trials,
+  letting them finish the current training step and any user-defined cleanup. 
+  Setting this variable to a non-zero, positive integer will cause trials to be forcefully
+  terminated after a grace period of that many seconds. Defaults to ``0``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
@@ -813,8 +1133,6 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
   to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1`` for any other search algorithms.
-* **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
-  instead of the legacy resource requests. Setting this to 1 enables legacy placement.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
   with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
   that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
@@ -836,24 +1154,30 @@ These are the environment variables Ray Tune currently considers:
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
-  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
-  if used with ``checkpoint_at_end``.
+  continued. Setting this to ``1`` disables result buffering. Cannot be used with ``checkpoint_at_end``.
+  Defaults to disabled.
+* **TUNE_RESULT_DELIM**: Delimiter used for nested entries in
+  :class:`ExperimentAnalysis <ray.tune.ExperimentAnalysis>` dataframes. Defaults to ``.`` (but will be
+  changed to ``/`` in future versions of Ray).
 * **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
   but never longer than this value. Defaults to 100 (seconds).
 * **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_RESULT_WAIT_TIME_S**: Amount of time Ray Tune will block until a result from a running trial is received.
+  Defaults to 1 (second).
 * **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
-  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
-  be disabled by setting this to lower or equal to 0.
+  trial startups. After the grace period, Tune will block for up to ``TUNE_TRIAL_RESULT_WAIT_TIME_S`` seconds
+  until a result from a running trial is received. Can be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
   for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
-  the warning message is printed repeatedly every this amount of seconds. Defaults to 1 (seconds).
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
   if no active trials are in ``RUNNING`` state for this amount of seconds.
   If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
+* **TUNE_SYNC_DISABLE_BOOTSTRAP**: Disable bootstrapping the autoscaler config for Docker syncing.
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

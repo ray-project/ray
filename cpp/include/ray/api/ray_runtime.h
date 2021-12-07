@@ -64,9 +64,19 @@ class RayRuntime {
                                 const CallOptions &call_options) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
-  virtual std::string GetActorId(bool global, const std::string &actor_name) = 0;
+  virtual std::string GetActorId(const std::string &actor_name) = 0;
   virtual void KillActor(const std::string &str_actor_id, bool no_restart) = 0;
   virtual void ExitActor() = 0;
+  virtual ray::PlacementGroup CreatePlacementGroup(
+      const ray::PlacementGroupCreationOptions &create_options) = 0;
+  virtual void RemovePlacementGroup(const std::string &group_id) = 0;
+  virtual bool WaitPlacementGroupReady(const std::string &group_id,
+                                       int timeout_seconds) = 0;
+  virtual bool WasCurrentActorRestarted() = 0;
+  virtual std::vector<PlacementGroup> GetAllPlacementGroups() = 0;
+  virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
+  virtual PlacementGroup GetPlacementGroup(const std::string &name) = 0;
+  virtual bool IsLocalMode() { return false; }
 };
 }  // namespace internal
 }  // namespace ray

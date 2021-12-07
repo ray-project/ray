@@ -237,7 +237,7 @@ class HyperOptSearch(Searcher):
             _lookup(config, self._space, k)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)
@@ -265,9 +265,6 @@ class HyperOptSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
         if self._points_to_evaluate > 0:
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
@@ -341,7 +338,18 @@ class HyperOptSearch(Searcher):
         self._hpopt_trials.refresh()
 
     def _to_hyperopt_result(self, result: Dict) -> Dict:
-        return {"loss": self.metric_op * result[self.metric], "status": "ok"}
+        try:
+            return {
+                "loss": self.metric_op * result[self.metric],
+                "status": "ok"
+            }
+        except KeyError as e:
+            raise RuntimeError(
+                f"Hyperopt expected to see the metric `{self.metric}` in the "
+                f"last result, but it was not found. To fix this, make "
+                f"sure your call to `tune.report` or your return value of "
+                f"your trainable class `step()` contains the above metric "
+                f"as a key.") from e
 
     def _get_hyperopt_trial(self, trial_id: str) -> Optional[Dict]:
         if trial_id not in self._live_trial_mapping:

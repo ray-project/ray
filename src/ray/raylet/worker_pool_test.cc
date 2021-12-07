@@ -85,13 +85,14 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
     } else {
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
     callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnv(const rpc::DeleteRuntimeEnvRequest &request,
-                        const rpc::ClientCallback<rpc::DeleteRuntimeEnvReply> &callback) {
-    rpc::DeleteRuntimeEnvReply reply;
+  void DeleteURIs(const rpc::DeleteURIsRequest &request,
+                  const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) {
+    rpc::DeleteURIsReply reply;
     reply.set_status(rpc::AGENT_RPC_STATUS_OK);
     callback(Status::OK(), reply);
   };
@@ -103,9 +104,10 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients)
-      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, 0, [this]() { return current_time_ms_; }),
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, "", []() {},
+            0, [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -136,6 +138,8 @@ class WorkerPoolMock : public WorkerPool {
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
+    startup_tokens_by_proc_[last_worker_process_] =
+        WorkerPool::worker_startup_token_counter_;
     return last_worker_process_;
   }
 
@@ -175,9 +179,13 @@ class WorkerPoolMock : public WorkerPool {
     return state.restore_io_worker_state.num_starting_io_workers;
   }
 
+  StartupToken GetStartupToken(const Process &proc) {
+    return startup_tokens_by_proc_[proc];
+  }
+
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
-  const std::unordered_map<Process, std::vector<std::string>> &GetProcesses() {
+  const absl::flat_hash_map<Process, std::vector<std::string>> &GetProcesses() {
     return worker_commands_by_proc_;
   }
 
@@ -195,7 +203,7 @@ class WorkerPoolMock : public WorkerPool {
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int runtime_env_hash = 0, StartupToken worker_startup_token = 0) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -211,7 +219,7 @@ class WorkerPoolMock : public WorkerPool {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         job_id, runtime_env_hash, WorkerID::FromRandom(), language, worker_type,
-        "127.0.0.1", client, client_call_manager_);
+        "127.0.0.1", client, client_call_manager_, worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
@@ -231,10 +239,6 @@ class WorkerPoolMock : public WorkerPool {
     }
     if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
       PushRestoreWorker(worker);
-      return;
-    }
-    if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
-      PushUtilWorker(worker);
       return;
     }
     PushWorker(worker);
@@ -261,12 +265,13 @@ class WorkerPoolMock : public WorkerPool {
             is_java = true;
           }
         }
-        // TODO(guyang.sgy): support C++ language workers.
+        // TODO(SongGuyang): support C++ language workers.
         int num_workers = is_java ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
         for (int i = 0; i < num_workers; i++) {
           auto worker =
               CreateWorker(it->first, is_java ? Language::JAVA : Language::PYTHON, JOB_ID,
-                           rpc::WorkerType::WORKER, runtime_env_hash);
+                           rpc::WorkerType::WORKER, runtime_env_hash,
+                           startup_tokens_by_proc_[it->first]);
           OnWorkerStarted(worker);
           PushAvailableWorker(worker);
         }
@@ -305,9 +310,10 @@ class WorkerPoolMock : public WorkerPool {
  private:
   Process last_worker_process_;
   // The worker commands by process.
-  std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, StartupToken> startup_tokens_by_proc_;
   double current_time_ms_ = 0;
-  std::unordered_map<Process, std::vector<std::string>> pushedProcesses_;
+  absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
@@ -337,6 +343,10 @@ class WorkerPoolTest : public ::testing::Test {
     promise.get_future().get();
     StartMockAgent();
   }
+
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() { ASSERT_EQ(worker_pool_->pending_exit_idle_workers_.size(), 0); }
 
   ~WorkerPoolTest() {
     io_service_.stop();
@@ -442,7 +452,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {},
-    const TaskID &task_id = TaskID::ForFakeTask(),
+    const TaskID &task_id = TaskID::FromRandom(JobID::Nil()),
     const std::string serialized_runtime_env = "") {
   rpc::TaskSpec message;
   message.set_job_id(job_id.Binary());
@@ -462,7 +472,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env_info()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 
@@ -495,6 +505,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
@@ -512,7 +523,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 
 TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
-  auto status = worker_pool_->RegisterWorker(worker, 1234, 1234, [](Status, int) {});
+  auto status = worker_pool_->RegisterWorker(
+      worker, 1234, 1234, -1, [](const Status & /*unused*/, int /*unused*/) {});
   ASSERT_FALSE(status.ok());
 }
 
@@ -532,19 +544,19 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2);
+  worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3);
+  worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1);
+  worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
   // Capped by soft limit of 5.
-  worker_pool_->PrestartWorkers(task_spec, 20);
+  worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }
@@ -630,6 +642,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
   expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
+  expected_command.push_back("-Dray.raylet.startup-token=0");
   // User-defined per-process options
   expected_command.insert(expected_command.end(), actor_jvm_options.begin(),
                           actor_jvm_options.end());
@@ -720,7 +733,9 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   // Call `RegisterWorker` to emulate worker registration.
   for (const auto &process : started_processes) {
     auto worker = worker_pool_->CreateWorker(Process());
+    worker->SetStartupToken(worker_pool_->GetStartupToken(process));
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, process.GetId(), process.GetId(),
+                                              worker_pool_->GetStartupToken(process),
                                               [](Status, int) {}));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
     ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
@@ -978,8 +993,10 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 1. we register both workers.
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
@@ -1022,8 +1039,10 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1115,6 +1134,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1126,6 +1146,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1167,8 +1188,10 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1210,15 +1233,97 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
+TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
+  ///
+  /// When there are multiple workers in a worker process, and the worker process's Exit
+  /// reply is delayed, We shouldn't send more Exit requests to workers in this process
+  /// until we received all Exit replies form this process.
+  ///
+
+  ///
+  /// Register some idle Python and Java (w/ multi-worker enabled) workers
+  ///
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  std::vector<Language> languages({Language::PYTHON, Language::JAVA});
+  for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
+    for (const auto &language : languages) {
+      PopWorkerStatus status;
+      Process proc = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
+                                                      JOB_ID, &status);
+      int workers_to_start =
+          language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+      for (int j = 0; j < workers_to_start; j++) {
+        auto worker = worker_pool_->CreateWorker(Process(), language);
+        worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+        workers.push_back(worker);
+        RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                                  worker_pool_->GetStartupToken(proc),
+                                                  [](Status, int) {}));
+        worker_pool_->OnWorkerStarted(worker);
+        ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+        worker_pool_->PushWorker(worker);
+      }
+    }
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // 1000 ms has passed, so idle workers should be killed.
+  worker_pool_->SetCurrentTimeMs(1000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Let's assume that all workers own objects, so they won't be killed.
+
+  // Due to the heavy load on this machine, some workers may reply Exit with a delay, so
+  // only a part of workers replied before the next round of killing.
+  std::vector<std::shared_ptr<WorkerInterface>> delayed_workers;
+  bool delay = false;
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    if (!delay) {
+      ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+    } else {
+      delayed_workers.push_back(worker);
+    }
+    delay = !delay;
+  }
+  // No workers are killed because they own objects.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // The second round of killing starts.
+  worker_pool_->SetCurrentTimeMs(2000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Delayed workers reply first, then all workers reply the second time.
+  for (auto worker : delayed_workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  const auto actor_creation_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
-  const auto normal_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto actor_creation_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id, {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
+  const auto normal_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   const auto normal_task_spec_without_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
   // Pop worker for actor creation task again.
@@ -1253,16 +1358,15 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   const auto actor_creation_task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_2 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {
-      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
+  const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Push worker with runtime env 1.
@@ -1408,7 +1512,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   // Create a task with bad runtime env.
   const auto task_spec_with_bad_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), BAD_RUNTIME_ENV);
+                      {"XXX=YYY"}, TaskID::FromRandom(JobID::Nil()), BAD_RUNTIME_ENV);
   popped_worker =
       worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true, &status);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
@@ -1416,9 +1520,9 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
 
   // Create a task with available runtime env.
-  const auto task_spec_with_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto task_spec_with_runtime_env = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);

@@ -1,4 +1,5 @@
 import copy
+import pickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -231,7 +232,7 @@ class AxSearch(Searcher):
                            "a ConcurrencyLimiter.")
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict):
+                              config: Dict, **spec):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -256,10 +257,6 @@ class AxSearch(Searcher):
                     cls=self.__class__.__name__,
                     metric=self._metric,
                     mode=self._mode))
-
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)
@@ -374,3 +371,13 @@ class AxSearch(Searcher):
         ]
 
         return fixed_values + resolved_values
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        self.__dict__.update(save_object)

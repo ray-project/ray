@@ -67,6 +67,9 @@ DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
+# Wait 30 seconds for client to reconnect after unexpected disconnection
+DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
+
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 FUNCTION_SIZE_WARN_THRESHOLD = 10**7
@@ -129,7 +132,6 @@ REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
 FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
 CHECKPOINT_PUSH_ERROR = "checkpoint"
-REGISTER_ACTOR_PUSH_ERROR = "register_actor"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
@@ -157,6 +159,9 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py:wait_for_redis_to_start`.
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+
+# Only unpickle and run exported functions from the same job if it's true.
+ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -244,13 +249,6 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
-# The default module path to a Python function that sets up the worker env.
-DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
-
-# The default module path to a Python function that sets up runtime envs.
-DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
-    "ray.workers.setup_runtime_env.setup_runtime_env"
-
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -272,3 +270,28 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
+
+# Directory name where runtime_env resources will be created & cached.
+DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
+
+# Used to separate lines when formatting the call stack where an ObjectRef was
+# created.
+CALL_STACK_LINE_DELIMITER = " | "
+
+# The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
+# NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
+GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
+
+# Internal kv namespaces
+KV_NAMESPACE_DASHBOARD = "dashboard"
+KV_NAMESPACE_SESSION = "session"
+KV_NAMESPACE_TRACING = "tracing"
+KV_NAMESPACE_PDB = "ray_pdb"
+KV_NAMESPACE_HEALTHCHECK = "healthcheck"
+KV_NAMESPACE_JOB = "job"
+# TODO: Set package for runtime env
+# We need to update ray client for this since runtime env use ray client
+# This might introduce some compatibility issues so leave it here for now.
+KV_NAMESPACE_PACKAGE = None
+KV_NAMESPACE_SERVE = "serve"
+KV_NAMESPACE_FUNCTION_TABLE = "fun"

@@ -37,6 +37,20 @@ def test_host_standalone(serve_instance):
     assert "key_2" in result
 
 
+def test_long_poll_wait_for_keys(serve_instance):
+    # Variation of the basic case, but the keys are requests before any values
+    # are set.
+    host = ray.remote(LongPollHost).remote()
+    object_ref = host.listen_for_change.remote({"key_1": -1, "key_2": -1})
+    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote("key_2", 999))
+
+    # We should be able to get the one of the result immediately
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()).issubset({"key_1", "key_2"})
+    assert {v.object_snapshot for v in result.values()} == {999}
+
+
 def test_long_poll_restarts(serve_instance):
     @ray.remote(
         max_restarts=-1,

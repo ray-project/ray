@@ -30,6 +30,13 @@ class NativeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
+  ActorID GetActor(const std::string &actor_name) const;
+
+  ray::PlacementGroup CreatePlacementGroup(
+      const ray::PlacementGroupCreationOptions &create_options);
+  void RemovePlacementGroup(const std::string &group_id);
+  bool WaitPlacementGroupReady(const std::string &group_id, int timeout_seconds);
+
  private:
   ObjectID Submit(InvocationSpec &invocation, const CallOptions &call_options);
 };

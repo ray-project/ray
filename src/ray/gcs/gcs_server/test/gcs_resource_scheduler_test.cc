@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -39,7 +40,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
   void AddClusterResources(const NodeID &node_id, const std::string &resource_name,
                            double resource_value) {
-    std::unordered_map<std::string, double> resource_map;
+    absl::flat_hash_map<std::string, double> resource_map;
     resource_map[resource_name] = resource_value;
     gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
   }
@@ -63,14 +64,15 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
     // Scheduling succeeded and node resources are used up.
     std::vector<ResourceSet> required_resources_list;
-    std::unordered_map<std::string, double> resource_map;
+    absl::flat_hash_map<std::string, double> resource_map;
     for (int bundle_cpu_num = 1; bundle_cpu_num <= 3; ++bundle_cpu_num) {
       resource_map[cpu_resource] = bundle_cpu_num;
       required_resources_list.emplace_back(resource_map);
     }
     const auto &result1 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_EQ(result1.size(), 3);
+    ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::SUCCESS);
+    ASSERT_EQ(result1.second.size(), 3);
 
     // Check for resource leaks.
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
@@ -80,7 +82,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     required_resources_list.emplace_back(resource_map);
     const auto &result2 =
         gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_EQ(result2.size(), 0);
+    ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::FAILED);
+    ASSERT_EQ(result2.second.size(), 0);
 
     // Check for resource leaks.
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
@@ -110,19 +113,64 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
 
   // Scheduling failure.
   std::vector<ResourceSet> required_resources_list;
-  std::unordered_map<std::string, double> resource_map;
+  absl::flat_hash_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 1;
   required_resources_list.emplace_back(resource_map);
   const auto &result1 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
       [](const NodeID &) { return false; });
-  ASSERT_EQ(result1.size(), 0);
+  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
+  ASSERT_EQ(result1.second.size(), 0);
 
   // Scheduling succeeded.
   const auto &result2 = gcs_resource_scheduler_->Schedule(
       required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
       [](const NodeID &) { return true; });
-  ASSERT_EQ(result2.size(), 1);
+  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::SUCCESS);
+  ASSERT_EQ(result2.second.size(), 1);
+}
+
+TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
+  // Init resources with two node.
+  const auto &node_one_id = NodeID::FromRandom();
+  const auto &node_tow_id = NodeID::FromRandom();
+  const std::string cpu_resource = "CPU";
+  const double node_cpu_num = 10.0;
+  AddClusterResources(node_one_id, cpu_resource, node_cpu_num);
+  AddClusterResources(node_tow_id, cpu_resource, node_cpu_num);
+
+  // Mock a request that has three required resources.
+  std::vector<ResourceSet> required_resources_list;
+  absl::flat_hash_map<std::string, double> resource_map;
+  resource_map[cpu_resource] = 1;
+  for (int node_number = 0; node_number < 3; node_number++) {
+    required_resources_list.emplace_back(resource_map);
+  }
+
+  const auto &result1 = gcs_resource_scheduler_->Schedule(
+      required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
+  ASSERT_TRUE(result1.first == gcs::SchedulingResultStatus::INFEASIBLE);
+  ASSERT_EQ(result1.second.size(), 0);
+
+  // Check for resource leaks.
+  CheckClusterAvailableResources(node_one_id, cpu_resource, node_cpu_num);
+  CheckClusterAvailableResources(node_tow_id, cpu_resource, node_cpu_num);
+
+  // Mock a request that only has one required resource but bigger than the maximum
+  // resource.
+  required_resources_list.clear();
+  resource_map.clear();
+  resource_map[cpu_resource] = 50;
+  required_resources_list.emplace_back(resource_map);
+
+  const auto &result2 = gcs_resource_scheduler_->Schedule(
+      required_resources_list, gcs::SchedulingType::STRICT_PACK);
+  ASSERT_TRUE(result2.first == gcs::SchedulingResultStatus::INFEASIBLE);
+  ASSERT_EQ(result2.second.size(), 0);
+
+  // Check for resource leaks.
+  CheckClusterAvailableResources(node_one_id, cpu_resource, node_cpu_num);
+  CheckClusterAvailableResources(node_tow_id, cpu_resource, node_cpu_num);
 }
 
 }  // namespace ray

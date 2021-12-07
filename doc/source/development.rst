@@ -100,8 +100,9 @@ Ray can be built from the repository as follows.
   git clone https://github.com/ray-project/ray.git
 
   # Install Bazel.
-  # (Windows users: please manually place Bazel in your PATH, and point BAZEL_SH to MSYS2's Bash.)
   ray/ci/travis/install-bazel.sh
+  # (Windows users: please manually place Bazel in your PATH, and point
+  # BAZEL_SH to MSYS2's Bash: ``set BAZEL_SH=C:\Program Files\Git\bin\bash.exe``)
 
   # Build the dashboard
   # (requires Node.js, see https://nodejs.org/ for more information).
@@ -119,6 +120,39 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
+.. tip:: 
+
+  If your machine is running out of memory during the build or the build is causing other programs to crash, try adding the following line to ``~/.bazelrc``:
+
+  ``build --disk_cache=~/bazel-cache --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4``
+
+
+Environment variables that influence this step
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can tweak the build with the following environment variables (in `setup.py`):
+
+- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
+  to build java portions of the codebase
+- ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
+- ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
+  ``cpp``) build will not provide some ``cpp`` interfaces
+- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no bazel build steps will be
+  executed
+- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
+  python packages
+- ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
+  other value will be ignored
+- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
+  ``--local_cpu_resources`` argument for the call to bazel, which will limit the
+  number of CPUs used during bazel steps.
+- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
+  ``None`` which is ``cwd()``
+- ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
+- ``BAZEL_PATH``: used on Windows to find ``bazel.exe``, see below
+- ``MINGW_DIR``: used on Windows to find ``bazel.exe`` if not found in ``BAZEL_PATH``
+
 Building Ray on Windows (full)
 ------------------------------
 
@@ -126,7 +160,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- bazel 3.4 (https://github.com/bazelbuild/bazel/releases/tag/3.4.0)
+- bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -149,7 +183,11 @@ The following links were correct during the writing of this section. In case the
 
 3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 3.4 installation. Go to bazel 3.4 release web page and download bazel-3.4.0-windows-x86_64.exe. Copy the exe into the directory of your choice. Define an environment variable BAZEL_PATH to full exe path (example: ``C:\bazel\bazel-3.4.0-windows-x86_64.exe``) 
+4. Bazel 4.2 installation. Go to bazel 4.2 release web page and download
+bazel-4.2.1-windows-x86_64.exe. Copy the exe into the directory of your choice.
+Define an environment variable BAZEL_PATH to full exe path (example:
+``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the bazel directory to the
+``PATH`` (example: ``set PATH=%PATH%;C:\bazel``)
 
 5. Install cython and pytest:
 

@@ -67,12 +67,6 @@ class IObjectStore {
   ///   - false if such object doesn't exist.
   ///   - true if deleted.
   virtual bool DeleteObject(const ObjectID &object_id) = 0;
-
-  virtual int64_t GetNumBytesCreatedTotal() const = 0;
-
-  virtual int64_t GetNumBytesUnsealed() const = 0;
-
-  virtual int64_t GetNumObjectsUnsealed() const = 0;
 };
 
 // ObjectStore implements IObjectStore. It uses IAllocator
@@ -91,12 +85,6 @@ class ObjectStore : public IObjectStore {
 
   bool DeleteObject(const ObjectID &object_id) override;
 
-  int64_t GetNumBytesCreatedTotal() const override;
-
-  int64_t GetNumBytesUnsealed() const override;
-
-  int64_t GetNumObjectsUnsealed() const override;
-
  private:
   friend struct ObjectStatsCollectorTest;
 
@@ -107,15 +95,5 @@ class ObjectStore : public IObjectStore {
 
   /// Mapping from ObjectIDs to information about the object.
   absl::flat_hash_map<ObjectID, std::unique_ptr<LocalObject>> object_table_;
-
-  /// Total number of bytes allocated to objects that are created but not yet
-  /// sealed.
-  int64_t num_bytes_unsealed_ = 0;
-
-  /// Number of objects that are created but not sealed.
-  int64_t num_objects_unsealed_ = 0;
-
-  /// A running total of the objects that have ever been created on this node.
-  int64_t num_bytes_created_total_ = 0;
 };
 }  // namespace plasma

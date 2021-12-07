@@ -1,4 +1,4 @@
-ARG BASE_IMAGE="ubuntu:groovy"
+ARG BASE_IMAGE="ubuntu:21.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -45,13 +45,11 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
         numpy==1.15.4 \
         psutil \
         blist \
-        atari-py \
     # blist is needed for numpy (which is re-installed when ray is installed)
-    # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \
-    # We install cmake temporarily to get psutil, blist & atari-py
+    # We install cmake temporarily to get psutil, blist
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
         $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
@@ -70,10 +68,10 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
 
 RUN apt-get update -y \
     && apt-get install -y gnupg curl golang wget make git libseccomp-dev \
-    && . /etc/os-release \
-    && echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
-    && curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | apt-key add - \
-    && apt-get update \
+    #&& . /etc/os-release \
+    #&& echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
+    #&& curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | apt-key add - \
+    #&& apt-get update \
     && apt-get -y install podman runc \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean

@@ -15,7 +15,9 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.torch_ops import set_torch_seed
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.torch_utils import set_torch_seed
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +43,8 @@ DEFAULT_CONFIG = with_common_config({
     "report_length": 10,
     # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
     # Therefore, we must be careful not to use more than 1 env per eval worker
-    # (would break ESPolicy's compute_action method) and to not do obs-
-    # filtering.
+    # (would break ESPolicy's compute_single_action method) and to not do
+    # obs-filtering.
     "evaluation_config": {
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
@@ -198,31 +200,35 @@ def get_policy_class(config):
     return policy_cls
 
 
-def validate_config(config):
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for ES/ARS!")
-    if config["num_workers"] <= 0:
-        raise ValueError("`num_workers` must be > 0 for ES!")
-    if config["evaluation_config"]["num_envs_per_worker"] != 1:
-        raise ValueError(
-            "`evaluation_config.num_envs_per_worker` must always be 1 for "
-            "ES/ARS! To parallelize evaluation, increase "
-            "`evaluation_num_workers` to > 1.")
-    if config["evaluation_config"]["observation_filter"] != "NoFilter":
-        raise ValueError(
-            "`evaluation_config.observation_filter` must always be `NoFilter` "
-            "for ES/ARS!")
-
-
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
-    _name = "ES"
-    _default_config = DEFAULT_CONFIG
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
+
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        super().validate_config(config)
+
+        if config["num_gpus"] > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for ES!")
+        if config["num_workers"] <= 0:
+            raise ValueError("`num_workers` must be > 0 for ES!")
+        if config["evaluation_config"]["num_envs_per_worker"] != 1:
+            raise ValueError(
+                "`evaluation_config.num_envs_per_worker` must always be 1 for "
+                "ES! To parallelize evaluation, increase "
+                "`evaluation_num_workers` to > 1.")
+        if config["evaluation_config"]["observation_filter"] != "NoFilter":
+            raise ValueError(
+                "`evaluation_config.observation_filter` must always be "
+                "`NoFilter` for ES!")
 
     @override(Trainer)
     def _init(self, config, env_creator):
-        validate_config(config)
+        self.validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
         self._policy_class = get_policy_class(config)
@@ -257,7 +263,7 @@ class ESTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def step(self):
+    def step_attempt(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -346,11 +352,15 @@ class ESTrainer(Trainer):
         return result
 
     @override(Trainer)
-    def compute_action(self, observation, *args, **kwargs):
+    def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=False)
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]
+
+    @Deprecated(new="compute_single_action", error=False)
+    def compute_action(self, observation, *args, **kwargs):
+        return self.compute_single_action(observation, *args, **kwargs)
 
     @override(Trainer)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):

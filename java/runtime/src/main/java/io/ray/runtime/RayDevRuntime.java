@@ -4,8 +4,8 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.JobId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
 import io.ray.runtime.generated.Common.TaskSpec;
@@ -18,6 +18,7 @@ import io.ray.runtime.util.SystemUtil;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -71,19 +72,14 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
-  }
-
-  @Override
   public void killActor(BaseActorHandle actor, boolean noRestart) {
     throw new UnsupportedOperationException();
   }
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
-    return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name, global);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
+    return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name);
   }
 
   @Override
@@ -100,6 +96,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public Map<String, List<ResourceValue>> getAvailableResourceIds() {
+    throw new UnsupportedOperationException("Ray doesn't support get resources ids in local mode.");
+  }
+
+  @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
     // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
@@ -111,6 +112,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
     // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
         "Ray doesn't support placement group operations in local mode.");
+  }
+
+  @Override
+  public String getNamespace() {
+    return null;
   }
 
   @Override

@@ -3,12 +3,12 @@ import threading
 import traceback
 
 import redis
+import grpc
 
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
 import ray._private.profiling as profiling
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,9 +33,17 @@ class ImportThread:
     def __init__(self, worker, mode, threads_stopped):
         self.worker = worker
         self.mode = mode
-        self.redis_client = worker.redis_client
+        self.gcs_client = worker.gcs_client
+        if worker.gcs_pubsub_enabled:
+            self.subscriber = worker.gcs_function_key_subscriber
+            self.subscriber.subscribe()
+        else:
+            self.subscriber = worker.redis_client.pubsub()
+            self.subscriber.subscribe("__keyspace@0__:Exports")
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
+        # Keep track of the number of imports that we've imported.
+        self.num_imported = 0
 
     def start(self):
         """Start the import thread."""
@@ -50,59 +58,59 @@ class ImportThread:
         self.t.join()
 
     def _run(self):
-        import_pubsub_client = self.redis_client.pubsub()
-        # Exports that are published after the call to
-        # import_pubsub_client.subscribe and before the call to
-        # import_pubsub_client.listen will still be processed in the loop.
-        import_pubsub_client.subscribe("__keyspace@0__:Exports")
-        # Keep track of the number of imports that we've imported.
-        num_imported = 0
-
         try:
-            # Get the exports that occurred before the call to subscribe.
-            export_keys = self.redis_client.lrange("Exports", 0, -1)
-            for key in export_keys:
-                num_imported += 1
-                self._process_key(key)
-
+            self._do_importing()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
 
-                msg = import_pubsub_client.get_message()
-                if msg is None:
-                    self.threads_stopped.wait(timeout=0.01)
-                    continue
+                if self.worker.gcs_pubsub_enabled:
+                    key = self.subscriber.poll()
+                    if key is None:
+                        # subscriber has closed.
+                        break
+                else:
+                    msg = self.subscriber.get_message()
+                    if msg is None:
+                        self.threads_stopped.wait(timeout=0.01)
+                        continue
+                    if msg["type"] == "subscribe":
+                        continue
 
-                if msg["type"] == "subscribe":
-                    continue
-                assert msg["data"] == b"rpush"
-                num_imports = self.redis_client.llen("Exports")
-                assert num_imports >= num_imported
-                for i in range(num_imported, num_imports):
-                    num_imported += 1
-                    key = self.redis_client.lindex("Exports", i)
-                    self._process_key(key)
-        except (OSError, redis.exceptions.ConnectionError) as e:
+                self._do_importing()
+        except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
             logger.error(f"ImportThread: {e}")
         finally:
-            # Close the pubsub client to avoid leaking file descriptors.
-            import_pubsub_client.close()
+            # Close the Redis / GCS subscriber to avoid leaking file
+            # descriptors.
+            self.subscriber.close()
+
+    def _do_importing(self):
+        while True:
+            export_key = ray._private.function_manager.make_export_key(
+                self.num_imported + 1)
+            key = self.gcs_client.internal_kv_get(
+                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            if key is not None:
+                self._process_key(key)
+                self.num_imported += 1
+            else:
+                break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
         if key.startswith(b"RemoteFunction"):
-            collision_identifier, function_name = (self.redis_client.hmget(
-                key, ["collision_identifier", "function_name"]))
+            collision_identifier, function_name = self._internal_kv_multiget(
+                key, ["collision_identifier", "function_name"])
             return (collision_identifier,
-                    ray._private.utils.decode(function_name),
+                    ray._private.utils.decode(function_name.encode()),
                     "remote function")
         elif key.startswith(b"ActorClass"):
-            collision_identifier, class_name = self.redis_client.hmget(
+            collision_identifier, class_name = self._internal_kv_multiget(
                 key, ["collision_identifier", "class_name"])
             return collision_identifier, ray._private.utils.decode(
-                class_name), "actor"
+                class_name.encode()), "actor"
 
     def _process_key(self, key):
         """Process the given export key from redis."""
@@ -148,6 +156,11 @@ class ImportThread:
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
             self.worker.function_actor_manager.imported_actor_classes.add(key)
+            with self.worker.function_actor_manager.cv:
+                # Function manager may be waiting on actor class to be
+                # loaded for deserialization, notify it to wake up and
+                # check if the actor class it was looking for is loaded
+                self.worker.function_actor_manager.cv.notify_all()
         # TODO(rkn): We may need to bring back the case of
         # fetching actor classes here.
         else:
@@ -155,14 +168,15 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function,
-         run_on_other_drivers) = self.redis_client.hmget(
-             key, ["job_id", "function", "run_on_other_drivers"])
+        (job_id, serialized_function) = self._internal_kv_multiget(
+            key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
-            if (run_on_other_drivers == b"False"
-                    or job_id == self.worker.current_job_id.binary()):
-                return
+            return
+
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id != self.worker.current_job_id.binary():
+            return
 
         try:
             # FunctionActorManager may call pickle.loads at the same time.
@@ -182,3 +196,12 @@ class ImportThread:
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
                 job_id=ray.JobID(job_id))
+
+    def _internal_kv_multiget(self, key, fields):
+        vals = self.gcs_client.internal_kv_get(
+            key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
+        return (vals.get(field) for field in fields)

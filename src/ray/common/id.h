@@ -191,7 +191,7 @@ class TaskID : public BaseID<TaskID> {
   static TaskID ForDriverTask(const JobID &job_id);
 
   /// Generate driver task id for the given job.
-  static TaskID ForFakeTask();
+  static TaskID FromRandom(const JobID &job_id);
 
   /// Creates a TaskID for an actor creation task.
   ///
@@ -297,6 +297,9 @@ class ObjectID : public BaseID<ObjectID> {
   /// \param actor_id The ID of the actor to track.
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
+
+  static bool IsActorID(const ObjectID &object_id);
+  static ActorID ToActorID(const ObjectID &object_id);
 
   MSGPACK_DEFINE(id_);
 
@@ -489,6 +492,7 @@ std::string BaseID<T>::Hex() const {
   constexpr char hex[] = "0123456789abcdef";
   const uint8_t *id = Data();
   std::string result;
+  result.reserve(T::Size());
   for (size_t i = 0; i < T::Size(); i++) {
     unsigned int val = id[i];
     result.push_back(hex[val >> 4]);
