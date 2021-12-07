@@ -8,7 +8,8 @@ from ray.tune.utils import flatten_dict
 def _import_comet():
     """Try importing comet_ml.
     
-    Used to check if comet_ml is installed and, otherwise, pass an informative error message.
+    Used to check if comet_ml is installed and, otherwise, pass an informative
+    error message.
     """
     try:
         import comet_ml
@@ -23,8 +24,8 @@ class CometLoggerCallback(LoggerCallback):
     metrics and parameters to Comet for tracking. 
 
     Args:
-            online (bool, optional): Whether to make use of an Online or Offline
-                Experiment. Defaults to True.
+            online (bool, optional): Whether to make use of an Online or
+                Offline Experiment. Defaults to True.
             tags (List[str], optional): Tags to add to the logged Experiment.
                 Defaults to None.
             **experiment_kwargs: Other keyword arguments will be passed to the
@@ -118,8 +119,8 @@ class CometLoggerCallback(LoggerCallback):
 
     def log_trial_start(self, trial: "Trial"):
         """
-        Initialize an Experiment (or OfflineExperiment if self.online=False) and
-        start logging to Comet. 
+        Initialize an Experiment (or OfflineExperiment if self.online=False) 
+        and start logging to Comet. 
 
         Args:
             trial: 
@@ -175,10 +176,14 @@ class CometLoggerCallback(LoggerCallback):
             if any(self._check_key_name(k, item) for item in self._to_other):
                 other_logs[k] = v
 
-            elif any(self._check_key_name(k, item) for item in self._to_system):
+            elif any(self._check_key_name(k, item) 
+                for item in self._to_system
+            ):
                 system_logs[k] = v
 
-            elif any(self._check_key_name(k, item) for item in self._to_episodes):
+            elif any(self._check_key_name(k, item) 
+                for item in self._to_episodes
+            ):
                 episode_logs[k] = v
 
             else:
