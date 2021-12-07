@@ -4,7 +4,7 @@ import unittest
 import pytest
 import ray
 from ray.rllib.agents import ppo, sac
-from ray.rllib.utils.exploration.random_encoder import RE3UpdateCallbacks
+from ray.rllib.agents.callbacks import RE3UpdateCallbacks
 
 
 class TestRE3(unittest.TestCase):
