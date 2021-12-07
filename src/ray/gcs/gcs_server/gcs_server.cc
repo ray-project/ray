@@ -407,6 +407,7 @@ void GcsServer::InitStatsHandler() {
 
 void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
+  // TODO (yic): Use a factory with configs
   if (RayConfig::instance().gcs_storage() == "redis") {
     instance = std::make_unique<RedisInternalKV>(redis_client_.get());
   } else if (RayConfig::instance().gcs_storage() == "memory") {
