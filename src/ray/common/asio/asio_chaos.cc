@@ -129,5 +129,7 @@ int64_t get_delay_us(const std::string &name) {
 }
 
 void init() { return _delay_manager.Init(); }  // namespace testing
+
+}  // namespace testing
 }  // namespace asio
 }  // namespace ray
