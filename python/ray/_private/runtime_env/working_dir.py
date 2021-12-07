@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
@@ -51,7 +52,7 @@ def upload_working_dir_if_needed(
             raise ValueError(f"directory {package_path} must be an existing "
                              "directory or a zip package")
 
-        unzip_package(package_path, working_dir, True, True, logger=logger)
+        unzip_package(package_path, working_dir, True, False, logger=logger)
         working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
 
     upload_package_if_needed(
