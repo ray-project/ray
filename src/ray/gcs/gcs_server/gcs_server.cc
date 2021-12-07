@@ -90,8 +90,13 @@ void GcsServer::Start() {
       std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
 
   // Init gcs table storage.
-  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
-
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
