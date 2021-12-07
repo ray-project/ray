@@ -79,10 +79,12 @@ def _import_aliyun(provider_config):
         AliyunNodeProvider
     return AliyunNodeProvider
 
+
 def _import_gen2(provider_config):
     from ray.autoscaler._private.gen2.node_provider import \
         Gen2NodeProvider
     return Gen2NodeProvider
+
 
 def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
