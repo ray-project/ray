@@ -74,16 +74,17 @@ int main(int argc, char *argv[]) {
     } else if (RayConfig::instance().gcs_storage() == "memory") {
       storage = std::make_unique<ray::gcs::InMemoryGcsTableStorage>(main_service);
     } else {
-      RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+      RAY_LOG(FATAL) << "Unsupported gcs storage: "
+                     << RayConfig::instance().gcs_storage();
     }
 
     // The internal_config is only set on the gcs--other nodes get it from GCS.
     auto work = std::make_unique<boost::asio::io_service::work>(main_service);
     auto on_done = [&work](const ray::Status &status) {
-                     RAY_CHECK(status.ok()) << "Failed to put internal config";
-                     work.reset();
-                     RAY_LOG(ERROR) << "INTERNAL SETTED";
-                   };
+      RAY_CHECK(status.ok()) << "Failed to put internal config";
+      work.reset();
+      RAY_LOG(ERROR) << "INTERNAL SETTED";
+    };
     ray::rpc::StoredConfig config;
     config.set_config(config_list);
     RAY_CHECK_OK(
