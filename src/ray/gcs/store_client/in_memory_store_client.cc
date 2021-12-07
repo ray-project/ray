@@ -21,7 +21,6 @@ namespace gcs {
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key, const std::string &data,
                                      const StatusCallback &callback) {
-  RAY_LOG(ERROR) << "PUT " << table_name << "\t" << key;
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
@@ -46,7 +45,6 @@ Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
 Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
                                      const std::string &key,
                                      const OptionalItemCallback<std::string> &callback) {
-  RAY_LOG(ERROR) << "GET " << table_name << "\t" << key;
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->records_.find(key);
