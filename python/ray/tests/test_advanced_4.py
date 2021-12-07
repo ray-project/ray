@@ -130,6 +130,7 @@ def test_back_pressure(shutdown_only_with_initialization_check):
 
     ray.shutdown()
 
+
 def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     ray.init(local_mode=True)
 
@@ -154,6 +155,7 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
     bar = Bar.remote()
     # Expect ping_actor call returns normally without deadlock.
     assert ray.get(foo.ping_actor.remote(bar)) == 3
+
 
 if __name__ == "__main__":
     import pytest
