@@ -133,13 +133,12 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
-                       const ProcessEnvironment &env) override {
+                       const ProcessEnvironment &env, StartupToken startup_token) override {
     // Use a bogus process ID that won't conflict with those in the system
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
-    last_worker_process_ = Process::FromPid(pid);
+    last_worker_process_ = Process::FromPidAndStartupToken(pid, startup_token);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
-    startup_tokens_by_proc_[last_worker_process_] =
-        WorkerPool::worker_startup_token_counter_;
+    startup_tokens_by_proc_[last_worker_process_] = startup_token;
     return last_worker_process_;
   }
 
@@ -219,7 +218,7 @@ class WorkerPoolMock : public WorkerPool {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         job_id, runtime_env_hash, WorkerID::FromRandom(), language, worker_type,
-        "127.0.0.1", client, client_call_manager_, worker_startup_token);
+        "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
@@ -733,9 +732,8 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   // Call `RegisterWorker` to emulate worker registration.
   for (const auto &process : started_processes) {
     auto worker = worker_pool_->CreateWorker(Process());
-    worker->SetStartupToken(worker_pool_->GetStartupToken(process));
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, process.GetId(), process.GetId(),
-                                              worker_pool_->GetStartupToken(process),
+                                              process.GetStartupToken(),
                                               [](Status, int) {}));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
     ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
@@ -1039,10 +1037,9 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
-    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
+                                              proc.GetStartupToken(),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1188,10 +1185,9 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
-    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
+                                              proc.GetStartupToken(),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1254,10 +1250,9 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
           language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
       for (int j = 0; j < workers_to_start; j++) {
         auto worker = worker_pool_->CreateWorker(Process(), language);
-        worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
         workers.push_back(worker);
         RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
-                                                  worker_pool_->GetStartupToken(proc),
+                                                  proc.GetStartupToken(),
                                                   [](Status, int) {}));
         worker_pool_->OnWorkerStarted(worker);
         ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
