@@ -264,26 +264,28 @@ class JsonReader(InputReader):
             raise ValueError("JSON record missing 'type' field")
 
         if data_type == "SampleBatch":
-            if len(self.ioctx.worker.policy_map) != 1:
+            if self.ioctx.worker is not None and \
+                    len(self.ioctx.worker.policy_map) != 1:
                 raise ValueError(
                     "Found single-agent SampleBatch in input file, but our "
                     "PolicyMap contains more than 1 policy!")
-            policy = next(iter(self.ioctx.worker.policy_map.values()))
             for k, v in json_data.items():
                 json_data[k] = unpack_if_needed(v)
-            policy_json_data = self._adjust_obs_actions_for_policy(
-                json_data, policy)
-            return SampleBatch(policy_json_data)
+            if self.ioctx.worker is not None:
+                policy = next(iter(self.ioctx.worker.policy_map.values()))
+                json_data = self._adjust_obs_actions_for_policy(
+                    json_data, policy)
+            return SampleBatch(json_data)
         elif data_type == "MultiAgentBatch":
             policy_batches = {}
             for policy_id, policy_batch in json_data["policy_batches"].items():
-                policy = self.ioctx.worker.policy_map[policy_id]
                 inner = {}
                 for k, v in policy_batch.items():
                     inner[k] = unpack_if_needed(v)
-                policy_json_data = self._adjust_obs_actions_for_policy(
-                    inner, policy)
-                policy_batches[policy_id] = SampleBatch(policy_json_data)
+                if self.ioctx.worker is not None:
+                    policy = self.ioctx.worker.policy_map[policy_id]
+                    inner = self._adjust_obs_actions_for_policy(inner, policy)
+                policy_batches[policy_id] = SampleBatch(inner)
             return MultiAgentBatch(policy_batches, json_data["count"])
         else:
             raise ValueError(
@@ -301,14 +303,13 @@ class JsonReader(InputReader):
         Providing nested lists w/o this preprocessing step would
         confuse a SampleBatch constructor.
         """
-        policy_json_data = {}
         for k, v in policy.view_requirements.items():
             if k not in json_data:
                 continue
             if policy.config["_disable_action_flattening"] and \
                     (k == SampleBatch.ACTIONS or
                      v.data_col == SampleBatch.ACTIONS):
-                policy_json_data[k] = tree.map_structure_up_to(
+                json_data[k] = tree.map_structure_up_to(
                     policy.action_space_struct,
                     lambda comp: np.array(comp),
                     json_data[k],
@@ -317,12 +318,10 @@ class JsonReader(InputReader):
             elif policy.config["_disable_preprocessor_api"] and \
                     (k == SampleBatch.OBS or
                      v.data_col == SampleBatch.OBS):
-                policy_json_data[k] = tree.map_structure_up_to(
+                json_data[k] = tree.map_structure_up_to(
                     policy.observation_space_struct,
                     lambda comp: np.array(comp),
                     json_data[k],
                     check_types=False,
                 )
-            else:
-                policy_json_data[k] = json_data[k]
-        return policy_json_data
+        return json_data
