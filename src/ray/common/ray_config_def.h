@@ -246,7 +246,7 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
-/// Number of internal kv thread pool
+/// Number of threads for the GCS internal kv service.
 RAY_CONFIG(uint32_t, gcs_internal_kv_thread_num, 4);
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
