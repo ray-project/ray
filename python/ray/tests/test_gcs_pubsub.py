@@ -179,7 +179,7 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
         }
     }],
     indirect=True)
-def test_subscribe_two_channels(ray_start_regular):
+def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
     address_info = ray_start_regular
@@ -192,25 +192,27 @@ def test_subscribe_two_channels(ray_start_regular):
     num_messages = 100
 
     errors = []
+    error_subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    # Make sure subscription is registered before publishing starts.
+    error_subscriber.subscribe()
 
     def receive_errors():
-        subscriber = GcsErrorSubscriber(address=gcs_server_addr)
-        subscriber.subscribe()
         while len(errors) < num_messages:
-            _, msg = subscriber.poll()
+            _, msg = error_subscriber.poll()
             errors.append(msg)
-
-    logs = []
-
-    def receive_logs():
-        subscriber = GcsLogSubscriber(address=gcs_server_addr)
-        subscriber.subscribe()
-        while len(logs) < num_messages:
-            log_batch = subscriber.poll()
-            logs.append(log_batch)
 
     t1 = threading.Thread(target=receive_errors)
     t1.start()
+
+    logs = []
+    log_subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    # Make sure subscription is registered before publishing starts.
+    log_subscriber.subscribe()
+
+    def receive_logs():
+        while len(logs) < num_messages:
+            log_batch = log_subscriber.poll()
+            logs.append(log_batch)
 
     t2 = threading.Thread(target=receive_logs)
     t2.start()
@@ -224,22 +226,22 @@ def test_subscribe_two_channels(ray_start_regular):
             "pid": "gcs",
             "job": "0001",
             "is_err": False,
-            "lines": [f"line {i}"],
+            "lines": [f"log {i}"],
             "actor_name": "test actor",
             "task_name": "test task",
         })
 
     t1.join(timeout=10)
-    assert not t1.is_alive(), len(errors)
-    assert len(errors) == num_messages, len(errors)
+    assert len(errors) == num_messages, str(errors)
+    assert not t1.is_alive(), str(errors)
 
     t2.join(timeout=10)
-    assert not t2.is_alive(), len(logs)
-    assert len(logs) == num_messages, len(logs)
+    assert len(logs) == num_messages, str(logs)
+    assert not t2.is_alive(), str(logs)
 
     for i in range(0, num_messages):
-        assert errors[i].error_message == f"error {i}"
-        assert logs[i]["lines"][0] == f"line {i}"
+        assert errors[i].error_message == f"error {i}", str(errors)
+        assert logs[i]["lines"][0] == f"log {i}", str(logs)
 
 
 if __name__ == "__main__":
