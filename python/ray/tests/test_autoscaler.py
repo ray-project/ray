@@ -1287,7 +1287,7 @@ class AutoscalingTest(unittest.TestCase):
             summary = autoscaler.event_summarizer.summary()
             return (msg1 in summary) and (msg2 in summary)
 
-        self.waitFor(expected_messages_logged)
+        self.waitFor(expected_messages_logged, num_retries=500)
 
     def testReadonlyNodeProvider(self):
         config = copy.deepcopy(SMALL_CLUSTER)
