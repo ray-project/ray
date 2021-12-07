@@ -263,6 +263,7 @@ class DynamicTFPolicy(TFPolicy):
         sampled_action = None
         sampled_action_logp = None
         dist_inputs = None
+        extra_action_fetches = {}
         self._state_out = None
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
@@ -325,10 +326,9 @@ class DynamicTFPolicy(TFPolicy):
                 else:
                     if isinstance(self.model, tf.keras.Model):
                         dist_inputs, self._state_out, \
-                            self._extra_action_fetches = \
+                            extra_action_fetches = \
                             self.model(self._input_dict)
                     else:
-
                         dist_inputs, self._state_out = self.model(
                             self._input_dict)
 
@@ -340,6 +340,14 @@ class DynamicTFPolicy(TFPolicy):
                         action_distribution=action_dist,
                         timestep=timestep,
                         explore=explore)
+
+        if dist_inputs is not None:
+            extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        if sampled_action_logp is not None:
+            extra_action_fetches[SampleBatch.ACTION_LOGP] = sampled_action_logp
+            extra_action_fetches[SampleBatch.ACTION_PROB] = \
+                tf.exp(tf.cast(sampled_action_logp, tf.float32))
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session(
@@ -383,6 +391,10 @@ class DynamicTFPolicy(TFPolicy):
         # Phase 2 init.
         if before_loss_init is not None:
             before_loss_init(self, obs_space, action_space, config)
+        if hasattr(self, "_extra_action_fetches"):
+            self._extra_action_fetches.update(extra_action_fetches)
+        else:
+            self._extra_action_fetches = extra_action_fetches
 
         # Loss initialization and model/postprocessing test calls.
         if not self._is_tower:
