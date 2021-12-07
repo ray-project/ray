@@ -8,7 +8,8 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
     BlockPartition, BlockPartitionMetadata, MaybeBlockPartition
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow, DelegatingArrowBlockBuilder
+from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
 from ray.util.annotations import DeveloperAPI
 
@@ -136,7 +137,7 @@ class ReadTask(Callable[[], BlockPartition]):
                 raise ValueError("Read task must return non-empty list.")
             return partition
         else:
-            builder = DelegatingArrowBlockBuilder()
+            builder = DelegatingBlockBuilder()
             for block in result:
                 builder.add_block(block)
             return builder.build()

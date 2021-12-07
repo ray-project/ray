@@ -42,7 +42,8 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.table_block import DelegatingBlockBuilder, TableRow
+from ray.data.impl.table_block import TableRow
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -226,10 +227,10 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
+                if isinstance(applied, list) \
+                    or isinstance(applied, pa.Table) \
+                    or isinstance(applied, pd.core.frame.DataFrame):
                     applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
                 else:
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "

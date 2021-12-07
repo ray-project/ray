@@ -51,51 +51,6 @@ class TableRow:
         raise NotImplementedError
 
 
-class DelegatingBlockBuilder(BlockBuilder[T]):
-    def __init__(self):
-        self._builder = None
-
-    def add(self, item: Any) -> None:
-        from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
-        from ray.data.impl.pandas_block import PandasRow, PandasBlockBuilder
-        import pyarrow
-
-        if self._builder is None:
-            # TODO (kfstorm): Maybe we can use Pandas block format for dict.
-            if isinstance(item, dict) or isinstance(item, ArrowRow):
-                try:
-                    check = ArrowBlockBuilder()
-                    check.add(item)
-                    check.build()
-                    self._builder = ArrowBlockBuilder()
-                except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = SimpleBlockBuilder()
-            elif isinstance(item, PandasRow):
-                self._builder = PandasBlockBuilder()
-            else:
-                self._builder = SimpleBlockBuilder()
-        self._builder.add(item)
-
-    def add_block(self, block: Block) -> None:
-        if self._builder is None:
-            self._builder = BlockAccessor.for_block(block).builder()
-        self._builder.add_block(block)
-
-    def build(self) -> Block:
-        if self._builder is None:
-            from ray.data.impl.arrow_block import ArrowBlockBuilder
-            self._builder = ArrowBlockBuilder()
-        return self._builder.build()
-
-    def num_rows(self) -> int:
-        return self._builder.num_rows() if self._builder is not None else 0
-
-    def get_estimated_memory_usage(self) -> int:
-        if self._builder is None:
-            return 0
-        return self._builder.get_estimated_memory_usage()
-
-
 class TableBlockBuilder(BlockBuilder[T]):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.

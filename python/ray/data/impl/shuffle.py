@@ -8,7 +8,7 @@ import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _get_spread_resources_iter
 

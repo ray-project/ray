@@ -2,7 +2,6 @@ from typing import Optional
 import threading
 
 import ray
-from ray.ray_constants import env_bool
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
@@ -16,7 +15,7 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 2048 * 1024 * 1024
 DEFAULT_BLOCK_SPLITTING_ENABLED = False
 
 # Whether pandas block format is enabled.
-DEFAULT_ENABLE_PANDAS_BLOCK = env_bool("RAY_DATA_PANDAS_BLOCK_FORMAT", True)
+DEFAULT_ENABLE_PANDAS_BLOCK = True
 
 
 @DeveloperAPI

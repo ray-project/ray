@@ -1,7 +1,7 @@
 from typing import Callable, Any, Optional
 
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 
 class BlockOutputBuffer(object):
@@ -29,7 +29,6 @@ class BlockOutputBuffer(object):
 
     def __init__(self, block_udf: Optional[Callable[[Block], Block]],
                  target_max_block_size: int):
-        from ray.data.impl.table_block import DelegatingBlockBuilder
         self._target_max_block_size = target_max_block_size
         self._block_udf = block_udf
         self._buffer = DelegatingBlockBuilder()

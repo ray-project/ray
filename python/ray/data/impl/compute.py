@@ -3,7 +3,7 @@ from typing import TypeVar, Any, Union, Callable, List, Tuple
 import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockPartition
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -37,7 +37,7 @@ def _map_block_split(block: Block, fn: Any,
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
-    builder = DelegatingArrowBlockBuilder()
+    builder = DelegatingBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()

@@ -22,7 +22,7 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
     NumpyDatasource, ReadTask
-from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartitionMetadata

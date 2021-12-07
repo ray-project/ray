@@ -1,7 +1,7 @@
 from typing import Optional
 
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 
 class Batcher:
