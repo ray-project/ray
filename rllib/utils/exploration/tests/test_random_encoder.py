@@ -1,6 +1,5 @@
 import sys
 import unittest
-from parameterized import parameterized
 
 import pytest
 import ray
@@ -19,8 +18,7 @@ class TestRE3(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    @parameterized.expand(["PPO", "SAC"])
-    def test_re3(self, rl_algorithm):
+    def run_re3(self, rl_algorithm):
         """Tests RE3 for PPO and SAC.
 
         Both the on-policy and off-policy setups are validated.
@@ -61,6 +59,14 @@ class TestRE3(unittest.TestCase):
                 break
         trainer.stop()
         self.assertTrue(learnt)
+
+    def test_re3_ppo(self):
+        """Tests RE3 with PPO."""
+        self.run_re3("PPO")
+
+    def test_re3_sac(self):
+        """Tests RE3 with SAC."""
+        self.run_re3("SAC")
 
 
 if __name__ == "__main__":
