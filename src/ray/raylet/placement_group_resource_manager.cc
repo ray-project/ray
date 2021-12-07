@@ -69,7 +69,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
   }
   if (preparing_bundles.size() == 0) {
     RAY_LOG(DEBUG)
-        << "All bundles have been prepared successfully before, will return directly";
+        << "All bundles have been already prepared. Do nothing.";
     return true;
   }
 
@@ -79,8 +79,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
     bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
         bundle_spec->GetRequiredResources().GetResourceMap(), resource_instances);
     if (!allocated) {
-      // Terminated the preparation phase and return bundles that have been successfully
-      // prepared before directly once we found one request resource failed bundle.
+      // Terminate the preparation phase if any of bundle cannot be prepared.
       break;
     }
 

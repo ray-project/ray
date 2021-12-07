@@ -197,8 +197,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     PrepareResources(bundles, gcs_node_manager_.GetAliveNode(node_id),
                      [this, bundles, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
-                       lease_status_tracker->MarkPrepareRequestReturned(node_id, bundles,
+                       for (const auto& bundle: bundles) {
+                         lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
                                                                         status);
+                       }
+                       
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
                          OnAllBundlePrepareRequestReturned(
                              lease_status_tracker, failure_callback, success_callback);
@@ -241,25 +244,21 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-  if (RAY_LOG_ENABLED(DEBUG)) {
     RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
-                   << " for bundles: " << GenDebugInfoForBundles(bundles);
-  }
+                   << " for bundles: " << GetDebugStringForBundles(bundles);
 
   lease_client->PrepareBundleResources(
       bundles, [node_id, bundles, callback](
                    const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
-        if (RAY_LOG_ENABLED(DEBUG)) {
           if (result.ok()) {
             RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                           << " for bundles: " << GenDebugInfoForBundles(bundles);
+                           << " for bundles: " << GetDebugStringForBundles(bundles);
           } else {
             RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                           << " for bundles: " << GenDebugInfoForBundles(bundles);
+                           << " for bundles: " << GetDebugStringForBundles(bundles);
           }
-        }
         callback(result);
       });
 }
@@ -735,31 +734,27 @@ void LeaseStatusTracker::MarkPreparePhaseStarted(
 }
 
 void LeaseStatusTracker::MarkPrepareRequestReturned(
-    const NodeID &node_id,
-    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   RAY_CHECK(prepare_request_returned_count_ <= bundles_to_schedule_.size());
   auto leasing_bundles = node_to_bundles_when_preparing_.find(node_id);
   RAY_CHECK(leasing_bundles != node_to_bundles_when_preparing_.end());
+  auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
+  RAY_CHECK(bundle_iter != leasing_bundles->second.end());
 
-  for (const auto &bundle : bundles) {
-    auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
-    RAY_CHECK(bundle_iter != leasing_bundles->second.end());
-
-    // Remove the bundle from the leasing map as the reply is returned from the
-    // remote node.
-    leasing_bundles->second.erase(bundle_iter);
-    if (leasing_bundles->second.empty()) {
-      node_to_bundles_when_preparing_.erase(leasing_bundles);
-    }
-
-    // If the request succeeds, record it.
-    const auto &bundle_id = bundle->BundleId();
-    if (status.ok()) {
-      preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-    }
+  // Remove the bundle from the leasing map as the reply is returned from the
+  // remote node.
+  leasing_bundles->second.erase(bundle_iter);
+  if (leasing_bundles->second.empty()) {
+    node_to_bundles_when_preparing_.erase(leasing_bundles);
   }
-  prepare_request_returned_count_ += bundles.size();
+
+  // If the request succeeds, record it.
+  const auto &bundle_id = bundle->BundleId();
+  if (status.ok()) {
+    preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+  }
+  prepare_request_returned_count_ += 1;
 }
 
 bool LeaseStatusTracker::AllPrepareRequestsReturned() const {

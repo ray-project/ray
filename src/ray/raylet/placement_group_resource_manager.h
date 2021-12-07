@@ -54,6 +54,7 @@ class PlacementGroupResourceManager {
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
   /// \param bundle_specs: Specification of bundle whose resources will be prepared.
+  /// \return bool: True if all bundles successfully reserved resources, otherwise false.
   virtual bool PrepareBundles(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
