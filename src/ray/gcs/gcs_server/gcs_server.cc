@@ -403,11 +403,9 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  RedisClientOptions redis_client_options(
-      config_.redis_address,
-      config_.redis_port,
-      config_.redis_password,
-      config_.enable_sharding_conn);
+  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
+                                          config_.redis_password,
+                                          config_.enable_sharding_conn);
   kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_options);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(kv_manager_->GetEventLoop(),
                                                              *kv_manager_);

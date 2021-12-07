@@ -17,7 +17,7 @@
 namespace ray {
 namespace gcs {
 
-GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions& redis_options)
+GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_options)
     : work_(io_service_) {
   for (uint32_t i = 0; i < RayConfig::instance().gcs_internal_kv_thread_num(); ++i) {
     auto cb = [this] {

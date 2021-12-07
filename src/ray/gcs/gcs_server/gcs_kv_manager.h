@@ -25,7 +25,7 @@ namespace gcs {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(const RedisClientOptions& redis_options);
+  explicit GcsInternalKVManager(const RedisClientOptions &redis_options);
 
   void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
                            rpc::InternalKVGetReply *reply,
