@@ -5,41 +5,48 @@ import tempfile
 
 import pytest
 
+import ray
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
 from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
                                            parse_cluster_info)
+from unittest.mock import patch
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client():
+def headers():
+    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers):
     with _ray_start(include_dashboard=True, num_cpus=1) as address_info:
         address = address_info["webui_url"]
         assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address))
+        yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
+    if status.status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.FAILED
+    return status.status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.STOPPED
+    return status.status == JobStatus.STOPPED
 
 
 @pytest.fixture(
@@ -67,7 +74,7 @@ def working_dir_option(request):
             test_file = module_path / "test.py"
             with test_file.open(mode="w") as f:
                 f.write("def run_test():\n")
-                f.write("    return 'Hello from test_module!'\n")
+                f.write("    return 'Hello from test_module!'\n")  # noqa: Q000
 
             init_file = module_path / "__init__.py"
             with init_file.open(mode="w") as f:
@@ -122,12 +129,26 @@ def test_http_bad_request(job_sdk_client):
     assert r.status_code == 400
     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
 
-    # 500 - HTTPInternalServerError
-    with pytest.raises(
-            RuntimeError, match="Only .zip files supported for remote URIs"):
-        r = client.submit_job(
-            entrypoint="echo hello",
-            runtime_env={"working_dir": "s3://does_not_exist"})
+
+def test_invalid_runtime_env(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "Only .zip files supported for remote URIs" in status.message
+
+
+def test_runtime_env_setup_failure(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        runtime_env={"working_dir": "s3://does_not_exist.zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "The runtime_env failed to be set up" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -202,6 +223,7 @@ def test_job_metadata(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     assert str({
+        "job_name": job_id,
         "job_submission_id": job_id,
         "key1": "val1",
         "key2": "val2"
@@ -257,6 +279,39 @@ def test_missing_resources(job_sdk_client):
         assert client._do_request(method, route).status_code == 404
 
 
+def test_version_endpoint(job_sdk_client):
+    client = job_sdk_client
+
+    r = client._do_request("GET", "/api/version")
+    assert r.status_code == 200
+    assert r.json() == {
+        "version": CURRENT_VERSION,
+        "ray_version": ray.__version__,
+        "ray_commit": ray.__commit__
+    }
+
+
+def test_request_headers(job_sdk_client):
+    client = job_sdk_client
+
+    with patch("requests.request") as mock_request:
+        _ = client._do_request(
+            "POST",
+            "/api/jobs/",
+            json_data={"entrypoint": "ls"},
+        )
+        mock_request.assert_called_with(
+            "POST",
+            "http://127.0.0.1:8265/api/jobs/",
+            cookies=None,
+            data=None,
+            json={"entrypoint": "ls"},
+            headers={
+                "Connection": "keep-alive",
+                "Authorization": "TOK:<MY_TOKEN>"
+            })
+
+
 @pytest.mark.parametrize("address", [
     "http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1",
     "fake_module://127.0.0.1"
@@ -266,10 +321,11 @@ def test_parse_cluster_info(address: str):
         assert parse_cluster_info(address, False) == ClusterInfo(
             address="http" + address[address.index("://"):],
             cookies=None,
-            metadata=None)
+            metadata=None,
+            headers=None)
     elif address.startswith("http") or address.startswith("https"):
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None)
+            address=address, cookies=None, metadata=None, headers=None)
     else:
         with pytest.raises(RuntimeError):
             parse_cluster_info(address, False)

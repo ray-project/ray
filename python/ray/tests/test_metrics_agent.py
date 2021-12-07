@@ -4,7 +4,6 @@ import platform
 from pprint import pformat
 import sys
 import os
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,7 +14,7 @@ from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
 from ray._private.test_utils import (wait_for_condition, SignalActor,
-                                     fetch_prometheus)
+                                     fetch_prometheus, get_log_batch)
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -79,7 +78,7 @@ _AUTOSCALER_METRICS = [
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
     "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
-    "autoscaler_drain_node_exceptions"
+    "autoscaler_drain_node_exceptions", "autoscaler_update_time"
 ]
 
 
@@ -391,18 +390,12 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     ray.get(override.remote())
 
     # Check the stderr from the worker.
-    start = time.time()
-    while True:
-        if (time.time() - start) > 5:
-            break
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
+    def matcher(log_batch):
+        return any("Attempt to register measure" in line
+                   for line in log_batch["lines"])
 
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        for line in log_lines:
-            assert "Attempt to register measure" not in line
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) == 0, match
 
 
 def test_custom_metrics_validation(ray_start_regular_shared):
