@@ -6,13 +6,53 @@ from ray.tune.utils import flatten_dict
 
 
 def _import_comet():
+    """Try importing comet_ml.
+    
+    Used to check if comet_ml is installed and, otherwise, pass an informative error message.
+    """
     try:
         import comet_ml
     except ImportError:
-        raise RuntimeError("pip install 'comet-ml' to use " "CometLoggerCallback")
+        raise RuntimeError("pip install 'comet-ml' to use CometLoggerCallback")
 
 
 class CometLoggerCallback(LoggerCallback):
+    """CometLoggerCallback for logging Tune results to Comet. 
+
+    Comet (https://comet.ml) is {}. This Ray Tune ``LoggerCallback`` sends
+    metrics and parameters to Comet for tracking. 
+
+    Args:
+            online (bool, optional): Whether to make use of an Online or Offline
+                Experiment. Defaults to True.
+            tags (List[str], optional): Tags to add to the logged Experiment.
+                Defaults to None.
+            **experiment_kwargs: Other keyword arguments will be passed to the
+                constructor for comet_ml.Experiment (or OfflineExperiment if 
+                online=False).
+            
+
+    Please consult the Comet ML documentation for more information on the
+    Experiment and OfflineExperiment classes: https://comet.ml/
+
+
+    Example:
+
+    .. code-block:: python
+
+        from ray.tune.integration.comet import CometLoggerCallback
+        tune.run(
+            train,
+            config=config
+            callbacks=[CometLoggerCallback(
+                True,
+                ['tag1', 'tag2'],
+                workspace='my_workspace',
+                project_name='my_project_name'
+                )]
+        )
+    
+    """
     # Do not enable these auto log options unless overridden
     _exclude_autolog = [
         "auto_output_logging",
@@ -31,7 +71,10 @@ class CometLoggerCallback(LoggerCallback):
     # These values should be logged as "Other" instead of as metrics.
     _other_results = ["trial_id", "experiment_id", "experiment_tag"]
 
-    _episode_results = ["hist_stats/episode_reward", "hist_stats/episode_lengths"]
+    _episode_results = [
+        "hist_stats/episode_reward",
+        "hist_stats/episode_lengths"
+        ]
 
     def __init__(
         self, online: bool = True, tags: List[str] = None, **experiment_kwargs
@@ -39,8 +82,8 @@ class CometLoggerCallback(LoggerCallback):
         """[summary]
 
         Args:
-            online (bool, optional): Whether to make use of an Online or Offline Experiment.
-                Defaults to True.
+            online (bool, optional): Whether to make use of an Online or
+                Offline Experiment. Defaults to True.
             tags (List[str], optional): Tags to add to the logged Experiment.
                 Defaults to None.
         """
@@ -48,15 +91,16 @@ class CometLoggerCallback(LoggerCallback):
         self.online = online
         self.tags = tags
         self.experiment_kwargs = experiment_kwargs
+        # Disable the specific autologging features that cause throttling.
         self._configure_experiment_defaults()
 
         # Mapping from trial to experiment object.
         self._trial_experiments = {}
 
-        self._to_exclude = self._exclude_results
-        self._to_system = self._system_results
-        self._to_other = self._other_results
-        self._to_episodes = self._episode_results
+        self._to_exclude = self._exclude_results.copy()
+        self._to_system = self._system_results.copy()
+        self._to_other = self._other_results.copy()
+        self._to_episodes = self._episode_results.copy()
 
     def _configure_experiment_defaults(self):
         """Disable the specific autologging features that cause throttling."""
@@ -65,18 +109,31 @@ class CometLoggerCallback(LoggerCallback):
                 self.experiment_kwargs[option] = False
 
     def _check_key_name(self, key: str, item: str) -> bool:
+        """
+        Check if key argument is equal to item argument or starts with item and
+        a forward slash. Used for parsing trial result dictionary into ignored
+        keys, system metrics, episode logs, etc. 
+        """
         return key.startswith(item + "/") or key == item
 
     def log_trial_start(self, trial: "Trial"):
-        import comet_ml
-        from comet_ml import Experiment, OfflineExperiment
+        """
+        Initialize an Experiment (or OfflineExperiment if self.online=False) and
+        start logging to Comet. 
 
+        Args:
+            trial: 
+
+        """
+        _import_comet() # is this necessary? 
+        from comet_ml import Experiment, OfflineExperiment
+        from comet_ml.config import set_global_experiment
         if trial not in self._trial_experiments:
             experiment_cls = Experiment if self.online else OfflineExperiment
             experiment = experiment_cls(**self.experiment_kwargs)
             self._trial_experiments[trial] = experiment
             # Set global experiment to None to allow for multiple experiments.
-            comet_ml.config.set_global_experiment(None)
+            set_global_experiment(None)
         else:
             experiment = self._trial_experiments[trial]
 
@@ -88,6 +145,9 @@ class CometLoggerCallback(LoggerCallback):
         experiment.log_parameters(config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        """
+        Log the current result of a Trial upon each iteration.
+        """
         if trial not in self._trial_experiments:
             self.log_trial_start(trial)
         experiment = self._trial_experiments[trial]
