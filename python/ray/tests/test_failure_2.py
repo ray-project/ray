@@ -39,7 +39,7 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
     # This actor placement task is infeasible.
-    Foo.remote()
+    foo = Foo.remote()
     errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
