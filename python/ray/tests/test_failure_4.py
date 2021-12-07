@@ -1,4 +1,5 @@
 import sys
+import time
 
 import ray
 
@@ -17,6 +18,8 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      run_string_as_driver, wait_for_condition)
+from ray.exceptions import LocalRayletDiedError
+import ray.experimental.internal_kv as internal_kv
 
 
 def search_raylet(cluster):
@@ -431,6 +434,35 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     a = A.options(num_cpus=0).remote()
     ray.get(a.ready.remote())
+
+
+def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, resources={"foo": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"foo": 1})
+    def func():
+        internal_kv._internal_kv_put("test_func", "func")
+        while True:
+            time.sleep(1)
+
+    func.remote()
+    while not internal_kv._internal_kv_exists("test_func"):
+        time.sleep(0.1)
+
+    # The lease request should wait inside raylet
+    # since there is no available resources.
+    ret = func.remote()
+    # Waiting for the lease request to reach raylet.
+    time.sleep(1)
+    raylets = search_raylet(cluster)
+    assert len(raylets) == 1
+    raylet = raylets[0]
+    raylet.kill()
+    with pytest.raises(LocalRayletDiedError):
+        ray.get(ret)
 
 
 if __name__ == "__main__":

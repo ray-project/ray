@@ -244,7 +244,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const NodeID local_raylet_id_;
 
-  /// The type of this core worker process
+  /// The type of this core worker process.
   const WorkerType worker_type_;
 
   /// Interface for actor creation.
