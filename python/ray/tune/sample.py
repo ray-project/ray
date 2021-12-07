@@ -30,26 +30,27 @@ class _BackwardsCompatibleNumpyRng:
                  generator_or_seed: Optional[Union[
                      "random_generator", np.random.RandomState, int]] = None):
         if generator_or_seed is None:
-            self.legacy_rng = True
             self.rng = np.random
             return
         if isinstance(generator_or_seed, np.random.RandomState):
-            self.legacy_rng = True
             self.rng = generator_or_seed
             return
         if isinstance(generator_or_seed, random_generator):
-            self.legacy_rng = False
             self.rng = generator_or_seed
             return
         if LEGACY_RNG:
-            self.legacy_rng = True
             self.rng = np.random.RandomState(generator_or_seed)
         else:
-            self.legacy_rng = False
             self.rng = np.random.default_rng(generator_or_seed)
+
+    @property
+    def legacy_rng(self) -> bool:
+        return not isinstance(self.rng, random_generator)
 
     def __getattr__(self, name: str) -> Any:
         # https://numpy.org/doc/stable/reference/random/new-or-different.html
+        if name in ("legacy_rng", "rng"):
+            return self.__dict__[name]
         if self.legacy_rng:
             if name == "integers":
                 name = "randint"
