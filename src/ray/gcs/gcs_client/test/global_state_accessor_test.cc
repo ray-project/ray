@@ -298,6 +298,24 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
+TEST_F(GlobalStateAccessorTest, TestGetSystemConfig) {
+  // OK request
+  ASSERT_TRUE(global_state_->GetSystemConfig().first);
+  ASSERT_TRUE(global_state_->GetSystemConfig().second.empty());
+  // Failed request
+  RAY_LOG(INFO) << "Start testing failure";
+  gcs_server_->Stop();
+  io_service_->stop();
+  thread_io_service_->join();
+  gcs_server_.reset();
+  TestSetupUtil::FlushAllRedisServers();
+  TestSetupUtil::ShutDownRedisServers();
+
+  auto res_pair = global_state_->GetSystemConfig();
+  ASSERT_FALSE(res_pair.first);
+  ASSERT_TRUE(res_pair.second.empty());
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
