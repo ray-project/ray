@@ -258,7 +258,7 @@ class BaseEnv:
         return self._space_contains(self.action_space, x)
 
     @staticmethod
-    def _space_contains(space, x: MultiEnvDict) -> bool:
+    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
         # this removes the agent_id key and inner dicts
         # in MultiEnvDicts
         flattened_obs = {

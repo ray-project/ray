@@ -270,18 +270,8 @@ class VectorEnvWrapper(BaseEnv):
         self.cur_rewards = [None for _ in range(self.num_envs)]
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
-
-        obs_space = {
-            _id: env.observation_space
-            for _id, env in enumerate(self.vector_env.get_sub_environments())
-        }
-
-        act_space = {
-            _id: env.action_space
-            for _id, env in enumerate(self.vector_env.get_sub_environments())
-        }
-        self._observation_space = gym.spaces.Dict(obs_space)
-        self._action_space = gym.spaces.Dict(act_space)
+        self._observation_space = vector_env.observation_space
+        self._action_space = vector_env.action_space
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
@@ -349,3 +339,17 @@ class VectorEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
+
+    @staticmethod
+    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if
+
+        Note: With vector envs, we can process the raw observations
+            and ignore the agent ids and env ids, since vector envs'
+            sub environements are guaranteed to be the same
+        """
+        for _, multi_agent_dict in x.items():
+            for _, element in multi_agent_dict.items():
+                if not space.contains(element):
+                    return False
+        return True
