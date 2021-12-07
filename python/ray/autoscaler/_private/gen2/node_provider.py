@@ -73,13 +73,13 @@ class Gen2NodeProvider(NodeProvider):
 
     Currently this provider backend doesn't support atomic operation for VSI
     provisioning and tagging. As well, due to existing backend limitations
-    that soon to be fixed, tagging results in some edge cases may be determined
-    not correctly. This provider temporary overcomes this issue with retry logic
-    implemented in non_terminated_nodes
+    that soon to be fixed, tagging results in some cases may be determined
+    not correctly. This provider temporary overcomes this issue with retry
+    logic implemented in non_terminated_nodes.
 
-    In order to communicate with head node from outside cluster private network,
-    using provider `use_hybrid_ips` flag cluster head node may be provisioned
-    with floating (external) ip while the rest of worker nodes will be allocated
+    To communicate with head node from outside cluster private network, using
+    provider `use_hybrid_ips` flag cluster head node may be provisioned
+    with floating (external) ip and the rest of worker nodes will be allocated
     only private ips. 
     """
 
@@ -120,7 +120,7 @@ class Gen2NodeProvider(NodeProvider):
                 result = func(*args, **kwargs)
                 logger.info(
                     f"Leave {name} from {inspect.stack()[1][3]} with result {result}, entered with args: {args}")
-            except:
+            except Exception:
                 cli_logger.error(f"Error in {name}")
                 raise
             return result
@@ -764,7 +764,7 @@ class Gen2NodeProvider(NodeProvider):
             try:
                 node = self._get_node(resource_id)
                 floating_ips = node.get("floating_ips", [])
-            except:
+            except Exception:
                 pass
 
             self.ibm_vpc_client.delete_instance(resource_id)
