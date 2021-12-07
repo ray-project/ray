@@ -385,8 +385,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void TryKillingIdleWorkers();
 
  protected:
-  void update_worker_startup_token_counter();
-
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -422,9 +420,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param worker_command_args The command arguments of new worker process.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
+  /// \param[in] startup_token The StartupToken to assign to the process
   /// \return An object representing the started worker process.
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env);
+                               const ProcessEnvironment &env, StartupToken startup_token);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -433,11 +432,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
-
-  /// Gloabl startup token variable. Incremented once assigned
-  /// to a worker process and is added to
-  /// state.starting_worker_processes.
-  StartupToken worker_startup_token_counter_;
 
   struct IOWorkerState {
     /// The pool of idle I/O workers.

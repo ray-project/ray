@@ -56,8 +56,9 @@ class ProcessFD;
 class Process {
  protected:
   std::shared_ptr<ProcessFD> p_;
+  StartupToken startup_token_;
 
-  explicit Process(pid_t pid);
+  explicit Process(pid_t pid, StartupToken startup_token);
 
  public:
   ~Process();
@@ -74,16 +75,18 @@ class Process {
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
   explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false, const ProcessEnvironment &env = {});
+                   bool decouple = false, const ProcessEnvironment &env = {},
+                   StartupToken startup_token = -1);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
   static Process CreateNewDummy();
-  static Process FromPid(pid_t pid);
+  static Process FromPidAndStartupToken(pid_t pid, StartupToken startup_token);
   pid_t GetId() const;
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
   const void *Get() const;
+  StartupToken GetStartupToken() const;
   bool IsNull() const;
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
@@ -107,6 +110,11 @@ pid_t GetPID();
 bool IsParentProcessAlive();
 
 bool IsProcessAlive(pid_t pid);
+
+/// Gloabl startup token variable. Every call increments it by one.
+/// Used as a process identifier, espcecially in worker_pool.cc
+/// state.starting_worker_processes
+StartupToken GetNewStartupToken();
 
 }  // namespace ray
 

@@ -49,8 +49,6 @@ class WorkerInterface {
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
-  /// Return the worker process's startup token
-  virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
   /// Return the worker shim process.
   virtual Process GetShimProcess() const = 0;
@@ -110,8 +108,6 @@ class WorkerInterface {
   virtual bool IsAvailableForScheduling() const = 0;
 
  protected:
-  virtual void SetStartupToken(StartupToken startup_token) = 0;
-
   FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
@@ -129,7 +125,8 @@ class Worker : public WorkerInterface {
   Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
          const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
+         // rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
+         rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   rpc::WorkerType GetWorkerType() const;
@@ -142,8 +139,6 @@ class Worker : public WorkerInterface {
   WorkerID WorkerId() const;
   /// Return the worker process.
   Process GetProcess() const;
-  /// Return the worker process's startup token
-  StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
   /// Return this worker shim process.
   Process GetShimProcess() const;
@@ -218,18 +213,13 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
- protected:
-  void SetStartupToken(StartupToken startup_token);
-
  private:
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
-  /// The worker's process's startup_token
-  StartupToken startup_token_;
   /// The worker's shim process. The shim process PID is the same with worker process PID,
-  /// except starting worker process in container.
+  /// except starting worker process in container and on windows.
   Process shim_proc_;
   /// The language type of this worker.
   Language language_;

@@ -182,7 +182,9 @@ void KillProcessBySocketName(std::string socket_name) {
     pid_t pid = -1;
     pidfile >> pid;
     RAY_CHECK(pid != -1);
-    Process::FromPid(pid).Kill();
+    // The startup_token is not going to be checked, so no effort needs to be
+    // made to match it
+    Process::FromPidAndStartupToken(pid, /*startup_token */-1).Kill();
   }
   ASSERT_EQ(unlink(pidfile_path.c_str()), 0);
 }

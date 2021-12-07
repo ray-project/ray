@@ -326,7 +326,7 @@ pid_t ProcessFD::GetId() const { return pid_; }
 
 Process::~Process() {}
 
-Process::Process() {}
+Process::Process() : startup_token_(-1) {}
 
 Process::Process(const Process &) = default;
 
@@ -334,18 +334,24 @@ Process::Process(Process &&) = default;
 
 Process &Process::operator=(Process other) {
   p_ = std::move(other.p_);
+  startup_token_ = other.GetStartupToken();
   return *this;
 }
 
-Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
+Process::Process(pid_t pid, StartupToken startup_token) {
+  p_ = std::make_shared<ProcessFD>(pid);
+  startup_token_ = startup_token;
+}
 
 Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
-                 const ProcessEnvironment &env) {
+                 const ProcessEnvironment &env, StartupToken startup_token) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
+  startup_token_ = (startup_token >= 0) ? startup_token: GetNewStartupToken();
+  RAY_LOG(INFO) << "Process::Process(..., " << startup_token <<") -> " << startup_token_;
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,
@@ -368,19 +374,22 @@ std::error_code Process::Call(const std::vector<std::string> &args,
 
 Process Process::CreateNewDummy() {
   pid_t pid = -1;
-  Process result(pid);
+  StartupToken startup_token = -1;
+  Process result(pid, startup_token);
   return result;
 }
 
-Process Process::FromPid(pid_t pid) {
+Process Process::FromPidAndStartupToken(pid_t pid, StartupToken startup_token) {
   RAY_DCHECK(pid >= 0);
-  Process result(pid);
+  Process result(pid, startup_token);
   return result;
 }
 
 const void *Process::Get() const { return p_ ? &*p_ : NULL; }
 
 pid_t Process::GetId() const { return p_ ? p_->GetId() : -1; }
+
+StartupToken Process::GetStartupToken() const { return startup_token_; }
 
 bool Process::IsNull() const { return !p_; }
 
@@ -597,6 +606,11 @@ bool IsProcessAlive(pid_t pid) {
   return true;
 #endif
 }
+
+// A global atomic counter
+std::atomic<StartupToken> _global_token {0};
+
+StartupToken GetNewStartupToken() { return _global_token++; }
 
 }  // namespace ray
 

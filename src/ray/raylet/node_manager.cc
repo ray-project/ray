@@ -1098,7 +1098,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
       job_id, runtime_env_hash, worker_id, language, worker_type, worker_ip_address,
-      client, client_call_manager_, worker_startup_token));
+      client, client_call_manager_));
 
   auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1136,7 +1136,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     // Don't need to set shim pid for driver
-    worker->SetProcess(Process::FromPid(pid));
+    worker->SetProcess(Process::FromPidAndStartupToken(pid, worker_startup_token));
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
