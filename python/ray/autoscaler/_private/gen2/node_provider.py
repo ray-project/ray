@@ -303,8 +303,7 @@ class Gen2NodeProvider(NodeProvider):
                         f"{prev_nodes_keys - found_nodes.keys()} from "
                         f"previously cached nodes is missing in the list of "
                         f"found_nodes {found_nodes.keys()} found using query "
-                        f"{query}, retries left: {NT_RETRIES - retry}"
-                    )
+                        f"{query}, retries left: {NT_RETRIES - retry}")
                     time.sleep(3)
                     continue
                 else:
@@ -349,8 +348,7 @@ class Gen2NodeProvider(NodeProvider):
                     if pending_time > PENDING_TIMEOUT:
                         logger.error(
                             f"pending timeout {PENDING_TIMEOUT} reached, "
-                            f"deleting instance {pend_id}"
-                        )
+                            f"deleting instance {pend_id}")
                         self._delete_node(pend_id)
                         self.pending_nodes.pop(pend_id)
                     elif pend_id not in node_ids:
@@ -447,8 +445,7 @@ class Gen2NodeProvider(NodeProvider):
 
         logger.info(f"in internal_ip, returning ip for node {node}")
 
-        return node["doc"]["network_interfaces"][0].get(
-            "primary_ipv4_address")
+        return node["doc"]["network_interfaces"][0].get("primary_ipv4_address")
 
     """
     Manage specified tags for specified resource
@@ -456,6 +453,7 @@ class Gen2NodeProvider(NodeProvider):
     due to current issues with tagging service in some cases multiple retries
     required
     """
+
     @log_in_out
     def _global_tagging_with_retries(self, resource_crn, f_name, tags=None):
         e = None
@@ -480,8 +478,7 @@ class Gen2NodeProvider(NodeProvider):
                         if set(tags) - set(node_tags):
                             logger.warning(
                                 f"instance {resource_crn} missing attached "
-                                f"tags {set(tags) - set(node_tags)}, retrying"
-                            )
+                                f"tags {set(tags) - set(node_tags)}, retrying")
                             continue
                         else:
                             return tag_results
@@ -504,15 +501,13 @@ class Gen2NodeProvider(NodeProvider):
                         if set(node_tags) & set(tags):
                             logger.warning(
                                 f"instance {resource_crn} has dettached tags "
-                                f"{set(node_tags) & set(tags)}, retrying"
-                            )
+                                f"{set(node_tags) & set(tags)}, retrying")
                         else:
                             return tag_results
 
                 logger.error(
                     f"failed to {f_name} tags {tags} for {resource_model}, "
-                    f"{tag_results}"
-                )
+                    f"{tag_results}")
             except Exception as e:
                 logger.error(
                     f"Failed to {f_name} {tags} for {resource_model}, {e}")
@@ -536,6 +531,7 @@ class Gen2NodeProvider(NodeProvider):
     in cases of dynamic tags, e.g. ray-node-status, it is required to detach
     old tags
     """
+
     @log_in_out
     def set_node_tags(self, node_id, tags):
         node = self._get_node(node_id)
@@ -549,8 +545,7 @@ class Gen2NodeProvider(NodeProvider):
             if not self._global_tagging_with_retries(
                     resource_crn, "attach_tag", tags=new_tags):
                 cli_logger.error(
-                    f"failed to tag {node_id} with tags {new_tags}, raising"
-                )
+                    f"failed to tag {node_id} with tags {new_tags}, raising")
                 raise
 
             logger.info(f"attached {new_tags}")
@@ -704,6 +699,7 @@ class Gen2NodeProvider(NodeProvider):
         query = f"tags:\"{TAG_RAY_CLUSTER_NAME}:{self.cluster_name}\""
         query += f" AND tags:\"{TAG_RAY_NODE_KIND}:\
             {tags[TAG_RAY_NODE_KIND]}\""
+
         query += f" AND tags:\"{TAG_RAY_LAUNCH_CONFIG}:\
             {tags[TAG_RAY_LAUNCH_CONFIG]}\""
 
@@ -714,8 +710,7 @@ class Gen2NodeProvider(NodeProvider):
             except ApiException as e:
                 cli_logger.warning(
                     f"failed to query global search service with message: "
-                    f"{e.message}, reiniting now"
-                )
+                    f"{e.message}, reiniting now")
                 self.global_search_service = GlobalSearchV2(
                     IAMAuthenticator(self.iam_api_key))
                 result = self.global_search_service.search(
@@ -753,13 +748,11 @@ class Gen2NodeProvider(NodeProvider):
             if time.time() - start > PENDING_TIMEOUT:
                 logger.error(
                     f"pending timeout {PENDING_TIMEOUT} reached, deleting "
-                    f"instance {instance_id}"
-                )
+                    f"instance {instance_id}")
                 self._delete_node(instance_id)
                 raise Exception(
                     f"Instance {instance_id} been hanging in pending state "
-                    "too long, deleting"
-                )
+                    "too long, deleting")
 
     def _create_node(self, base_config, tags):
         name_tag = tags[TAG_RAY_NODE_NAME]
@@ -798,8 +791,7 @@ class Gen2NodeProvider(NodeProvider):
         if not self._global_tagging_with_retries(
                 instance["crn"], "attach_tag", tags=new_tags):
             cli_logger.error(
-                f"failed to tag {instance['id']} with tags {new_tags}"
-            )
+                f"failed to tag {instance['id']} with tags {new_tags}")
             raise
 
         logger.info(f"attached {new_tags}")
