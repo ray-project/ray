@@ -182,8 +182,7 @@ class Gen2NodeProvider(NodeProvider):
         #
         # e.g. get cluster head node by tags
         # tags:\"ray-cluster-name:default\" AND tags:\"ray-node-type:head\""
-        CLUSTER_NAME_QUERY = f"tags:\"{TAG_RAY_CLUSTER_NAME}:{self.cluster_name}\""
-        query = CLUSTER_NAME_QUERY
+        query = f"tags:\"{TAG_RAY_CLUSTER_NAME}:{self.cluster_name}\""
         for k, v in sorted(tag_filters.items()):
             query += f" AND tags:\"{k}:{v}\""
 
@@ -248,23 +247,24 @@ class Gen2NodeProvider(NodeProvider):
                         nic_id = node["doc"]["network_interfaces"][0]["id"]
 
                         # find head not external ip
-                        res = self.ibm_vpc_client.list_instance_network_interface_floating_ips(
-                            instance_id, nic_id).get_result()
+                        res = self.ibm_vpc_client. \
+                            list_instance_network_interface_floating_ips \
+                            (instance_id, nic_id).get_result()
 
                         floating_ips = res["floating_ips"]
                         if len(floating_ips) == 0:
-                            # not adding a head node that is missing floating ip
+                            # not adding a head node missing floating ip
                             continue
                         else:
-                            # currently head node should always have floating ip.
+                            # currently head node always has floating ip
                             # in case floating ip present we want to add it
                             node["floating_ips"] = floating_ips
                     nodes.append(node)
 
                 found_nodes = {node["resource_id"]: node for node in nodes}
 
-                # TODO: remove all the tag search retries and prev cache management
-                # when tagging service issue resolved
+                # TODO: remove all the tag search retries and prev_node cache
+                # management when tagging service issue resolved
                 prev_nodes_keys = []
 
                 # we manage a single set of HEAD node
@@ -284,7 +284,8 @@ class Gen2NodeProvider(NodeProvider):
 
                     # workarround for case when called to refresh head ip with
                     # wrong unintialized tags after head node already created
-                    if "ray-node-status:uninitialized" in query and "ray-node-type:head" in query:
+                    if "ray-node-status:uninitialized" in query \
+                        and "ray-node-type:head" in query:
                         break
 
                     # save currently missing nodes
@@ -299,7 +300,10 @@ class Gen2NodeProvider(NodeProvider):
                                            found_nodes.keys())
 
                     logger.warning(
-                        f"{prev_nodes_keys - found_nodes.keys()} from perviously cached node missing in the list of found_nodes {found_nodes.keys()} found using query {query}, retrying search, retries left: {NT_RETRIES - retry}"
+                        f"{prev_nodes_keys - found_nodes.keys()} from "
+                        f"previously cached nodes is missing in the list of "
+                        f"found_nodes {found_nodes.keys()} found using query "
+                        f"{query}, retries left: {NT_RETRIES - retry}"
                     )
                     time.sleep(3)
                     continue
@@ -337,19 +341,21 @@ class Gen2NodeProvider(NodeProvider):
                         # the instance already running, remove it from pendings
                         self.pending_nodes.pop(pend_id, None)
                 else:
-                    # if instance in pendings for more than PENDING_TIMEOUT it is time to delete it
+                    # delete instance if in pendings longer than PENDING_TIMEOUT
                     pending_time = self.pending_nodes[pend_id] - time.time()
                     logger.info(
-                        f"the instance {pend_id} is in pendings list for {pending_time}"
+                        f"the instance {pend_id} is pending for {pending_time}"
                     )
                     if pending_time > PENDING_TIMEOUT:
                         logger.error(
-                            f"pending timeout {PENDING_TIMEOUT} reached, deleting instance {pend_id}"
+                            f"pending timeout {PENDING_TIMEOUT} reached, "
+                            f"deleting instance {pend_id}"
                         )
                         self._delete_node(pend_id)
                         self.pending_nodes.pop(pend_id)
                     elif pend_id not in node_ids:
-                        # add it to the list of node ids. it is missing tags so it is not going to be updated
+                        # add it to the list of node ids.
+                        # it is missing tags so it is not going to be updated
                         node_ids.append(pend_id)
                         self.cached_nodes[pend_id] = self.pending_nodes[
                             pend_id]
@@ -441,14 +447,15 @@ class Gen2NodeProvider(NodeProvider):
 
         logger.info(f"in internal_ip, returning ip for node {node}")
 
-        return node["doc"]["network_interfaces"][0].get("primary_ipv4_address")
+        return node["doc"]["network_interfaces"][0].get(
+            "primary_ipv4_address")
 
     """
     Manage specified tags for specified resource
 
-    due to current issues with tagging service in some cases multiple retries could be required
+    due to current issues with tagging service in some cases multiple retries
+    required
     """
-
     @log_in_out
     def _global_tagging_with_retries(self, resource_crn, f_name, tags=None):
         e = None
@@ -472,7 +479,8 @@ class Gen2NodeProvider(NodeProvider):
 
                         if set(tags) - set(node_tags):
                             logger.warning(
-                                f"instance {resource_crn} missing attached tags {set(tags) - set(node_tags)}, retrying"
+                                f"instance {resource_crn} missing attached "
+                                f"tags {set(tags) - set(node_tags)}, retrying"
                             )
                             continue
                         else:
@@ -495,13 +503,15 @@ class Gen2NodeProvider(NodeProvider):
 
                         if set(node_tags) & set(tags):
                             logger.warning(
-                                f"instance {resource_crn} still having dettached tags {set(node_tags) & set(tags)}, retrying"
+                                f"instance {resource_crn} has dettached tags "
+                                f"{set(node_tags) & set(tags)}, retrying"
                             )
                         else:
                             return tag_results
 
                 logger.error(
-                    f"failed to {f_name} tags {tags} for {resource_model}, {tag_results}"
+                    f"failed to {f_name} tags {tags} for {resource_model}, "
+                    f"{tag_results}"
                 )
             except Exception as e:
                 logger.error(
@@ -523,9 +533,9 @@ class Gen2NodeProvider(NodeProvider):
     """
     Currently, backend resources tags are not a dictionary.
 
-    in cases of dynamic tags, e.g. ray-node-status, it is required to detach old tags
+    in cases of dynamic tags, e.g. ray-node-status, it is required to detach
+    old tags
     """
-
     @log_in_out
     def set_node_tags(self, node_id, tags):
         node = self._get_node(node_id)
@@ -539,7 +549,7 @@ class Gen2NodeProvider(NodeProvider):
             if not self._global_tagging_with_retries(
                     resource_crn, "attach_tag", tags=new_tags):
                 cli_logger.error(
-                    f"failed to tag node {node_id} with tags {new_tags}, raising error"
+                    f"failed to tag {node_id} with tags {new_tags}, raising"
                 )
                 raise
 
@@ -677,21 +687,25 @@ class Gen2NodeProvider(NodeProvider):
         logger.info("Attaching floating IP {} to VM instance {}".format(
             fip, instance["id"]))
 
-        # check if floating ip is not attached already. if not, attach it to instance
+        # check if floating ip is not attached yet
         instance_primary_ni = instance["primary_network_interface"]
 
-        if instance_primary_ni["primary_ipv4_address"] and instance_primary_ni["id"] == fip_id:
+        if instance_primary_ni["primary_ipv4_address"] and \
+            instance_primary_ni["id"] == fip_id:
             # floating ip already attached. do nothing
             logger.info("Floating IP {} already attached to eth0".format(fip))
         else:
+            # attach floating ip
             self.ibm_vpc_client.add_instance_network_interface_floating_ip(
                 instance["id"], instance["network_interfaces"][0]["id"],
                 fip_id)
 
     def _stopped_nodes(self, tags):
         query = f"tags:\"{TAG_RAY_CLUSTER_NAME}:{self.cluster_name}\""
-        query += f" AND tags:\"{TAG_RAY_NODE_KIND}:{tags[TAG_RAY_NODE_KIND]}\""
-        query += f" AND tags:\"{TAG_RAY_LAUNCH_CONFIG}:{tags[TAG_RAY_LAUNCH_CONFIG]}\""
+        query += f" AND tags:\"{TAG_RAY_NODE_KIND}:\
+            {tags[TAG_RAY_NODE_KIND]}\""
+        query += f" AND tags:\"{TAG_RAY_LAUNCH_CONFIG}:\
+            {tags[TAG_RAY_LAUNCH_CONFIG]}\""
 
         with self.lock:
             try:
@@ -699,7 +713,8 @@ class Gen2NodeProvider(NodeProvider):
                     query=query, fields=["*"]).get_result()
             except ApiException as e:
                 cli_logger.warning(
-                    f"failed to query global search service with message: {e.message}, reiniting now"
+                    f"failed to query global search service with message: "
+                    f"{e.message}, reiniting now"
                 )
                 self.global_search_service = GlobalSearchV2(
                     IAMAuthenticator(self.iam_api_key))
@@ -726,7 +741,7 @@ class Gen2NodeProvider(NodeProvider):
             return nodes
 
     def _wait_running(self, instance_id):
-        # if instance in pendings for more than PENDING_TIMEOUT it is time to delete it and raise
+        # if instance starting longer than PENDING_TIMEOUT delete it
         start = time.time()
 
         instance = self.ibm_vpc_client.get_instance(instance_id).result
@@ -737,11 +752,13 @@ class Gen2NodeProvider(NodeProvider):
 
             if time.time() - start > PENDING_TIMEOUT:
                 logger.error(
-                    f"pending timeout {PENDING_TIMEOUT} reached, deleting instance {instance_id}"
+                    f"pending timeout {PENDING_TIMEOUT} reached, deleting "
+                    f"instance {instance_id}"
                 )
                 self._delete_node(instance_id)
                 raise Exception(
-                    f"Instance {instance_id} been hanging in pending state too long, deleting"
+                    f"Instance {instance_id} been hanging in pending state "
+                    "too long, deleting"
                 )
 
     def _create_node(self, base_config, tags):
@@ -759,7 +776,8 @@ class Gen2NodeProvider(NodeProvider):
         instance = self._create_instance(name, base_config)
 
         # currently create and tag is not an atomic operation
-        # adding instance to cache to be returned by non_terminated_nodes but with no tags
+        # adding instance to cache to be returned by non_terminated_nodes but
+        # with no tags
         self.pending_nodes[instance["id"]] = instance
 
         # currently always creating public ip for head node
@@ -767,7 +785,8 @@ class Gen2NodeProvider(NodeProvider):
             fip_data = self._create_floating_ip(base_config)
             self._attach_floating_ip(instance, fip_data)
 
-        # in most cases waiting for instance to be running before attaching tags is enough to
+        # in most cases waiting for instance to be running before attaching
+        # tags is enough to
         # overcome tagging service inconsistency issues
         self._wait_running(instance["id"])
 
@@ -779,7 +798,7 @@ class Gen2NodeProvider(NodeProvider):
         if not self._global_tagging_with_retries(
                 instance["crn"], "attach_tag", tags=new_tags):
             cli_logger.error(
-                f"failed to tag node {instance['id']} with tags {new_tags}, raising error"
+                f"failed to tag {instance['id']} with tags {new_tags}"
             )
             raise
 
@@ -885,7 +904,8 @@ class Gen2NodeProvider(NodeProvider):
         try:
             if self.cache_stopped_nodes:
                 cli_logger.print(
-                    f"Stopping instance {node_id}. To terminate instead, set `cache_stopped_nodes: False` "
+                    f"Stopping instance {node_id}. To terminate instead, "
+                    "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration")
 
                 self.ibm_vpc_client.create_instance_action(node_id, "stop")
