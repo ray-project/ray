@@ -46,7 +46,7 @@ def upload_working_dir_if_needed(
     excludes = runtime_env.get("excludes", None)
     try:
         working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
-    except ValueError:  # workding_dir is not a directory
+    except ValueError:  # working_dir is not a directory
         package_path = working_dir
         if not Path(package_path).exists() or package_path[:-4] != ".zip":
             raise ValueError(f"directory {package_path} must be an existing "
