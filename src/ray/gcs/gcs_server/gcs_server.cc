@@ -405,7 +405,7 @@ void GcsServer::InitKVManager() {
   if (RayConfig::instance().gcs_storage() == "redis") {
     instance = std::make_unique<RedisInternalKV>(redis_client_.get());
   } else if (RayConfig::instance().gcs_storage() == "memory") {
-    instance = std::make_unique<MemoryInternalKV>(&main_service_);
+    instance = std::make_unique<MemoryInternalKV>(main_service_);
   } else {
     RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
   }
