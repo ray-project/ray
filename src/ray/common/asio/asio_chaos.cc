@@ -122,11 +122,12 @@ static DelayManager _delay_manager;
 }  // namespace
 
 int64_t get_delay_us(const std::string &name) {
+  if (RayConfig::instance().testing_asio_delay_us().empty()) {
+    return 0;
+  }
   return _delay_manager.GetMethodDelay(name);
 }
 
-void init() { return _delay_manager.Init(); }
-
-}  // namespace testing
+void init() { return _delay_manager.Init(); }  // namespace testing
 }  // namespace asio
 }  // namespace ray
