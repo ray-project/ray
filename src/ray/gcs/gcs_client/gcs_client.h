@@ -231,6 +231,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::pair<std::string, int> current_gcs_server_address_;
   int64_t last_reconnect_timestamp_ms_;
   std::pair<std::string, int> last_reconnect_address_;
+
+  const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 };
 
 }  // namespace gcs

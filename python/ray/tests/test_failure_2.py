@@ -15,9 +15,9 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     get_log_batch, Semaphore,
-                                     wait_for_condition)
+from ray._private.test_utils import (
+    init_error_pubsub, get_error_message, get_log_batch, Semaphore,
+    wait_for_condition, run_string_as_driver_nonblocking)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
@@ -463,7 +463,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "_system_config": {
-            "ping_gcs_rpc_server_max_retries": 100
+            "gcs_rpc_server_reconnect_timeout_s": 100
         }
     }],
     indirect=True)
@@ -496,6 +496,46 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
 
     match = get_log_batch(log_pubsub, 1, timeout=10, matcher=matcher)
     assert len(match) > 0
+
+
+def test_gcs_server_crash_cluster(ray_start_cluster):
+    # Test the GCS server failures will crash the driver.
+    cluster = ray_start_cluster
+    GCS_RECONNECTION_TIMEOUT = 10
+    node = cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT
+        })
+
+    script = f"""
+import ray
+import time
+
+ray.init(address="auto")
+time.sleep(60)
+    """
+
+    # Get gcs server pid to send a signal.
+    all_processes = node.all_processes
+    gcs_server_process = all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    proc = run_string_as_driver_nonblocking(script)
+    # Wait long enough to start the driver.
+    time.sleep(5)
+    start = time.time()
+    os.kill(gcs_server_pid, signal.SIGBUS)
+    wait_for_condition(lambda: proc.poll() is None)
+    # Make sure the driver was exited within the timeout instead of hanging.
+    # * 2 for avoiding flakiness.
+    assert time.time() - start < GCS_RECONNECTION_TIMEOUT * 2
+    # Make sure all processes are cleaned up after GCS is crashed.
+    # Currently, not every process is fate shared with GCS.
+    # It seems like log monitor, ray client server, and Redis
+    # are not fate shared.
+    # TODO(sang): Fix it.
+    # wait_for_condition(lambda: not node.any_processes_alive())
 
 
 if __name__ == "__main__":
