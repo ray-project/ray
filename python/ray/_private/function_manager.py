@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 def make_exports_prefix(job_id: bytes) -> bytes:
     if ray_constants.ISOLATE_EXPORTS:
-        return b"Exports:" + job_id
+        return b"IsolatedExports:" + job_id
     else:
         return b"Exports"
 
@@ -164,6 +164,8 @@ class FunctionActorManager:
                 if self._worker.gcs_client.internal_kv_put(
                         holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                     break
+        # Notify all subscribers that there is a new function exported. Note
+        # that the notification doesn't include any actual data.
         if self._worker.gcs_pubsub_enabled:
             self._worker.gcs_publisher.publish_function_key(key)
         else:
