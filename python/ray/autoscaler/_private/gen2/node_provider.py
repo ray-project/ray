@@ -247,9 +247,9 @@ class Gen2NodeProvider(NodeProvider):
                         nic_id = node["doc"]["network_interfaces"][0]["id"]
 
                         # find head not external ip
-                        res = self.ibm_vpc_client. \
-                            list_instance_network_interface_floating_ips \
-                            (instance_id, nic_id).get_result()
+                        res = self.ibm_vpc_client.\
+                            list_instance_network_interface_floating_ips(
+                                instance_id, nic_id).get_result()
 
                         floating_ips = res["floating_ips"]
                         if len(floating_ips) == 0:
@@ -284,7 +284,7 @@ class Gen2NodeProvider(NodeProvider):
 
                     # workarround for case when called to refresh head ip with
                     # wrong unintialized tags after head node already created
-                    if "ray-node-status:uninitialized" in query \
+                    if "ray-node-status:uninitialized" in query\
                         and "ray-node-type:head" in query:
                         break
 
@@ -341,7 +341,7 @@ class Gen2NodeProvider(NodeProvider):
                         # the instance already running, remove it from pendings
                         self.pending_nodes.pop(pend_id, None)
                 else:
-                    # delete instance if in pendings longer than PENDING_TIMEOUT
+                    # delete instance if pendings longer than PENDING_TIMEOUT
                     pending_time = self.pending_nodes[pend_id] - time.time()
                     logger.info(
                         f"the instance {pend_id} is pending for {pending_time}"
