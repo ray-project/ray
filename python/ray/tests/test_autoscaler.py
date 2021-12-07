@@ -1322,6 +1322,9 @@ class AutoscalingTest(unittest.TestCase):
         mock_metrics.started_nodes.inc.assert_called_with(2)
         assert mock_metrics.worker_create_node_time.observe.call_count == 2
         autoscaler.update()
+        # The two autoscaler update iterations in this test led to two
+        # observations of the update time.
+        assert mock_metrics.update_time.observe.call_count == 2
         self.waitForNodes(2)
 
         # running_workers metric should be set to 2

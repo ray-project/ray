@@ -117,7 +117,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                                                 "", "", "check_current_test_status", "")};
 
     auto return_refs = driver.SubmitActorTask(actor_id, func, args, options);
-    auto return_ids = ObjectRefsToIds(return_refs.value());
+    auto return_ids = ObjectRefsToIds(return_refs);
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;

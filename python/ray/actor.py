@@ -479,8 +479,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                max_pending_calls=-1):
+                runtime_env=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -537,8 +536,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=new_runtime_env,
-                    max_pending_calls=max_pending_calls)
+                    runtime_env=new_runtime_env)
 
         return ActorOptionWrapper()
 
@@ -561,8 +559,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                max_pending_calls=-1):
+                runtime_env=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -608,11 +605,6 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-            max_pending_calls (int): Set the max number of pending calls
-                allowed on the actor handle. When this value is exceeded,
-                PendingCallsLimitExceeded will be raised for further tasks.
-                Note that this limit is counted per handle. -1 means that the
-                number of pending calls is unlimited.
 
         Returns:
             A handle to the newly created actor.
@@ -658,8 +650,7 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env,
-                max_pending_calls=max_pending_calls)
+                runtime_env=runtime_env)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -819,8 +810,7 @@ class ActorClass:
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=new_runtime_env or "{}",
-            concurrency_groups_dict=concurrency_groups_dict or dict(),
-            max_pending_calls=max_pending_calls)
+            concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(
             meta.language,
