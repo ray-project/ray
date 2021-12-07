@@ -165,7 +165,7 @@ class _AgentCollector:
             # timestep.
             if k == SampleBatch.INFOS or k.startswith("state_out_") or \
                     (k == SampleBatch.ACTIONS and
-                     not self.policy.config["_disable_action_flattening"]):
+                     not self.policy.config.get("_disable_action_flattening")):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -375,7 +375,7 @@ class _AgentCollector:
             # could be custom dicts as well).
             if col == SampleBatch.INFOS or col.startswith("state_out_") or (
                     col == SampleBatch.ACTIONS
-                    and not self.policy.config["_disable_action_flattening"]):
+                    and not self.policy.config.get("_disable_action_flattening")):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

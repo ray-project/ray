@@ -231,7 +231,7 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
-            if self.config["_disable_action_flattening"] is False:
+            if not self.config.get("_disable_action_flattening"):
                 action_ph = ModelCatalog.get_action_placeholder(action_space)
                 prev_action_ph = {}
                 if SampleBatch.PREV_ACTIONS not in self.view_requirements:
@@ -589,7 +589,7 @@ class DynamicTFPolicy(TFPolicy):
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
                     # Do not flatten actions if action flattening disabled.
-                    if self.config["_disable_action_flattening"] and \
+                    if self.config.get("_disable_action_flattening") and \
                             view_col in [SampleBatch.ACTIONS,
                                          SampleBatch.PREV_ACTIONS]:
                         flatten = False

@@ -203,7 +203,7 @@ class JsonReader(InputReader):
                 # If we have a complex action space and actions were flattened
                 # and we have to normalize -> Error.
                 if isinstance(pol.action_space_struct, (tuple, dict)) and \
-                        pol.config["_disable_action_flattening"] is False:
+                        not pol.config.get("_disable_action_flattening"):
                     raise ValueError(
                         "Normalization of offline actions that are flattened "
                         "is not supported! Make sure that you record actions "
@@ -306,7 +306,7 @@ class JsonReader(InputReader):
         for k, v in policy.view_requirements.items():
             if k not in json_data:
                 continue
-            if policy.config["_disable_action_flattening"] and \
+            if policy.config.get("_disable_action_flattening") and \
                     (k == SampleBatch.ACTIONS or
                      v.data_col == SampleBatch.ACTIONS):
                 json_data[k] = tree.map_structure_up_to(
@@ -315,7 +315,7 @@ class JsonReader(InputReader):
                     json_data[k],
                     check_types=False,
                 )
-            elif policy.config["_disable_preprocessor_api"] and \
+            elif policy.config.get("_disable_preprocessor_api") and \
                     (k == SampleBatch.OBS or
                      v.data_col == SampleBatch.OBS):
                 json_data[k] = tree.map_structure_up_to(

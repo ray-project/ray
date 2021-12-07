@@ -916,7 +916,7 @@ class Policy(metaclass=ABCMeta):
                     ((data_col == SampleBatch.OBS and
                       not self.config["_disable_preprocessor_api"]) or
                      (data_col == SampleBatch.ACTIONS and
-                      not self.config["_disable_action_flattening"])):
+                      not self.config.get("_disable_action_flattening"))):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \

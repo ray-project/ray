@@ -234,14 +234,14 @@ class Episode:
 
         # Agent has already taken at least one action in the episode.
         if agent_id in self._agent_to_last_action:
-            if policy.config["_disable_action_flattening"]:
+            if policy.config.get("_disable_action_flattening"):
                 return self._agent_to_last_action[agent_id]
             else:
                 return flatten_to_single_ndarray(
                     self._agent_to_last_action[agent_id])
         # Agent has not acted yet, return all zeros.
         else:
-            if policy.config["_disable_action_flattening"]:
+            if policy.config.get("_disable_action_flattening"):
                 return tree.map_structure(
                     lambda s: np.zeros_like(s.sample(), s.dtype) if
                     hasattr(s, "dtype") else np.zeros_like(s.sample()),
@@ -274,14 +274,14 @@ class Episode:
 
         # We are at t > 1 -> There has been a previous action by this agent.
         if agent_id in self._agent_to_prev_action:
-            if policy.config["_disable_action_flattening"]:
+            if policy.config.get("_disable_action_flattening"):
                 return self._agent_to_prev_action[agent_id]
             else:
                 return flatten_to_single_ndarray(
                     self._agent_to_prev_action[agent_id])
         # We're at t <= 1, so return all zeros.
         else:
-            if policy.config["_disable_action_flattening"]:
+            if policy.config.get("_disable_action_flattening"):
                 return tree.map_structure(
                     lambda a: np.zeros_like(a, a.dtype) if  # noqa
                     hasattr(a, "dtype") else np.zeros_like(a),  # noqa
