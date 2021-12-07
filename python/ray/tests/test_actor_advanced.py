@@ -16,6 +16,8 @@ from ray._private.test_utils import (
     SignalActor, wait_for_condition, wait_for_pid_to_exit)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -1069,6 +1071,10 @@ def test_get_actor_no_input(ray_start_regular_shared):
             ray.get_actor(bad_name)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Node manager does not report the related info "
+    "with GCS-based scheduler enabled.")
 def test_actor_resource_demand(shutdown_only):
     ray.shutdown()
     cluster = ray.init(num_cpus=3)
@@ -1157,6 +1163,10 @@ def test_kill_pending_actor_with_no_restart_true():
     ray.shutdown()
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Node manager does not report the related info "
+    "with GCS-based scheduler enabled.")
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
     global_state_accessor = GlobalStateAccessor(
@@ -1353,6 +1363,11 @@ def test_get_actor_race_condition(shutdown_only):
 
     for i in range(50):
         CONCURRENCY = 8
+        # With GCS-based scheduler enabled, all normal tasks may be placed
+        # before scheduling the actor. So leave one CPU core for the actor
+        # if the test is running on a 8-core node.
+        if (gcs_actor_scheduling_enabled()):
+            CONCURRENCY -= 1
         results = do_run(i, concurrency=CONCURRENCY)
         assert ["ok"] * CONCURRENCY == results
 

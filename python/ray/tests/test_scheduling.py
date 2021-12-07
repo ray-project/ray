@@ -19,6 +19,8 @@ from ray._private.test_utils import fetch_prometheus
 from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      Semaphore, object_memory_usage,
                                      SignalActor)
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 logger = logging.getLogger(__name__)
 
@@ -488,6 +490,10 @@ def build_cluster(num_cpu_nodes, num_gpu_nodes):
     return cluster, cpu_ids, gpu_ids
 
 
+# TODO(Chong-Li): GCS-based scheduler may consider avoiding gpu nodes.
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler currently does not support this.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu(monkeypatch):
     monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")

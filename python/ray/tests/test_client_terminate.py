@@ -10,6 +10,8 @@ from ray.exceptions import RayTaskError
 from ray.exceptions import WorkerCrashedError
 from ray.exceptions import ObjectLostError
 from ray.exceptions import GetTimeoutError
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 
 def valid_exceptions(use_force):
@@ -50,6 +52,12 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
     with ray_start_client_server() as ray:
+        # With GCS-based scheduler enabled, the normal tasks may preempt
+        # all CPUs before the scheduling of actors. Using more CPUs to
+        # avoid this situation.
+        if gcs_actor_scheduling_enabled():
+            ray.shutdown()
+            ray.init(num_cpus=8)
         SignalActor = create_remote_signal_actor(ray)
         signaler = SignalActor.remote()
 

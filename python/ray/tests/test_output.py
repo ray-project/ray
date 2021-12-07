@@ -9,6 +9,8 @@ import os
 import ray
 
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -36,6 +38,9 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler does not export this msg.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_warn_deadlock():
     script = """

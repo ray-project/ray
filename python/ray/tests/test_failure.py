@@ -506,6 +506,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
+# TODO(Chong-Li): GCS-based scheduler may also export this error msg.
 @pytest.mark.skipif(
     ray_constants.gcs_actor_scheduling_enabled(),
     reason="GCS-based scheduler currently does not support this.")

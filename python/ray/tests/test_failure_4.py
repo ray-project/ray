@@ -32,6 +32,10 @@ def search_raylet(cluster):
     return raylets
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "num_cpus": 2,
+    }], indirect=True)
 def test_retry_system_level_error(ray_start_regular):
     @ray.remote
     class Counter:
