@@ -290,14 +290,14 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
-        RAY_LOG(INFO) << "Worker " << worker_id << " failed to get the location for "
-                      << object_id << status.ToString();
+        RAY_LOG(INFO) << "Failed to get the location for " << object_id
+                      << status.ToString();
         mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
       } else {
         // Owner is still alive but published a failure because the ref was
         // deleted.
         RAY_LOG(INFO)
-            << "Worker " << worker_id << " failed to get the location for " << object_id
+            << "Failed to get the location for " << object_id
             << ", object already released by distributed reference counting protocol";
         mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
       }
