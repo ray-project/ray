@@ -25,32 +25,35 @@ class _BackwardsCompatibleNumpyRng:
     """Thin wrapper to ensure backwards compatibility between
     new and old numpy randomness generators.
     """
+    _rng = None
 
     def __init__(self,
                  generator_or_seed: Optional[Union[
                      "random_generator", np.random.RandomState, int]] = None):
         if generator_or_seed is None:
-            self.rng = np.random
+            self._rng = None
             return
         if isinstance(generator_or_seed, np.random.RandomState):
-            self.rng = generator_or_seed
+            self._rng = generator_or_seed
             return
         if isinstance(generator_or_seed, random_generator):
-            self.rng = generator_or_seed
+            self._rng = generator_or_seed
             return
         if LEGACY_RNG:
-            self.rng = np.random.RandomState(generator_or_seed)
+            self._rng = np.random.RandomState(generator_or_seed)
         else:
-            self.rng = np.random.default_rng(generator_or_seed)
+            self._rng = np.random.default_rng(generator_or_seed)
 
     @property
     def legacy_rng(self) -> bool:
-        return not isinstance(self.rng, random_generator)
+        return not isinstance(self._rng, random_generator)
+
+    @property
+    def rng(self):
+        return self._rng if self._rng else np.random
 
     def __getattr__(self, name: str) -> Any:
         # https://numpy.org/doc/stable/reference/random/new-or-different.html
-        if name in ("legacy_rng", "rng"):
-            return self.__dict__[name]
         if self.legacy_rng:
             if name == "integers":
                 name = "randint"
