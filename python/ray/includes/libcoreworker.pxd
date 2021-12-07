@@ -49,6 +49,10 @@ from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
 
+from ray.includes.optional cimport (
+    optional
+)
+
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
@@ -123,7 +127,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
             const CPlacementGroupID &placement_group_id, int timeout_seconds)
-        c_vector[CObjectReference] SubmitActorTask(
+        optional[c_vector[CObjectReference]] SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options)
