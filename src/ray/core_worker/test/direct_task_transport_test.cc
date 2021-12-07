@@ -251,13 +251,13 @@ class MockRayletClient : public WorkerLeaseInterface {
     }
   }
 
-  bool FailWorkerLeaseDueToGrpcUnavailable() {
+  bool FailWorkerLeaseDueToIOError() {
     rpc::RequestWorkerLeaseReply reply;
     if (callbacks.size() == 0) {
       return false;
     } else {
       auto callback = callbacks.front();
-      callback(Status::GrpcUnavailable("unavailable"), reply);
+      callback(Status::IOError("unavailable"), reply);
       callbacks.pop_front();
       return true;
     }
@@ -735,13 +735,13 @@ TEST(DirectTaskTransportTest, TestHandleLocalRayletDied) {
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Fail task1 which will fail all the tasks
-  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToIOError());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Fail task2
-  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToIOError());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);

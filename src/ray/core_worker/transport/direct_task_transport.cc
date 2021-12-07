@@ -554,7 +554,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
               RAY_UNUSED(task_finisher_->FailPendingTask(
-                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
+                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -607,9 +607,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          if (status.IsGrpcUnavailable()) {
+          if (status.IsIOError()) {
             RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
-                                "raylet because the raylet is unavailable (crashed).";
+                             << "raylet because the raylet is unavailable (crashed). "
+                             << "Error: " << status;
             if (worker_type_ == WorkerType::WORKER) {
               QuickExit();
             }

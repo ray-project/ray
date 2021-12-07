@@ -192,7 +192,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (status.IsGrpcUnavailable()) {
+            if (status.IsIOError()) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status;

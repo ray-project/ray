@@ -66,7 +66,7 @@ void GcsServerAddressUpdater::UpdateGcsServerAddress() {
         std::stringstream os;
         os << "Failed to receive the GCS address for " << failed_ping_count_
            << " times without success. The worker will exit ungracefully. It is because ";
-        if (status.IsGrpcUnavailable()) {
+        if (status.IsIOError()) {
           RAY_LOG(WARNING) << os.str()
                            << "raylet has died, and it couldn't obtain the GCS address "
                               "from the raylet anymore. Please check the log from "

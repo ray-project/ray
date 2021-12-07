@@ -34,7 +34,7 @@ class TaskFinisherInterface {
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
-                               const Status *status,
+                               const Status *status = nullptr,
                                const rpc::RayErrorInfo *ray_error_info = nullptr,
                                bool mark_task_object_failed = true) = 0;
 
@@ -154,6 +154,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               bool mark_task_object_failed = true) override;
 
   /// A pending task failed. This will mark the task as failed.
+  /// This doesn't always mark the return object as failed
+  /// depending on mark_task_object_failed.
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
