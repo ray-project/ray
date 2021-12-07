@@ -173,6 +173,56 @@ Ray with cloud providers
 
         Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
 
+    .. group-tab:: IBM Cloud
+
+        First, install ibm cloud client packages (``pip install ibm_vpc ibm_platform_services ibm_cloud_sdk_core``). Obtain API Key as described in `the docs <https://cloud.ibm.com/docs/account?topic=account-userapikey>`.
+        
+        Then, install interactive vpc config tool (``pip install lithopscloud``), and use it to prepare <CLUSTER_CONFIG_FILE>
+        .. code-block:: bash
+            
+            lithopscloud --iam-api-key <IAM_API_KEY> --output-file <CLUSTER_CONFIG_FILE>
+
+            # Select `Ray Gen2` and then follow the interactive wizard
+
+            [?] Please select a compute backend: Ray Gen2
+              Lithops Gen2
+              Lithops Cloud Functions
+              Lithops Code Engine
+            > Ray Gen2
+              Local Host
+
+            [?] Choose region: eu-de
+              au-syd
+              br-sao
+              ca-tor
+            > eu-de
+              eu-gb
+              jp-osa
+              jp-tok
+              us-east
+              us-south
+
+        The other option is to setup CLUSTER_CONFIG_FILE manually See :ref:`gen2-cluster`.
+
+        Once the above is done, you should be ready to launch your cluster.
+
+        Test that it works by running the following commands from your local machine:
+
+        .. code-block:: bash
+
+            # Create or update the cluster. When the command finishes, it will print
+            # out the command that can be used to SSH into the cluster head node.
+            $ ray up <CLUSTER_CONFIG_FILE>
+
+            # Get a remote screen on the head node.
+            $ ray attach <CLUSTER_CONFIG_FILE>
+            $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+            # Tear down the cluster.
+            $ ray down <CLUSTER_CONFIG_FILE>
+
+        IBM Cloud Node Provider Maintainer: kpavel
+
     .. group-tab:: Custom
 
         Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
