@@ -2024,10 +2024,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     if (options_.is_local_mode ||
         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
-         (task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
+         (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
           RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
-      task_output_inlined_bytes += static_cast<int64_t>(data_size);
+      *task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
                                        &data_buffer,
@@ -2191,6 +2191,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object) {
+  RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
@@ -2208,8 +2209,9 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object) {
-  // TODO(swang): It would be better to evict the existing copy instad of
-  // reusing it, to make sure it's consistent with the task re-execution.
+  // TODO(swang): If there is already an existing copy of this object, then it
+  // might not have the same value as the new copy. It would be better to evict
+  // the existing copy here.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   bool got_exception;
   rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());

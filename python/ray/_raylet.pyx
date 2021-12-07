@@ -1835,9 +1835,9 @@ cdef class CoreWorker:
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
                            size_t data_size, shared_ptr[CBuffer] &metadata,
-                           const c_vector[CObjectID] &contained_id, int64_t
-                           task_output_inlined_bytes, shared_ptr[CRayObject]
+                           const c_vector[CObjectID] &contained_id, int64_t *task_output_inlined_bytes, shared_ptr[CRayObject]
                            *return_ptr):
+        """Store a task return value in plasma or as an inlined object."""
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
@@ -1904,13 +1904,13 @@ cdef class CoreWorker:
             if not self.store_task_output(
                     serialized_object, return_id,
                     data_size, metadata, contained_id,
-                    task_output_inlined_bytes, &returns[0][i]):
+                    &task_output_inlined_bytes, &returns[0][i]):
                 # If the object already exists, but we fail to pin the copy, it
                 # means the existing copy might've gotten evicted. Try to
                 # create another copy.
                 self.store_task_output(
                         serialized_object, return_id, data_size, metadata,
-                        contained_id, task_output_inlined_bytes,
+                        contained_id, &task_output_inlined_bytes,
                         &returns[0][i])
 
     cdef c_function_descriptors_to_python(
