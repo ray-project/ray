@@ -153,8 +153,8 @@ class DatasetStats:
 
     def _summarize_iter(self) -> str:
         out = ""
-        if self.iter_total_s.get() or self.iter_wait_s.get(
-        ) or self.iter_process_s.get():
+        if (self.iter_total_s.get() or self.iter_wait_s.get()
+                or self.iter_format_batch_s.get() or self.iter_get_s.get()):
             out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
             out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))

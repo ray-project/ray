@@ -45,6 +45,7 @@ Stage N map: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -83,6 +84,7 @@ Stage N map: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -99,6 +101,7 @@ Stage N map: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -115,6 +118,7 @@ Stage N map: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -149,6 +153,7 @@ Stage Z read: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -163,6 +168,7 @@ Stage Z read: N/N blocks executed in T
 
 Dataset iterator time breakdown:
 * In ray.wait(): T
+* In ray.get(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
