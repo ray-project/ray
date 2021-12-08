@@ -215,6 +215,7 @@ For details, head to the :ref:`API Reference<runtime-environments-api-ref>`.
 
 .. note::
 
+  TODO(archit): update 
   The ``ray[default]`` package itself will automatically be installed in the isolated environment.  However, if you are using any Ray libraries (for example, Ray Serve), then you will need to specify the library in the runtime environment (e.g. ``runtime_env = {"pip": ["requests", "ray[serve]"}]}``.)
 
 .. warning::
@@ -346,7 +347,7 @@ Example:
   "env_vars": {"A": "a", "B": "b"}}
 
   # Child's specified `runtime_env`
-  {"pip": ["torch", "ray[serve]"],
+  {"pip": ["torch", "ray[serve]"], TODO(archit): update
   "env_vars": {"B": "new", "C", "c"}}
 
   # Child's actual `runtime_env` (merged with parent's)

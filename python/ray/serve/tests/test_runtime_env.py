@@ -326,7 +326,7 @@ def requests_version(request):
 requests_version.options(
     ray_actor_options={{
         "runtime_env": {{
-            "pip": ["ray[serve]", "requests==2.25.1"]
+            "pip": ["requests==2.25.1"]
         }}
     }}).deploy()
 
