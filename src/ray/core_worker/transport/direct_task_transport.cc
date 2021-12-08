@@ -607,7 +607,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          if (status.IsIOError()) {
+          if (status.IsGrpcUnavailable()) {
             RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
                              << "raylet because the raylet is unavailable (crashed). "
                              << "Error: " << status;

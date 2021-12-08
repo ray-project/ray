@@ -54,7 +54,7 @@ class Executor {
     auto operation_callback = [this, request, callback, executor](                     \
                                   const ray::Status &status,                           \
                                   const METHOD##Reply &reply) {                        \
-      if (!status.IsIOError()) {                                                       \
+      if (!status.IsIOError() && !status.IsGrpcUnavailable()) {                        \
         auto status =                                                                  \
             reply.status().code() == (int)StatusCode::OK                               \
                 ? Status()                                                             \
