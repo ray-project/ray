@@ -96,6 +96,7 @@ CORE_NIGHTLY_TESTS = {
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
         "datasets_preprocess_ingest",
+        "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
