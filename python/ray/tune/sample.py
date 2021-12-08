@@ -47,7 +47,7 @@ class _BackwardsCompatibleNumpyRng:
     @property
     def rng(self):
         # don't set self._rng to np.random to avoid picking issues
-        return self._rng if self._rng else np.random
+        return self._rng if self._rng is not None else np.random
 
     def __getattr__(self, name: str) -> Any:
         # https://numpy.org/doc/stable/reference/random/new-or-different.html
