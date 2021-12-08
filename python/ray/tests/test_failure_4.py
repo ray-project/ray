@@ -438,7 +438,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
 
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4, resources={"foo": 1})
+    head = cluster.add_node(num_cpus=4, resources={"foo": 1})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -457,10 +457,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     ret = func.remote()
     # Waiting for the lease request to reach raylet.
     time.sleep(1)
-    raylets = search_raylet(cluster)
-    assert len(raylets) == 1
-    raylet = raylets[0]
-    raylet.kill()
+    head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
 
