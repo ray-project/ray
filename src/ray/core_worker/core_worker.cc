@@ -2233,6 +2233,9 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                    << WorkerID::FromBinary(owner_address.worker_id());
     // Keep the object in scope until it's been pinned.
     std::shared_ptr<RayObject> pinned_return_object = *return_object;
+    // Asynchronously ask the raylet to pin the object. Note that this can fail
+    // if the raylet fails. We expect the owner of the object to handle that
+    // case (e.g., by detecting the raylet failure and storing an error).
     local_raylet_client_->PinObjectIDs(
         owner_address, {return_id},
         [return_id, pinned_return_object](const Status &status,

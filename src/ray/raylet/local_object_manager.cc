@@ -259,6 +259,7 @@ void LocalObjectManager::SpillObjectsInternal(
         for (const auto &object_id : objects_to_spill) {
           RAY_CHECK(objects_pending_spill_.count(object_id));
           auto owner_it = objects_waiting_for_free_.find(object_id);
+          // If the object hasn't already been freed, spill it.
           if (owner_it == objects_waiting_for_free_.end()) {
             objects_pending_spill_.erase(object_id);
           } else {

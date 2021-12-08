@@ -584,6 +584,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] return_id ObjectID of the return value.
   /// \param[out] return_object The object that was pinned.
+  /// \return success if the object still existed and was pinned. Note that
+  /// pinning is done asynchronously.
   bool PinExistingReturnObject(const ObjectID &return_id,
                                std::shared_ptr<RayObject> *return_object);
 
