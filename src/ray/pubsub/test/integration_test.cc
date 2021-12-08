@@ -163,7 +163,7 @@ class IntegrationTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodic_runner=*/periodic_runner_.get(),
-        /*get_time_ms=*/[]() { return absl::ToUnixMicros(absl::Now()); },
+        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/30e6,
         /*batch_size=*/100);
     publisher_service_ = std::make_unique<PublisherServiceImpl>(std::move(publisher));
@@ -276,14 +276,22 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   EXPECT_EQ(actors_1[0].actor_id(), actor_data.actor_id());
   EXPECT_EQ(actors_2[0].actor_id(), actor_data.actor_id());
 
-  // This is necessary to avoid invalid memory access during shutdown.
-  // TODO(mwtian): cancel inflight polls during subscriber shutdown, and remove the
-  // shutdown logic below.
   subscriber_1->Unsubscribe(rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_,
                             subscribed_actor);
   subscriber_2->UnsubscribeChannel(rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_);
+
   // Flush all the inflight long polling.
   publisher_service_->GetPublisher().UnregisterAll();
+
+  // Waiting here is necessary to avoid invalid memory access during shutdown.
+  // TODO(mwtian): cancel inflight polls during subscriber shutdown, and remove the
+  // logic below.
+  int wait_count = 0;
+  while (!(subscriber_1->CheckNoLeaks() && subscriber_2->CheckNoLeaks())) {
+    ASSERT_LT(wait_count, 15) << "Subscribers still have inflight operations after 15s";
+    ++wait_count;
+    absl::SleepFor(absl::Seconds(1));
+  }
 }
 
 }  // namespace pubsub

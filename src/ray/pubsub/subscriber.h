@@ -371,6 +371,7 @@ class Subscriber : public SubscriberInterface {
   /// Testing fields
   ///
 
+  FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
@@ -382,9 +383,6 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
   bool CheckNoLeaks() const LOCKS_EXCLUDED(mutex_);
-
-  // Makes sure destructor runs after there is no remaining data.
-  bool CheckNoLeaks_Locked() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   ///
   /// Private fields
