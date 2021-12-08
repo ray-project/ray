@@ -37,7 +37,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client.get());
     } else if (GetParam() == "memory") {
-      kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(&io_service);
+      kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(io_service);
     }
   }
 
