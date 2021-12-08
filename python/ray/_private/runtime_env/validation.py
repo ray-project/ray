@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 ALLOW_RAY_IN_PIP_ENV_VAR = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
 
+
 def validate_uri(uri: str):
     if not isinstance(uri, str):
         raise TypeError("URIs for working_dir and py_modules must be "
