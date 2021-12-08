@@ -259,6 +259,15 @@ class BaseEnv:
 
     @staticmethod
     def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if the given space contains the observations of x.
+
+        Args:
+            space: The space to if x's observations are contained in.
+            x: The observations to check.
+
+        Returns:
+            True if the observations of x are contained in space.
+        """
         # this removes the agent_id key and inner dicts
         # in MultiEnvDicts
         flattened_obs = {

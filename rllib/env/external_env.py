@@ -415,9 +415,13 @@ class ExternalEnvWrapper(BaseEnv):
                 with_dummy_agent_id(off_policy_actions)
 
     @property
+    @override(BaseEnv)
+    @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
         return self._observation_space
 
     @property
+    @override(BaseEnv)
+    @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
