@@ -3,6 +3,7 @@ import time
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
+import uuid
 
 import numpy as np
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ from ray.data.impl.arrow_block import ArrowRow, \
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats, _StatsActor
+from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
 from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
@@ -163,7 +164,8 @@ def read_datasource(datasource: Datasource[T],
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
     context = DatasetContext.get_current()
-    stats_actor = _StatsActor.remote()
+    stats_actor = get_or_create_stats_actor()
+    stats_uuid = uuid.uuid4()
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
@@ -182,7 +184,7 @@ def read_datasource(datasource: Datasource[T],
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=task.get_metadata().input_files,
                 exec_stats=exec_stats)
-        stats_actor.add.remote(i, metadata)
+        stats_actor.add.remote(stats_uuid, i, metadata)
         return block
 
     if ray_remote_args is None:
@@ -225,7 +227,10 @@ def read_datasource(datasource: Datasource[T],
     return Dataset(
         block_list, 0,
         DatasetStats(
-            stages={"read": metadata}, parent=None, stats_actor=stats_actor))
+            stages={"read": metadata},
+            parent=None,
+            stats_actor=stats_actor,
+            stats_uuid=stats_uuid))
 
 
 @PublicAPI(stability="beta")

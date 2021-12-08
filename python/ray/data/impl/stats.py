@@ -63,19 +63,41 @@ class _DatasetStatsBuilder:
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
+    This actor is shared across all datasets created by the same process.
+    The stats data is small so we don't worry about clean up for now.
+
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
     extracted without using an out-of-band actor."""
 
     def __init__(self):
         self.start_time = time.time()
-        self.metadata = {}
+        # Mapping from uuid -> dataset-specific stats.
+        self.metadata = collections.defaultdict(dict)
+        self.last_time = {}
 
-    def add(self, i, metadata):
-        self.metadata[i] = metadata
-        self.last_time = time.time()
+    def add(self, stats_uuid, i, metadata):
+        self.metadata[stats_uuid][i] = metadata
+        self.last_time[stats_uuid] = time.time()
 
-    def get(self):
-        return self.metadata, self.last_time - self.start_time
+    def get(self, stats_uuid):
+        return self.metadata[stats_uuid], \
+            self.last_time[stats_uuid] - self.start_time
+
+
+_stats_actor = [None]
+
+
+def get_or_create_stats_actor():
+    if _stats_actor[0] is None:
+        _stats_actor[0] = _StatsActor.remote()
+
+    # Clear the actor handle after Ray reinits since it's no longer
+    # valid.
+    def clear_actor():
+        _stats_actor[0] = None
+
+    ray.worker._post_init_hooks.append(clear_actor)
+    return _stats_actor[0]
 
 
 class DatasetStats:
@@ -89,15 +111,17 @@ class DatasetStats:
                  *,
                  stages: Dict[str, List[BlockMetadata]],
                  parent: Optional["DatasetStats"],
-                 stats_actor=None):
+                 stats_actor=None,
+                 stats_uuid=None):
         """Create dataset stats.
 
         Args:
             stages: Dict of stages used to create this Dataset from the
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats.
-            stats_actor: Reference to actor where stats should be pulled
-                from. This is only used for Datasets using LazyBlockList.
+            lazy_stats_fn: Function that returns tuple of stats and total time
+                fetched from a stats actor. This is only used for Datasets
+                using LazyBlockList.
         """
 
         self.stages: Dict[str, List[BlockMetadata]] = stages
@@ -106,6 +130,7 @@ class DatasetStats:
         self.dataset_uuid: str = None
         self.time_total_s: float = 0
         self.stats_actor = stats_actor
+        self.stats_uuid = stats_uuid
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -131,9 +156,9 @@ class DatasetStats:
         """Return a human-readable summary of this Dataset's stats."""
 
         if self.stats_actor:
-            # XXX this is a super hack, clean it up
+            # XXX this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(
-                self.stats_actor.get.remote())
+                self.stats_actor.get.remote(self.stats_uuid))
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
         out = ""
