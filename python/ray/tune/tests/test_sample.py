@@ -10,8 +10,8 @@ from unittest.mock import patch
 import numpy as np
 import unittest
 
-import ray.tune.sample
 import ray
+import ray.tune.sample
 from ray import tune
 from ray.tune import Experiment
 from ray.tune.suggest.util import logger
