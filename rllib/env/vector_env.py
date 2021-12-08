@@ -6,7 +6,7 @@ from typing import Callable, List, Optional, Tuple
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import EnvActionType, EnvID, EnvInfoDict, \
-    EnvObsType, EnvType, MultiAgentDict, MultiEnvDict
+    EnvObsType, EnvType, MultiEnvDict
 
 logger = logging.getLogger(__name__)
 
@@ -302,10 +302,14 @@ class VectorEnvWrapper(BaseEnv):
             self.vector_env.vector_step(action_vector)
 
     @override(BaseEnv)
-    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiAgentDict:
+    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiEnvDict:
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
         assert env_id is None or isinstance(env_id, int)
-        return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
+        return {
+            env_id if env_id is not None else 0: {
+                _DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)
+            }
+        }
 
     @override(BaseEnv)
     def get_sub_environments(self) -> List[EnvType]:

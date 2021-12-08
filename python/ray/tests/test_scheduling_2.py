@@ -5,6 +5,11 @@ import sys
 import time
 
 import ray
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.scheduling_strategies import (
+    DefaultSchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 
 @pytest.mark.skipif(
@@ -51,6 +56,183 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     for i, dep in enumerate(deps):
         print(i, dep)
     ray.get(tasks)
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=16,
+        resources={"head": 1},
+        _system_config={"scheduler_spread_threshold": 1})
+    cluster.add_node(num_cpus=8, num_gpus=8, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+    pg = ray.util.placement_group(bundles=[{
+        "CPU": 1,
+        "GPU": 1
+    }, {
+        "CPU": 1,
+        "GPU": 1
+    }])
+    ray.get(pg.ready())
+    ray.get(pg.ready())
+
+    with connect_to_client_or_not(connect_to_client):
+
+        @ray.remote(scheduling_strategy="DEFAULT")
+        def get_node_id_1():
+            return ray.worker.global_worker.current_node_id
+
+        head_node_id = ray.get(
+            get_node_id_1.options(resources={
+                "head": 1
+            }).remote())
+        worker_node_id = ray.get(
+            get_node_id_1.options(resources={
+                "worker": 1
+            }).remote())
+
+        assert ray.get(get_node_id_1.remote()) == head_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        def get_node_id_2():
+            return ray.worker.global_worker.current_node_id
+
+        assert ray.get(
+            get_node_id_2.options(
+                scheduling_strategy="DEFAULT").remote()) == head_node_id
+        assert ray.get(
+            get_node_id_2.options(
+                scheduling_strategy=DefaultSchedulingStrategy())
+            .remote()) == head_node_id
+
+        @ray.remote(scheduling_strategy=DefaultSchedulingStrategy())
+        def get_node_id_3():
+            return ray.worker.global_worker.current_node_id
+
+        assert ray.get(get_node_id_3.remote()) == head_node_id
+
+        @ray.remote
+        def get_node_id_4():
+            return ray.worker.global_worker.current_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_capture_child_tasks=True))
+        class Actor1():
+            def get_node_ids(self):
+                return [
+                    ray.worker.global_worker.current_node_id,
+                    # Use parent's placement group
+                    ray.get(get_node_id_4.remote()),
+                    ray.get(
+                        get_node_id_4.options(
+                            scheduling_strategy="DEFAULT").remote())
+                ]
+
+        actor1 = Actor1.remote()
+        assert ray.get(actor1.get_node_ids.remote()) == \
+               [worker_node_id, worker_node_id, head_node_id]
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_group_scheduling_strategy(ray_start_cluster,
+                                             connect_to_client):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8, resources={"head": 1})
+    cluster.add_node(num_cpus=8, num_gpus=8, resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+    pg = ray.util.placement_group(bundles=[{
+        "CPU": 1,
+        "GPU": 1
+    }, {
+        "CPU": 1,
+        "GPU": 1
+    }])
+    ray.get(pg.ready())
+
+    with connect_to_client_or_not(connect_to_client):
+
+        @ray.remote(scheduling_strategy="DEFAULT")
+        def get_node_id_1():
+            return ray.worker.global_worker.current_node_id
+
+        worker_node_id = ray.get(
+            get_node_id_1.options(resources={
+                "worker": 1
+            }).remote())
+
+        assert ray.get(
+            get_node_id_1.options(
+                num_cpus=1,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg)).remote()) == worker_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        def get_node_id_2():
+            return ray.worker.global_worker.current_node_id
+
+        assert ray.get(get_node_id_2.remote()) == worker_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        class Actor1():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        actor1 = Actor1.remote()
+        assert ray.get(actor1.get_node_id.remote()) == worker_node_id
+
+        @ray.remote
+        class Actor2():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        actor2 = Actor2.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg)).remote()
+        assert ray.get(actor2.get_node_id.remote()) == worker_node_id
+
+    with pytest.raises(ValueError):
+
+        @ray.remote(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        def func():
+            return 0
+
+        func.options(placement_group=pg).remote()
+
+    with pytest.raises(ValueError):
+
+        @ray.remote
+        def func():
+            return 0
+
+        func.options(scheduling_strategy="XXX").remote()
+
+    with pytest.raises(ValueError):
+
+        @ray.remote
+        def func():
+            return 0
+
+        func.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=None)).remote()
 
 
 if __name__ == "__main__":

@@ -222,6 +222,17 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!placement_options.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(
+        placement_options.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        placement_options.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
   ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -233,8 +244,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       name,
       ray_namespace,
       /*is_asyncio=*/false,
-      placement_options,
-      /*placement_group_capture_child_tasks=*/true,
+      /*scheduling_strategy=*/scheduling_strategy,
       /*serialized_runtime_env=*/"{}",
       concurrency_groups,
       /*execute_out_of_order*/ false,
@@ -301,14 +311,25 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!placement_group_options.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(
+        placement_group_options.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        placement_group_options.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, task_args, task_options,
-      /*max_retries=*/0,
-      /*retry_exceptions=*/false,
-      /*placement_options=*/placement_group_options,
-      /*placement_group_capture_child_tasks=*/true,
-      /*debugger_breakpoint*/ "");
+  auto return_refs =
+      CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args, task_options,
+                                                    /*max_retries=*/0,
+                                                    /*retry_exceptions=*/false,
+                                                    /*scheduling_strategy=*/
+                                                    scheduling_strategy,
+                                                    /*debugger_breakpoint*/ "");
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));

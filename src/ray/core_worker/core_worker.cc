@@ -1333,7 +1333,17 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
-    PlacementGroupID placement_group_id, int64_t bundle_index) {
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  auto placement_group_id = PlacementGroupID::Nil();
+  auto bundle_index = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    placement_group_id = PlacementGroupID::FromBinary(
+        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+    bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
+                       .placement_group_bundle_index();
+  }
   if (bundle_index < 0) {
     RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
   }
@@ -1476,7 +1486,6 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string &debugger_breakpoint, int64_t depth,
     const std::string &serialized_runtime_env,
     const std::string &concurrency_group_name) {
@@ -1487,9 +1496,8 @@ void CoreWorker::BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, depth, override_runtime_env, runtime_env_uris,
-      concurrency_group_name);
+      required_placement_resources, debugger_breakpoint, depth, override_runtime_env,
+      runtime_env_uris, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1499,15 +1507,18 @@ void CoreWorker::BuildCommonTaskSpec(
 std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-    BundleID placement_options, bool placement_group_capture_child_tasks,
+    const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint) {
+  RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-  auto constrained_resources = AddPlacementGroupConstraint(
-      task_options.resources, placement_options.first, placement_options.second);
+  auto constrained_resources =
+      AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
@@ -1518,10 +1529,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
-                      task_options.serialized_runtime_env);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions);
+                      constrained_resources, required_resources, debugger_breakpoint,
+                      depth, task_options.serialized_runtime_env);
+  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -1544,6 +1554,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
+  RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   if (actor_creation_options.is_asyncio && options_.is_local_mode) {
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
@@ -1560,11 +1573,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
-                                  actor_creation_options.placement_options.first,
-                                  actor_creation_options.placement_options.second);
+                                  actor_creation_options.scheduling_strategy);
   auto new_resource = AddPlacementGroupConstraint(
-      actor_creation_options.resources, actor_creation_options.placement_options.first,
-      actor_creation_options.placement_options.second);
+      actor_creation_options.resources, actor_creation_options.scheduling_strategy);
   const auto actor_name = actor_creation_options.name;
   const auto task_name =
       actor_name.empty()
@@ -1574,9 +1585,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, actor_creation_options.placement_options,
-                      actor_creation_options.placement_group_capture_child_tasks, "",
-                      /* debugger_breakpoint */ depth,
+                      new_placement_resources, "" /* debugger_breakpoint */, depth,
                       actor_creation_options.serialized_runtime_env);
 
   // If the namespace is not specified, get it from the job.
@@ -1593,8 +1602,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
-      actor_id, serialized_actor_handle, actor_creation_options.max_restarts,
-      actor_creation_options.max_task_retries,
+      actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
+      actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
@@ -1780,11 +1789,9 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true,  /* placement_group_capture_child_tasks */
-                      "",    /* debugger_breakpoint */
-                      depth, /*depth*/
-                      "{}",  /* serialized_runtime_env */
+                      required_resources, "", /* debugger_breakpoint */
+                      depth,                  /*depth*/
+                      "{}",                   /* serialized_runtime_env */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
