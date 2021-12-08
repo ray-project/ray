@@ -26,16 +26,9 @@ Edit relevant sections in your `ray/python/ray/autoscaler/gen2/example-full.yaml
 
 .. code-block:: yaml
 
-    initialization_commands:
-        - curl -fsSL https://get.docker.com -o get-docker.sh
-        - sudo sh get-docker.sh
-        - sudo usermod -aG docker $USER
-        - sudo systemctl restart docker -f
-
-.. code-block:: yaml
     auth:
-    ssh_private_key: <SSH_PRIVATE_KEY_PATH>
-    ssh_user: root
+        ssh_private_key: <SSH_PRIVATE_KEY_PATH>
+        ssh_user: root
     available_node_types:
         worker_node:
             node_config:
