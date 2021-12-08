@@ -39,7 +39,9 @@ class ImportThread:
             self.subscriber.subscribe()
         else:
             self.subscriber = worker.redis_client.pubsub()
-            self.subscriber.subscribe("__keyspace@0__:Exports")
+            self.subscriber.subscribe(
+                b"__keyspace@0__:" + ray._private.function_manager.
+                make_exports_prefix(self.worker.current_job_id.binary()))
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         # Keep track of the number of imports that we've imported.
@@ -89,7 +91,7 @@ class ImportThread:
     def _do_importing(self):
         while True:
             export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1, self._worker.current_job_id.binary())
+                self.num_imported + 1, self.worker.current_job_id.binary())
             key = self.gcs_client.internal_kv_get(
                 export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if key is not None:
