@@ -1335,12 +1335,12 @@ def test_get_actor_after_killed(shutdown_only):
 
 
 def test_get_actor_race_condition(shutdown_only):
-    @ray.remote
+    @ray.remote(num_cpus=0.1)
     class Actor:
         def ping(self):
             return "ok"
 
-    @ray.remote
+    @ray.remote(num_cpus=0.1)
     def getter(name):
         try:
             try:
@@ -1363,11 +1363,6 @@ def test_get_actor_race_condition(shutdown_only):
 
     for i in range(50):
         CONCURRENCY = 8
-        # With GCS-based scheduler enabled, all normal tasks may be placed
-        # before scheduling the actor. So leave one CPU core for the actor
-        # if the test is running on a 8-core node.
-        if (gcs_actor_scheduling_enabled()):
-            CONCURRENCY -= 1
         results = do_run(i, concurrency=CONCURRENCY)
         assert ["ok"] * CONCURRENCY == results
 
