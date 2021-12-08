@@ -32,12 +32,6 @@ class BaseEnv:
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
 
-    Attributes:
-        action_space (gym.Space): Action space. This must be defined for
-            single-agent envs. Multi-agent envs can set this to None.
-        observation_space (gym.Space): Observation space. This must be defined
-            for single-agent envs. Multi-agent envs can set this to None.
-
     Examples:
         >>> env = MyBaseEnv()
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
