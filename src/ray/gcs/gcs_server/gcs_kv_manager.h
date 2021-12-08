@@ -122,7 +122,7 @@ class MemoryInternalKV : public InternalKVInterface {
   void Keys(const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
-  instrumented_io_context &GetEventLoop() { return io_context_; }
+  instrumented_io_context &GetEventLoop() override { return io_context_; }
 
  private:
   instrumented_io_context &io_context_;
