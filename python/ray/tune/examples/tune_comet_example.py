@@ -21,10 +21,14 @@ def tune_function(api_key=None, project_name=None):
         mode="min",
         callbacks=[
             CometLoggerCallback(
-                api_key=api_key, project_name=project_name, tags=["comet_example"]
-            )
+                api_key=api_key,
+                project_name=project_name,
+                tags=["comet_example"])
         ],
-        config={"mean": tune.grid_search([1, 2, 3]), "sd": tune.uniform(0.2, 0.8)},
+        config={
+            "mean": tune.grid_search([1, 2, 3]),
+            "sd": tune.uniform(0.2, 0.8)
+        },
     )
     return analysis.best_config
 
@@ -34,7 +38,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api-key",
         type=str,
-        help="API Key for Comet access. If not passed in, COMET_API_KEY environment variable should be set.",
+        help="API Key for Comet access. If not passed in, COMET_API_KEY" +
+        "environment variable should be set.",
     )
     parser.add_argument(
         "--project-name",
@@ -47,7 +52,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test",
         action="store_true",
-        help="Finish fast and use mock " "API access.",
+        help="Finish fast and use mock "
+        "API access.",
     )
     args, _ = parser.parse_known_args()
 
