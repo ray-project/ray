@@ -435,12 +435,16 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
 
 
 def test_worker_start_timeout(monkeypatch, ray_start_cluster):
+    # This test is to make sure
+    #   1. when worker failed to register, raylet will print useful log
+    #   2. raylet will kill hanging worker
     with monkeypatch.context() as m:
-        # delay internal kv for 10s
+        # delay internal kv for 5s
+        # this delay will make worker start slow
         m.setenv(
             "RAY_testing_asio_delay_us",
             "InternalKVGcsService.grpc_server.InternalKVGet"
-            "=5000000:5000000")
+            "=3000000:3000000")
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
@@ -452,12 +456,14 @@ ray.init(address='auto')
 def task():
     return None
 
-ray.get(task.remote(), timeout=5)
+ray.get(task.remote(), timeout=4)
 """
         with pytest.raises(subprocess.CalledProcessError) as e:
             run_string_as_driver(script)
+        # make sure log is correct
         assert ("The process is still alive, probably "
                 "it's hanging during start") in e.value.output.decode()
+        # worker will be killed so it won't try to register to raylet
         assert ("Received a register request from an "
                 "unknown worker shim process") not in e.value.output.decode()
 
