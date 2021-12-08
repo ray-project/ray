@@ -110,7 +110,7 @@ if __name__ == "__main__":
         # Evaluate once per training iteration.
         "evaluation_interval": 1,
         # Run evaluation on (at least) two episodes
-        "evaluation_num_episodes": 2,
+        "evaluation_duration": 2,
         # ... using one evaluation worker (setting this to 0 will cause
         # evaluation to run on the local evaluation worker, blocking
         # training until evaluation is done).

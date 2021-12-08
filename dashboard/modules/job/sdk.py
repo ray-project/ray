@@ -25,12 +25,21 @@ logger.setLevel(logging.INFO)
 @dataclasses.dataclass
 class ClusterInfo:
     address: str
-    cookies: Optional[Dict[str, Any]]
-    metadata: Optional[Dict[str, Any]]
+    cookies: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    headers: Optional[Dict[str, Any]] = None
 
 
 def get_job_submission_client_cluster_info(
-        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
+        address: str,
+        # For backwards compatibility
+        *,
+        # only used in importlib case in parse_cluster_info, but needed
+        # in function signature.
+        create_cluster_if_needed: Optional[bool] = False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
     """Get address, cookies, and metadata used for JobSubmissionClient.
 
         Args:
@@ -46,20 +55,35 @@ def get_job_submission_client_cluster_info(
             for JobSubmissionClient to use.
         """
     return ClusterInfo(
-        address="http://" + address, cookies=None, metadata=None)
+        address="http://" + address,
+        cookies=cookies,
+        metadata=metadata,
+        headers=headers)
 
 
-def parse_cluster_info(address: str,
-                       create_cluster_if_needed: bool) -> ClusterInfo:
+def parse_cluster_info(
+        address: str,
+        create_cluster_if_needed: bool = False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
     module_string, inner_address = _split_address(address.rstrip("/"))
 
     # If user passes in a raw HTTP(S) address, just pass it through.
     if module_string == "http" or module_string == "https":
-        return ClusterInfo(address=address, cookies=None, metadata=None)
+        return ClusterInfo(
+            address=address,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
     # If user passes in a Ray address, convert it to HTTP.
     elif module_string == "ray":
         return get_job_submission_client_cluster_info(
-            inner_address, create_cluster_if_needed)
+            inner_address,
+            create_cluster_if_needed=create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
     # Try to dynamically import the function to get cluster info.
     else:
         try:
@@ -73,20 +97,33 @@ def parse_cluster_info(address: str,
             "not have `get_job_submission_client_cluster_info`.")
 
         return module.get_job_submission_client_cluster_info(
-            inner_address, create_cluster_if_needed)
+            inner_address,
+            create_cluster_if_needed=create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
 
 
 class JobSubmissionClient:
-    def __init__(self, address: str, create_cluster_if_needed=False):
+    def __init__(self,
+                 address: str,
+                 create_cluster_if_needed=False,
+                 cookies: Optional[Dict[str, Any]] = None,
+                 metadata: Optional[Dict[str, Any]] = None,
+                 headers: Optional[Dict[str, Any]] = None):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``")
 
-        cluster_info = parse_cluster_info(address, create_cluster_if_needed)
+        cluster_info = parse_cluster_info(address, create_cluster_if_needed,
+                                          cookies, metadata, headers)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
+        # Headers used for all requests sent to job server, optional and only
+        # needed for cases like authentication to remote cluster.
+        self._headers = cluster_info.headers
 
         self._check_connection_and_version()
 
@@ -109,21 +146,27 @@ class JobSubmissionClient:
         raise RuntimeError(
             f"Request failed with status code {r.status_code}: {r.text}.")
 
-    def _do_request(
-            self,
-            method: str,
-            endpoint: str,
-            *,
-            data: Optional[bytes] = None,
-            json_data: Optional[dict] = None,
-    ) -> Optional[object]:
+    def _do_request(self,
+                    method: str,
+                    endpoint: str,
+                    *,
+                    data: Optional[bytes] = None,
+                    json_data: Optional[dict] = None) -> Optional[object]:
         url = self._address + endpoint
         logger.debug(
             f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
-            method, url, cookies=self._cookies, data=data, json=json_data)
+            method,
+            url,
+            cookies=self._cookies,
+            data=data,
+            json=json_data,
+            headers=self._headers)
 
-    def _package_exists(self, package_uri: str) -> bool:
+    def _package_exists(
+            self,
+            package_uri: str,
+    ) -> bool:
         protocol, package_name = uri_to_http_components(package_uri)
         r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
 
@@ -188,12 +231,14 @@ class JobSubmissionClient:
                     working_dir, excludes=runtime_env.get("excludes", None))
                 runtime_env["working_dir"] = package_uri
 
-    def submit_job(self,
-                   *,
-                   entrypoint: str,
-                   job_id: Optional[str] = None,
-                   runtime_env: Optional[Dict[str, Any]] = None,
-                   metadata: Optional[Dict[str, str]] = None) -> str:
+    def submit_job(
+            self,
+            *,
+            entrypoint: str,
+            job_id: Optional[str] = None,
+            runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
+    ) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -214,19 +259,22 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def stop_job(self, job_id: str) -> bool:
+    def stop_job(
+            self,
+            job_id: str,
+    ) -> bool:
         logger.debug(f"Stopping job with job_id={job_id}.")
-        r = self._do_request(
-            "POST",
-            f"/api/jobs/{job_id}/stop",
-        )
+        r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
 
         if r.status_code == 200:
             return JobStopResponse(**r.json()).stopped
         else:
             self._raise_error(r)
 
-    def get_job_status(self, job_id: str) -> JobStatusInfo:
+    def get_job_status(
+            self,
+            job_id: str,
+    ) -> JobStatusInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:

@@ -1,4 +1,5 @@
-from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
+    Union
 
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
@@ -160,8 +161,8 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None
+                  ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
@@ -170,6 +171,12 @@ class BaseEnv:
         Args:
             env_id: The sub-environment's ID if applicable. If None, reset
                 the entire Env (i.e. all sub-environments).
+
+        Note: A MultiAgentDict is returned when using the deprecated wrapper
+        classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv`,
+        however for consistency with the poll() method, a `MultiEnvDict` is
+        returned from the new wrapper classes, such as
+        `ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper`.
 
         Returns:
             The reset (multi-agent) observation dict. None if reset is not
