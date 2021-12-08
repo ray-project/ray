@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:nightly-py37-gpu"
-env_vars: {}
+env_vars: {{ env["APP_ENV_VARS"] | default("{}") }}
 
 python:
   pip_packages: []

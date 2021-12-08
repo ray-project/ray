@@ -68,6 +68,27 @@
     prepare: python distributed/wait_cluster.py --num-nodes=65
     script: python distributed/test_many_tasks.py --num-tasks=10000
 
+
+- name: many_tasks_redis_ha
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_tasks.py --num-tasks=10000
+
+  app_env_vars:
+    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_storage: "memory"
+
+  stable: false
+
 - name: many_tasks_smoke_test
   owner:
     mail: "core@anyscale.com"

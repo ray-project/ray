@@ -2007,6 +2007,12 @@ def run_test(test_config_file: str,
 
     test_config = test_config_dict[test_name]
 
+    if test_config.get("app_env_vars") is not None:
+        app_env_vars = test_config.get("app_env_vars")
+        if not isinstance(app_env_vars, dict):
+            raise ValueError("`app_env_vars` has to be a dict")
+        os.environ["APP_ENV_VARS"] = app_env_vars
+
     if smoke_test and "smoke_test" in test_config:
         smoke_test_config = test_config.pop("smoke_test")
         test_config = _deep_update(test_config, smoke_test_config)
