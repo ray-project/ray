@@ -445,11 +445,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       RAY_LOG(ERROR)
           << "Some workers of the worker process(" << proc.GetId()
           << ") have not registered to raylet within timeout. "
-          <<  (proc.IsAlive()
-               ? "The process is still alive, probably it's hanging during start."
-               : "The process is dead, probably it crashed during start.");
+          << (proc.IsAlive()
+                  ? "The process is still alive, probably it's hanging during start."
+                  : "The process is dead, probably it crashed during start.");
 
-      if(proc.IsAlive()) {
+      if (proc.IsAlive()) {
         proc.Kill();
       }
 

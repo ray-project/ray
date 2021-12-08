@@ -463,7 +463,7 @@ int Process::Wait() const {
 }
 
 bool Process::IsAlive() const {
-  if(p_) {
+  if (p_) {
     return IsProcessAlive(p_->GetId());
   }
   return false;
