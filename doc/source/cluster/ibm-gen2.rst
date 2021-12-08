@@ -11,9 +11,9 @@ Set up cluster configuration file manually
 The assumption that you already familiar with IBM Cloud, have your IBM IAM API key created (you can create new keys [here](https://cloud.ibm.com/iam/apikeys)), have valid IBM COS account, region and resource group.
 
 Follow [IBM VPC setup](https://cloud.ibm.com/vpc-ext/overview) if you need to create IBM Virtual Private Cloud. Decide the region for your VPC. The best practice is to use the same region both for VPC and IBM COS, hoewever there is no requirement to keep them in the same region.
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-### The following is the minimum setup requirements
+The following are the minimum setup requirements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 1. Create new VPC if you don't have one already. More details [here](https://cloud.ibm.com/vpc-ext/network/vpcs)
 2. Create new subnet with public gateway and IP range and total count. More details [here](https://cloud.ibm.com/vpc-ext/network/subnets)
@@ -24,48 +24,47 @@ Follow [IBM VPC setup](https://cloud.ibm.com/vpc-ext/overview) if you need to cr
 
 Edit relevant sections in your `ray/python/ray/autoscaler/gen2/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gen2/example-full.yaml>` and add the relevant keys:
 
-```yaml
-auth:
-  ssh_private_key: <SSH_PRIVATE_KEY_PATH>
-  ssh_user: root
-available_node_types:
-  worker_node:
-    node_config:
-      boot_volume_capacity: 100
-      image_id: <IMAGE_ID>
-      instance_profile_name: bx2-2x8
-      key_id: <PUBLIC_KEY_ID>
-      resource_group_id: <RESOURCE_GROUP_ID>
-      security_group_id: <SECURITY_GROUP_ID>
-      subnet_id: <SUBNET_ID>
-      volume_tier_name: general-purpose
-      vpc_id: <VPC_ID>
-    resources:
-      CPU: 2
-  head_node:
-    max_workers: 0
-    min_workers: 0
-    node_config:
-      boot_volume_capacity: 100
-      image_id: <IMAGE_ID>
-      instance_profile_name: bx2-2x8
-      key_id: <PUBLIC_KEY_ID>
-      resource_group_id: <RESOURCE_GROUP_ID>
-      security_group_id: <SECURITY_GROUP_ID>
-      subnet_id: <SUBNET_ID>
-      volume_tier_name: general-purpose
-      vpc_id: <VPC_ID>
-    resources:
-      CPU: 2
-provider:
-  cache_stopped_nodes: false
-  endpoint: <REGION_ENDPOINT>
-  iam_api_key: <API_KEY>
-  region: <REGION_NAME>
-  type: gen2
-  use_hybrid_ips: true
-  zone_name: <ZONE_NAME>
-```
+.. code-block:: yaml
+    auth:
+    ssh_private_key: <SSH_PRIVATE_KEY_PATH>
+    ssh_user: root
+    available_node_types:
+    worker_node:
+        node_config:
+        boot_volume_capacity: 100
+        image_id: <IMAGE_ID>
+        instance_profile_name: bx2-2x8
+        key_id: <PUBLIC_KEY_ID>
+        resource_group_id: <RESOURCE_GROUP_ID>
+        security_group_id: <SECURITY_GROUP_ID>
+        subnet_id: <SUBNET_ID>
+        volume_tier_name: general-purpose
+        vpc_id: <VPC_ID>
+        resources:
+        CPU: 2
+    head_node:
+        max_workers: 0
+        min_workers: 0
+        node_config:
+        boot_volume_capacity: 100
+        image_id: <IMAGE_ID>
+        instance_profile_name: bx2-2x8
+        key_id: <PUBLIC_KEY_ID>
+        resource_group_id: <RESOURCE_GROUP_ID>
+        security_group_id: <SECURITY_GROUP_ID>
+        subnet_id: <SUBNET_ID>
+        volume_tier_name: general-purpose
+        vpc_id: <VPC_ID>
+        resources:
+        CPU: 2
+    provider:
+    cache_stopped_nodes: false
+    endpoint: <REGION_ENDPOINT>
+    iam_api_key: <API_KEY>
+    region: <REGION_NAME>
+    type: gen2
+    use_hybrid_ips: true
+    zone_name: <ZONE_NAME>
 
 The fastest way to find all the required keys for `ibm_vpc` section as follows:
 
