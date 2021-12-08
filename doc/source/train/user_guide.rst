@@ -532,71 +532,95 @@ workers to be saved on the ``Trainer`` (where your python script is executed).
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
 
-As a trivial example, let's create a "model" which is an integer value that is
-equivalent to the sum of the number of epochs.
+Concrete examples are provided to demonstrate how checkpoints are saved appropriately in distributed training.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: PyTorch
+    .. code-block:: python
 
-    from ray import train
-    from ray.train import Trainer
+        import ray.train.torch
+        from ray import train
+        from ray.train import Trainer
 
-    import torch
-    import torch.nn as nn
-    from torch.optim import Adam
-    import numpy as np
-
-
-    def train_func(config):
-        n = 100
-        # create a toy dataset
-        # data   : X - dim = (n, 4)
-        # target : Y - dim = (n, 1)
-        Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
-        X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
-
-        # toy neural network : 1-layer
-        model = nn.Linear(4, 1)
-        mse = nn.MSELoss()
-        optimizer = Adam(model.parameters(), lr=3e-4)
-
-        for epoch in range(config["num_epochs"]):
-            # compute loss
-            y = model.forward(X)
-            loss = mse(y, Y)
-            # back-propagate loss
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            # For TensorFlow (Keras) models, use model.get_weights()
-            train.save_checkpoint(epoch=epoch, model_weights=model.state_dict())
+        import torch
+        import torch.nn as nn
+        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+        from torch.optim import Adam
+        import numpy as np
 
 
-    trainer = Trainer(backend="torch", num_workers=1)
-    trainer.start()
+        def train_func(config):
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            # toy neural network : 1-layer
+            # wrap the model in DDP
+            model = ray.train.torch.prepare_model(nn.Linear(4, 1))
+            mse = nn.MSELoss()
 
-    trainer.run(train_func, config={"num_epochs": 1})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 0,
-    # 'model_weights': OrderedDict([('weight', tensor([[-0.4763, -0.3775,  0.4768,  0.3969]])),
-    #                               ('bias', tensor([0.2237]))]),
-    # '_timestamp': 1638979904}
+            optimizer = Adam(model.parameters(), lr=3e-4)
+            for epoch in range(config["num_epochs"]):
+                # compute loss
+                y = model.forward(X)
+                loss = mse(y, Y)
+                # back-propagate loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                # To fetch non-DDP state_dict
+                # w/o DDP: model.state_dict()
+                # w/  DDP: model.module.state_dict()
+                # See: https://github.com/ray-project/ray/issues/20915
+                ddp_state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(ddp_state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=ddp_state_dict)
 
-    trainer.run(train_func, config={"num_epochs": 5})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 4,
-    # 'model_weights': OrderedDict([('weight', tensor([[ 0.4854, -0.1520, -0.1217,  0.2099]])),
-    #                               ('bias', tensor([-0.0724]))]),
-    # '_timestamp': 1638979904}
+
+        trainer = Trainer(backend="torch", num_workers=2)
+        trainer.start()
+        trainer.run(train_func, config={"num_epochs": 5})
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+
+  .. group-tab:: TensorFlow
+    .. code-block:: python
+
+        from ray import train
+        from ray.train import Trainer
+
+        import numpy as np
 
 
-    trainer.run(train_func, config={"num_epochs": 3})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 2,
-    # 'model_weights': OrderedDict([('weight', tensor([[-0.3507, -0.3393, -0.0135, -0.0821]])),
-    #                               ('bias', tensor([0.0296]))]),
-    # '_timestamp': 1638979904}
+        def train_func(config):
+            import tensorflow as tf
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            Y = np.random.uniform(0, 1, size=(n, 1))
+            X = np.random.normal(0, 1, size=(n, 4))
 
-    trainer.shutdown()
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+            with strategy.scope():
+                # toy neural network : 1-layer
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
+                model.compile(loss="mean_squared_error", metrics=["mse"])
+
+            for epoch in range(config["num_epochs"]):
+                model.fit(X, Y, epochs=epoch, batch_size=20)
+                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+
+
+        trainer = Trainer(backend="tensorflow", num_workers=2)
+        trainer.start()
+        trainer.run(train_func, config={"num_epochs": 5})
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
 directory <train-log-dir>` of each run.
@@ -687,66 +711,124 @@ Checkpoints can be loaded into the training function in 2 steps:
 2. The checkpoint to start training with can be bootstrapped by passing in a
    ``checkpoint`` to ``trainer.run()``.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: PyTorch
+    .. code-block:: python
 
-    from ray import train
-    from ray.train import Trainer
+        import ray.train.torch
+        from ray import train
+        from ray.train import Trainer
 
-    import torch
-    import torch.nn as nn
-    from torch.optim import Adam
-    import numpy as np
-
-
-    def train_func(config):
-        n = 100
-        # create a toy dataset
-        # data   : X - dim = (n, 4)
-        # target : Y - dim = (n, 1)
-        Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
-        X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
-
-        # toy neural network : 1-layer
-        model = nn.Linear(4, 1)
-        mse = nn.MSELoss()
-        optimizer = Adam(model.parameters(), lr=3e-4)
-        start_epoch = 0
-
-        checkpoint = train.load_checkpoint()
-        if checkpoint:
-            # assume that we have run the train.save_checkpoint() example
-            #                and successfully save some model weights
-            # For TensorFlow (Keras) models, use model.set_weights(checkpoint.get("model_weights")
-            model.load_state_dict(checkpoint.get("model_weights"))
-            start_epoch = checkpoint.get("epoch", -1) + 1
-
-        for epoch in range(start_epoch, config["num_epochs"]):
-            # compute loss
-            y = model.forward(X)
-            loss = mse(y, Y)
-            # back-propagate loss
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            # For TensorFlow (Keras) models, use model.get_weights()
-            train.save_checkpoint(epoch=epoch, model_weights=model.state_dict())
+        import torch
+        import torch.nn as nn
+        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+        from torch.optim import Adam
+        import numpy as np
 
 
-    trainer = Trainer(backend="torch", num_workers=1)
-    trainer.start()
-    # save a checkpoint
-    trainer.run(train_func, config={"num_epochs": 2})
-    # load a checkpoint
-    trainer.run(train_func, config={"num_epochs": 4},
-                checkpoint=trainer.latest_checkpoint)
+        def train_func(config):
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
 
-    trainer.shutdown()
+            # toy neural network : 1-layer
+            model = nn.Linear(4, 1)
+            mse = nn.MSELoss()
+            optimizer = Adam(model.parameters(), lr=3e-4)
+            start_epoch = 0
 
-    print(trainer.latest_checkpoint)
-    # {'epoch': 3,
-    # 'model_weights': OrderedDict([('weight', tensor([[0.3364, 0.1407, 0.1754, 0.4875]])),
-    #                               ('bias', tensor([-0.0347]))]),
-    # '_timestamp': 1638979692}
+            checkpoint = train.load_checkpoint()
+            if checkpoint:
+                # assume that we have run the train.save_checkpoint() example
+                #                and successfully save some model weights
+                model.load_state_dict(checkpoint.get("model_weights"))
+                start_epoch = checkpoint.get("epoch", -1) + 1
+
+            # wrap the model in DDP
+            model = ray.train.torch.prepare_model(model)
+            for epoch in range(start_epoch, config["num_epochs"]):
+                # compute loss
+                y = model.forward(X)
+                loss = mse(y, Y)
+                # back-propagate loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                ddp_state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(ddp_state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=ddp_state_dict)
+
+
+        trainer = Trainer(backend="torch", num_workers=2)
+        trainer.start()
+        # save a checkpoint
+        trainer.run(train_func, config={"num_epochs": 2})
+        # load a checkpoint
+        trainer.run(train_func, config={"num_epochs": 4},
+                    checkpoint=trainer.latest_checkpoint)
+
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+
+  .. group-tab:: TensorFlow
+    .. code-block:: python
+
+        from ray import train
+        from ray.train import Trainer
+
+        import numpy as np
+
+
+        def train_func(config):
+            import tensorflow as tf
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            Y = np.random.uniform(0, 1, size=(n, 1))
+            X = np.random.normal(0, 1, size=(n, 4))
+
+            start_epoch = 0
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+
+            with strategy.scope():
+                # toy neural network : 1-layer
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
+                checkpoint = train.load_checkpoint()
+                if checkpoint:
+                    print(">>> loading")
+                    model.build((None, 4))
+                    # assume that we have run the train.save_checkpoint() example
+                    #                and successfully save some model weights
+                    model.set_weights(checkpoint.get("model_weights"))
+                    start_epoch = checkpoint.get("epoch", -1) + 1
+                model.compile(loss="mean_squared_error", metrics=["mse"])
+
+            for epoch in range(start_epoch, config["num_epochs"]):
+                model.fit(X, Y, epochs=epoch, batch_size=20)
+                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+
+
+        trainer = Trainer(backend="tensorflow", num_workers=2)
+        trainer.start()
+        # save a checkpoint
+        trainer.run(train_func, config={"num_epochs": 2})
+        trainer.shutdown()
+
+        # restart the trainer for the loading checkpoint example
+        # TensorFlow ops need to be created after a MultiWorkerMirroredStrategy instance is created.
+        # See: https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#train_the_model_with_multiworkermirroredstrategy
+        trainer.start()
+        # load a checkpoint
+        trainer.run(train_func, config={"num_epochs": 5},
+                    checkpoint=trainer.latest_checkpoint)
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
 
 .. Running on the cloud
 .. --------------------
