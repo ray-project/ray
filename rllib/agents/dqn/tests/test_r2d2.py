@@ -13,7 +13,7 @@ torch, nn = try_import_torch()
 class TestR2D2(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
