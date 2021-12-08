@@ -195,6 +195,10 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
+      if (reply.runtime_env_setup_failed()) {
+        OnRuntimeEnvSetupFailure(actor, node_id);
+      }
+
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty() && !reply.rejected()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
@@ -211,9 +215,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
       if (iter->second.empty()) {
         node_to_actors_when_leasing_.erase(iter);
       }
-      if (reply.runtime_env_setup_failed()) {
-        OnRuntimeEnvSetupFailure(actor, node_id);
-      } else if (reply.rejected()) {
+      if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()
                       << " as the resources are seized by normal tasks, job id = "
@@ -259,6 +261,9 @@ void GcsBasedActorScheduler::NotifyClusterResourcesChanged() {
 }
 
 void GcsBasedActorScheduler::ResetActorWorkerAssignment(GcsActor *actor) {
+  if (!actor->GetActorWorkerAssignment()) {
+    return;
+  }
   if (gcs_resource_manager_->ReleaseResources(
           actor->GetActorWorkerAssignment()->GetNodeID(),
           actor->GetActorWorkerAssignment()->GetResources())) {
@@ -268,7 +273,7 @@ void GcsBasedActorScheduler::ResetActorWorkerAssignment(GcsActor *actor) {
 }
 
 void GcsBasedActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
-  if (actor && actor->GetActorWorkerAssignment()) {
+  if (actor) {
     ResetActorWorkerAssignment(actor.get());
   }
 }

@@ -580,6 +580,9 @@ def test_head_node_without_cpu(ray_start_cluster):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler currently does not support this.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu_scheduling_liveness(ray_start_cluster):
     """Check if the GPU scheduling is in progress when

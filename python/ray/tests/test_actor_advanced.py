@@ -1130,6 +1130,7 @@ def test_actor_resource_demand(shutdown_only):
 
 
 def test_kill_pending_actor_with_no_restart_true():
+    ray.shutdown()
     cluster = ray.init()
     global_state_accessor = GlobalStateAccessor(
         cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
@@ -1291,6 +1292,7 @@ def test_actor_timestamps(ray_start_regular):
     graceful_exit()
     not_graceful_exit()
     restarted()
+    ray.shutdown()
 
 
 def test_actor_namespace_access(ray_start_regular):
@@ -1311,6 +1313,7 @@ def test_actor_namespace_access(ray_start_regular):
 
 
 def test_get_actor_after_killed(shutdown_only):
+    ray.shutdown()
     ray.init(num_cpus=2)
 
     @ray.remote
