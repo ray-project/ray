@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
     GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -2037,7 +2038,8 @@ def make_decorator(num_returns=None,
                    placement_group="default",
                    worker=None,
                    retry_exceptions=None,
-                   concurrency_groups=None):
+                   concurrency_groups=None,
+                   scheduling_strategy: SchedulingStrategyT = None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2067,7 +2069,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group)
+                runtime_env, placement_group, scheduling_strategy)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2095,7 +2097,8 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(
                 function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, accelerator_type, max_restarts,
-                max_task_retries, runtime_env, concurrency_groups)
+                max_task_retries, runtime_env, concurrency_groups,
+                scheduling_strategy)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2205,6 +2208,16 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
+        scheduling_strategy (SchedulingStrategy): Strategy about how to
+            schedule a remote function or actor. Possible values are
+            None: ray will figure out the scheduling strategy to use, it
+            will either be the PlacementGroupSchedulingStrategy using parent's
+            placement group if parent has one and has
+            placement_group_capture_child_tasks set to true,
+            or the DefaultSchedulingStrategy;
+            "DEFAULT": default hybrid scheduling;
+            `PlacementGroupSchedulingStrategy`:
+            placement group based scheduling.
     """
     worker = global_worker
 
@@ -2229,6 +2242,7 @@ def remote(*args, **kwargs):
         "retry_exceptions",
         "placement_group",
         "concurrency_groups",
+        "scheduling_strategy",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2264,6 +2278,7 @@ def remote(*args, **kwargs):
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
+    scheduling_strategy = kwargs.get("scheduling_strategy")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2281,4 +2296,5 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [])
+        concurrency_groups=concurrency_groups or [],
+        scheduling_strategy=scheduling_strategy)
