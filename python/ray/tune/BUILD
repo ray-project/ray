@@ -135,6 +135,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_comet",
+    size = "small",
+    srcs = ["tests/test_integration_comet.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_I"],
+)
+
+py_test(
     name = "test_integration_docker",
     size = "small",
     srcs = ["tests/test_integration_docker.py"],

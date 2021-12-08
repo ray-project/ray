@@ -12,7 +12,7 @@ def _import_comet():
     error message.
     """
     try:
-        import comet_ml
+        import comet_ml # noqa: F401
     except ImportError:
         raise RuntimeError("pip install 'comet-ml' to use CometLoggerCallback")
 
