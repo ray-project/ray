@@ -84,19 +84,16 @@ class _StatsActor:
             self.last_time[stats_uuid] - self.start_time
 
 
-_stats_actor = [None]
+# Actor handle, job id the actor was created for.
+_stats_actor = [None, None]
 
 
 def get_or_create_stats_actor():
-    if _stats_actor[0] is None:
+    cur_job_id = ray.get_runtime_context().job_id.hex()
+    # Need to re-create it if Ray restarts (mostly for unit tests).
+    if _stats_actor[1] != cur_job_id:
         _stats_actor[0] = _StatsActor.remote()
-
-    # Clear the actor handle after Ray reinits since it's no longer
-    # valid.
-    def clear_actor():
-        _stats_actor[0] = None
-
-    ray.worker._post_init_hooks.append(clear_actor)
+        _stats_actor[1] = cur_job_id
     return _stats_actor[0]
 
 
