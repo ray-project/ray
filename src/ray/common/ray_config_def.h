@@ -280,6 +280,8 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+RAY_CONFIG(std::string, gcs_storage, "redis")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -525,3 +527,10 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+
+/// grpc delay testing flags
+///  To use this, simply do
+///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
+//  The delay is a random number between the interval. If method equals '*',
+//  it will apply to all methods.
+RAY_CONFIG(std::string, testing_asio_delay_us, "")

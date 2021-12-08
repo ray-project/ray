@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID, MultiAgentDict
+from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +184,7 @@ class RemoteBaseEnv(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         actor = self.actors[env_id]
         obj_ref = actor.reset.remote()
         self.pending[obj_ref] = actor

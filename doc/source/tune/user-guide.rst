@@ -1154,8 +1154,8 @@ These are the environment variables Ray Tune currently considers:
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
   to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
-  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results), or to 1 (no buffering)
-  if used with ``checkpoint_at_end``.
+  continued. Setting this to ``1`` disables result buffering. Cannot be used with ``checkpoint_at_end``.
+  Defaults to disabled.
 * **TUNE_RESULT_DELIM**: Delimiter used for nested entries in
   :class:`ExperimentAnalysis <ray.tune.ExperimentAnalysis>` dataframes. Defaults to ``.`` (but will be
   changed to ``/`` in future versions of Ray).

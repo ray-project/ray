@@ -39,7 +39,8 @@ class AgentManagerClient {
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(AgentManagerService, RegisterAgent, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(AgentManagerService, RegisterAgent, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// The RPC client.

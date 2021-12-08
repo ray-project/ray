@@ -2146,12 +2146,12 @@ class Dataset(Generic[T]):
 
         if self.count() > limit:
             raise ValueError(
-                "The dataset has more than the given limit of {} records.".
-                format(limit))
+                "The dataset has more than the given limit of {} records. "
+                "Use ds.limit(N).to_pandas().".format(limit))
         blocks = self.get_internal_block_refs()
         output = DelegatingArrowBlockBuilder()
-        for block in ray.get(blocks):
-            output.add_block(block)
+        for block in blocks:
+            output.add_block(ray.get(block))
         return output.build().to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
@@ -2191,7 +2191,6 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
         """
-
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
         return [
             block_to_ndarray.remote(block, column=column)

@@ -1,9 +1,11 @@
 import gym
-from typing import Callable, Dict, List, Tuple, Type, Union
+from typing import Callable, Dict, List, Tuple, Type, Optional, Union
 
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import ExperimentalAPI, override, PublicAPI
-from ray.rllib.utils.typing import AgentID, EnvType, MultiAgentDict
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
+    MultiEnvDict
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -130,6 +132,53 @@ class MultiAgentEnv(gym.Env):
         from ray.rllib.env.wrappers.group_agents_wrapper import \
             GroupAgentsWrapper
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
+
+    @PublicAPI
+    def to_base_env(self,
+                    make_env: Callable[[int], EnvType] = None,
+                    num_envs: int = 1,
+                    remote_envs: bool = False,
+                    remote_env_batch_wait_ms: int = 0,
+                    ) -> "BaseEnv":
+        """Converts an RLlib MultiAgentEnv into a BaseEnv object.
+
+            The resulting BaseEnv is always vectorized (contains n
+            sub-environments) to support batched forward passes, where n may
+            also be 1. BaseEnv also supports async execution via the `poll` and
+            `send_actions` methods and thus supports external simulators.
+
+            Args:
+                make_env: A callable taking an int as input (which indicates
+                    the number of individual sub-environments within the final
+                    vectorized BaseEnv) and returning one individual
+                    sub-environment.
+                num_envs: The number of sub-environments to create in the
+                    resulting (vectorized) BaseEnv. The already existing `env`
+                    will be one of the `num_envs`.
+                remote_envs: Whether each sub-env should be a @ray.remote
+                    actor. You can set this behavior in your config via the
+                    `remote_worker_envs=True` option.
+                remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+                    sub-environments for, if applicable. Only used if
+                    `remote_envs` is True.
+
+            Returns:
+                The resulting BaseEnv object.
+            """
+        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        if remote_envs:
+            env = RemoteBaseEnv(
+                make_env,
+                num_envs,
+                multiagent=True,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+        # Sub-environments are not ray.remote actors.
+        else:
+            env = MultiAgentEnvWrapper(
+                make_env=make_env, existing_envs=[self], num_envs=num_envs)
+
+        return env
+
 # __grouping_doc_end__
 # yapf: enable
 
@@ -214,3 +263,156 @@ def make_multi_agent(
             return self.agents[0].render(mode)
 
     return MultiEnv
+
+
+class MultiAgentEnvWrapper(BaseEnv):
+    """Internal adapter of MultiAgentEnv to BaseEnv.
+
+    This also supports vectorization if num_envs > 1.
+    """
+
+    def __init__(self, make_env: Callable[[int], EnvType],
+                 existing_envs: MultiAgentEnv, num_envs: int):
+        """Wraps MultiAgentEnv(s) into the BaseEnv API.
+
+        Args:
+            make_env (Callable[[int], EnvType]): Factory that produces a new
+                MultiAgentEnv intance. Must be defined, if the number of
+                existing envs is less than num_envs.
+            existing_envs (List[MultiAgentEnv]): List of already existing
+                multi-agent envs.
+            num_envs (int): Desired num multiagent envs to have at the end in
+                total. This will include the given (already created)
+                `existing_envs`.
+        """
+        self.make_env = make_env
+        self.envs = existing_envs
+        self.num_envs = num_envs
+        self.dones = set()
+        while len(self.envs) < self.num_envs:
+            self.envs.append(self.make_env(len(self.envs)))
+        for env in self.envs:
+            assert isinstance(env, MultiAgentEnv)
+        self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+
+    @override(BaseEnv)
+    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        obs, rewards, dones, infos = {}, {}, {}, {}
+        for i, env_state in enumerate(self.env_states):
+            obs[i], rewards[i], dones[i], infos[i] = env_state.poll()
+        return obs, rewards, dones, infos, {}
+
+    @override(BaseEnv)
+    def send_actions(self, action_dict: MultiEnvDict) -> None:
+        for env_id, agent_dict in action_dict.items():
+            if env_id in self.dones:
+                raise ValueError("Env {} is already done".format(env_id))
+            env = self.envs[env_id]
+            obs, rewards, dones, infos = env.step(agent_dict)
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            assert isinstance(rewards, dict), "Not a multi-agent reward"
+            assert isinstance(dones, dict), "Not a multi-agent return"
+            assert isinstance(infos, dict), "Not a multi-agent info"
+            if set(infos).difference(set(obs)):
+                raise ValueError("Key set for infos must be a subset of obs: "
+                                 "{} vs {}".format(infos.keys(), obs.keys()))
+            if "__all__" not in dones:
+                raise ValueError(
+                    "In multi-agent environments, '__all__': True|False must "
+                    "be included in the 'done' dict: got {}.".format(dones))
+            if dones["__all__"]:
+                self.dones.add(env_id)
+            self.env_states[env_id].observe(obs, rewards, dones, infos)
+
+    @override(BaseEnv)
+    def try_reset(self,
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
+        obs = self.env_states[env_id].reset()
+        assert isinstance(obs, dict), "Not a multi-agent obs"
+        if obs is not None and env_id in self.dones:
+            self.dones.remove(env_id)
+        obs = {env_id: obs}
+        return obs
+
+    @override(BaseEnv)
+    def get_sub_environments(self) -> List[EnvType]:
+        return [state.env for state in self.env_states]
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        if env_id is None:
+            env_id = 0
+        assert isinstance(env_id, int)
+        return self.envs[env_id].render()
+
+
+class _MultiAgentEnvState:
+    def __init__(self, env: MultiAgentEnv):
+        assert isinstance(env, MultiAgentEnv)
+        self.env = env
+        self.initialized = False
+        self.last_obs = {}
+        self.last_rewards = {}
+        self.last_dones = {"__all__": False}
+        self.last_infos = {}
+
+    def poll(
+            self
+    ) -> Tuple[MultiAgentDict, MultiAgentDict, MultiAgentDict, MultiAgentDict]:
+        if not self.initialized:
+            self.reset()
+            self.initialized = True
+
+        observations = self.last_obs
+        rewards = {}
+        dones = {"__all__": self.last_dones["__all__"]}
+        infos = {}
+
+        # If episode is done, release everything we have.
+        if dones["__all__"]:
+            rewards = self.last_rewards
+            self.last_rewards = {}
+            dones = self.last_dones
+            self.last_dones = {}
+            self.last_obs = {}
+            infos = self.last_infos
+            self.last_infos = {}
+        # Only release those agents' rewards/dones/infos, whose
+        # observations we have.
+        else:
+            for ag in observations.keys():
+                if ag in self.last_rewards:
+                    rewards[ag] = self.last_rewards[ag]
+                    del self.last_rewards[ag]
+                if ag in self.last_dones:
+                    dones[ag] = self.last_dones[ag]
+                    del self.last_dones[ag]
+                if ag in self.last_infos:
+                    infos[ag] = self.last_infos[ag]
+                    del self.last_infos[ag]
+
+        self.last_dones["__all__"] = False
+        return observations, rewards, dones, infos
+
+    def observe(self, obs: MultiAgentDict, rewards: MultiAgentDict,
+                dones: MultiAgentDict, infos: MultiAgentDict):
+        self.last_obs = obs
+        for ag, r in rewards.items():
+            if ag in self.last_rewards:
+                self.last_rewards[ag] += r
+            else:
+                self.last_rewards[ag] = r
+        for ag, d in dones.items():
+            if ag in self.last_dones:
+                self.last_dones[ag] = self.last_dones[ag] or d
+            else:
+                self.last_dones[ag] = d
+        self.last_infos = infos
+
+    def reset(self) -> MultiAgentDict:
+        self.last_obs = self.env.reset()
+        self.last_rewards = {}
+        self.last_dones = {"__all__": False}
+        self.last_infos = {}
+        return self.last_obs
