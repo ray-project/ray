@@ -5,6 +5,7 @@ import subprocess
 import hashlib
 import json
 from typing import Optional, List, Union, Tuple
+from pkg_resources import Requirement
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
 # Name of environment variable indicating a path to a conda installation. Ray
@@ -55,6 +56,20 @@ def get_conda_bin_executable(executable_name: str) -> str:
         conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
         return os.path.join(conda_bin_dir, executable_name)
     return executable_name
+
+
+def pip_requirement_specifier_is_ray(specifier: str) -> bool:
+    """
+    Return whether a pip requirement specifier (e.g. "ray>1.4") refers to Ray.
+
+    Examples:
+        "ray" -> True
+        "ray>1.4" -> True
+        "raytracing" -> False
+        "ray[default]" -> True
+        "ray[serve]@https://rays.com/fake.whl" -> True
+    """
+    return Requirement.parse(specifier).name == "ray"
 
 
 def _get_conda_env_name(conda_env_path: str) -> str:

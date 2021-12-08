@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
+from ray._private.runtime_env.conda_utils import pip_requirement_specifier_is_ray
 import yaml
 
 import ray
@@ -133,6 +134,14 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     else:
         raise TypeError("runtime_env['pip'] must be of type str or "
                         f"List[str], got {type(pip)}")
+    for specifier in result:
+        if pip_requirement_specifier_is_ray(specifier):
+            logger.warning("Ray was specified in the `pip` field of the "
+                           f"`runtime_env`: '{specifier}'. This may cause Ray "
+                           "version compatibility issues. When using the `pip` "
+                           "field of `runtime_env`, it is recommended to "
+                           "preinstall Ray on all nodes in the cluster and to "
+                           "not include Ray in the `pip` field.")
 
     return result
 
