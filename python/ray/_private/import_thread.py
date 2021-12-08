@@ -1,6 +1,5 @@
 from collections import defaultdict
 import threading
-import traceback
 
 import redis
 import grpc
@@ -8,7 +7,6 @@ import grpc
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-import ray._private.profiling as profiling
 import logging
 
 logger = logging.getLogger(__name__)
@@ -148,9 +146,6 @@ class ImportThread:
             # with profiling.profile("register_remote_function"):
             (self.worker.function_actor_manager.
              fetch_and_register_remote_function(key))
-        elif key.startswith(b"FunctionsToRun"):
-            with profiling.profile("fetch_and_run_function"):
-                self.fetch_and_execute_function_to_run(key)
         elif key.startswith(b"ActorClass"):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
@@ -165,37 +160,6 @@ class ImportThread:
         # fetching actor classes here.
         else:
             assert False, "This code should be unreachable."
-
-    def fetch_and_execute_function_to_run(self, key):
-        """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = self._internal_kv_multiget(
-            key, ["job_id", "function"])
-
-        if self.worker.mode == ray.SCRIPT_MODE:
-            return
-
-        if ray_constants.ISOLATE_EXPORTS and \
-                job_id != self.worker.current_job_id.binary():
-            return
-
-        try:
-            # FunctionActorManager may call pickle.loads at the same time.
-            # Importing the same module in different threads causes deadlock.
-            with self.worker.function_actor_manager.lock:
-                # Deserialize the function.
-                function = pickle.loads(serialized_function)
-            # Run the function.
-            function({"worker": self.worker})
-        except Exception:
-            # If an exception was thrown when the function was run, we record
-            # the traceback and notify the scheduler of the failure.
-            traceback_str = traceback.format_exc()
-            # Log the error message.
-            ray._private.utils.push_error_to_driver(
-                self.worker,
-                ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
-                traceback_str,
-                job_id=ray.JobID(job_id))
 
     def _internal_kv_multiget(self, key, fields):
         vals = self.gcs_client.internal_kv_get(
