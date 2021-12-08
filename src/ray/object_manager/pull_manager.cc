@@ -740,6 +740,10 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   return bytes_needed_calculated;
 }
 
+void PullManager::RecordMetrics() const {
+  // TODO(sang): Add metrics.
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
   std::stringstream result;
@@ -757,6 +761,7 @@ std::string PullManager::DebugString() const {
   result << "\n- first task request bundle: "
          << BundleInfo(task_argument_bundles_, highest_task_req_id_being_pulled_);
   result << "\n- num objects queued: " << object_pull_requests_.size();
+  ;
   result << "\n- num objects actively pulled (all): "
          << active_object_pull_requests_.size();
   result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();

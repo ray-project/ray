@@ -166,6 +166,10 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   }
 }
 
+void ObjectStatsCollector::RecordMetrics() const {
+  // TODO(sang): Add metrics.
+}
+
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
   buffer << "- objects spillable: " << num_objects_spillable_ << "\n";
   buffer << "- bytes spillable: " << num_bytes_spillable_ << "\n";

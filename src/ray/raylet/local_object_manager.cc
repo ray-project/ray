@@ -493,7 +493,8 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_object_store_bytes_primary_copy(pinned_objects_size_);
 }
 
-void LocalObjectManager::RecordObjectSpillingStats() const {
+void LocalObjectManager::RecordMetrics() const {
+  /// Record Metrics.
   if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
     stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
                                       spill_time_total_s_);
