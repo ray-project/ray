@@ -31,11 +31,9 @@ class _BackwardsCompatibleNumpyRng:
             self,
             generator_or_seed: Optional[Union[
                 "np_random_generator", np.random.RandomState, int]] = None):
-        if generator_or_seed is None:
-            self._rng = None
-        elif isinstance(generator_or_seed, np.random.RandomState):
-            self._rng = generator_or_seed
-        elif isinstance(generator_or_seed, np_random_generator):
+        if (generator_or_seed is None
+                or isinstance(generator_or_seed,
+                              (np.random.RandomState, np_random_generator))):
             self._rng = generator_or_seed
         elif LEGACY_RNG:
             self._rng = np.random.RandomState(generator_or_seed)
@@ -48,6 +46,7 @@ class _BackwardsCompatibleNumpyRng:
 
     @property
     def rng(self):
+        # don't set self._rng to np.random to avoid picking issues
         return self._rng if self._rng else np.random
 
     def __getattr__(self, name: str) -> Any:
