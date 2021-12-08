@@ -1509,6 +1509,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint) {
+  RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1551,6 +1554,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
+  RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   if (actor_creation_options.is_asyncio && options_.is_local_mode) {
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");

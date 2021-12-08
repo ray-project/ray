@@ -12,7 +12,10 @@ class SchedulingStrategy(object):
 
 @PublicAPI(stability="beta")
 class DefaultSchedulingStrategy(SchedulingStrategy):
-    """The default hybrid scheduling strategy.
+    """The default hybrid scheduling strategy
+       based on config scheduler_spread_threshold.
+
+    This disables any potential placement group capture.
     """
     pass
 
