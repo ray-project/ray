@@ -94,6 +94,13 @@ def get_or_create_stats_actor():
             or _stats_actor[1] != ray.get_runtime_context().job_id.hex()):
         _stats_actor[0] = _StatsActor.remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
+
+    # Clear the actor handle after Ray reinits since it's no longer
+    # valid.
+    def clear_actor():
+        _stats_actor[0] = None
+
+    ray.worker._post_init_hooks.append(clear_actor)
     return _stats_actor[0]
 
 
