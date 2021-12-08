@@ -80,7 +80,6 @@ class Process {
                               const ProcessEnvironment &env = {});
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
-  bool IsDead() const;
   pid_t GetId() const;
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
