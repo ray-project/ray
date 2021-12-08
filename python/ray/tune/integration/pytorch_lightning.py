@@ -174,7 +174,7 @@ class TuneReportCallback(TuneCallback):
 
     def _get_report_dict(self, trainer: Trainer, pl_module: LightningModule):
         # Don't report if just doing initial validation sanity checks.
-        if trainer.running_sanity_check:
+        if trainer.sanity_checking:
             return
         if not self._metrics:
             report_dict = {
@@ -228,7 +228,7 @@ class _TuneCheckpointCallback(TuneCallback):
         self._filename = filename
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
-        if trainer.running_sanity_check:
+        if trainer.sanity_checking:
             return
         step = f"epoch={trainer.current_epoch}-step={trainer.global_step}"
         with tune.checkpoint_dir(step=step) as checkpoint_dir:
