@@ -1867,7 +1867,7 @@ class Dataset(Generic[T]):
         def batch_block(block: ObjectRef[Block]):
             with self._stats.iter_get_s.timer():
                 block = ray.get(block)
-                batcher.add(block)
+            batcher.add(block)
             while batcher.has_batch():
                 with self._stats.iter_format_batch_s.timer():
                     result = format_batch(batcher.next_batch(), batch_format)
@@ -1888,8 +1888,10 @@ class Dataset(Generic[T]):
 
         # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
+            with self._stats.iter_format_batch_s.timer():
+                result = format_batch(batcher.next_batch(), batch_format)
             with self._stats.iter_user_s.timer():
-                yield format_batch(batcher.next_batch(), batch_format)
+                yield result
 
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
