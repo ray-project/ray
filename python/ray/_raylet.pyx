@@ -1464,6 +1464,7 @@ cdef class CoreWorker:
                 f"{python_scheduling_strategy}. "
                 f"Valid values are [\"DEFAULT\""
                 f" | DefaultSchedulingStrategy"
+                f" | \"SPREAD\" | SpreadSchedulingStrategy"
                 f" | PlacementGroupSchedulingStrategy]")
 
     def submit_task(self,
