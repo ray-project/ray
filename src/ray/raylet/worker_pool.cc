@@ -442,8 +442,17 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not registered to raylet within timeout.";
+      RAY_LOG(ERROR)
+          << "Some workers of the worker process(" << proc.GetId()
+          << ") have not registered to raylet within timeout. "
+          <<  (proc.IsAlive()
+               ? "The process is still alive, probably it's hanging during start."
+               : "The process is dead, probably it crashed during start.");
+
+      if(proc.IsAlive()) {
+        proc.Kill();
+      }
+
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool found;

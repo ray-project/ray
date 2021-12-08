@@ -80,6 +80,7 @@ class Process {
                               const ProcessEnvironment &env = {});
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
+  bool IsDead() const;
   pid_t GetId() const;
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
@@ -88,6 +89,8 @@ class Process {
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
+  /// Check whether the process is alive.
+  bool IsAlive() const;
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
