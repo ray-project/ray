@@ -64,7 +64,7 @@ void GcsServerAddressUpdater::UpdateGcsServerAddress() {
           << " times in a row. If it keeps failing to obtain the address, "
              "the worker might crash. Connection status "
           << status;
-      if (failed_ping_count_ == max_retries) {
+      if (failed_ping_count_ >= max_retries) {
         std::stringstream os;
         os << "Failed to receive the GCS address for " << failed_ping_count_
            << " times without success. The worker will exit ungracefully. It is because ";

@@ -527,7 +527,7 @@ time.sleep(60)
     time.sleep(5)
     start = time.time()
     os.kill(gcs_server_pid, signal.SIGBUS)
-    wait_for_condition(lambda: proc.poll() is None)
+    wait_for_condition(lambda: proc.poll() is None, timeout=30)
     # Make sure the driver was exited within the timeout instead of hanging.
     # * 2 for avoiding flakiness.
     assert time.time() - start < GCS_RECONNECTION_TIMEOUT * 2

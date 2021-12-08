@@ -232,6 +232,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   int64_t last_reconnect_timestamp_ms_;
   std::pair<std::string, int> last_reconnect_address_;
 
+  /// Retry interval to reconnect to a GCS server.
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 };
 
