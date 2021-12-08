@@ -409,6 +409,12 @@ class RayParams:
                 # Nothing is selected, meaning it will be randomly selected.
                 ports[comp] = "random"
             elif comp == "worker_ports":
-                ports[comp] = (
-                    f"{port_list[0]}-{port_list[len(port_list) - 1]}")
+                min_port = port_list[0]
+                max_port = port_list[len(port_list) - 1]
+                port_range_str = None
+                if len(port_list) < 50:
+                    port_range_str = str(port_list)
+                else:
+                    port_range_str = f"from {min_port} to {max_port}"
+                ports[comp] = (f"{len(port_list)} ports {port_range_str}")
         return ports
