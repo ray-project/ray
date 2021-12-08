@@ -25,46 +25,54 @@ The following are the minimum setup requirements
 Edit relevant sections in your `ray/python/ray/autoscaler/gen2/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gen2/example-full.yaml>` and add the relevant keys:
 
 .. code-block:: yaml
+
+    initialization_commands:
+        - curl -fsSL https://get.docker.com -o get-docker.sh
+        - sudo sh get-docker.sh
+        - sudo usermod -aG docker $USER
+        - sudo systemctl restart docker -f
+
+.. code-block:: yaml
     auth:
     ssh_private_key: <SSH_PRIVATE_KEY_PATH>
     ssh_user: root
     available_node_types:
-    worker_node:
-        node_config:
-        boot_volume_capacity: 100
-        image_id: <IMAGE_ID>
-        instance_profile_name: bx2-2x8
-        key_id: <PUBLIC_KEY_ID>
-        resource_group_id: <RESOURCE_GROUP_ID>
-        security_group_id: <SECURITY_GROUP_ID>
-        subnet_id: <SUBNET_ID>
-        volume_tier_name: general-purpose
-        vpc_id: <VPC_ID>
-        resources:
-        CPU: 2
-    head_node:
-        max_workers: 0
-        min_workers: 0
-        node_config:
-        boot_volume_capacity: 100
-        image_id: <IMAGE_ID>
-        instance_profile_name: bx2-2x8
-        key_id: <PUBLIC_KEY_ID>
-        resource_group_id: <RESOURCE_GROUP_ID>
-        security_group_id: <SECURITY_GROUP_ID>
-        subnet_id: <SUBNET_ID>
-        volume_tier_name: general-purpose
-        vpc_id: <VPC_ID>
-        resources:
-        CPU: 2
+        worker_node:
+            node_config:
+            boot_volume_capacity: 100
+            image_id: <IMAGE_ID>
+            instance_profile_name: bx2-2x8
+            key_id: <PUBLIC_KEY_ID>
+            resource_group_id: <RESOURCE_GROUP_ID>
+            security_group_id: <SECURITY_GROUP_ID>
+            subnet_id: <SUBNET_ID>
+            volume_tier_name: general-purpose
+            vpc_id: <VPC_ID>
+            resources:
+            CPU: 2
+        head_node:
+            max_workers: 0
+            min_workers: 0
+            node_config:
+            boot_volume_capacity: 100
+            image_id: <IMAGE_ID>
+            instance_profile_name: bx2-2x8
+            key_id: <PUBLIC_KEY_ID>
+            resource_group_id: <RESOURCE_GROUP_ID>
+            security_group_id: <SECURITY_GROUP_ID>
+            subnet_id: <SUBNET_ID>
+            volume_tier_name: general-purpose
+            vpc_id: <VPC_ID>
+            resources:
+            CPU: 2
     provider:
-    cache_stopped_nodes: false
-    endpoint: <REGION_ENDPOINT>
-    iam_api_key: <API_KEY>
-    region: <REGION_NAME>
-    type: gen2
-    use_hybrid_ips: true
-    zone_name: <ZONE_NAME>
+        cache_stopped_nodes: false
+        endpoint: <REGION_ENDPOINT>
+        iam_api_key: <API_KEY>
+        region: <REGION_NAME>
+        type: gen2
+        use_hybrid_ips: true
+        zone_name: <ZONE_NAME>
 
 The fastest way to find all the required keys for `ibm_vpc` section as follows:
 
