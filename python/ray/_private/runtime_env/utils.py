@@ -135,6 +135,7 @@ class RuntimeEnv:
         if uris.working_dir_uri \
            or uris.py_modules_uris \
            or uris.conda_uri \
+           or uris.pip_uri \
            or uris.plugin_uris:
             return True
         return False
@@ -147,6 +148,9 @@ class RuntimeEnv:
 
     def conda_uri(self) -> str:
         return self._proto_runtime_env.uris.conda_uri
+
+    def pip_uri(self) -> str:
+        return self._proto_runtime_env.uris.pip_uri
 
     def plugin_uris(self) -> List[str]:
         return list(self._proto_runtime_env.uris.plugin_uris)

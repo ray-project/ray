@@ -124,6 +124,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 if runtime_env.conda_uri():
                     uri = runtime_env.conda_uri()
                     self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.pip_uri():
+                    uri = runtime_env.pip_uri()
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
                 if runtime_env.plugin_uris():
                     for uri in runtime_env.plugin_uris():
                         self._uris_to_envs[uri].add(serialized_runtime_env)

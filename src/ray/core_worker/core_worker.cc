@@ -1410,6 +1410,10 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
     const auto &uri = runtime_env->uris().conda_uri();
     result.emplace_back(encode_plugin_uri("conda", uri));
   }
+  if (!runtime_env->uris().pip_uri().empty()) {
+    const auto &uri = runtime_env->uris().pip_uri();
+    result.emplace_back(encode_plugin_uri("pip", uri));
+  }
   for (const auto &uri : runtime_env->uris().plugin_uris()) {
     result.emplace_back(encode_plugin_uri("plugin", uri));
   }
