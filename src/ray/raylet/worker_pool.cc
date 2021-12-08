@@ -752,6 +752,13 @@ void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &wo
   auto &state = GetStateForLanguage(Language::PYTHON);
   auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
 
+  if (!io_worker_state.registered_io_workers.count(worker)) {
+    RAY_LOG(DEBUG)
+        << "The IO worker has failed. Skip pushing it to the worker pool. Worker type: "
+        << rpc::WorkerType_Name(worker_type) << ", worker id: " << worker->WorkerId();
+    return;
+  }
+
   RAY_LOG(DEBUG) << "Pushing an IO worker to the worker pool. Worker type: "
                  << rpc::WorkerType_Name(worker_type)
                  << ", worker id: " << worker->WorkerId();
