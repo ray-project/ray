@@ -6,7 +6,7 @@ from ray.workflow.common import WorkflowStatus
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from python.ray.workflow.common import StepID
+    from ray.workflow.common import StepID
 
 
 @dataclass

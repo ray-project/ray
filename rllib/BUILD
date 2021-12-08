@@ -1263,6 +1263,13 @@ py_test(
     srcs = ["utils/exploration/tests/test_parameter_noise.py"]
 )
 
+py_test(
+    name = "test_random_encoder",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_random_encoder.py"]
+)
+
 # Schedules
 py_test(
     name = "test_schedules",

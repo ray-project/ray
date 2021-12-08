@@ -2,6 +2,7 @@ import logging
 import os
 from types import ModuleType
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -48,6 +49,8 @@ def upload_py_modules_if_needed(
         if isinstance(module, str):
             # module_path is a local path or a URI.
             module_path = module
+        elif isinstance(module, Path):
+            module_path = str(module)
         elif isinstance(module, ModuleType):
             # NOTE(edoakes): Python allows some installed Python packages to
             # be split into multiple directories. We could probably handle
