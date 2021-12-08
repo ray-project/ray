@@ -6,6 +6,7 @@ import pytest
 import grpc
 from grpc._channel import _InactiveRpcError
 import psutil
+import subprocess
 
 import ray.ray_constants as ray_constants
 
@@ -431,6 +432,33 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     a = A.options(num_cpus=0).remote()
     ray.get(a.ready.remote())
+
+
+def test_worker_start_timeout(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        # delay internal kv for 10s
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "InternalKVGcsService.grpc_server.InternalKVGet"
+            "=5000000:5000000")
+        m.setenv("RAY_worker_register_timeout_seconds", "1")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4, object_store_memory=1e9)
+        script = """
+import ray
+ray.init(address='auto')
+
+@ray.remote
+def task():
+    return None
+
+ray.get(task.remote(), timeout=2)
+
+"""
+        with pytest.raises(subprocess.CalledProcessError) as e:
+            run_string_as_driver(script)
+        assert ("The process is still alive, probably "
+                "it's hanging during start") in e.value.output.decode()
 
 
 if __name__ == "__main__":
