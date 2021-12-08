@@ -31,15 +31,12 @@ class _BackwardsCompatibleNumpyRng:
                  generator_or_seed: Optional[Union[
                      "random_generator", np.random.RandomState, int]] = None):
         if generator_or_seed is None:
-            self._rng = None
-            return
-        if isinstance(generator_or_seed, np.random.RandomState):
+            self._rng = np.random
+        elif isinstance(generator_or_seed, np.random.RandomState):
             self._rng = generator_or_seed
-            return
-        if isinstance(generator_or_seed, random_generator):
+        elif isinstance(generator_or_seed, random_generator):
             self._rng = generator_or_seed
-            return
-        if LEGACY_RNG:
+        elif LEGACY_RNG:
             self._rng = np.random.RandomState(generator_or_seed)
         else:
             self._rng = np.random.default_rng(generator_or_seed)
