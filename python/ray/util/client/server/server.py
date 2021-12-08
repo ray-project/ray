@@ -35,7 +35,6 @@ from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
-from ray.util.scheduling_strategies import SchedulingStrategy
 from ray._private.tls_utils import add_port_to_grpc_server
 
 logger = logging.getLogger(__name__)
