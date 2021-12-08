@@ -2216,6 +2216,7 @@ def remote(*args, **kwargs):
             placement_group_capture_child_tasks set to true,
             or the DefaultSchedulingStrategy;
             "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """

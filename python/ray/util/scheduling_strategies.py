@@ -21,6 +21,13 @@ class DefaultSchedulingStrategy(SchedulingStrategy):
 
 
 @PublicAPI(stability="beta")
+class SpreadSchedulingStrategy(SchedulingStrategy):
+    """Spread scheduling on a best effort basis.
+    """
+    pass
+
+
+@PublicAPI(stability="beta")
 class PlacementGroupSchedulingStrategy(SchedulingStrategy):
     """Placement group based scheduling strategy.
 
@@ -49,6 +56,7 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
             placement_group_capture_child_tasks
 
 
-SchedulingStrategyT = Union[None, str,  # Literal["DEFAULT"]
+SchedulingStrategyT = Union[None, str,  # Literal["DEFAULT", "SPREAD"]
                             DefaultSchedulingStrategy,
+                            SpreadSchedulingStrategy,
                             PlacementGroupSchedulingStrategy]
