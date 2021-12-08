@@ -1241,6 +1241,18 @@ cc_test(
 )
 
 cc_test(
+    name = "asio_defer_test",
+    size = "small",
+    srcs = ["src/ray/common/test/asio_defer_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "id_test",
     size = "small",
     srcs = ["src/ray/common/id_test.cc"],
@@ -1481,6 +1493,29 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
+    ],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_kv_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_kv_manager_test.cc",
     ],
     args = [
         "$(location redis-server)",
@@ -1798,6 +1833,21 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs_client_lib",
+    ],
+)
+
+cc_test(
+    name = "accessor_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_client/test/accessor_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_client_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
