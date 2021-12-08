@@ -444,7 +444,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
     if (it != state.starting_worker_processes.end()) {
       RAY_LOG(ERROR)
           << "Some workers of the worker process(" << proc.GetId()
-          << ") have not registered to raylet within timeout. "
+          << ") have not registered within the timeout. "
           << (proc.IsAlive()
                   ? "The process is still alive, probably it's hanging during start."
                   : "The process is dead, probably it crashed during start.");

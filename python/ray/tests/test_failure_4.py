@@ -444,7 +444,7 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
         m.setenv(
             "RAY_testing_asio_delay_us",
             "InternalKVGcsService.grpc_server.InternalKVGet"
-            "=3000000:3000000")
+            "=999999999:999999999")
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
