@@ -60,7 +60,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
   std::unique_ptr<RedisClient> redis_client_;
   // The io service used by internal kv.
   instrumented_io_context io_service_;
-  std::unique_ptr<std::thread> io_threads_;
+  std::unique_ptr<std::thread> io_thread_;
   boost::asio::io_service::work work_;
 };
 

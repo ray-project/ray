@@ -21,11 +21,10 @@ GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_optio
     : redis_options_(redis_options), work_(io_service_) {}
 
 void GcsInternalKVManager::Start() {
-  io_thread_ = std::make_unique<std::thread>(
-      [this] {
-        SetThreadName("InternalKV");
-        io_service_.run();
-      });
+  io_thread_ = std::make_unique<std::thread>([this] {
+    SetThreadName("InternalKV");
+    io_service_.run();
+  });
   redis_client_ = std::make_unique<RedisClient>(redis_options_);
   RAY_CHECK_OK(redis_client_->Connect(io_service_));
 }
