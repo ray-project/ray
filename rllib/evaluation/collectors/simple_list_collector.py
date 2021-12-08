@@ -622,6 +622,7 @@ class SimpleListCollector(SampleCollector):
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
+        batch_size = len(keys)
 
         buffers = {}
         for k in keys:
@@ -703,7 +704,10 @@ class SimpleListCollector(SampleCollector):
 
         self._reset_inference_calls(policy_id)
 
-        return SampleBatch(input_dict)
+        return SampleBatch(
+            input_dict,
+            seq_lens=np.ones(batch_size, dtype=np.int32) if
+            "state_in_0" in input_dict else None)
 
     @override(SampleCollector)
     def postprocess_episode(
