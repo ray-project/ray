@@ -1181,6 +1181,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     if data.get("ip") == data.get("localhost"):
         for line in lines:
+            assert line != ""
             print(
                 "{}{}({}{}){} {}".format(colorama.Style.DIM,
                                          color_for(data,
