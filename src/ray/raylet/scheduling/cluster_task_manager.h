@@ -329,11 +329,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                                      bool requires_object_store_memory,
                                      bool force_spillback, bool *is_infeasible);
 
-  /// Update the internal states.
+  /// Recompute the debug stats.
   /// It is needed because updating the debug state is expensive for cluster_task_manager.
   /// TODO(sang): Update the internal states value dynamically instead of iterating the
   /// data structure.
-  void UpdateDebugStates() const;
+  void RecomputeDebugStats() const;
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
@@ -462,33 +462,33 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   struct InternalStats {
     /// Number of tasks that are spilled to other
     /// nodes because it cannot be scheduled locally.
-    size_t metric_tasks_spilled = 0;
+    int64_t metric_tasks_spilled = 0;
     /// Number of tasks that are waiting for
     /// resources to be available locally.
-    size_t num_waiting_for_resource = 0;
+    int64_t num_waiting_for_resource = 0;
     /// Number of tasks that are waiting for available memory
     /// from the plasma store.
-    size_t num_waiting_for_plasma_memory = 0;
+    int64_t num_waiting_for_plasma_memory = 0;
     /// Number of tasks that are waiting for nodes with available resources.
-    size_t num_waiting_for_remote_node_resources = 0;
+    int64_t num_waiting_for_remote_node_resources = 0;
     /// Number of workers that couldn't be started because the job config wasn't local.
-    size_t num_worker_not_started_by_job_config_not_exist = 0;
+    int64_t num_worker_not_started_by_job_config_not_exist = 0;
     /// Number of workers that couldn't be started because the worker registration timed
     /// out.
-    size_t num_worker_not_started_by_registration_timeout = 0;
+    int64_t num_worker_not_started_by_registration_timeout = 0;
     /// Number of workers that couldn't be started becasue it hits the worker startup rate
     /// limit.
-    size_t num_worker_not_started_by_process_rate_limit = 0;
+    int64_t num_worker_not_started_by_process_rate_limit = 0;
     /// Number of tasks that are waiting for worker processes to start.
-    size_t num_tasks_waiting_for_workers = 0;
+    int64_t num_tasks_waiting_for_workers = 0;
     /// Number of cancelled tasks.
-    size_t num_cancelled_tasks = 0;
+    int64_t num_cancelled_tasks = 0;
     /// Number of infeasible tasks.
-    size_t num_infeasible_tasks = 0;
+    int64_t num_infeasible_tasks = 0;
     /// Number of tasks to schedule.
-    size_t num_tasks_to_schedule = 0;
+    int64_t num_tasks_to_schedule = 0;
     /// Number of tasks to dispatch.
-    size_t num_tasks_to_dispatch = 0;
+    int64_t num_tasks_to_dispatch = 0;
   };
 
   mutable InternalStats internal_stats_;

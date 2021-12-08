@@ -477,7 +477,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  metric_tasks_queued_++;
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
@@ -939,7 +938,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-void ClusterTaskManager::UpdateDebugStates() const {
+void ClusterTaskManager::RecomputeDebugStats() const {
   auto accumulator =
       [](size_t state,
          const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
@@ -1025,8 +1024,8 @@ void ClusterTaskManager::UpdateDebugStates() const {
 }
 
 void ClusterTaskManager::RecordMetrics() const {
-  /// This method intentionally doesn't call UpdateDebugState() because
-  /// that function is expensive. UpdateDebugState is called by DebugStr method
+  /// This method intentionally doesn't call RecomputeDebugStats() because
+  /// that function is expensive. RecomputeDebugStats is called by DebugStr method
   /// and they are always periodically called by node manager.
   stats::NumReceivedTasks.Record(internal_stats_.num_tasks_to_schedule);
   stats::NumDispatchedTasks.Record(internal_stats_.num_tasks_to_dispatch);
@@ -1036,7 +1035,7 @@ void ClusterTaskManager::RecordMetrics() const {
 }
 
 std::string ClusterTaskManager::DebugStr() const {
-  UpdateDebugStates();
+  RecomputeDebugStats();
   if (internal_stats_.num_tasks_to_schedule + internal_stats_.num_tasks_to_dispatch +
           internal_stats_.num_infeasible_tasks >
       1000) {
