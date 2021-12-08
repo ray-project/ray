@@ -13,11 +13,15 @@
 // limitations under the License.
 
 #include "ray/common/asio/instrumented_io_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
+
+#include "ray/common/asio/asio_chaos.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/stats/metric.h"
 
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -65,34 +69,48 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-  if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+  if (RayConfig::instance().event_stats()) {
+    // References are only invalidated upon deletion of the corresponding item from the
+    // table, which we won't do until this io_context is deleted. Provided that
+    // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
+    // handler stats it->second from multiple threads without acquiring a table-level
+    // readers lock in the callback.
+    const auto stats_handle = RecordStart(name);
+    handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+      RecordExecution(handler, std::move(stats_handle));
+    };
   }
-  const auto stats_handle = RecordStart(name);
-  // References are only invalidated upon deletion of the corresponding item from the
-  // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
-  // handler stats it->second from multiple threads without acquiring a table-level
-  // readers lock in the callback.
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  auto defer_us = ray::asio::testing::get_delay_us(name);
+  if (defer_us == 0) {
+    boost::asio::io_context::post(std::move(handler));
+  } else {
+    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
+    execute_after_us(*this, std::move(handler), defer_us);
+  }
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
-  if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+  size_t defer_us = 0;
+  if (stats_handle) {
+    defer_us = ray::asio::testing::get_delay_us(stats_handle->handler_name);
   }
-  // Reset the handle start time, so that we effectively measure the queueing
-  // time only and not the time delay from RecordStart().
-  // TODO(ekl) it would be nice to track this delay too,.
-  stats_handle->ZeroAccumulatedQueuingDelay();
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  if (RayConfig::instance().event_stats()) {
+    // Reset the handle start time, so that we effectively measure the queueing
+    // time only and not the time delay from RecordStart().
+    // TODO(ekl) it would be nice to track this delay too,.
+    stats_handle->ZeroAccumulatedQueuingDelay();
+    handler = [handler = std::move(handler), stats_handle = stats_handle]() {
+      RecordExecution(handler, std::move(stats_handle));
+    };
+  }
+  if (defer_us == 0) {
+    return boost::asio::io_context::post(std::move(handler));
+  } else {
+    RAY_LOG(DEBUG) << "Deferring " << stats_handle->handler_name << " by " << defer_us
+                   << "us";
+    execute_after_us(*this, std::move(handler), defer_us);
+  }
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,
