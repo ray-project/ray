@@ -7,8 +7,8 @@ import numpy
 import random
 
 from ray.tune import TuneError
-from ray.tune.sample import Categorical, Domain, Function
-from ray.tune.sample import _BackwardsCompatibleNumpyRng, random_generator
+from ray.tune.sample import (Categorical, Domain, Function,
+                             _BackwardsCompatibleNumpyRng, np_random_generator)
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def generate_variants(unresolved_spec: Dict,
                       constant_grid_search: bool = False,
                       random_state: Optional[Union[
-                          _BackwardsCompatibleNumpyRng, "random_generator",
+                          _BackwardsCompatibleNumpyRng, "np_random_generator",
                           numpy.random.RandomState, int]] = None
                       ) -> Generator[Tuple[Dict, Dict], None, None]:
     """Generates variants from a spec (dict) with unresolved values.
@@ -186,7 +186,7 @@ def _generate_variants(
         spec: Dict,
         constant_grid_search: bool = False,
         random_state: Optional[
-            Union[_BackwardsCompatibleNumpyRng, "random_generator",
+            Union[_BackwardsCompatibleNumpyRng, "np_random_generator",
                   numpy.random.RandomState, int]] = None) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)
@@ -234,12 +234,13 @@ def _generate_variants(
             yield resolved_vars, spec
 
 
-def get_preset_variants(spec: Dict,
-                        config: Dict,
-                        constant_grid_search: bool = False,
-                        random_state: Optional[Union[
-                            _BackwardsCompatibleNumpyRng, "random_generator",
-                            numpy.random.RandomState, int]] = None):
+def get_preset_variants(
+        spec: Dict,
+        config: Dict,
+        constant_grid_search: bool = False,
+        random_state: Optional[
+            Union[_BackwardsCompatibleNumpyRng, "np_random_generator",
+                  numpy.random.RandomState, int]] = None):
     """Get variants according to a spec, initialized with a config.
 
     Variables from the spec are overwritten by the variables in the config.
@@ -306,7 +307,7 @@ def _resolve_domain_vars(
         domain_vars: List[Tuple[Tuple, Domain]],
         allow_fail: bool = False,
         random_state: Optional[
-            Union[_BackwardsCompatibleNumpyRng, "random_generator",
+            Union[_BackwardsCompatibleNumpyRng, "np_random_generator",
                   numpy.random.RandomState, int]] = None) -> Tuple[bool, Dict]:
     resolved = {}
     error = True

@@ -9,11 +9,11 @@ import numpy as np
 # Backwards compatibility
 try:
     # Added in numpy>=1.17 but we require numpy>=1.16
-    random_generator = np.random.Generator
+    np_random_generator = np.random.Generator
     LEGACY_RNG = False
 except AttributeError:
 
-    class random_generator:
+    class np_random_generator:
         pass
 
     LEGACY_RNG = True
@@ -27,14 +27,15 @@ class _BackwardsCompatibleNumpyRng:
     """
     _rng = None
 
-    def __init__(self,
-                 generator_or_seed: Optional[Union[
-                     "random_generator", np.random.RandomState, int]] = None):
+    def __init__(
+            self,
+            generator_or_seed: Optional[Union[
+                "np_random_generator", np.random.RandomState, int]] = None):
         if generator_or_seed is None:
             self._rng = np.random
         elif isinstance(generator_or_seed, np.random.RandomState):
             self._rng = generator_or_seed
-        elif isinstance(generator_or_seed, random_generator):
+        elif isinstance(generator_or_seed, np_random_generator):
             self._rng = generator_or_seed
         elif LEGACY_RNG:
             self._rng = np.random.RandomState(generator_or_seed)
@@ -43,7 +44,7 @@ class _BackwardsCompatibleNumpyRng:
 
     @property
     def legacy_rng(self) -> bool:
-        return not isinstance(self._rng, random_generator)
+        return not isinstance(self._rng, np_random_generator)
 
     @property
     def rng(self):
@@ -59,7 +60,7 @@ class _BackwardsCompatibleNumpyRng:
         return getattr(self.rng, name)
 
 
-RANDOM_STATE = Union[None, _BackwardsCompatibleNumpyRng, random_generator,
+RANDOM_STATE = Union[None, _BackwardsCompatibleNumpyRng, np_random_generator,
                      np.random.RandomState, int]
 
 
@@ -99,7 +100,7 @@ class Domain:
     def sample(self,
                spec: Optional[Union[List[Dict], Dict]] = None,
                size: int = 1,
-               random_state: Optional["RANDOM_STATE"] = None):
+               random_state: "RANDOM_STATE" = None):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
         sampler = self.get_sampler()
@@ -126,7 +127,7 @@ class Sampler:
                domain: Domain,
                spec: Optional[Union[List[Dict], Dict]] = None,
                size: int = 1,
-               random_state: Optional["RANDOM_STATE"] = None):
+               random_state: "RANDOM_STATE" = None):
         raise NotImplementedError
 
 
@@ -167,7 +168,7 @@ class Grid(Sampler):
                domain: Domain,
                spec: Optional[Union[List[Dict], Dict]] = None,
                size: int = 1,
-               random_state: Optional["RANDOM_STATE"] = None):
+               random_state: "RANDOM_STATE" = None):
         return RuntimeError("Do not call `sample()` on grid.")
 
 
@@ -177,7 +178,7 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             assert domain.lower > float("-inf"), \
@@ -192,7 +193,7 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             assert domain.lower > 0, \
@@ -211,7 +212,7 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             assert not domain.lower or domain.lower == float("-inf"), \
@@ -296,7 +297,7 @@ class Integer(Domain):
                    domain: "Integer",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             items = random_state.integers(
@@ -308,7 +309,7 @@ class Integer(Domain):
                    domain: "Integer",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             assert domain.lower > 0, \
@@ -373,7 +374,7 @@ class Categorical(Domain):
                    domain: "Categorical",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             items = random_state.choice(domain.categories, size=size).tolist()
@@ -414,7 +415,7 @@ class Function(Domain):
                    domain: "Function",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1,
-                   random_state: Optional["RANDOM_STATE"] = None):
+                   random_state: "RANDOM_STATE" = None):
             if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
                 random_state = _BackwardsCompatibleNumpyRng(random_state)
             if domain.pass_spec:
@@ -474,7 +475,7 @@ class Quantized(Sampler):
                domain: Domain,
                spec: Optional[Union[List[Dict], Dict]] = None,
                size: int = 1,
-               random_state: Optional["RANDOM_STATE"] = None):
+               random_state: "RANDOM_STATE" = None):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
         values = self.sampler.sample(
