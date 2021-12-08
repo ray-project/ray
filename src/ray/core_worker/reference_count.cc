@@ -556,14 +556,10 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
-  // NOTE(swang): We have to send this message to subscribers in case they
+  // NOTE(swang): We have to publish failure to subscribers in case they
   // subscribe after the ref is already deleted.
-  rpc::PubMessage pub_message;
-  pub_message.set_key_id(it->first.Binary());
-  pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
-  auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-  object_locations_msg->set_ref_removed(true);
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->PublishFailure(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
 
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
