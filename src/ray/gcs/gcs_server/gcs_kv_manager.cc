@@ -31,6 +31,7 @@ GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_optio
 }
 
 void GcsInternalKVManager::Stop() {
+  redis_client_.reset();
   io_service_.stop();
   for (auto &t : threads_) {
     t->join();
@@ -41,7 +42,7 @@ void GcsInternalKVManager::HandleInternalKVGet(
     const rpc::InternalKVGetRequest &request, rpc::InternalKVGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"HGET", request.key(), "value"};
-  // Callbacks happens in the main thread.
+  // Callbacks happens in the kv thread pool.
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         if (!redis_reply->IsNil()) {
@@ -59,7 +60,7 @@ void GcsInternalKVManager::HandleInternalKVPut(
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {request.overwrite() ? "HSET" : "HSETNX", request.key(),
                                   "value", request.value()};
-  // Callbacks happens in the main thread.
+  // Callbacks happens in the kv thread pool.
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         reply->set_added_num(redis_reply->ReadAsInteger());
@@ -79,7 +80,7 @@ void GcsInternalKVManager::HandleInternalKVDel(
 void GcsInternalKVManager::InternalKVDelAsync(const std::string &key,
                                               std::function<void(int)> cb) {
   std::vector<std::string> cmd = {"HDEL", key, "value"};
-  // Callbacks happens in the main thread.
+  // Callbacks happens in the kv thread pool.
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [cb](auto redis_reply) { cb(redis_reply->ReadAsInteger()); }));
 }
@@ -101,7 +102,7 @@ void GcsInternalKVManager::HandleInternalKVKeys(
     const rpc::InternalKVKeysRequest &request, rpc::InternalKVKeysReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"KEYS", request.prefix() + "*"};
-  // Callbacks happens in the main thread.
+  // Callbacks happens in the kv thread pool.
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         const auto &results = redis_reply->ReadAsStringArray();

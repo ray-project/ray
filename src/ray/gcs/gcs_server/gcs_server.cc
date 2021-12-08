@@ -192,10 +192,10 @@ void GcsServer::Stop() {
       grpc_based_resource_broadcaster_->Stop();
     }
 
+    kv_manager_->Stop();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
-
-    kv_manager_->Stop();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
