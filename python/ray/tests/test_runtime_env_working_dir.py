@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import shutil
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -46,7 +47,8 @@ def tmp_working_dir():
         yield tmp_dir
 
 
-@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
+@pytest.mark.parametrize(
+    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """Tests the case where we lazily read files or import inside a task/actor.
@@ -62,6 +64,15 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.init(address)
         elif option == "working_dir":
             ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "working_dir_zip":
+            # Create a temp dir to place the zipped package
+            # from tmp_working_dir
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                zip_dir = Path(tmp_working_dir)
+                package = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", zip_dir / "..",
+                    zip_dir.name)
+                ray.init(address, runtime_env={"working_dir": package})
         elif option == "py_modules":
             ray.init(
                 address,

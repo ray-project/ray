@@ -48,7 +48,8 @@ def upload_working_dir_if_needed(
         working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
     except ValueError:  # working_dir is not a directory
         package_path = working_dir
-        if not Path(package_path).exists() or package_path[:-4] != ".zip":
+        if (not Path(package_path).exists()
+                or not package_path.endswith(".zip")):
             raise ValueError(f"directory {package_path} must be an existing "
                              "directory or a zip package")
         with TemporaryDirectory() as working_dir:
