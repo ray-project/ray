@@ -435,11 +435,19 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
 def test_conda_pip_extras_ray_serve(shutdown_only, option):
     """Tests that ray[extras] can be included as a conda/pip dependency."""
     ray.init()
-    pip = ["pip-install-test==0.5", "ray[serve]"]
+
     if option == "conda":
-        runtime_env = {"conda": {"dependencies": ["pip", {"pip": pip}]}}
+        runtime_env = {
+            "conda": {
+                "dependencies": [
+                    "pip", {
+                        "pip": ["pip-install-test==0.5", "ray[serve]"]
+                    }
+                ]
+            }
+        }
     elif option == "pip":
-        runtime_env = {"pip": pip}
+        runtime_env = {"pip": ["pip-install-test==0.5"]}
     else:
         assert False, f"Unknown option: {option}"
 
