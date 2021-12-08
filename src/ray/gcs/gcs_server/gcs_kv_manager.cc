@@ -33,12 +33,10 @@ void GcsInternalKVManager::Start() {
   RAY_CHECK_OK(redis_client_->Connect(io_service_));
 }
 
-GcsInternalKVManager::~GcsInternalKVManager() {
-  Stop();
-}
+GcsInternalKVManager::~GcsInternalKVManager() { Stop(); }
 
 void GcsInternalKVManager::Stop() {
-  if(redis_client_ != nullptr) {
+  if (redis_client_ != nullptr) {
     io_service_.stop();
     redis_client_.reset();
     for (auto &t : threads_) {
