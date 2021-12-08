@@ -31,8 +31,8 @@ GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_optio
 }
 
 void GcsInternalKVManager::Stop() {
-  redis_client_.reset();
   io_service_.stop();
+  redis_client_.reset();
   for (auto &t : threads_) {
     t->join();
   }
