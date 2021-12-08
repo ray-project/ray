@@ -76,12 +76,14 @@ class InternalKVInterface {
 class RedisInternalKV : public InternalKVInterface {
  public:
   explicit RedisInternalKV(const RedisClientOptions &redis_options);
+  
   ~RedisInternalKV() {
     io_service_.stop();
-    redis_client_.reset();
     io_thread_->join();
-    io_thread_.reset();
+    redis_client_.reset();   
+    io_thread_.reset();    
   }
+  
   void Get(const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
