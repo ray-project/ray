@@ -117,6 +117,8 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars (dict): Override environment variables for the raylet.
+        is_start_raylet (bool): default true, if false, set the
+            object_store_memory to 0 so as not to affect the memory check.
     """
 
     def __init__(
@@ -172,6 +174,7 @@ class RayParams:
         tracing_startup_hook=None,
         no_monitor=False,
         env_vars=None,
+        is_start_raylet=True,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -226,6 +229,7 @@ class RayParams:
         self.env_vars = env_vars
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.is_start_raylet = is_start_raylet
         self._check_usage()
 
         # Set the internal config options for object reconstruction.

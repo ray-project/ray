@@ -484,13 +484,17 @@ class Node:
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
+            if not self._ray_params.is_start_raylet:
+                fin_object_store_memory = 0
+            elif object_store_memory is None:
+                fin_object_store_memory = self._ray_params.object_store_memory
+            else:
+                fin_object_store_memory = object_store_memory
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                self._ray_params.object_store_memory
-                if object_store_memory is None
-                else object_store_memory,
+                fin_object_store_memory,
                 resources,
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)

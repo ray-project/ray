@@ -84,9 +84,12 @@ class ResourceSpec(
         assert self.resolved()
 
         memory_units = ray_constants.to_memory_units(self.memory, round_up=False)
-        object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory, round_up=False
-        )
+        if self.object_store_memory == 0:
+            object_store_memory_units = 0
+        else:
+            object_store_memory_units = ray_constants.to_memory_units(
+                self.object_store_memory, round_up=False
+            )
 
         resources = dict(
             self.resources,
