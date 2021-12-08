@@ -599,8 +599,8 @@ cc_library(
     ],
     hdrs = [
         "src/ray/stats/metric.h",
-        "src/ray/stats/tag_defs.h",
         "src/ray/stats/metric_defs.h",
+        "src/ray/stats/tag_defs.h",
     ],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
