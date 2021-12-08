@@ -2215,8 +2215,7 @@ def remote(*args, **kwargs):
             placement group if parent has one and has
             placement_group_capture_child_tasks set to true,
             or the DefaultSchedulingStrategy;
-            "DEFAULT" or `DefaultSchedulingStrategy`:
-            default hybrid scheduling;
+            "DEFAULT": default hybrid scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """
