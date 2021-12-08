@@ -90,6 +90,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
         ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
+    # Test starting Ray with --external-kv-storage-config.
+    check_call_ray([
+        "start", "--head", "--external-kv-storage-config",
+        "redis:127.0.0.1:6379", "--port", "0"
+    ])
+    check_call_ray(["stop"])
+
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
