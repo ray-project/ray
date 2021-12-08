@@ -114,11 +114,9 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     {
       absl::MutexLock lock(&mu_);
       const auto queue = client_queues_.find(task_spec.ActorId());
-      const std::unique_ptr<rpc::ActorDeathCause> &death_cause =
-          queue->second.death_cause;
-      RAY_CHECK(death_cause != nullptr);
-      error_type = GenErrorTypeFromDeathCause(*death_cause);
-      error_info = GetErrorInfoFromActorDeathCause(*death_cause);
+      const auto &death_cause = queue->second.death_cause;
+      error_type = GenErrorTypeFromDeathCause(death_cause);
+      error_info = GetErrorInfoFromActorDeathCause(death_cause);
     }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
@@ -247,7 +245,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
     if (dead) {
       queue->second.state = rpc::ActorTableData::DEAD;
-      queue->second.death_cause = std::make_unique<rpc::ActorDeathCause>(death_cause);
+      queue->second.death_cause = death_cause;
       // If there are pending requests, treat the pending tasks as failed.
       RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
                     << " because the actor is already dead.";
@@ -403,9 +401,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto &queue = queue_pair->second;
 
           bool is_actor_dead = (queue.state == rpc::ActorTableData::DEAD);
-          const std::unique_ptr<rpc::ActorDeathCause> &death_cause = queue.death_cause;
-          const auto &error_info = GetErrorInfoFromActorDeathCause(*death_cause);
-          const auto &error_type = GenErrorTypeFromDeathCause(*death_cause);
+          const auto &death_cause = queue.death_cause;
+          const auto &error_info = GetErrorInfoFromActorDeathCause(death_cause);
+          const auto &error_type = GenErrorTypeFromDeathCause(death_cause);
           // If the actor is already dead, immediately mark the task object is failed.
           // Otherwise, it will have grace period until it makrs the object is dead.
           will_retry = task_finisher_.FailOrRetryPendingTask(

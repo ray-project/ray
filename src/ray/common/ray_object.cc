@@ -95,9 +95,6 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
     return;
   }
 
-  // This is temporarily here because changing this requires changes in all language
-  // frontend.
-  // TODO(sang, lixin): Remove it.
   const auto error_buffer = MakeSerializeErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
   Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
   return;

@@ -194,7 +194,8 @@ class SerializationContext:
         ray_error_info = RayErrorInfo()
         ray_error_info.ParseFromString(pb_bytes)
         if ray_error_info.HasField("actor_init_failure"):
-            return RayError.from_bytes(pb_bytes)
+            return RayError.from_ray_exception(
+                ray_error_info.actor_init_failure)
         else:
             return RayActorError(cause=ray_error_info.actor_died_error)
 

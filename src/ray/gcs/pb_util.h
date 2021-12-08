@@ -161,7 +161,6 @@ inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
-    RAY_LOG(FATAL) << "When the actor is dead, the context must be set.";
   }
   return error_info;
 }

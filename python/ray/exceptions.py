@@ -27,6 +27,10 @@ class RayError(Exception):
     def from_bytes(b):
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
+        return RayError.from_ray_exception(ray_exception)
+
+    @staticmethod
+    def from_ray_exception(ray_exception):
         if ray_exception.language == PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
@@ -211,7 +215,7 @@ class RayActorError(RayError):
     executing a task, or because a task is submitted to a dead actor.
 
     If the actor is dead because of an exception thrown in its creation tasks,
-    RayActorError will contain creation_task_error, which is used to
+    RayActorError will contain the creation_task_error, which is used to
     reconstruct the exception on the caller side.
     """
 
@@ -265,6 +269,8 @@ class RayActorError(RayError):
             elif self.cause.HasField("out_of_scope_context"):
                 return (f"{base_error_msg} "
                         f"{self.cause.out_of_scope_context.error_message}")
+            else:
+                assert False, f"Unknown deatch cause. {self.cause}"
 
         return (f"{base_error_msg} due to an unknown reason.")
 

@@ -141,7 +141,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// The reason why this actor is dead. Nullptr means the actor is not dead.
-    std::unique_ptr<rpc::ActorDeathCause> death_cause = nullptr;
+    rpc::ActorDeathCause death_cause;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
