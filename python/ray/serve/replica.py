@@ -4,6 +4,7 @@ import pickle
 import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
+import aiorwlock
 
 import starlette.responses
 
@@ -174,6 +175,7 @@ class RayServeReplica:
         self.is_function = is_function
         self.user_config = user_config
         self.version = version
+        self.rwlock = aiorwlock.RWLock()
 
         self.num_ongoing_requests = 0
 
@@ -333,35 +335,38 @@ class RayServeReplica:
         return result
 
     async def reconfigure(self, user_config: Any):
-        self.user_config = user_config
-        self.version = DeploymentVersion(
-            self.version.code_version, user_config=user_config)
-        if self.is_function:
-            raise ValueError(
-                "deployment_def must be a class to use user_config")
-        elif not hasattr(self.callable, RECONFIGURE_METHOD):
-            raise RayServeException("user_config specified but deployment " +
-                                    self.deployment_name + " missing " +
-                                    RECONFIGURE_METHOD + " method")
-        reconfigure_method = sync_to_async(
-            getattr(self.callable, RECONFIGURE_METHOD))
-        await reconfigure_method(user_config)
+        async with self.rwlock.writer_lock:
+            self.user_config = user_config
+            self.version = DeploymentVersion(
+                self.version.code_version, user_config=user_config)
+            if self.is_function:
+                raise ValueError(
+                    "deployment_def must be a class to use user_config")
+            elif not hasattr(self.callable, RECONFIGURE_METHOD):
+                raise RayServeException("user_config specified but deployment "
+                                        + self.deployment_name + " missing " +
+                                        RECONFIGURE_METHOD + " method")
+            reconfigure_method = sync_to_async(
+                getattr(self.callable, RECONFIGURE_METHOD))
+            await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
-        request.tick_enter_replica = time.time()
-        logger.debug("Replica {} received request {}".format(
-            self.replica_tag, request.metadata.request_id))
+        async with self.rwlock.reader_lock:
+            request.tick_enter_replica = time.time()
+            logger.debug("Replica {} received request {}".format(
+                self.replica_tag, request.metadata.request_id))
 
-        num_running_requests = self._get_handle_request_stats()["running"]
-        self.num_processing_items.set(num_running_requests)
+            num_running_requests = self._get_handle_request_stats()["running"]
+            self.num_processing_items.set(num_running_requests)
 
-        result = await self.invoke_single(request)
-        request_time_ms = (time.time() - request.tick_enter_replica) * 1000
-        logger.debug("Replica {} finished request {} in {:.2f}ms".format(
-            self.replica_tag, request.metadata.request_id, request_time_ms))
+            result = await self.invoke_single(request)
+            request_time_ms = (time.time() - request.tick_enter_replica) * 1000
+            logger.debug("Replica {} finished request {} in {:.2f}ms".format(
+                self.replica_tag, request.metadata.request_id,
+                request_time_ms))
 
-        # Returns a small object for router to track request status.
-        return b"", result
+            # Returns a small object for router to track request status.
+            return b"", result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
