@@ -508,7 +508,7 @@ def test_gcs_server_crash_cluster(ray_start_cluster):
             "gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT
         })
 
-    script = f"""
+    script = """
 import ray
 import time
 
