@@ -87,7 +87,6 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -400,7 +399,6 @@ class FunctionActorManager:
                                                 pickle.dumps(actor_class_info),
                                                 True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
@@ -558,21 +556,6 @@ class FunctionActorManager:
         """Load actor class from GCS."""
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
-        # Wait for the actor class key to have been imported by the
-        # import thread. TODO(rkn): It shouldn't be possible to end
-        # up in an infinite loop here, but we should push an error to
-        # the driver if too much time is spent here.
-        while key not in self.imported_actor_classes:
-            try:
-                # If we're in the process of deserializing an ActorHandle
-                # and we hold the function_manager lock, we may be blocking
-                # the import_thread from loading the actor class. Use cv.wait
-                # to temporarily yield control to the import thread.
-                self.cv.wait()
-            except RuntimeError:
-                # We don't hold the function_manager lock, just sleep regularly
-                time.sleep(0.001)
-
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(
             key, KV_NAMESPACE_FUNCTION_TABLE)
