@@ -95,9 +95,7 @@ class RedisInternalKV : public InternalKVInterface {
   void Keys(const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
-  instrumented_io_context &GetEventLoop() override {
-    return io_service_;
-  }
+  instrumented_io_context &GetEventLoop() override { return io_service_; }
 
  private:
   RedisClientOptions redis_options_;
@@ -106,7 +104,6 @@ class RedisInternalKV : public InternalKVInterface {
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> io_thread_;
   boost::asio::io_service::work work_;
-
 };
 
 class MemoryInternalKV : public InternalKVInterface {
@@ -161,9 +158,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
-  instrumented_io_context &GetEventLoop() {
-    return kv_instance_->GetEventLoop();
-  }
+  instrumented_io_context &GetEventLoop() { return kv_instance_->GetEventLoop(); }
 
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;
