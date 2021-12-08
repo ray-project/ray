@@ -59,7 +59,7 @@ _METRICS = [
     "ray_pending_placement_group",
     "ray_registered_placement_group",
     "ray_infeasible_placement_group",
-    "ray_placement_group_resource_persist_latency_ms_sum",
+    "ray_new_resource_creation_latency_ms_sum",
 ]
 
 # This list of metrics should be kept in sync with
