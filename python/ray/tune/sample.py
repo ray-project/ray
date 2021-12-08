@@ -32,7 +32,7 @@ class _BackwardsCompatibleNumpyRng:
             generator_or_seed: Optional[Union[
                 "np_random_generator", np.random.RandomState, int]] = None):
         if generator_or_seed is None:
-            self._rng = np.random
+            self._rng = None
         elif isinstance(generator_or_seed, np.random.RandomState):
             self._rng = generator_or_seed
         elif isinstance(generator_or_seed, np_random_generator):
