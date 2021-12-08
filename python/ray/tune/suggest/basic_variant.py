@@ -10,7 +10,7 @@ import numpy as np
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.sample import (random_generator, _BackwardsCompatibleNumpyRng)
+from ray.tune.sample import random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.suggest.variant_generator import (
     count_variants, count_spec_samples, generate_variants, format_vars,
     flatten_resolved_vars, get_preset_variants)

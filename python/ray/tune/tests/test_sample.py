@@ -11,7 +11,6 @@ import numpy as np
 import unittest
 
 import ray.tune.sample
-
 import ray
 from ray import tune
 from ray.tune import Experiment
