@@ -96,14 +96,15 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
             return GetDebugDump();
           }),
       total_consumed_bytes_(0),
-      get_request_queue_(io_context_, object_lifecycle_mgr_,
-                         // absl failed to check thread safety for lambda
-                         [this](const ObjectID &object_id, const auto &request)
-                             ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                               mutex_.AssertHeld();
-                               this->AddToClientObjectIds(object_id, request->client);
-                             },
-                         [this](const auto &request) { this->ReturnFromGet(request); }) {
+      get_request_queue_(
+          io_context_, object_lifecycle_mgr_,
+          // absl failed to check thread safety for lambda
+          [this](const ObjectID &object_id, const auto &request)
+              ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                mutex_.AssertHeld();
+                this->AddToClientObjectIds(object_id, request->client);
+              },
+          [this](const auto &request) { this->ReturnFromGet(request); }) {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
@@ -487,13 +488,14 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(io_context_,
-                                  [this]() {
-                                    absl::MutexLock lock(&mutex_);
-                                    create_timer_ = nullptr;
-                                    ProcessCreateRequests();
-                                  },
-                                  retry_after_ms);
+    create_timer_ = execute_after(
+        io_context_,
+        [this]() {
+          absl::MutexLock lock(&mutex_);
+          create_timer_ = nullptr;
+          ProcessCreateRequests();
+        },
+        retry_after_ms);
   }
 }
 
