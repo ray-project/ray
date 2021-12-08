@@ -532,7 +532,8 @@ workers to be saved on the ``Trainer`` (where your python script is executed).
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
 
-Concrete examples are provided to demonstrate how checkpoints are saved appropriately in distributed training.
+Concrete examples are provided to demonstrate how checkpoints are saved
+appropriately in distributed training.
 
 .. tabs::
   .. group-tab:: PyTorch
@@ -563,8 +564,8 @@ Concrete examples are provided to demonstrate how checkpoints are saved appropri
 
             optimizer = Adam(model.parameters(), lr=3e-4)
             for epoch in range(config["num_epochs"]):
-                # compute loss
                 y = model.forward(X)
+                # compute loss
                 loss = mse(y, Y)
                 # back-propagate loss
                 optimizer.zero_grad()
@@ -586,6 +587,7 @@ Concrete examples are provided to demonstrate how checkpoints are saved appropri
 
         print(trainer.latest_checkpoint)
 
+
   .. group-tab:: TensorFlow
     .. code-block:: python
 
@@ -606,7 +608,6 @@ Concrete examples are provided to demonstrate how checkpoints are saved appropri
 
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
-                # toy neural network : 1-layer
                 model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
                 model.compile(loss="mean_squared_error", metrics=["mse"])
 
@@ -750,8 +751,8 @@ Checkpoints can be loaded into the training function in 2 steps:
             # wrap the model in DDP
             model = ray.train.torch.prepare_model(model)
             for epoch in range(start_epoch, config["num_epochs"]):
-                # compute loss
                 y = model.forward(X)
+                # compute loss
                 loss = mse(y, Y)
                 # back-propagate loss
                 optimizer.zero_grad()
@@ -773,6 +774,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer.shutdown()
 
         print(trainer.latest_checkpoint)
+
 
   .. group-tab:: TensorFlow
     .. code-block:: python
@@ -796,11 +798,9 @@ Checkpoints can be loaded into the training function in 2 steps:
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
             with strategy.scope():
-                # toy neural network : 1-layer
                 model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
                 checkpoint = train.load_checkpoint()
                 if checkpoint:
-                    print(">>> loading")
                     model.build((None, 4))
                     # assume that we have run the train.save_checkpoint() example
                     #                and successfully save some model weights
