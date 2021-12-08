@@ -89,11 +89,11 @@ _stats_actor = [None, None]
 
 
 def get_or_create_stats_actor():
-    cur_job_id = ray.get_runtime_context().job_id.hex()
     # Need to re-create it if Ray restarts (mostly for unit tests).
-    if _stats_actor[1] != cur_job_id:
+    if (not _stats_actor[0] or not ray.is_initialized()
+            or _stats_actor[1] != ray.get_runtime_context().job_id.hex()):
         _stats_actor[0] = _StatsActor.remote()
-        _stats_actor[1] = cur_job_id
+        _stats_actor[1] = ray.get_runtime_context().job_id.hex()
     return _stats_actor[0]
 
 
