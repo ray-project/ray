@@ -17,6 +17,7 @@ from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
 
+ALLOW_RAY_IN_PIP_ENV_VAR = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
 
 def validate_uri(uri: str):
     if not isinstance(uri, str):
@@ -137,7 +138,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
                         f"List[str], got {type(pip)}")
     for specifier in result:
         if (pip_requirement_specifier_is_ray(specifier)
-                and os.environ.get("RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP") == "1"):
+                and os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) == "1"):
             raise ValueError(
                 "Ray was specified in the `pip` field of the "
                 f"`runtime_env`: '{specifier}'. This may cause Ray "
@@ -146,7 +147,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
                 "preinstall Ray on all nodes in the cluster and to "
                 "not include Ray in the `pip` field. To disable this error, "
                 "set the environment variable "
-                "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP to 1.")
+                f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
 
     return result
 
