@@ -4,7 +4,6 @@ import glob
 import io
 import logging
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -29,6 +28,7 @@ SUPPORTED_BAZEL = (4, 2, 1)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -212,7 +212,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open"
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -268,19 +268,8 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
+        "redis >= 3.5.0",
     ]
-
-if platform.system() == "Darwin" and platform.machine() == "arm64":
-    # TODO (Alex): `hiredis` doesn't have prebuilt M1 mac wheels yet. We can
-    # remove this, either when they add support, we remove redis, or we vendor
-    # redis/hiredis ourselves.
-    setup_spec.install_requires.append("redis >= 3.5.0")
-elif platform.system() == "Windows":
-    # TODO (Alex): Ray is not compatible with redis >= 4.0.0. We ened to either
-    # investigate why, or remove the redis dependency.
-    setup_spec.install_requires.append("redis >= 3.5.0, < 4.0")
-else:
-    setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
 
 
 def is_native_windows_or_msys():
@@ -508,6 +497,9 @@ def build(build_python, build_java, build_cpp):
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_LIMIT_CPUS:
+        n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
+        bazel_flags.append(f"--local_cpu_resources={n}")
 
     if not is_automated_build:
         bazel_precmd_flags = []

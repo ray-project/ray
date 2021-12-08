@@ -3,7 +3,7 @@ import logging
 
 import ray
 import torch.distributed as dist
-from ray.util.sgd.utils import find_free_port
+from ray.util.ml_utils.util import find_free_port
 
 logger = logging.getLogger(__name__)
 

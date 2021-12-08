@@ -31,10 +31,10 @@ RAY_CONFIG(bool, event_stats, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
+/// -1 means the feature is disabled. In this case, stats are available to
+/// debug_state_*.txt
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
@@ -106,17 +106,27 @@ RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
+// If true, we place a soft cap on the numer of scheduling classes, see
+// `worker_cap_initial_backoff_delay_ms`.
+RAY_CONFIG(bool, worker_cap_enabled, false)
+
+/// We place a soft cap on the number of tasks of a given scheduling class that
+/// can run at once to limit the total nubmer of worker processes. After the
+/// specified interval, the new task above that cap is allowed to run. The time
+/// before the next tasks (above the cap) are allowed to run increases
+/// exponentially. The soft cap is needed to prevent deadlock in the case where
+/// a task begins to execute and tries to `ray.get` another task of the same
+/// class.
+RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
+
+/// After reaching the worker cap, the backoff delay will grow exponentially,
+/// until it hits a maximum delay.
+RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
+
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
-
-// TODO (Alex): Remove this feature flag once scheduling class capping is
-// implemented.
-/// Whether to include function descriptors, and depth in the
-// scheduling class. / This causes tasks to be queued differently, so it may
-// effect scheduling / behavior.
-RAY_CONFIG(bool, complex_scheduling_class, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -161,6 +171,12 @@ RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 /// How long to wait for a fetch to complete during ray.get before warning the
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
+
+/// How long to wait for a fetch before timing it out and throwing an error to
+/// the user. This error should only be seen if there is extreme pressure on
+/// the object directory, or if there is a bug in either object recovery or the
+/// object directory.
+RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
@@ -255,8 +271,6 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-/// The interval at which the gcs server will print debug info.
-RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 // The interval at which the gcs server will pull a new resource.
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
@@ -511,3 +525,10 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+
+/// grpc delay testing flags
+///  To use this, simply do
+///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
+//  The delay is a random number between the interval. If method equals '*',
+//  it will apply to all methods.
+RAY_CONFIG(std::string, testing_asio_delay_us, "")

@@ -9,12 +9,13 @@ import json
 import time
 
 import ray
-from ray.cluster_utils import Cluster, AutoscalingCluster
+from ray.cluster_utils import (Cluster, AutoscalingCluster,
+                               cluster_not_supported)
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.test_utils import (init_error_pubsub, setup_tls,
-                                     teardown_tls, get_and_run_node_killer)
+from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
+                                     setup_tls, teardown_tls,
+                                     get_and_run_node_killer)
 import ray.util.client.server.server as ray_client_server
-import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -117,6 +118,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -290,6 +293,8 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
@@ -311,10 +316,7 @@ def error_pubsub():
 
 @pytest.fixture()
 def log_pubsub():
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    log_channel = gcs_utils.LOG_FILE_CHANNEL
-    p.psubscribe(log_channel)
+    p = init_log_pubsub()
     yield p
     p.close()
 
@@ -421,27 +423,48 @@ def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
+def _ray_start_chaos_cluster(request):
+    param = getattr(request, "param", {})
+    kill_interval = param.pop("kill_interval", None)
+    config = param.pop("_system_config", {})
+    config.update({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "task_retry_delay_ms": 100,
+    })
+    # Config of workers that are re-started.
+    head_resources = param.pop("head_resources")
+    worker_node_types = param.pop("worker_node_types")
+    cluster = AutoscalingCluster(
+        head_resources,
+        worker_node_types,
+        idle_timeout_minutes=10,  # Don't take down nodes.
+        **param)
+    cluster.start(_system_config=config)
+    ray.init("auto")
+    nodes = ray.nodes()
+    assert len(nodes) == 1
+
+    if kill_interval is not None:
+        node_killer = get_and_run_node_killer(kill_interval)
+
+    yield cluster
+
+    if kill_interval is not None:
+        ray.get(node_killer.stop_run.remote())
+        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        assert len(killed) > 0
+        died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
+        assert died.issubset(killed), (f"Raylets {died - killed} that "
+                                       "we did not kill crashed")
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
 @pytest.fixture
 def ray_start_chaos_cluster(request):
     """Returns the cluster and chaos thread.
     """
-    os.environ["RAY_num_heartbeats_timeout"] = "5"
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
-    param = getattr(request, "param", {})
-    kill_interval = param.get("kill_interval", 2)
-    # Config of workers that are re-started.
-    head_resources = param["head_resources"]
-    worker_node_types = param["worker_node_types"]
-
-    cluster = AutoscalingCluster(head_resources, worker_node_types)
-    cluster.start()
-    ray.init("auto")
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    node_killer = get_and_run_node_killer(kill_interval)
-    yield node_killer
-    assert ray.get(node_killer.get_total_killed_nodes.remote()) > 0
-    ray.shutdown()
-    cluster.shutdown()
-    del os.environ["RAY_num_heartbeats_timeout"]
-    del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
+    for x in _ray_start_chaos_cluster(request):
+        yield x

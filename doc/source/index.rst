@@ -236,6 +236,7 @@ Papers
 
    walkthrough.rst
    using-ray.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
@@ -280,6 +281,7 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/dataset-ml-preprocessing.rst
    data/dataset-execution-model.rst
    data/dataset-tensor-support.rst
    data/package-ref.rst

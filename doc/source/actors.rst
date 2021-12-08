@@ -313,7 +313,7 @@ sufficient CPU resources and the relevant custom resources.
 .. tip::
 
   Besides compute resources, you can also specify an environment for an actor to run in,
-  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
+  which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
 
 
 Terminating Actors

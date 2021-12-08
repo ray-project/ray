@@ -447,6 +447,9 @@ class NodeInfoAccessor {
   virtual Status AsyncGetInternalConfig(
       const OptionalItemCallback<std::string> &callback);
 
+  /// Add a node to accessor cache.
+  virtual void HandleNotification(const rpc::GcsNodeInfo &node_info);
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -455,8 +458,6 @@ class NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-
-  void HandleNotification(const rpc::GcsNodeInfo &node_info);
 
   GcsClient *client_impl_;
 
