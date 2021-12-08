@@ -32,7 +32,6 @@ def build_trainer(
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
-        training_iteration_fn: Optional[Callable[[Trainer], ResultDict]] = None,
         execution_plan: Optional[Union[Callable[
             [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
                 Trainer, WorkerSet, TrainerConfigDict
@@ -72,23 +71,16 @@ def build_trainer(
         mixins: List of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class.
-        training_iteration_fn: Optional callable that gets called for each
-            training iteration, taking Trainer as arg and returning a results
-            dict. Only used when
-            `config._disable_distributed_execution_api=False`.
-        execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
-            Iterable[ResultDict]]]): Optional callable that sets up the
-            distributed execution workflow. Only used when
-            `config._disable_distributed_execution_api=True`.
-        allow_unknown_configs (bool): Whether to allow unknown top-level config
-            keys.
-        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+        execution_plan: Optional callable that sets up the
+            distributed execution workflow.
+        allow_unknown_configs: Whether to allow unknown top-level config keys.
+        allow_unknown_subkeys: List of top-level keys
             with value=dict, for which new sub-keys are allowed to be added to
             the value dict. Appends to Trainer class defaults.
-        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
-            level keys with value=dict, for which we always override the entire
-            value (dict), iff the "type" key in that value dict changes.
-            Appends to Trainer class defaults.
+        override_all_subkeys_if_type_changes: List of top level keys with
+            value=dict, for which we always override the entire value (dict),
+            iff the "type" key in that value dict changes. Appends to Trainer
+            class defaults.
 
     Returns:
         A Trainer sub-class configured by the specified args.
@@ -151,26 +143,6 @@ def build_trainer(
 
             self.train_exec_impl = self.execution_plan(
                 self.workers, config, **self._kwargs_for_execution_plan())
-
-            # Generators/functions defining training iteration behavior.
-            self.execution_plan = self.training_iteration_fn = None
-
-            # Function defining one single training iteration's behavior.
-            if config["_disable_distributed_execution_api"]:
-                assert training_iteration_fn is not None
-                self.training_iteration_fn = training_iteration_fn
-                # Ensure remote workers are initially in sync with the
-                # local worker.
-                self.workers.sync_weights()
-            # LocalIterator-creating "execution plan".
-            # Only call this once here to create `self.train_exec_impl`,
-            # which is a ray.util.iter.LocalIterator that will be `next`'d
-            # on each training iteration.
-            else:
-                assert execution_plan is not None
-                self.execution_plan = execution_plan
-                self.train_exec_impl = execution_plan(
-                    self.workers, config, **self._kwargs_for_execution_plan())
 
             if after_init:
                 after_init(self)

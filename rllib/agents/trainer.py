@@ -28,8 +28,10 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
+from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
+    synchronous_parallel_sample
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
+    train_one_step, load_train_batch_and_train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -365,11 +367,16 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
-    # Minimum time per train iteration (frequency of metrics reporting).
-    "min_iter_time_s": 0,
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of train iterations.
-    "timesteps_per_iteration": 0,
+
+    # Minimum time interval for metrics reporting:
+    ## If - after one `train()` call, this time limit has not been reached,
+    ## will perform n more train() calls until this minimum time has been
+    ## consumed. Set to None or 0 for no minimum time.
+    "min_time_per_reporting": None,
+    ## Minimum train timesteps to optimize for per train call. This value does
+    ## not affect learning, only the length of train iterations.
+    "min_train_timesteps_per_reporting": None,
+
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
     # results. This makes experiments reproducible.
@@ -534,6 +541,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
+    # Minimum time per train iteration (frequency of metrics reporting).
+    "min_iter_time_s": 0,
+    # Minimum env steps to optimize for per train call. This value does
+    # not affect learning, only the length of train iterations.
+    "timesteps_per_iteration": 0,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -784,8 +796,20 @@ class Trainer(Trainable):
                 policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
                 num_workers=self.config["num_workers"])
-            self.train_exec_impl = self.execution_plan(
-                self.workers, self.config, **self._kwargs_for_execution_plan())
+
+            # Function defining one single training iteration's behavior.
+            if config["_disable_distributed_execution_api"]:
+                # Ensure remote workers are initially in sync with the
+                # local worker.
+                self.workers.sync_weights()
+                #self.collect_metrics = CollectMetrics()
+            # LocalIterator-creating "execution plan".
+            # Only call this once here to create `self.train_exec_impl`,
+            # which is a ray.util.iter.LocalIterator that will be `next`'d
+            # on each training iteration.
+            else:
+                self.train_exec_impl = self.execution_plan(
+                    self.workers, self.config, **self._kwargs_for_execution_plan())
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -898,7 +922,10 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
         result = None
-        for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+        failures = 0
+        time_start = time.time()
+
+        while True:
             # Try to train one step.
             try:
                 result = self.step_attempt()
@@ -909,6 +936,9 @@ class Trainer(Trainable):
                     logger.exception(
                         "Error in train call, attempting to recover")
                     self.try_recover_from_step_attempt()
+                    failures += 1
+                    if failures > MAX_WORKER_FAILURE_RETRIES:
+                        break
                 else:
                     logger.info(
                         "Worker crashed during call to train(). To attempt to "
@@ -920,14 +950,22 @@ class Trainer(Trainable):
                 # Allow logs messages to propagate.
                 time.sleep(0.5)
                 raise e
+            # Repeat if not enough time has passed.
             else:
-                break
+                if self.config["_disable_distributed_execution_api"] and \
+                        time.time() - time_start >= self.config["min_time_per_reporting"]:
+                    break
 
         # Still no result (even after n retries).
         if result is None:
             raise RuntimeError("Failed to recover from worker crash.")
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            # Collect worker metrics.
+            #if self.config["_disable_distributed_execution_api"]:
+            #    pass
+
+            # Sync filters on workers.
             self._sync_filters_if_needed(self.workers)
 
         return result
@@ -979,7 +1017,7 @@ class Trainer(Trainable):
             if use_exec_api:
                 step_results = next(self.train_exec_impl)
             else:
-                step_results = self.training_iteration_fn(self)
+                step_results = self.training_iteration()
         # We have to evaluate in this training iteration.
         else:
             # No parallelism.
@@ -987,7 +1025,7 @@ class Trainer(Trainable):
                 if use_exec_api:
                     step_results = next(self.train_exec_impl)
                 else:
-                    step_results = self.training_iteration_fn(self)
+                    step_results = self.training_iteration()
 
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
@@ -997,7 +1035,7 @@ class Trainer(Trainable):
                     train_future = executor.submit(
                         lambda: (next(self.train_exec_impl) if
                                  use_exec_api else
-                                 self.training_iteration_fn(self)))
+                                 self.training_iteration()))
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
@@ -1221,36 +1259,48 @@ class Trainer(Trainable):
         # should use the multi-GPU optimizer, even if only using 1 GPU).
         # TODO: (sven) rename MultiGPUOptimizer into something more meaningful.
         if config.get("simple_optimizer") is True:
-            train_results = train_one_step(trainer, train_batch)
+            train_results = train_one_step(self, train_batch)
         else:
             train_results = load_train_batch_and_train_one_step(
-                trainer, train_batch)
+                self, train_batch)
 
-        report = False
-        time_now = time.time()
-        if time_now - config["min_iter_time_s"] > trainer._last_time_reported:
-            trainer._last_time_reported = time_now
-            report = True
-        elif trainer._timesteps_since_reported + len(train_batch) > config[
-            "timesteps_per_iteration"]:
-            trainer._last_timestep_reported = trainer._timesteps_since_reported + len(
-                train_batch)
-            trainer._timesteps_since_reported = 0
-            report = True
-        else:
-            trainer._timesteps_since_reported += len(train_batch)
+        #output_op = train_op \
+        #    .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
+        #                                    by_steps_trained=by_steps_trained)) \
+        #    .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
+        #    .for_each(CollectMetrics(
+        #    workers,
+        #    min_history=config["metrics_smoothing_episodes"],
+        #    timeout_seconds=config["collect_metrics_timeout"],
+        #    selected_workers=selected_workers,
+        #    by_steps_trained=by_steps_trained))
+        #return output_op
 
-        if report:
-            # metrics = ray.get(workers.remote_workers()[0].get_metrics.remote())
-            return collect_metrics(
-                workers.remote_workers() or [workers.local_worker()],
-                min_history=config["metrics_smoothing_episodes"],
-                timeout_seconds=config["collect_metrics_timeout"],
-            )
+        #report = False
+        #time_now = time.time()
+        #if time_now - config["min_iter_time_s"] > self._last_time_reported:
+        #    self._last_time_reported = time_now
+        #    report = True
+        #elif self._timesteps_since_reported + len(train_batch) > config[
+        #    "timesteps_per_iteration"]:
+        #    self._last_timestep_reported = self._timesteps_since_reported + len(
+        #        train_batch)
+        #    self._timesteps_since_reported = 0
+        #    report = True
+        #else:
+        #    self._timesteps_since_reported += len(train_batch)
 
-        return {
-            train_results,
-        }
+        #if report:
+        #    # metrics = ray.get(workers.remote_workers()[0].get_metrics.remote())
+        #    return collect_metrics(
+        #        workers.remote_workers() or [workers.local_worker()],
+        #        min_history=config["metrics_smoothing_episodes"],
+        #        timeout_seconds=config["collect_metrics_timeout"],
+        #    )
+
+        #return {
+        #    train_results,
+        #}
 
     @DeveloperAPI
     @staticmethod
