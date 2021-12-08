@@ -241,8 +241,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return string.
   std::string DebugString() const;
 
-  /// Record the internal stats.
-  void RecordMetrics();
+  /// Record metrics.
+  void RecordMetrics() const;
 
   /// Populate object store stats.
   ///

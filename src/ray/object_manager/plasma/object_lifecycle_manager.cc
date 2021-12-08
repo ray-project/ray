@@ -269,8 +269,6 @@ int64_t ObjectLifecycleManager::GetNumObjectsUnsealed() const {
   return stats_collector_.GetNumObjectsUnsealed();
 }
 
-void ObjectLifecycleManager::RecordMetrics() const { stats_collector_.RecordMetrics(); }
-
 void ObjectLifecycleManager::GetDebugDump(std::stringstream &buffer) const {
   return stats_collector_.GetDebugDump(buffer);
 }

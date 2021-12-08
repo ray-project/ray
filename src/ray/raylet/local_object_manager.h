@@ -135,7 +135,7 @@ class LocalObjectManager {
   void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
 
   /// Record object spilling stats to metrics.
-  void RecordMetrics() const;
+  void RecordObjectSpillingStats() const;
 
   /// Return the spilled object URL if the object is spilled locally,
   /// or the empty string otherwise.
