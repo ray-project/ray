@@ -8,6 +8,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+import time
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -73,6 +74,12 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
 
     def reinit():
         ray.shutdown()
+        # Currently, reinit the driver will generate the same job id. And if we
+        # reinit immediately after shutdown, raylet may process new job started
+        # before old job finished in some cases. This inconsistency could
+        # disorder the URI reference and delete a valid runtime env. We sleep
+        # here to walk around this issue.
+        time.sleep(5)
         call_ray_init()
 
     @ray.remote
@@ -149,6 +156,12 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
 
     def reinit():
         ray.shutdown()
+        # Currently, reinit the driver will generate the same job id. And if we
+        # reinit immediately after shutdown, raylet may process new job started
+        # before old job finished in some cases. This inconsistency could
+        # disorder the URI reference and delete a valid runtime env. We sleep
+        # here to walk around this issue.
+        time.sleep(5)
         call_ray_init()
 
     # Import in the driver.

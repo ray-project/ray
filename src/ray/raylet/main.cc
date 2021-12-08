@@ -170,7 +170,9 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_workers_soft_limit = num_cpus;
+        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
+        node_manager_config.num_workers_soft_limit =
+            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;

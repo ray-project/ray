@@ -561,31 +561,39 @@ void WorkerPool::MarkPortAsFree(int port) {
   }
 }
 
-void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
-  all_jobs_[job_id] = job_config;
+static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
   if (job_config.has_runtime_env_info() &&
       job_config.runtime_env_info().runtime_env_eager_install()) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
     if (runtime_env != "{}" && runtime_env != "") {
-      // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
-      // increment the ref count multiple times. This is fine because
-      // `HandleJobFinished` will also decrement the ref count multiple times.
-      runtime_env_manager_.AddURIReference(job_id.Hex(), job_config.runtime_env_info());
-      RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
-                    << ". The runtime environment was " << runtime_env << ".";
-      CreateRuntimeEnv(
-          runtime_env, job_id,
-          [job_id](bool successful, const std::string &serialized_runtime_env_context) {
-            if (successful) {
-              RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job "
-                            << job_id << ". The result context was "
-                            << serialized_runtime_env_context << ".";
-            } else {
-              RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
-                             << job_id << ".";
-            }
-          });
+      return true;
     }
+  }
+  return false;
+}
+
+void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
+  all_jobs_[job_id] = job_config;
+  if (NeedToEagerInstallRuntimeEnv(job_config)) {
+    auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
+    // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
+    // increment the ref count multiple times. This is fine because
+    // `HandleJobFinished` will also decrement the ref count multiple times.
+    runtime_env_manager_.AddURIReference(job_id.Hex(), job_config.runtime_env_info());
+    RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
+                  << ". The runtime environment was " << runtime_env << ".";
+    CreateRuntimeEnv(
+        runtime_env, job_id,
+        [job_id](bool successful, const std::string &serialized_runtime_env_context) {
+          if (successful) {
+            RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
+                          << ". The result context was " << serialized_runtime_env_context
+                          << ".";
+          } else {
+            RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
+                           << job_id << ".";
+          }
+        });
   }
 }
 
@@ -595,12 +603,10 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // unfinished_jobs_.erase(job_id);
   auto job_config = GetJobConfig(job_id);
   RAY_CHECK(job_config);
-  if (job_config->has_runtime_env_info() &&
-      job_config->runtime_env_info().runtime_env_eager_install()) {
-    auto const &runtime_env = job_config->runtime_env_info().serialized_runtime_env();
-    if (runtime_env != "{}" && runtime_env != "") {
-      runtime_env_manager_.RemoveURIReference(job_id.Hex());
-    }
+  // Check eager install here because we only add URI reference when runtime
+  // env install really happens.
+  if (NeedToEagerInstallRuntimeEnv(*job_config)) {
+    runtime_env_manager_.RemoveURIReference(job_id.Hex());
   }
   finished_jobs_.insert(job_id);
 }
