@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-
 import os
 from pathlib import Path
 import sys
@@ -13,7 +11,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray.tests.test_runtime_env_working_dir \
     import tmp_working_dir  # noqa: F401
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, chdir
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -23,14 +21,6 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-
-
-@contextmanager
-def chdir(d: str):
-    old_dir = os.getcwd()
-    os.chdir(d)
-    yield
-    os.chdir(old_dir)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

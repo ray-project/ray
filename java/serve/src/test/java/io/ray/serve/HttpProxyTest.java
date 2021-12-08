@@ -21,7 +21,6 @@ public class HttpProxyTest {
 
   @Test
   public void test() throws IOException {
-
     boolean inited = Ray.isInitialized();
     Ray.init();
 
@@ -43,6 +42,9 @@ public class HttpProxyTest {
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();

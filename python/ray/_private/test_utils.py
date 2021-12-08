@@ -12,11 +12,14 @@ import socket
 import math
 import traceback
 from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout, redirect_stderr, contextmanager
+
 import yaml
 import logging
 import tempfile
 import grpc
+from grpc._channel import _InactiveRpcError
+import numpy as np
 
 import ray
 import ray._private.services
@@ -960,11 +963,16 @@ def get_and_run_node_killer(node_kill_interval_s,
 
     @ray.remote(num_cpus=0)
     class NodeKillerActor:
-        def __init__(self, head_node_id, node_kill_interval_s: float = 60):
+        def __init__(self,
+                     head_node_id,
+                     node_kill_interval_s: float = 60,
+                     max_nodes_to_kill: int = 2):
             self.node_kill_interval_s = node_kill_interval_s
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
+            self.done = asyncio.get_event_loop().create_future()
+            self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
 
@@ -976,26 +984,42 @@ def get_and_run_node_killer(node_kill_interval_s,
             while self.is_running:
                 node_to_kill_ip = None
                 node_to_kill_port = None
-                nodes = ray.nodes()
-                alive_nodes = self._get_alive_nodes(nodes)
-                for node in nodes:
-                    node_id = node["NodeID"]
-                    # make sure at least 1 worker node is alive.
-                    if (node["Alive"] and node_id != self.head_node_id
-                            and node_id not in self.killed_nodes
-                            and alive_nodes > 2):
-                        node_to_kill_ip = node["NodeManagerAddress"]
-                        node_to_kill_port = node["NodeManagerPort"]
-                        break
+                while node_to_kill_port is None and self.is_running:
+                    nodes = ray.nodes()
+                    alive_nodes = self._get_alive_nodes(nodes)
+                    for node in nodes:
+                        node_id = node["NodeID"]
+                        # make sure at least 1 worker node is alive.
+                        if (node["Alive"] and node_id != self.head_node_id
+                                and node_id not in self.killed_nodes
+                                and alive_nodes > 2):
+                            node_to_kill_ip = node["NodeManagerAddress"]
+                            node_to_kill_port = node["NodeManagerPort"]
+                            break
+                    # Give the cluster some time to start.
+                    await asyncio.sleep(0.1)
+
+                if not self.is_running:
+                    break
+
+                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                time.sleep(sleep_interval)
 
                 if node_to_kill_port is not None:
-                    self._kill_raylet(
-                        node_to_kill_ip, node_to_kill_port, graceful=False)
+                    try:
+                        self._kill_raylet(
+                            node_to_kill_ip, node_to_kill_port, graceful=False)
+                    except Exception:
+                        pass
                     logging.info(
-                        "Killing a node of address: "
+                        f"Killed node {node_id} at address: "
                         f"{node_to_kill_ip}, port: {node_to_kill_port}")
                     self.killed_nodes.add(node_id)
-                await asyncio.sleep(self.node_kill_interval_s)
+                if len(self.killed_nodes) >= self.max_nodes_to_kill:
+                    break
+                await asyncio.sleep(self.node_kill_interval_s - sleep_interval)
+
+            self.done.set_result(True)
 
         async def stop_run(self):
             was_running = self.is_running
@@ -1004,14 +1028,18 @@ def get_and_run_node_killer(node_kill_interval_s,
 
         async def get_total_killed_nodes(self):
             """Get the total number of killed nodes"""
-            return len(self.killed_nodes)
+            await self.done
+            return self.killed_nodes
 
         def _kill_raylet(self, ip, port, graceful=False):
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            try:
+                stub.ShutdownRaylet(
+                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            except _InactiveRpcError:
+                assert not graceful
 
         def _get_alive_nodes(self, nodes):
             alive_nodes = 0
@@ -1037,3 +1065,11 @@ def get_and_run_node_killer(node_kill_interval_s,
     if not no_start:
         node_killer.run.remote()
     return node_killer
+
+
+@contextmanager
+def chdir(d: str):
+    old_dir = os.getcwd()
+    os.chdir(d)
+    yield
+    os.chdir(old_dir)

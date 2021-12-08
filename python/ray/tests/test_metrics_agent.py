@@ -78,7 +78,7 @@ _AUTOSCALER_METRICS = [
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
     "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
-    "autoscaler_drain_node_exceptions"
+    "autoscaler_drain_node_exceptions", "autoscaler_update_time"
 ]
 
 
