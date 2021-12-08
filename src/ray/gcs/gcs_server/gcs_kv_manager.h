@@ -26,6 +26,7 @@ namespace gcs {
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
   explicit GcsInternalKVManager(const RedisClientOptions &redis_options);
+  ~GcsInternalKVManager();
 
   void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
                            rpc::InternalKVGetReply *reply,
@@ -51,9 +52,11 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
 
   instrumented_io_context &GetEventLoop() { return io_service_; }
 
+  void Start();
   void Stop();
 
  private:
+  RedisClientOptions redis_options_;
   std::unique_ptr<RedisClient> redis_client_;
   // The io service used by internal kv.
   instrumented_io_context io_service_;

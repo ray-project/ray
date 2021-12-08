@@ -18,23 +18,33 @@ namespace ray {
 namespace gcs {
 
 GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_options)
-    : work_(io_service_) {
+    : redis_options_(redis_options), work_(io_service_) {}
+
+void GcsInternalKVManager::Start() {
+  threads_.resize(RayConfig::instance().gcs_internal_kv_thread_num());
   for (uint32_t i = 0; i < RayConfig::instance().gcs_internal_kv_thread_num(); ++i) {
     auto cb = [this] {
       SetThreadName("InternalKV");
       io_service_.run();
     };
-    threads_.emplace_back(std::make_unique<std::thread>(cb));
+    threads_[i] = std::make_unique<std::thread>(cb);
   }
-  redis_client_ = std::make_unique<RedisClient>(redis_options);
+  redis_client_ = std::make_unique<RedisClient>(redis_options_);
   RAY_CHECK_OK(redis_client_->Connect(io_service_));
 }
 
+GcsInternalKVManager::~GcsInternalKVManager() {
+  Stop();
+}
+
 void GcsInternalKVManager::Stop() {
-  io_service_.stop();
-  redis_client_.reset();
-  for (auto &t : threads_) {
-    t->join();
+  if(redis_client_ != nullptr) {
+    io_service_.stop();
+    redis_client_.reset();
+    for (auto &t : threads_) {
+      t->join();
+    }
+    threads_.clear();
   }
 }
 

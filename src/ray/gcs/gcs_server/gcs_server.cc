@@ -50,12 +50,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
 GcsServer::~GcsServer() { Stop(); }
 
+RedisClientOptions GcsServer::GetRedisClientOptions() const {
+  return RedisClientOptions(
+      config_.redis_address, config_.redis_port,
+      config_.redis_password,
+      config_.enable_sharding_conn);
+}
+
 void GcsServer::Start() {
   // Init backend client.
-  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password,
-                                          config_.enable_sharding_conn);
-  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+  redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
@@ -403,10 +407,8 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password,
-                                          config_.enable_sharding_conn);
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_options);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(GetRedisClientOptions());
+  kv_manager_->Start();
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(kv_manager_->GetEventLoop(),
                                                              *kv_manager_);
   // Register service.
