@@ -86,10 +86,11 @@ assert count == 2, count
             f.write(driver_template.format(address))
 
         try:
+            subprocess.check_call([sys.executable, v1_driver])
+        except Exception:
             # Ignore the first run, since it runs extra exports.
-            subprocess.call([sys.executable, v1_driver])
-        except:
             pass
+
         # Further runs do not increase the num exports count.
         for _ in range(5):
             subprocess.check_call([sys.executable, v1_driver])
