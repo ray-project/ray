@@ -119,9 +119,10 @@ class DatasetStats:
             stages: Dict of stages used to create this Dataset from the
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats.
-            lazy_stats_fn: Function that returns tuple of stats and total time
-                fetched from a stats actor. This is only used for Datasets
-                using LazyBlockList.
+            stats_actor: Reference to actor where stats should be pulled
+                from. This is only used for Datasets using LazyBlockList.
+            stats_uuid: The uuid for the stats, used to fetch the right stats
+                from the stats actor.
         """
 
         self.stages: Dict[str, List[BlockMetadata]] = stages
