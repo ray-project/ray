@@ -452,13 +452,14 @@ ray.init(address='auto')
 def task():
     return None
 
-ray.get(task.remote(), timeout=2)
-
+ray.get(task.remote(), timeout=5)
 """
         with pytest.raises(subprocess.CalledProcessError) as e:
             run_string_as_driver(script)
         assert ("The process is still alive, probably "
                 "it's hanging during start") in e.value.output.decode()
+        assert ("Received a register request from an "
+                "unknown worker shim process") not in e.value.output.decode()
 
 
 if __name__ == "__main__":
