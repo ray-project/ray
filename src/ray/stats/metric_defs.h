@@ -45,6 +45,63 @@ DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
+/// Object Manager.
+DECLARE_stats(num_chunks_received);
+
+/// Pull Manager
+DECLARE_stats(num_bytes_available);
+DECLARE_stats(num_bytes_being_pulled);
+DECLARE_stats(num_bytes_being_pulled_pinned);
+DECLARE_stats(num_get_reqs);
+DECLARE_stats(num_wait_reqs);
+DECLARE_stats(num_task_arg_reqs);
+DECLARE_stats(num_pull_req_queued);
+DECLARE_stats(num_active_pulls);
+DECLARE_stats(num_active_pulls_pinned);
+DECLARE_stats(num_active_bundles);
+DECLARE_stats(num_retries_total);
+
+/// Push Manager
+DECLARE_stats(num_pushes_in_flight);
+DECLARE_stats(num_chunks_in_flight);
+DECLARE_stats(num_chunks_remainig);
+
+/// Scheduler
+DECLARE_stats(num_waiting_for_resource);
+DECLARE_stats(num_waiting_for_plasma_memory);
+DECLARE_stats(num_waiting_for_remote_node_resources);
+DECLARE_stats(num_worker_not_started_by_job_config_not_exist);
+DECLARE_stats(num_worker_not_started_by_registration_timeout);
+DECLARE_stats(num_worker_not_started_by_process_rate_limit);
+DECLARE_stats(num_tasks_waiting_for_workers);
+DECLARE_stats(num_cancelled_tasks);
+DECLARE_stats(num_waitng_tasks);
+DECLARE_stats(num_executing_tasks);
+DECLARE_stats(num_pinned_task_args);
+
+/// Local Object Manager
+DECLARE_stats(num_pinned_objects);
+DECLARE_stats(pinned_objects_size_bytes);
+DECLARE_stats(num_objects_pending_restore);
+DECLARE_stats(num_objects_pending_spill);
+DECLARE_stats(pending_spill_bytes);
+DECLARE_stats(cumulative_spill_requests);
+DECLARE_stats(cumulative_restore_requests);
+
+///
+/// Plasma Store Metrics
+///
+
+/// Object Lifecycle Manager.
+DECLARE_stats(plasma_num_local_objects_by_state);
+DECLARE_stats(plasma_num_local_bytes_by_state);
+DECLARE_stats(plasma_num_local_objects_by_type);
+DECLARE_stats(plasma_num_local_bytes_by_type);
+
+/// Plasma Store
+DECLARE_stats(num_pending_creation_requests);
+DECLARE_stats(num_pending_creation_bytes);
+
 /// GCS Resource Manager
 DECLARE_stats(new_resource_creation_latency_ms);
 

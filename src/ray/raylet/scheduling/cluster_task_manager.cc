@@ -1032,6 +1032,24 @@ void ClusterTaskManager::RecordMetrics() const {
   stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
   stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
   stats::NumInfeasibleTasks.Record(internal_stats_.num_infeasible_tasks);
+  ray::stats::STATS_num_waiting_for_resource.Record(
+      internal_stats_.num_waiting_for_resource);
+  ray::stats::STATS_num_waiting_for_plasma_memory.Record(
+      internal_stats_.num_waiting_for_plasma_memory);
+  ray::stats::STATS_num_waiting_for_remote_node_resources.Record(
+      internal_stats_.num_waiting_for_remote_node_resources);
+  ray::stats::STATS_num_worker_not_started_by_job_config_not_exist.Record(
+      internal_stats_.num_worker_not_started_by_job_config_not_exist);
+  ray::stats::STATS_num_worker_not_started_by_registration_timeout.Record(
+      internal_stats_.num_worker_not_started_by_registration_timeout);
+  ray::stats::STATS_num_worker_not_started_by_process_rate_limit.Record(
+      internal_stats_.num_worker_not_started_by_process_rate_limit);
+  ray::stats::STATS_num_tasks_waiting_for_workers.Record(
+      internal_stats_.num_tasks_waiting_for_workers);
+  ray::stats::STATS_num_cancelled_tasks.Record(internal_stats_.num_cancelled_tasks);
+  ray::stats::STATS_num_waitng_tasks.Record(waiting_tasks_index_.size());
+  ray::stats::STATS_num_executing_tasks.Record(executing_task_args_.size());
+  ray::stats::STATS_num_pinned_task_args.Record(pinned_task_arguments_.size());
 }
 
 std::string ClusterTaskManager::DebugStr() const {

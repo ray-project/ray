@@ -76,7 +76,9 @@ void PushManager::ScheduleRemainingPushes() {
 }
 
 void PushManager::RecordMetrics() const {
-  // TODO(sang): Add metrics.
+  ray::stats::STATS_num_pushes_in_flight.Record(NumPushesInFlight());
+  ray::stats::STATS_num_chunks_in_flight.Record(NumChunksInFlight());
+  ray::stats::STATS_num_chunks_remainig.Record(NumChunksRemaining());
 }
 
 std::string PushManager::DebugString() const {

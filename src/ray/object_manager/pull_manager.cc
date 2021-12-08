@@ -742,7 +742,18 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
 }
 
 void PullManager::RecordMetrics() const {
-  // TODO(sang): Add metrics.
+  absl::MutexLock lock(&active_objects_mu_);
+  ray::stats::STATS_num_bytes_available.Record(num_bytes_available_);
+  ray::stats::STATS_num_bytes_being_pulled.Record(num_bytes_being_pulled_);
+  ray::stats::STATS_num_bytes_being_pulled_pinned.Record(pinned_objects_size_);
+  ray::stats::STATS_num_get_reqs.Record(get_request_bundles_.size());
+  ray::stats::STATS_num_wait_reqs.Record(wait_request_bundles_.size());
+  ray::stats::STATS_num_task_arg_reqs.Record(task_argument_bundles_.size());
+  ray::stats::STATS_num_pull_req_queued.Record(object_pull_requests_.size());
+  ray::stats::STATS_num_active_pulls.Record(active_object_pull_requests_.size());
+  ray::stats::STATS_num_active_pulls_pinned.Record(pinned_objects_.size());
+  ray::stats::STATS_num_active_bundles.Record(num_active_bundles_);
+  ray::stats::STATS_num_retries_total.Record(num_retries_total_);
 }
 
 std::string PullManager::DebugString() const {

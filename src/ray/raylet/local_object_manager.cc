@@ -535,6 +535,13 @@ void LocalObjectManager::RecordMetrics() const {
     stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
                                        restore_time_total_s_);
   }
+  ray::stats::STATS_num_pinned_objects.Record(pinned_objects_.size());
+  ray::stats::STATS_pinned_objects_size_bytes.Record(pinned_objects_size_);
+  ray::stats::STATS_num_objects_pending_restore.Record(objects_pending_restore_.size());
+  ray::stats::STATS_num_objects_pending_spill.Record(objects_pending_spill_.size());
+  ray::stats::STATS_pending_spill_bytes.Record(num_bytes_pending_spill_);
+  ray::stats::STATS_cumulative_spill_requests.Record(spilled_objects_total_);
+  ray::stats::STATS_cumulative_restore_requests.Record(restored_objects_total_);
 }
 
 std::string LocalObjectManager::DebugString() const {
