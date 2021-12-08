@@ -697,8 +697,7 @@ def init(
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use for this job (see
-                :ref:`runtime-environments` for details).  This API is in beta
-                and may change before becoming stable.
+                :ref:`runtime-environments` for details).
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that

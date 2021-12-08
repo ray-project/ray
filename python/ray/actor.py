@@ -603,8 +603,7 @@ class ActorClass:
                 as its parent. It is True by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
-                :ref:`runtime-environments` for details).  This API is in beta
-                and may change before becoming stable.
+                :ref:`runtime-environments` for details).
 
         Returns:
             A handle to the newly created actor.
