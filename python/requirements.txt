@@ -62,6 +62,7 @@ google-cloud-storage
 gym-minigrid
 kubernetes
 lxml
+markdown~=3.3.6
 moto
 mypy
 networkx
