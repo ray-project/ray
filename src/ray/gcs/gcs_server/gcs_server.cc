@@ -71,7 +71,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     this->main_service_.stop();
   };
   ray::rpc::StoredConfig stored_config;
-  stored_config.set_config(config_.config_list);
+  stored_config.set_config(config_.raylet_config_list);
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(),
                                                              stored_config, on_done));
   // Here we need to make sure the Put of internal config is happening in sync

@@ -48,7 +48,8 @@ struct GcsServerConfig {
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
   std::string log_dir;
-  std::string config_list;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
