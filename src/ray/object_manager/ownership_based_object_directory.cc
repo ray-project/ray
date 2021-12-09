@@ -14,7 +14,7 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -283,19 +283,24 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       ObjectLocationSubscriptionCallback(
           location_info, object_id,
           /*location_lookup_failed*/ !location_info.ref_removed());
-      if (location_info.ref_removed()) {
-        RAY_LOG(ERROR)
-            << "Failed to get locations for " << object_id
-            << ", object already released by distributed reference counting protocol";
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
-      }
     };
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
-                                                  const Status &) {
+                                                  const Status &status) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
-      mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
       rpc::WorkerObjectLocationsPubMessage location_info;
+      if (!status.ok()) {
+        RAY_LOG(INFO) << "Failed to get the location for " << object_id
+                      << status.ToString();
+        mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+      } else {
+        // Owner is still alive but published a failure because the ref was
+        // deleted.
+        RAY_LOG(INFO)
+            << "Failed to get the location for " << object_id
+            << ", object already released by distributed reference counting protocol";
+        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+      }
       // Location lookup can fail if the owner is reachable but no longer has a
       // record of this ObjectRef, most likely due to an issue with the
       // distributed reference counting protocol.
@@ -427,11 +432,11 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           bool pending_creation = false;
 
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id << status.ToString();
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to get the location for "
+                          << object_id << status.ToString();
             mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
           } else if (reply.object_location_info().ref_removed()) {
-            RAY_LOG(ERROR)
+            RAY_LOG(INFO)
                 << "Worker " << worker_id << " failed to get the location for "
                 << object_id
                 << ", object already released by distributed reference counting protocol";
