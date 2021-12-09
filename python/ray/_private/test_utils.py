@@ -1073,3 +1073,46 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+def check_local_files_gced(cluster):
+    for node in cluster.list_all_nodes():
+        for subdir in ["conda"]:
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir))
+            # Check that there are no files remaining except for .lock files
+            # and generated requirements.txt files.
+            # TODO(architkulkarni): these files should get cleaned up too!
+            if len(
+                    list(
+                        filter(lambda f: not f.endswith((".lock", ".txt")),
+                               all_files))) > 0:
+                print(str(all_files))
+                return False
+
+    return True
+
+
+def generate_runtime_env_dict(field, spec_format, tmp_path):
+    if field == "conda":
+        conda_dict = {
+            "dependencies": ["pip", {
+                "pip": ["pip-install-test==0.5"]
+            }]
+        }
+        if spec_format == "file":
+            conda_file = tmp_path / "environment.yml"
+            conda_file.write_text(yaml.dump(conda_dict))
+            conda = str(conda_file)
+        elif spec_format == "python_object":
+            conda = conda_dict
+        runtime_env = {"conda": conda}
+    elif field == "pip":
+        if spec_format == "file":
+            pip_file = tmp_path / "requirements.txt"
+            pip_file.write_text("\n".join(["pip-install-test==0.5"]))
+            pip = str(pip_file)
+        elif spec_format == "python_object":
+            pip = ["pip-install-test==0.5"]
+        runtime_env = {"pip": pip}
+    return runtime_env
