@@ -62,7 +62,7 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   }
 
   // Erase subscriber of individual keys.
-  auto &subscribing_keys = subscribing_key_it->second;
+  const auto &subscribing_keys = subscribing_key_it->second;
   for (const auto &key_id : subscribing_keys) {
     // Erase the subscriber from the object map.
     auto subscribers_it = key_id_to_subscribers_.find(key_id);
@@ -290,6 +290,8 @@ bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
 
 void Publisher::UnregisterAll() {
   absl::MutexLock lock(&mutex_);
+  // Save the subscriber IDs to be removed, because UnregisterSubscriberInternal()
+  // erases from subscribers_.
   std::vector<SubscriberID> ids;
   for (const auto &[id, subscriber] : subscribers_) {
     ids.push_back(id);
