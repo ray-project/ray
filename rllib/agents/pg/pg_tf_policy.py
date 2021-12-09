@@ -2,7 +2,7 @@
 TensorFlow policy class used for PG.
 """
 
-from typing import List, Type, Union
+from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.pg.utils import post_process_advantages
@@ -41,9 +41,30 @@ def pg_tf_loss(
 
     # Calculate the vanilla PG loss based on:
     # L = -E[ log(pi(a|s)) * A]
-    return -tf.reduce_mean(
+    loss = -tf.reduce_mean(
         action_dist.logp(train_batch[SampleBatch.ACTIONS]) * tf.cast(
             train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
+
+    policy.policy_loss = loss
+
+    return loss
+
+
+def pg_loss_stats(policy: Policy,
+                  train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Returns the calculated loss in a stats dict.
+
+    Args:
+        policy (Policy): The Policy object.
+        train_batch (SampleBatch): The data used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
+
+    return {
+        "policy_loss": policy.policy_loss,
+    }
 
 
 # Build a child class of `DynamicTFPolicy`, given the extra options:
@@ -53,4 +74,5 @@ PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
     get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
+    stats_fn=pg_loss_stats,
     loss_fn=pg_tf_loss)

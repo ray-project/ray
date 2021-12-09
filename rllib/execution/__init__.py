@@ -10,11 +10,15 @@ from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay, \
     SimpleReplayBuffer, MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
-    ConcatBatches, SelectExperiences, StandardizeFields
+    ConcatBatches, SelectExperiences, StandardizeFields, \
+    synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
-    ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork
+    ComputeGradients, ApplyGradients, AverageGradients, UpdateTargetNetwork, \
+    train_one_step
 
 __all__ = [
+    "synchronous_parallel_sample",
+    "train_one_step",
     "ApplyGradients",
     "AsyncGradients",
     "AverageGradients",
