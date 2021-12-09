@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
@@ -6,8 +7,11 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.exploration.random_encoder import MovingMeanStd, \
+    compute_states_entropy, update_beta
 from ray.rllib.utils.typing import AgentID, PolicyID
 
 # Import psutil after ray so the packaged version is used.
@@ -381,3 +385,59 @@ class MultiCallbacks(DefaultCallbacks):
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_train_result(trainer=trainer, result=result, **kwargs)
+
+
+# This Callback is used by the RE3 exploration strategy.
+# See rllib/examples/re3_exploration.py for details.
+class RE3UpdateCallbacks(DefaultCallbacks):
+    """Update input callbacks to mutate batch with states entropy rewards."""
+
+    _step = 0
+
+    def __init__(self,
+                 *args,
+                 embeds_dim: int = 128,
+                 k_nn: int = 50,
+                 beta: float = 0.1,
+                 rho: float = 0.0001,
+                 beta_schedule: str = "constant",
+                 **kwargs):
+        self.embeds_dim = embeds_dim
+        self.k_nn = k_nn
+        self.beta = beta
+        self.rho = rho
+        self.beta_schedule = beta_schedule
+        self._rms = MovingMeanStd()
+        super().__init__(*args, **kwargs)
+
+    def on_learn_on_batch(
+            self,
+            *,
+            policy: Policy,
+            train_batch: SampleBatch,
+            result: dict,
+            **kwargs,
+    ):
+        super().on_learn_on_batch(
+            policy=policy, train_batch=train_batch, result=result, **kwargs)
+        states_entropy = compute_states_entropy(
+            train_batch[SampleBatch.OBS_EMBEDS], self.embeds_dim, self.k_nn)
+        states_entropy = update_beta(
+            self.beta_schedule, self.beta, self.rho,
+            RE3UpdateCallbacks._step) * np.reshape(
+                self._rms(states_entropy),
+                train_batch[SampleBatch.OBS_EMBEDS].shape[:-1],
+            )
+        train_batch[SampleBatch.REWARDS] = (
+            train_batch[SampleBatch.REWARDS] + states_entropy)
+        if Postprocessing.ADVANTAGES in train_batch:
+            train_batch[Postprocessing.ADVANTAGES] = (
+                train_batch[Postprocessing.ADVANTAGES] + states_entropy)
+            train_batch[Postprocessing.VALUE_TARGETS] = (
+                train_batch[Postprocessing.VALUE_TARGETS] + states_entropy)
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        # TODO(gjoliver): Remove explicit _step tracking and pass
+        # trainer._iteration as a parameter to on_learn_on_batch() call.
+        RE3UpdateCallbacks._step = result["training_iteration"]
+        super().on_train_result(trainer=trainer, result=result, **kwargs)
