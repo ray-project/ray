@@ -18,6 +18,10 @@ def _update_docker_compose(docker_compose_path: str,
                            project_name: str) -> bool:
     docker_compose_config = _read_yaml(docker_compose_path)
 
+    if not docker_compose_config:
+        print("Docker compose currently empty")
+        return False
+
     cmd = ["up", "-d", "--no-recreate"]
     shutdown = False
     if not docker_compose_config["services"]:

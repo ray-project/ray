@@ -53,8 +53,10 @@ DOCKER_HEAD_CMD = (
     "bash -c \""
     "sudo mkdir -p {volume_dir} && "
     "sudo chmod 777 {volume_dir} && "
+    "touch {volume_dir}/.in_docker && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
+    "sudo chmod 600 ~/ray_bootstrap_key.pem && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
     "sudo apt update && sudo apt install -y openssh-server && "
     "sudo service ssh start && "
@@ -71,6 +73,7 @@ DOCKER_WORKER_CMD = (
     "bash -c \""
     "sudo mkdir -p {volume_dir} && "
     "sudo chmod 777 {volume_dir} && "
+    "touch {volume_dir}/.in_docker && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
@@ -93,6 +96,9 @@ def create_node_spec(head: bool,
                      num_gpus: int = 0,
                      resources: Optional[Dict] = None,
                      env_vars: Optional[Dict] = None,
+                     host_gcs_port: int = 16379,
+                     host_object_manager_port: int = 18076,
+                     host_client_port: int = 10002,
                      volume_dir: Optional[str] = None,
                      status_path: Optional[str] = None,
                      docker_compose_path: Optional[str] = None,
@@ -114,10 +120,13 @@ def create_node_spec(head: bool,
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
 
-
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
-        node_spec["ports"] = [6379, 8265, 10001]
+        node_spec["ports"] = [
+            f"{host_gcs_port}:6379",
+            f"{host_object_manager_port}:8076",
+            f"{host_client_port}:10001",
+        ]
         node_spec["volumes"] += [
             f"{status_path}:{status_path}",
             f"{docker_compose_path}:{docker_compose_path}",
@@ -171,6 +180,13 @@ class FakeMultiNodeProvider(NodeProvider):
             self._project_name = self.provider_config["project_name"]
             self._docker_image = self.provider_config["image"]
 
+            self._host_gcs_port = self.provider_config.get(
+                "host_gcs_port", 16379)
+            self._host_object_manager_port = self.provider_config.get(
+                "host_object_manager_port", 18076)
+            self._host_client_port = self.provider_config.get(
+                "host_client_port", 10002)
+
             self._head_resources = self.provider_config["head_resources"]
 
             # subdirs:
@@ -205,12 +221,18 @@ class FakeMultiNodeProvider(NodeProvider):
 
             self._nodes[FAKE_HEAD_NODE_ID][
                 "node_spec"] = self._create_node_spec_with_resources(
-                    head=True, node_id=FAKE_HEAD_NODE_ID, resources=self._head_resources)
+                    head=True,
+                    node_id=FAKE_HEAD_NODE_ID,
+                    resources=self._head_resources)
 
             self._docker_status = {}
 
             self._update_docker_compose_config()
             self._update_docker_status()
+
+    @property
+    def in_docker_container(self):
+        return os.path.exists(os.path.join(self._volume_dir, ".in_docker"))
 
     def _next_hex_node_id(self):
         self._next_node_id += 1
@@ -240,6 +262,9 @@ class FakeMultiNodeProvider(NodeProvider):
             mounted_node_dir=node_dir,
             num_cpus=resources.pop("CPU", 0),
             num_gpus=resources.pop("GPU", 0),
+            host_gcs_port=self._host_gcs_port,
+            host_object_manager_port=self._host_object_manager_port,
+            host_client_port=self._host_client_port,
             resources=resources,
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
@@ -279,7 +304,7 @@ class FakeMultiNodeProvider(NodeProvider):
                            use_internal_ip: bool,
                            docker_config: Optional[Dict[str, Any]] = None
                            ) -> CommandRunnerInterface:
-        if not self.uses_docker:
+        if not self.uses_docker or self.in_docker_container:
             return super(FakeMultiNodeProvider, self).get_command_runner(
                 log_prefix, node_id, auth_config, cluster_name, process_runner,
                 use_internal_ip)
@@ -373,7 +398,8 @@ class FakeMultiNodeProvider(NodeProvider):
                     count: int) -> Optional[Dict[str, Any]]:
         if self.uses_docker:
             resources = self._head_resources
-            return self.create_node_with_resources(node_config, tags, count, resources)
+            return self.create_node_with_resources(node_config, tags, count,
+                                                   resources)
         else:
             raise NotImplementedError
 

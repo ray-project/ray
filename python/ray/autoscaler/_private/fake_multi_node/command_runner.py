@@ -50,13 +50,15 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
     def run_rsync_down(self, source, target, options=None):
         docker_dir = os.path.dirname(self._docker_expand_user(source))
 
-        self._run_shell(f"docker cp {self.container_name}:{docker_dir} {target}")
+        self._run_shell(
+            f"docker cp {self.container_name}:{docker_dir} {target}")
 
     def run_rsync_up(self, source, target, options=None):
         docker_dir = os.path.dirname(self._docker_expand_user(target))
         self.run(cmd=f"mkdir -p {docker_dir}")
 
-        self._run_shell(f"docker cp {source} {self.container_name}:{docker_dir}")
+        self._run_shell(
+            f"docker cp {source} {self.container_name}:{docker_dir}")
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
