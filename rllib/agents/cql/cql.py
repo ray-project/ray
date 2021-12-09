@@ -1,6 +1,8 @@
+"""CQL (derived from SAC).
+"""
 import logging
 import numpy as np
-from typing import Type
+from typing import Optional, Type
 
 from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
@@ -14,7 +16,6 @@ from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -56,132 +57,124 @@ CQL_DEFAULT_CONFIG = merge_dicts(
 # yapf: enable
 
 
-class CQLTrainer(SACTrainer):
-    """CQL (derived from SAC)."""
+def validate_config(config: TrainerConfigDict):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    # CQL-torch performs the optimizer steps inside the loss function.
+    # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+    # check above) and we must use the simple optimizer for now.
+    if config["simple_optimizer"] is not True and \
+            config["framework"] == "torch":
+        config["simple_optimizer"] = True
 
-        # Add the entire dataset to Replay Buffer (global variable)
-        reader = self.workers.local_worker().input_reader
-        replay_buffer = self.local_replay_buffer
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run CQL! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
-        # For d4rl, add the D4RLReaders' dataset to the buffer.
-        if isinstance(self.config["input"], str) and \
-                "d4rl" in self.config["input"]:
-            dataset = reader.dataset
-            replay_buffer.add_batch(dataset)
-        # For a list of files, add each file's entire content to the buffer.
-        elif isinstance(reader, ShuffledInput):
-            num_batches = 0
-            total_timesteps = 0
-            for batch in reader.child.read_all_files():
-                num_batches += 1
-                total_timesteps += len(batch)
-                # Add NEXT_OBS if not available. This is slightly hacked
-                # as for the very last time step, we will use next-obs=zeros
-                # and therefore force-set DONE=True to avoid this missing
-                # next-obs to cause learning problems.
-                if SampleBatch.NEXT_OBS not in batch:
-                    obs = batch[SampleBatch.OBS]
-                    batch[SampleBatch.NEXT_OBS] = \
-                        np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
-                    batch[SampleBatch.DONES][-1] = True
-                replay_buffer.add_batch(batch)
-            print(
-                f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                f" replay buffer, which has capacity {replay_buffer.capacity}."
-            )
-        else:
-            raise ValueError(
-                "Unknown offline input! config['input'] must either be list of"
-                " offline files (json) or a D4RL-specific InputReader "
-                "specifier (e.g. 'd4rl.hopper-medium-v0').")
 
-    @classmethod
-    @override(SACTrainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return CQL_DEFAULT_CONFIG
+def execution_plan(workers, config, **kwargs):
+    assert "local_replay_buffer" in kwargs, (
+        "CQL execution plan requires a local replay buffer.")
 
-    @override(SACTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        super().validate_config(config)
+    local_replay_buffer = kwargs["local_replay_buffer"]
 
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
+    def update_prio(item):
+        samples, info_dict = item
+        if config.get("prioritized_replay"):
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error",
+                                    info[LEARNER_STATS_KEY].get("td_error"))
+                samples.policy_batches[policy_id].set_get_interceptor(None)
+                prio_dict[policy_id] = (samples.policy_batches[policy_id]
+                                        .get("batch_indexes"), td_error)
+            local_replay_buffer.update_priorities(prio_dict)
+        return info_dict
 
-        # CQL-torch performs the optimizer steps inside the loss function.
-        # Using the multi-GPU optimizer will therefore not work (see multi-GPU
-        # check above) and we must use the simple optimizer for now.
-        if config["simple_optimizer"] is not True and \
-                config["framework"] == "torch":
-            config["simple_optimizer"] = True
+    # (2) Read and train on experiences from the replay buffer. Every batch
+    # returned from the LocalReplay() iterator is passed to TrainOneStep to
+    # take a SGD step, and then we decide whether to update the target network.
+    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
 
-        if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
-            logger.warning(
-                "You need `tensorflow_probability` in order to run CQL! "
-                "Install it via `pip install tensorflow_probability`. Your "
-                f"tf.__version__={tf.__version__ if tf else None}."
-                "Trying to import tfp results in the following error:")
-            try_import_tfp(error=True)
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = MultiGPUTrainOneStep(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
 
-    @override(SACTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
-        if config["framework"] == "torch":
-            return CQLTorchPolicy
-        else:
-            return CQLTFPolicy
+    train_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(lambda x: post_fn(x, workers, config)) \
+        .for_each(train_step_op) \
+        .for_each(update_prio) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
 
-    @staticmethod
-    @override(SACTrainer)
-    def execution_plan(workers, config, **kwargs):
-        assert "local_replay_buffer" in kwargs, (
-            "CQL execution plan requires a local replay buffer.")
+    return StandardMetricsReporting(
+        train_op, workers, config, by_steps_trained=True)
 
-        local_replay_buffer = kwargs["local_replay_buffer"]
 
-        def update_prio(item):
-            samples, info_dict = item
-            if config.get("prioritized_replay"):
-                prio_dict = {}
-                for policy_id, info in info_dict.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error"))
-                    samples.policy_batches[policy_id].set_get_interceptor(None)
-                    prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                            .get("batch_indexes"), td_error)
-                local_replay_buffer.update_priorities(prio_dict)
-            return info_dict
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    if config["framework"] == "torch":
+        return CQLTorchPolicy
 
-        # (2) Read and train on experiences from the replay buffer. Every batch
-        # returned from the LocalReplay() iterator is passed to TrainOneStep to
-        # take a SGD step, and then we decide whether to update the target
-        # network.
-        post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
 
-        if config["simple_optimizer"]:
-            train_step_op = TrainOneStep(workers)
-        else:
-            train_step_op = MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
+def after_init(trainer):
+    # Add the entire dataset to Replay Buffer (global variable)
+    reader = trainer.workers.local_worker().input_reader
+    replay_buffer = trainer.local_replay_buffer
 
-        train_op = Replay(local_buffer=local_replay_buffer) \
-            .for_each(lambda x: post_fn(x, workers, config)) \
-            .for_each(train_step_op) \
-            .for_each(update_prio) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
+    # For d4rl, add the D4RLReaders' dataset to the buffer.
+    if isinstance(trainer.config["input"], str) and \
+            "d4rl" in trainer.config["input"]:
+        dataset = reader.dataset
+        replay_buffer.add_batch(dataset)
+    # For a list of files, add each file's entire content to the buffer.
+    elif isinstance(reader, ShuffledInput):
+        num_batches = 0
+        total_timesteps = 0
+        for batch in reader.child.read_all_files():
+            num_batches += 1
+            total_timesteps += len(batch)
+            # Add NEXT_OBS if not available. This is slightly hacked
+            # as for the very last time step, we will use next-obs=zeros
+            # and therefore force-set DONE=True to avoid this missing
+            # next-obs to cause learning problems.
+            if SampleBatch.NEXT_OBS not in batch:
+                obs = batch[SampleBatch.OBS]
+                batch[SampleBatch.NEXT_OBS] = \
+                    np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
+                batch[SampleBatch.DONES][-1] = True
+            replay_buffer.add_batch(batch)
+        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
+              f"replay buffer, which has capacity {replay_buffer.capacity}.")
+    else:
+        raise ValueError(
+            "Unknown offline input! config['input'] must either be list of "
+            "offline files (json) or a D4RL-specific InputReader specifier "
+            "(e.g. 'd4rl.hopper-medium-v0').")
 
-        return StandardMetricsReporting(
-            train_op, workers, config, by_steps_trained=True)
+
+CQLTrainer = SACTrainer.with_updates(
+    name="CQL",
+    default_config=CQL_DEFAULT_CONFIG,
+    validate_config=validate_config,
+    default_policy=CQLTFPolicy,
+    get_policy_class=get_policy_class,
+    after_init=after_init,
+    execution_plan=execution_plan,
+)

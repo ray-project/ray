@@ -570,12 +570,11 @@ class Trainer(Trainable):
     but this usually happens from local worker to all remote workers and
     after each training update.
 
-    You can write your own Trainer classes by sub-classing from `Trainer`
-    or any of its built-in sub-classes.
-    This allows you to override the `execution_plan` method to implement
-    your own algorithm logic. You can find the different built-in
-    algorithms' execution plans in their respective main py files,
-    e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+    You can write your own Trainer sub-classes by using the
+    rllib.agents.trainer_template.py::build_trainer() utility function.
+    This allows you to provide a custom `execution_plan`. You can find the
+    different built-in algorithms' execution plans in their respective main
+    py files, e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
 
     The most important API methods a Trainer exposes are `train()`,
     `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
@@ -862,8 +861,7 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict):
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -2301,7 +2299,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "`with_updates` may only be called on Trainer sub-classes "
             "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function (which has been deprecated)!")
+            "build_trainer()` function!")
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(

@@ -1,6 +1,9 @@
+"""Behavioral Cloning (derived from MARWIL).
+
+Simply uses the MARWIL agent with beta force-set to 0.0.
+"""
 from ray.rllib.agents.marwil.marwil import MARWILTrainer, \
     DEFAULT_CONFIG as MARWIL_CONFIG
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 # yapf: disable
@@ -20,21 +23,14 @@ BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
 # yapf: enable
 
 
-class BCTrainer(MARWILTrainer):
-    """Behavioral Cloning (derived from MARWIL).
+def validate_config(config: TrainerConfigDict) -> None:
+    if config["beta"] != 0.0:
+        raise ValueError(
+            "For behavioral cloning, `beta` parameter must be 0.0!")
 
-    Simply uses the MARWIL agent with beta force-set to 0.0.
-    """
 
-    @classmethod
-    @override(MARWILTrainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return BC_DEFAULT_CONFIG
-
-    @override(MARWILTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        super().validate_config(config)
-
-        if config["beta"] != 0.0:
-            raise ValueError(
-                "For behavioral cloning, `beta` parameter must be 0.0!")
+BCTrainer = MARWILTrainer.with_updates(
+    name="BC",
+    default_config=BC_DEFAULT_CONFIG,
+    validate_config=validate_config,
+)

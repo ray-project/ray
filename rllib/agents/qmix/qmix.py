@@ -3,7 +3,6 @@ from typing import Type
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
@@ -13,7 +12,6 @@ from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -127,8 +125,7 @@ class QMixTrainer(SimpleQTrainer):
 
     @staticmethod
     @override(SimpleQTrainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
+    def execution_plan(workers, config, **kwargs):
         assert len(kwargs) == 0, (
             "QMIX execution_plan does NOT take any additional parameters")
 

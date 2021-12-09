@@ -10,17 +10,13 @@ and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
-from typing import Type
 
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
-from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils import merge_dicts
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -154,29 +150,26 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-class MADDPGTrainer(DQNTrainer):
-    @classmethod
-    @override(DQNTrainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+def add_maddpg_postprocessing(config):
+    """Add the before learn on batch hook.
 
-    @override(DQNTrainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        """Adds the `before_learn_on_batch` hook to the config.
+    This hook is called explicitly prior to TrainOneStep() in the execution
+    setups for DQN and APEX.
+    """
 
-        This hook is called explicitly prior to TrainOneStep() in the execution
-        setups for DQN and APEX.
-        """
+    def f(batch, workers, config):
+        policies = dict(workers.local_worker()
+                        .foreach_trainable_policy(lambda p, i: (i, p)))
+        return before_learn_on_batch(batch, policies,
+                                     config["train_batch_size"])
 
-        def f(batch, workers, config):
-            policies = dict(workers.local_worker()
-                            .foreach_trainable_policy(lambda p, i: (i, p)))
-            return before_learn_on_batch(batch, policies,
-                                         config["train_batch_size"])
+    config["before_learn_on_batch"] = f
+    return config
 
-        config["before_learn_on_batch"] = f
 
-    @override(DQNTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
-        return MADDPGTFPolicy
+MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
+    name="MADDPG",
+    default_config=DEFAULT_CONFIG,
+    default_policy=MADDPGTFPolicy,
+    get_policy_class=None,
+    validate_config=add_maddpg_postprocessing)

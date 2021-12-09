@@ -15,8 +15,9 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG, validate_config
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -26,7 +27,6 @@ from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     MultiGPUTrainOneStep
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -220,8 +220,16 @@ class DQNTrainer(SimpleQTrainer):
         return StandardMetricsReporting(train_op, workers, config)
 
 
-@Deprecated(
-    new="Sub-class directly from `DQNTrainer` and override its methods",
-    error=False)
-class GenericOffPolicyTrainer(DQNTrainer):
-    pass
+# TODO: Deprecate this in favor of using SimpleQ as base off-policy trainer.
+# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
+# may build on top of it.
+GenericOffPolicyTrainer = build_trainer(
+    name="GenericOffPolicyTrainer",
+    # No Policy preference.
+    default_policy=None,
+    get_policy_class=None,
+    # Use SimpleQ's config + validation and DQN's exec. plan as base for
+    # all other off-policy algos.
+    default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
+    execution_plan=DQNTrainer.execution_plan)

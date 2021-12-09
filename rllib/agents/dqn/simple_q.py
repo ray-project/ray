@@ -15,6 +15,7 @@ from typing import Optional, Type
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
@@ -25,6 +26,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -110,58 +112,105 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
+# TODO: Move into SimpleQ once all OffPolicyTrainers have been converted to
+#  sub-classing Trainer (instead of using `build_trainer`).
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step
+    truncation.
+    """
+    if config["exploration_config"]["type"] == "ParameterNoise":
+        if config["batch_mode"] != "complete_episodes":
+            logger.warning(
+                "ParameterNoise Exploration requires `batch_mode` to be "
+                "'complete_episodes'. Setting batch_mode="
+                "complete_episodes.")
+            config["batch_mode"] = "complete_episodes"
+        if config.get("noisy", False):
+            raise ValueError(
+                "ParameterNoise Exploration and `noisy` network cannot be"
+                " used at the same time!")
+
+    # Update effective batch size to include n-step
+    adjusted_batch_size = max(config["rollout_fragment_length"],
+                              config.get("n_step", 1))
+    config["rollout_fragment_length"] = adjusted_batch_size
+
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+        elif config.get("replay_sequence_length", 0) > 1:
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_sequence_length > 1.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
+
+    # Multi-agent mode and multi-GPU optimizer.
+    if config["multiagent"]["policies"] and \
+            not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially"
+            " by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
+
+
+# TODO: Move into SimpleQ once all OffPolicyTrainers have been converted to
+#  sub-classing Trainer (instead of using `build_trainer`).
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
+    assert "local_replay_buffer" in kwargs, (
+        "GenericOffPolicy execution plan requires a local replay buffer.")
+
+    local_replay_buffer = kwargs["local_replay_buffer"]
+
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # (1) Generate rollouts and store them in our local replay buffer.
+    store_op = rollouts.for_each(
+        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = MultiGPUTrainOneStep(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
+    # (2) Read and train on experiences from the replay buffer.
+    replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(train_step_op) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    # Alternate deterministically between (1) and (2).
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(train_op, workers, config)
+
+
 class SimpleQTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
+    # TODO: Move GenericOffPolicyTraier's validate_config in here and
+    #  use SimpleQ as base for all off-policy trainers.
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-        """Checks and updates the config based on settings.
-
-        Rewrites rollout_fragment_length to take into account n_step
-        truncation.
-        """
         super().validate_config(config)
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting batch_mode="
-                    "complete_episodes.")
-                config["batch_mode"] = "complete_episodes"
-            if config.get("noisy", False):
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!")
-
-        # Update effective batch size to include n-step
-        adjusted_batch_size = max(config["rollout_fragment_length"],
-                                  config.get("n_step", 1))
-        config["rollout_fragment_length"] = adjusted_batch_size
-
-        if config.get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_mode=lockstep.")
-            elif config.get("replay_sequence_length", 0) > 1:
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_sequence_length > 1.")
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False.")
-
-        # Multi-agent mode and multi-GPU optimizer.
-        if config["multiagent"]["policies"] and \
-                not config["simple_optimizer"]:
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially"
-                " by the multi-GPU optimizer. Consider setting "
-                "`simple_optimizer=True` if this doesn't work for you.")
+        validate_config(config)
 
     @override(Trainer)
     def get_default_policy_class(
@@ -171,40 +220,9 @@ class SimpleQTrainer(Trainer):
         else:
             return SimpleQTFPolicy
 
+    # TODO: Move GenericOffPolicyTraier's execution_plan in here and
+    #  use SimpleQ as base for all off-policy trainers.
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
-        assert "local_replay_buffer" in kwargs, (
-            "GenericOffPolicy execution plan requires a local replay buffer.")
-
-        local_replay_buffer = kwargs["local_replay_buffer"]
-
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-        # (1) Generate rollouts and store them in our local replay buffer.
-        store_op = rollouts.for_each(
-            StoreToReplayBuffer(local_buffer=local_replay_buffer))
-
-        if config["simple_optimizer"]:
-            train_step_op = TrainOneStep(workers)
-        else:
-            train_step_op = MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["train_batch_size"],
-                num_sgd_iter=1,
-                num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
-
-        # (2) Read and train on experiences from the replay buffer.
-        replay_op = Replay(local_buffer=local_replay_buffer) \
-            .for_each(train_step_op) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
-
-        # Alternate deterministically between (1) and (2).
-        train_op = Concurrently(
-            [store_op, replay_op], mode="round_robin", output_indexes=[1])
-
-        return StandardMetricsReporting(train_op, workers, config)
+        return execution_plan(workers, config, **kwargs)
