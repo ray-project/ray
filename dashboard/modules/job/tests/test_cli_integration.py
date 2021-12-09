@@ -29,9 +29,11 @@ def set_env_var(key: str, val: Optional[str] = None):
 @pytest.fixture
 def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
-    with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
-        yield
-    subprocess.check_output(["ray", "stop", "--force"])
+    try:
+        with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
+            yield
+    finally:
+        subprocess.check_output(["ray", "stop", "--force"])
 
 
 @contextmanager
@@ -40,8 +42,10 @@ def ray_cluster_manager():
     Used not as fixture in case we want to set RAY_ADDRESS first.
     """
     subprocess.check_output(["ray", "start", "--head"])
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
+    try:
+        yield
+    finally:
+        subprocess.check_output(["ray", "stop", "--force"])
 
 
 class TestRayAddress:
