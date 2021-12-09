@@ -105,8 +105,8 @@
     compute_template: dataset_ingest_400G_compute.yaml
 
   run:
-    timeout: 7200
-    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
+    timeout: 14400
+    script: python ray_sgd_runner.py --address auto --num-epochs 4
 
   stable: false
 

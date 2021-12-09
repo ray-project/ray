@@ -3,6 +3,7 @@ import argparse
 import os
 import json
 import time
+import timeit
 
 import ray
 import torch
@@ -225,6 +226,26 @@ def create_dataset_pipeline(files, epochs, num_windows):
     return pipe
 
 
+@ray.remote
+class TrainingWorker:
+    def __init__(self, rank: int, shard: DatasetPipeline, batch_size: int):
+        self.rank = rank
+        self.shard = shard
+        self.batch_size = batch_size
+
+    def train(self):
+        for epoch, training_dataset in enumerate(self.shard.iter_datasets()):
+            # Following code emulates epoch based SGD training.
+            print(f"Training... worker: {self.rank}, epoch: {epoch}")
+            for i, _ in enumerate(
+                    training_dataset.to_torch(
+                        batch_size=self.batch_size, label_column="label")):
+                if i % 100 == 0:
+                    print(f"epoch: {epoch}, worker: {self.rank},"
+                          f" processing batch: {i}")
+                time.sleep(0.15)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -240,7 +261,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num-workers",
-        default=1,
+        default=16,
         type=int,
         help="number of Ray workers to use for distributed training")
     parser.add_argument(
@@ -251,7 +272,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-epochs", default=4, type=int, help="number of epochs")
     parser.add_argument(
-        "--num-windows", default=64, type=int, help="number of windows")
+        "--num-windows", default=32, type=int, help="number of windows")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -262,70 +283,29 @@ if __name__ == "__main__":
     num_windows = args.num_windows
 
     BATCH_SIZE = 50000
-    NUM_HIDDEN = 50
-    NUM_LAYERS = 3
-    DROPOUT_EVERY = 5
-    DROPOUT_PROB = 0.2
-
-    start_time = time.time()
+    e2e_start_time = timeit.default_timer()
 
     ray.init(address=address)
 
     files = [
-        f"s3://shuffling-data-loader-benchmarks/data-400G/data_{i}.parquet.snappy"
-        for i in range(200)
+        f"s3://shuffling-data-loader-benchmarks/data-400G/data_{i%200}.parquet.snappy"
+        for i in range(420)
     ]
-
-    test_dataset = ray.data.read_parquet([files.pop(0)])
-
-    num_columns = len(test_dataset.schema().names)
-    num_features = num_columns - 1
-
-    if smoke_test:
-        # Only read a single file.
-        files = files[:1]
-        train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, 1)
-    else:
-        train_dataset_pipeline = create_dataset_pipeline(
+    print(f"num files: {len(files)}, num_epoch: {num_epochs}, num_windows: {num_windows}")
+    train_dataset_pipeline = create_dataset_pipeline(
             files, num_epochs, num_windows)
 
-    datasets = {
-        "train_dataset": train_dataset_pipeline,
-        "test_dataset": test_dataset
-    }
+    shards = train_dataset_pipeline \
+        .split(num_workers)
+    del train_dataset_pipeline
 
-    config = {
-        "is_distributed": True,
-        "use_gpu": use_gpu,
-        "num_epochs": num_epochs,
-        "batch_size": BATCH_SIZE,
-        "num_hidden": NUM_HIDDEN,
-        "num_layers": NUM_LAYERS,
-        "dropout_every": DROPOUT_EVERY,
-        "dropout_prob": DROPOUT_PROB,
-        "num_features": num_features
-    }
+    training_workers = [
+        TrainingWorker.options(num_gpus=1, num_cpus=0).remote(
+            rank, shard, BATCH_SIZE) for rank, shard in enumerate(shards)
+    ]
+    ray.get([worker.train.remote() for worker in training_workers])
 
-    num_gpus = 1 if use_gpu else 0
-    num_cpus = 0 if use_gpu else 1
-
-    trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        use_gpu=use_gpu,
-        resources_per_worker={
-            "CPU": num_cpus,
-            "GPU": num_gpus
-        })
-    trainer.start()
-    results = trainer.run(
-        train_func=train_func, config=config, callbacks=[], dataset=datasets)
-    model = results[0]
-    trainer.shutdown()
-
-    end_time = time.time()
-
-    total_time = end_time - start_time
+    e2e_end_time = timeit.default_timer()
+    total_time = e2e_end_time - e2e_start_time
     print(f"Job finished in {total_time} seconds.")
-    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"time": total_time, "success": 1}))
+    exit()
