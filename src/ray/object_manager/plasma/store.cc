@@ -51,6 +51,7 @@
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace ph = boost::placeholders;
