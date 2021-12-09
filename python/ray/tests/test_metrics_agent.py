@@ -28,10 +28,6 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -63,7 +59,7 @@ _METRICS = [
     "ray_pending_placement_group",
     "ray_registered_placement_group",
     "ray_infeasible_placement_group",
-    "ray_placement_group_resource_persist_latency_ms_sum"
+    "ray_new_resource_creation_latency_ms_sum",
 ]
 
 # This list of metrics should be kept in sync with

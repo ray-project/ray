@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.stats import DatasetStats
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -230,10 +231,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list, 0)
+    ds = Dataset(block_list, 0, DatasetStats(stages={}, parent=None))
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]

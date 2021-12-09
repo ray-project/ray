@@ -351,7 +351,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
 - label: ":redis: HA GCS (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -359,7 +359,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
@@ -370,7 +370,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3

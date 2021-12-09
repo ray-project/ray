@@ -18,7 +18,7 @@
 
 #include <boost/range/join.hpp>
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -480,7 +480,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  metric_tasks_queued_++;
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
@@ -1037,6 +1036,7 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
+
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
