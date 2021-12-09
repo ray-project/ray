@@ -93,7 +93,6 @@ class RedisInternalKV : public InternalKVInterface {
 class MemoryInternalKV : public InternalKVInterface {
  public:
   MemoryInternalKV(instrumented_io_context &io_context) : io_context_(io_context) {}
-
   void Get(const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
