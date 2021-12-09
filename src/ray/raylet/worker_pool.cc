@@ -781,7 +781,8 @@ void WorkerPool::PopIOWorkerInternal(
     // We must fill the pending task first, because 'TryStartIOWorkers' will
     // start I/O workers according to the number of pending tasks.
     io_worker_state.pending_io_tasks.push(callback);
-    RAY_LOG(DEBUG) << "Failed to pop an IO worker. Try starting a new one. Worker type: "
+    RAY_LOG(DEBUG) << "There are no idle workers, try starting a new one. Try starting a "
+                      "new one. Worker type: "
                    << rpc::WorkerType_Name(worker_type);
     TryStartIOWorkers(Language::PYTHON, worker_type);
   } else {

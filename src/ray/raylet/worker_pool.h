@@ -641,7 +641,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::function<void()> starting_worker_timeout_callback_;
   /// If 1, expose Ray debuggers started by the workers externally (to this node).
   int ray_debugger_external;
-  FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.
   JobID first_job_;
