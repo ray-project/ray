@@ -559,7 +559,12 @@ def test_two_custom_resources(ray_start_cluster):
 
 
 def test_many_custom_resources(shutdown_only):
-    num_custom_resources = 10000
+    # This eventually turns into a command line argument which on windows is
+    # limited to 32,767 characters.
+    if sys.platform == 'win32':
+        num_custom_resources = 4000
+    else:
+        num_custom_resources = 10000
     total_resources = {
         str(i): np.random.randint(1, 7)
         for i in range(num_custom_resources)

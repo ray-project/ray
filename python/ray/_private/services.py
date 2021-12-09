@@ -650,6 +650,15 @@ def start_ray_process(command,
     # before the process itself is assigned to the job.
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
+    if sys.platform == 'win32':
+        # CreateProcess, which underlies Popen, is limited to
+        # 32,767 characters, including the Unicode terminating null
+        # character
+        total_chrs = sum([len(x) for x in command])
+        if total_chrs > 31766:
+            raise ValueError(
+                f"command is limited to a total of 31767 characters, "
+                f"got {total_chrs}")
 
     process = ConsolePopen(
         command,
