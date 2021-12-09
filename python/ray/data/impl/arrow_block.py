@@ -10,7 +10,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
     TableBlockBuilder, SortKeyT, GroupKeyT
 from ray.data.aggregate import AggregateFn
@@ -277,7 +277,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ret = pyarrow.concat_tables(blocks, promote=True)
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
-        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+        return ret, ArrowBlockAccessor(ret).get_metadata(
+            None, exec_stats=BlockExecStats.TODO)
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -363,7 +364,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+        return ret, ArrowBlockAccessor(ret).get_metadata(
+            None, exec_stats=BlockExecStats.TODO)
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":

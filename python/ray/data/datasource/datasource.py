@@ -6,7 +6,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
-    BlockPartition, BlockPartitionMetadata, MaybeBlockPartition
+    BlockPartition, BlockPartitionMetadata, MaybeBlockPartition, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
@@ -129,7 +129,8 @@ class ReadTask(Callable[[], BlockPartition]):
             partition: BlockPartition = []
             for block in result:
                 metadata = BlockAccessor.for_block(block).get_metadata(
-                    input_files=self._metadata.input_files)
+                    input_files=self._metadata.input_files,
+                    exec_stats=BlockExecStats.TODO)
                 assert context.block_owner
                 partition.append((ray.put(block, _owner=context.block_owner),
                                   metadata))
@@ -199,7 +200,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 num_rows=count,
                 size_bytes=8 * count,
                 schema=schema,
-                input_files=None)
+                input_files=None,
+                exec_stats=None)
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: [make_block(i, count)], meta))

@@ -84,6 +84,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
