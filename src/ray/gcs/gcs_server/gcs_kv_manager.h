@@ -92,9 +92,8 @@ class RedisInternalKV : public InternalKVInterface {
 
 class MemoryInternalKV : public InternalKVInterface {
  public:
-  MemoryInternalKV(instrumented_io_context *io_context) : io_context_(io_context) {
-    RAY_CHECK(io_context != nullptr);
-  }
+  MemoryInternalKV(instrumented_io_context &io_context) : io_context_(io_context) {}
+
   void Get(const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
@@ -109,7 +108,7 @@ class MemoryInternalKV : public InternalKVInterface {
             std::function<void(std::vector<std::string>)> callback) override;
 
  private:
-  instrumented_io_context *io_context_;
+  instrumented_io_context &io_context_;
   absl::Mutex mu_;
   absl::btree_map<std::string, std::string> map_ GUARDED_BY(mu_);
 };

@@ -212,7 +212,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open"
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [

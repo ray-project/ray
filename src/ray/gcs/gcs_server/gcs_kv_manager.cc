@@ -80,7 +80,7 @@ void MemoryInternalKV::Get(const std::string &key,
   auto it = map_.find(key);
   auto val = it == map_.end() ? std::nullopt : std::make_optional(it->second);
   if (callback != nullptr) {
-    io_context_->post(std::bind(std::move(callback), std::move(val)));
+    io_context_.post(std::bind(std::move(callback), std::move(val)));
   }
 }
 
@@ -98,7 +98,7 @@ void MemoryInternalKV::Put(const std::string &key, const std::string &value,
     inserted = true;
   }
   if (callback != nullptr) {
-    io_context_->post(std::bind(std::move(callback), inserted));
+    io_context_.post(std::bind(std::move(callback), inserted));
   }
 }
 
@@ -112,7 +112,7 @@ void MemoryInternalKV::Del(const std::string &key, std::function<void(bool)> cal
     map_.erase(it);
   }
   if (callback != nullptr) {
-    io_context_->post(std::bind(std::move(callback), deleted));
+    io_context_.post(std::bind(std::move(callback), deleted));
   }
 }
 
@@ -121,7 +121,7 @@ void MemoryInternalKV::Exists(const std::string &key,
   absl::ReaderMutexLock lock(&mu_);
   bool existed = map_.find(key) != map_.end();
   if (callback != nullptr) {
-    io_context_->post(std::bind(std::move(callback), existed));
+    io_context_.post(std::bind(std::move(callback), existed));
   }
 }
 
@@ -135,7 +135,7 @@ void MemoryInternalKV::Keys(const std::string &prefix,
     iter++;
   }
   if (callback != nullptr) {
-    io_context_->post(std::bind(std::move(callback), std::move(keys)));
+    io_context_.post(std::bind(std::move(callback), std::move(keys)));
   }
 }
 
