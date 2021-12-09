@@ -329,7 +329,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {"0", "1"}
+    assert df.to_dict().keys() == {0, 1}
 
 
 def test_arrow_block_slice_copy():
@@ -1294,7 +1294,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({"0": list(range(n))})
+    df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
@@ -1677,8 +1677,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1865,7 +1865,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+        assert batch.to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
@@ -3554,14 +3554,6 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1 == ds
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
-
-
-def test_column_name_type_check(ray_start_regular_shared):
-    df = pd.DataFrame({"1": np.random.rand(10), "2": np.random.rand(10)})
-    ray.data.from_pandas(df)
-    df = pd.DataFrame({1: np.random.rand(10), 2: np.random.rand(10)})
-    with pytest.raises(ValueError):
-        ray.data.from_pandas(df)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

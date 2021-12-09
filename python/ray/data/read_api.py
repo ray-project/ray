@@ -535,17 +535,8 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
 
-    import pandas
-
-    def to_ref(df):
-        if isinstance(df, pandas.DataFrame):
-            return ray.put(df)
-        assert isinstance(df, ray.ObjectRef), df
-        return df
-
-    return from_pandas_refs([
-        to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
-    ])
+    return from_pandas_refs(
+        [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
 @PublicAPI(stability="beta")
@@ -610,16 +601,6 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     """
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
-    else:
-        for df in dfs:
-            assert isinstance(df, ray.ObjectRef), df
-
-    context = DatasetContext.get_current()
-    if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(_get_metadata)
-        metadata = [get_metadata.remote(df) for df in dfs]
-        return Dataset(
-            BlockList(dfs, ray.get(metadata)), 0, DatasetStats.TODO())
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
@@ -722,7 +703,6 @@ def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
         input_files=None, exec_stats=BlockExecStats.TODO))
 
 
-def _get_metadata(
-        table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:
+def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
     return BlockAccessor.for_block(table).get_metadata(
         input_files=None, exec_stats=BlockExecStats.TODO)
