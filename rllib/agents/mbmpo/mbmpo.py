@@ -398,7 +398,7 @@ class MBMPOTrainer(Trainer):
         # Metrics Collector.
         metric_collect = CollectMetrics(
             workers,
-            min_history=0,
+            metrics_smoothing_num_episodes=0,
             timeout_seconds=config["collect_metrics_timeout"])
 
         num_inner_steps = config["inner_adaptation_steps"]

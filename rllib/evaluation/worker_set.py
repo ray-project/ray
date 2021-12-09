@@ -151,8 +151,8 @@ class WorkerSet:
                 If None (default), sync from this WorkerSet's local worker.
         """
         if self.remote_workers() or from_worker is not None:
-            weights = ray.put(
-                (from_worker or self.local_worker()).get_weights(policies))
+            weights = ray.put((from_worker
+                               or self.local_worker()).get_weights(policies))
             # Sync to all remote workers in this WorkerSet.
             for e in self.remote_workers():
                 e.set_weights.remote(weights)

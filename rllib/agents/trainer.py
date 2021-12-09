@@ -1,3 +1,4 @@
+from collections import defaultdict
 import concurrent
 import copy
 from datetime import datetime
@@ -22,7 +23,8 @@ from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
+    summarize_episodes
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -44,6 +46,9 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, \
 from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
+    NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
@@ -57,6 +62,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import log_once
+from ray.util.timer import _Timer
 
 tf1, tf, tfv = try_import_tf()
 
@@ -366,16 +372,21 @@ COMMON_CONFIG: TrainerConfigDict = {
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
-    "metrics_smoothing_episodes": 100,
+    "metrics_smoothing_num_episodes": 100,
 
-    # Minimum time interval for metrics reporting:
-    ## If - after one `train()` call, this time limit has not been reached,
-    ## will perform n more train() calls until this minimum time has been
-    ## consumed. Set to None or 0 for no minimum time.
+    # Minimum time interval to run one `train()` call for:
+    # If - after one `step_attempt()`, this time limit has not been reached,
+    # will perform n more `step_attempt()` calls until this minimum time has
+    # been consumed. Set to None or 0 for no minimum time.
     "min_time_per_reporting": None,
-    ## Minimum train timesteps to optimize for per train call. This value does
-    ## not affect learning, only the length of train iterations.
+    # Minimum train/sample timesteps to optimize for per `train()` call.
+    # This value does not affect learning, only the length of train iterations.
+    # If - after one `step_attempt()`, the timestep counts (sampling or
+    # training) have not been reached, will perform n more `step_attempt()`
+    # calls until the minimum timesteps have been executed.
+    # Set to None or 0 for no minimum timesteps.
     "min_train_timesteps_per_reporting": None,
+    "min_sample_timesteps_per_reporting": None,
 
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical
@@ -541,11 +552,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
-    # Minimum time per train iteration (frequency of metrics reporting).
+    # Use `min_time_per_reporting` instead.
     "min_iter_time_s": 0,
-    # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of train iterations.
+    # Use `min_[env|train]_timesteps_per_reporting` instead.
     "timesteps_per_iteration": 0,
+    # Use `metrics_smoothing_num_episodes` instead.
+    "metrics_smoothing_episodes": DEPRECATED_VALUE,
+
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -688,6 +701,12 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
+        # Metrics-related properties.
+        self._timers = defaultdict(_Timer)
+        self._counters = defaultdict(int)
+        self._episode_history = []
+        self._episodes_to_be_collected = []
+
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers = None
         self.evaluation_metrics = {}
@@ -802,14 +821,14 @@ class Trainer(Trainable):
                 # Ensure remote workers are initially in sync with the
                 # local worker.
                 self.workers.sync_weights()
-                #self.collect_metrics = CollectMetrics()
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
             # on each training iteration.
             else:
                 self.train_exec_impl = self.execution_plan(
-                    self.workers, self.config, **self._kwargs_for_execution_plan())
+                    self.workers, self.config,
+                    **self._kwargs_for_execution_plan())
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -921,9 +940,12 @@ class Trainer(Trainable):
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
-        result = None
         failures = 0
         time_start = time.time()
+        env_steps_sampled = self._counters[NUM_ENV_STEPS_SAMPLED]
+        env_steps_trained = self._counters[NUM_ENV_STEPS_TRAINED]
+        agent_steps_sampled = self._counters[NUM_AGENT_STEPS_SAMPLED]
+        agent_steps_trained = self._counters[NUM_AGENT_STEPS_TRAINED]
 
         while True:
             # Try to train one step.
@@ -936,9 +958,11 @@ class Trainer(Trainable):
                     logger.exception(
                         "Error in train call, attempting to recover")
                     self.try_recover_from_step_attempt()
+                    # Fail after n retries.
                     failures += 1
                     if failures > MAX_WORKER_FAILURE_RETRIES:
-                        break
+                        raise RuntimeError(
+                            "Failed to recover from worker crash.")
                 else:
                     logger.info(
                         "Worker crashed during call to train(). To attempt to "
@@ -950,23 +974,102 @@ class Trainer(Trainable):
                 # Allow logs messages to propagate.
                 time.sleep(0.5)
                 raise e
-            # Repeat if not enough time has passed.
-            else:
-                if self.config["_disable_distributed_execution_api"] and \
-                        time.time() - time_start >= self.config["min_time_per_reporting"]:
+
+            # Stopping criteria.
+            if self.config["_disable_distributed_execution_api"]:
+                if self._by_agent_steps:
+                    sampled = self._counters[NUM_AGENT_STEPS_SAMPLED] - \
+                        agent_steps_sampled
+                    trained = self._counters[NUM_AGENT_STEPS_TRAINED] - \
+                        agent_steps_trained
+                else:
+                    sampled = self._counters[NUM_ENV_STEPS_SAMPLED] - \
+                        env_steps_sampled
+                    trained = self._counters[NUM_ENV_STEPS_TRAINED] - \
+                        env_steps_trained
+
+                min_t = self.config["min_time_per_reporting"]
+                min_sample_ts = self.config[
+                    "min_sample_timesteps_per_reporting"]
+                min_train_ts = self.config["min_train_timesteps_per_reporting"]
+                # Repeat if not enough time has passed or if not enough
+                # env|train timesteps have been processed (or these min values
+                # are not provided by the user).
+                if (not min_t or time.time() - time_start >= min_t) and \
+                        (not min_sample_ts or sampled >= min_sample_ts) and \
+                        (not min_train_ts or trained >= min_train_ts):
                     break
 
-        # Still no result (even after n retries).
-        if result is None:
-            raise RuntimeError("Failed to recover from worker crash.")
-
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
-            # Collect worker metrics.
-            #if self.config["_disable_distributed_execution_api"]:
-            #    pass
-
             # Sync filters on workers.
             self._sync_filters_if_needed(self.workers)
+
+            # Collect worker metrics.
+            if self.config["_disable_distributed_execution_api"]:
+                info = result.copy()
+                result["info"] = {LEARNER_INFO: info}
+
+                # Collect rollout worker metrics.
+                episodes, self._episodes_to_be_collected = collect_episodes(
+                    self.workers.local_worker(),
+                    self.workers.remote_workers(),
+                    self._episodes_to_be_collected,
+                    timeout_seconds=self.config["collect_metrics_timeout"])
+                orig_episodes = list(episodes)
+                missing = self.config["metrics_smoothing_num_episodes"] - len(
+                    episodes)
+                if missing > 0:
+                    episodes = self._episode_history[-missing:] + episodes
+                    assert len(episodes) <= \
+                           self.config["metrics_smoothing_num_episodes"]
+                self._episode_history.extend(orig_episodes)
+                self._episode_history = \
+                    self._episode_history[
+                        -self.config["metrics_smoothing_num_episodes"]:]
+                result["sampler_results"] = summarize_episodes(
+                    episodes, orig_episodes)
+                # TODO: Don't dump sampler results into top-level.
+                result.update(result["sampler_results"])
+
+                result["num_healthy_workers"] = len(
+                    self.workers.remote_workers())
+                for c in [
+                        NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED,
+                        NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
+                ]:
+                    result[c] = self._counters[c]
+                if self._by_agent_steps:
+                    result[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = sampled
+                    result[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = trained
+                    # TODO: For CQL and other algos, count by trained steps.
+                    result["timesteps_total"] = self._counters[
+                        NUM_AGENT_STEPS_SAMPLED]
+                else:
+                    result[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = sampled
+                    result[NUM_ENV_STEPS_TRAINED + "_this_iter"] = trained
+                    # TODO: For CQL and other algos, count by trained steps.
+                    result["timesteps_total"] = self._counters[
+                        NUM_ENV_STEPS_SAMPLED]
+                # TODO: Backward compatibility.
+                result["agent_timesteps_total"] = self._counters[
+                    NUM_AGENT_STEPS_SAMPLED]
+
+                timers = {}
+                for k, timer in self._timers.items():
+                    timers["{}_time_ms".format(k)] = round(
+                        timer.mean * 1000, 3)
+                    if timer.has_units_processed():
+                        timers["{}_throughput".format(k)] = round(
+                            timer.mean_throughput, 3)
+                result["timers"] = timers
+
+                counters = {}
+                for k, counter in self._counters.items():
+                    counters[k] = counter
+                result["info"].update(counters)
+
+                result["custom_metrics"] = result.get("custom_metrics", {})
+                result["episode_media"] = result.get("episode_media", {})
 
         return result
 
@@ -1231,76 +1334,47 @@ class Trainer(Trainable):
         - Concatenate collected SampleBatches into one train batch.
         - Note that we may have more than one policy in the multi-agent case:
           Call the different policies' `learn_on_batch` (simple optimizer) OR
-          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU optimizer)
-          methods to calculate loss and update the model(s).
+          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU
+          optimizer) methods to calculate loss and update the model(s).
         - Return all collected metrics for the iteration.
 
         Returns:
             The results dict from executing the training iteration.
         """
         # Some shortcuts.
-        config = self.config
-        workers = self.workers
+        batch_size = self.config["train_batch_size"]
 
         # Collects SampleBatches in parallel and synchronously
         # from the Trainer's RolloutWorkers until we hit the
         # configured `train_batch_size`.
         sample_batches = []
-        num_samples = 0
-        while num_samples < config["train_batch_size"]:
-            new_sample_batches = synchronous_parallel_sample(workers)
+        num_env_steps = 0
+        num_agent_steps = 0
+        while (not self._by_agent_steps and num_env_steps < batch_size) or \
+                (self._by_agent_steps and num_agent_steps < batch_size):
+            new_sample_batches = synchronous_parallel_sample(self.workers)
             sample_batches.extend(new_sample_batches)
-            num_samples += sum(len(s) for s in new_sample_batches)
+            num_env_steps += sum(len(s) for s in new_sample_batches)
+            num_agent_steps += sum(
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                for s in new_sample_batches)
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 
         # Combine all batches at once
         train_batch = SampleBatch.concat_samples(sample_batches)
 
-        # Use simple optimizer (only for multi-agent or tf-eager; all other cases
-        # should use the multi-GPU optimizer, even if only using 1 GPU).
-        # TODO: (sven) rename MultiGPUOptimizer into something more meaningful.
-        if config.get("simple_optimizer") is True:
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU).
+        # TODO: (sven) rename MultiGPUOptimizer into something more
+        #  meaningful.
+        if self.config.get("simple_optimizer") is True:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = load_train_batch_and_train_one_step(
                 self, train_batch)
 
-        #output_op = train_op \
-        #    .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
-        #                                    by_steps_trained=by_steps_trained)) \
-        #    .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
-        #    .for_each(CollectMetrics(
-        #    workers,
-        #    min_history=config["metrics_smoothing_episodes"],
-        #    timeout_seconds=config["collect_metrics_timeout"],
-        #    selected_workers=selected_workers,
-        #    by_steps_trained=by_steps_trained))
-        #return output_op
-
-        #report = False
-        #time_now = time.time()
-        #if time_now - config["min_iter_time_s"] > self._last_time_reported:
-        #    self._last_time_reported = time_now
-        #    report = True
-        #elif self._timesteps_since_reported + len(train_batch) > config[
-        #    "timesteps_per_iteration"]:
-        #    self._last_timestep_reported = self._timesteps_since_reported + len(
-        #        train_batch)
-        #    self._timesteps_since_reported = 0
-        #    report = True
-        #else:
-        #    self._timesteps_since_reported += len(train_batch)
-
-        #if report:
-        #    # metrics = ray.get(workers.remote_workers()[0].get_metrics.remote())
-        #    return collect_metrics(
-        #        workers.remote_workers() or [workers.local_worker()],
-        #        min_history=config["metrics_smoothing_episodes"],
-        #        timeout_seconds=config["collect_metrics_timeout"],
-        #    )
-
-        #return {
-        #    train_results,
-        #}
+        return train_results
 
     @DeveloperAPI
     @staticmethod
@@ -1825,7 +1899,7 @@ class Trainer(Trainable):
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
-            min_history=self.config["metrics_smoothing_episodes"],
+            min_history=self.config["metrics_smoothing_num_episodes"],
             selected_workers=selected_workers)
 
     @override(Trainable)
@@ -2219,6 +2293,36 @@ class Trainer(Trainable):
             raise ValueError(
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
+        self._by_agent_steps = self.config["multiagent"].get(
+            "count_steps_by") == "agent_steps"
+
+        # Metrics settings.
+        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="metrics_smoothing_episodes",
+                new="metrics_smoothing_num_episodes",
+                error=False,
+            )
+            config["metrics_smoothing_num_episodes"] = \
+                config["metrics_smoothing_episodes"]
+        if config["min_iter_time_s"] != DEPRECATED_VALUE:
+            # TODO: Warn once all algos use the `training_iteration` method.
+            # deprecation_warning(
+            #     old="min_iter_time_s",
+            #     new="min_time_per_reporting",
+            #     error=False,
+            # )
+            config["min_time_per_reporting"] = \
+                config["min_iter_time_s"]
+        if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
+            # TODO: Warn once all algos use the `training_iteration` method.
+            # deprecation_warning(
+            #     old="timesteps_per_iteration",
+            #     new="min_sample_timesteps_per_reporting",
+            #     error=False,
+            # )
+            config["min_sample_timesteps_per_reporting"] = \
+                config["timesteps_per_iteration"]
 
         # Evaluation settings.
 

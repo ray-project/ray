@@ -20,7 +20,6 @@ __all__ = [
     "synchronous_parallel_sample",
     "load_train_batch_and_train_one_step",
     "train_one_step",
-
     "ApplyGradients",
     "AsyncGradients",
     "AverageGradients",

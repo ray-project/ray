@@ -162,6 +162,14 @@ class SampleBatch(dict):
         """Returns the amount of samples in the sample batch."""
         return self.count
 
+    @PublicAPI
+    def agent_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.agent_steps()`.
+        """
+        return len(self)
+
     @staticmethod
     @PublicAPI
     def concat_samples(
@@ -692,10 +700,10 @@ class SampleBatch(dict):
     @PublicAPI
     def as_multi_agent(self) -> "MultiAgentBatch":
         """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
-        
+
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
-                to this SampleBatch.
+            to this SampleBatch.
         """
         return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
 

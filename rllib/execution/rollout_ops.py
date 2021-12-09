@@ -27,7 +27,8 @@ def synchronous_parallel_sample(workers: WorkerSet) -> List[SampleBatch]:
         return [workers.local_worker().sample()]
 
     # Loop over remote workers' `sample()` method in parallel.
-    sample_batches = ray.get([r.sample.remote() for r in workers.remote_workers()])
+    sample_batches = ray.get(
+        [r.sample.remote() for r in workers.remote_workers()])
 
     return sample_batches
 
