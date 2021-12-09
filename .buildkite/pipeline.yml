@@ -171,7 +171,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-flaky
       -- //:all -rllib/... -core_worker_test
 
 - label: ":cpp: Tests (ASAN)"
@@ -181,7 +180,6 @@
     - bazel test --config=ci --config=asan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test
 
 - label: ":cpp: Tests (UBSAN)"
@@ -191,7 +189,6 @@
     - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test -//:logging_test
 
 - label: ":cpp: Tests (TSAN)"
@@ -201,7 +198,6 @@
     - bazel test --config=ci --config=tsan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
       -//:gcs_server_rpc_test -//:gcs_server_test
@@ -251,7 +247,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -259,7 +255,7 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests,-flaky
+      --test_tag_filters=-kubernetes,client_tests
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
 - label: ":python: (Medium A-J)"
@@ -267,14 +263,14 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -283,7 +279,7 @@
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,debug_tests,-flaky
+      --test_tag_filters=-kubernetes,debug_tests
       python/ray/tests/...
 - label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -292,7 +288,7 @@
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --config=asan-buildkite
-      --test_tag_filters=-kubernetes,asan_tests,-flaky
+      --test_tag_filters=-kubernetes,asan_tests
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -319,7 +315,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -331,7 +327,7 @@
       -//python/ray/tests:test_job
       -//python/ray/tests:test_autoscaler_drain_node_api
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests,-flaky
+      --test_tag_filters=-kubernetes,client_tests
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
@@ -340,7 +336,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
@@ -351,7 +347,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       --test_env=RAY_gcs_grpc_based_pubsub=true --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
