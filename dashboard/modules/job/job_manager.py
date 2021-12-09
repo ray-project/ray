@@ -226,8 +226,11 @@ class JobSupervisor:
                     log_tail_iter = self._log_client.tail_logs(self._job_id)
                     log_tail_deque = deque(maxlen=self.NUM_LOG_LINES_ON_ERROR)
                     for line in log_tail_iter:
-                        log_tail_deque.append(line)
-                    log_tail = log_tail_deque.join("")
+                        if line is None:
+                            break
+                        else:
+                            log_tail_deque.append(line)
+                    log_tail = "".join(log_tail_deque)
                     if log_tail is not None and log_tail != "":
                         message = ("Job failed due to an application error, "
                                    "last available logs:\n" + log_tail)
