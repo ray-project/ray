@@ -16,10 +16,8 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray._private.test_utils import (
-    init_error_pubsub, get_error_message,
-    run_string_as_driver,
-    wait_for_condition)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     run_string_as_driver, wait_for_condition)
 
 
 def search_raylet(cluster):
