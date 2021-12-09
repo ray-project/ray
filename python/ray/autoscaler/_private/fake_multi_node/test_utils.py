@@ -79,7 +79,7 @@ class DockerCluster:
             available = ray.cluster_resources()
 
     def update_config(self, config: Optional[Dict[str, Any]] = None):
-        assert self._tempdir, f"Call setup() first"
+        assert self._tempdir, "Call setup() first"
 
         if config:
             self._partial_config = config

@@ -36,7 +36,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 
-        pg = ray.util.placement_group([{"GPU": 1}] * 2)
+        pg = ray.util.placement_group([{"GPU": 1}] * 2)  # noqa: F841
         timeout = time.monotonic() + 60
         while ray.cluster_resources().get("GPU", 0) < 2:
             if time.monotonic() > timeout:
