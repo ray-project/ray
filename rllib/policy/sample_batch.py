@@ -1240,7 +1240,7 @@ class MultiAgentBatch:
             columns: Set of column names to decompress.
 
         Returns:
-            This very MultiAgentBatch.
+            Self.
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
