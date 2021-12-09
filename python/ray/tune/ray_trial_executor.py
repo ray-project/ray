@@ -854,12 +854,12 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             if storage == Checkpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, result)
-                trial.on_checkpoint(checkpoint)
+                checkpoint = Checkpoint(Checkpoint.MEMORY, value, result)
+                trial.assign_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
                 checkpoint = Checkpoint(storage, value, result)
-                trial.saving_to = checkpoint
+                trial.mark_saving(checkpoint)
                 self._running[value] = trial
         return checkpoint
 
@@ -914,7 +914,7 @@ class RayTrialExecutor(TrialExecutor):
                 ray.get(remote)
             else:
                 self._running[remote] = trial
-                trial.restoring_from = checkpoint
+                trial.mark_restoring(checkpoint)
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
         """Exports model of this trial based on trial.export_formats.

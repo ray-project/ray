@@ -1,11 +1,10 @@
-from typing import Any, List, Mapping, Optional, Union
-
 import click
 from datetime import datetime
 import json
 import logging
 import os
 import time
+from typing import Any, Dict, List, Mapping, Optional, Union
 import traceback
 import warnings
 
@@ -20,7 +19,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
                              TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers import FIFOScheduler, SchedulingDecision, TrialScheduler, TrialSchedulerV2
 from ray.tune.stopper import NoopStopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
@@ -331,8 +330,11 @@ class TrialRunner:
         self._result_wait_time = int(
             os.getenv("TUNE_TRIAL_RESULT_WAIT_TIME_S", "1"))
 
-        self._stop_queue = []
-        self._should_stop_experiment = False  # used by TuneServer
+        # used by TuneServer
+        # TODO: Figure out the threading story here.
+        self._stop_queue = set()
+        self._should_stop_experiment = False
+
         self._local_checkpoint_dir = local_checkpoint_dir
 
         if self._local_checkpoint_dir:
@@ -383,6 +385,8 @@ class TrialRunner:
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager(
             driver_sync_trial_checkpoints)
+
+        self._decision_store = DecisionStore()
 
     def setup_experiments(self, experiments: List[Experiment],
                           total_num_samples: int) -> None:
@@ -707,6 +711,23 @@ class TrialRunner:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials())
 
+        while True:
+            trial, decision = self._decision_store.get_decision()
+            if not decision:
+                break
+            if decision.type == SchedulingDecision.STOP:
+                self.stop_trial(trial)
+            elif decision.type == SchedulingDecision.CONTINUE:
+                self.trial_executor.continue_training(trial)
+            elif decision.type == SchedulingDecision.PAUSE:
+                self.trial_executor.pause_trial(trial)
+            elif decision.type == SchedulingDecision.REPLACE:
+                self.replace_trial(trial, **decision.metadata)
+            elif decision.type == SchedulingDecision.SAVE:
+                self.trial_executor.save(trial)
+            else:
+                raise ValueError("Unexpected scheduling decisions!!")
+
         self._stop_experiment_if_needed()
 
         try:
@@ -808,6 +829,7 @@ class TrialRunner:
             self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
+            # TODO: Call V2 scheduler.choose_trial_to_run.
             if trial:
                 logger.debug("Running trial {}".format(trial))
         return trial
@@ -896,6 +918,13 @@ class TrialRunner:
                     message="Processing trial results took {duration:.3f} s, "
                     "which may be a performance bottleneck. Please consider "
                     "reporting results less frequently to Ray Tune."):
+                # This allows for trying scheduler V2 path.
+                if isinstance(self._scheduler_alg, TrialSchedulerV2):
+                    # Buffered training is hopefully disabled in PBT, which is
+                    # the only thing being experimented with TrialSchedulerV2.
+                    assert len(results) == 1
+                    self._process_trial_result2(trial, results[0])
+                    return
                 for i, result in enumerate(results):
                     with warn_if_slow("process_trial_result"):
                         decision = self._process_trial_result(trial, result)
@@ -946,8 +975,8 @@ class TrialRunner:
 
         _trigger_callback_complete = False
 
-        if self._stopper(trial.trial_id,
-                         result) or trial.should_stop(flat_result):
+        if self._stopper(trial.trial_id, result) or trial.should_stop(
+                flat_result) or trial in self._stop_queue:
             result.update(done=True)
 
             # Hook into scheduler
@@ -1015,6 +1044,68 @@ class TrialRunner:
         else:
             self._queue_decision(trial, decision)
             return decision
+
+    def _process_trial_result2(self, trial, result):
+        """Does a few things:
+        * Decides if the trial should be stopped.
+        * Triggers on_trial_result callback.
+        * Decides if the trial should be saved.
+        (Stopper, stopping_criterion, scheduler decision, etc)
+        * Triggers corresponding `on_trial_result/complete` callbacks.
+        * Gathers scheduler decision.
+        """
+        result.update(trial_id=trial.trial_id)
+        is_duplicate = RESULT_DUPLICATE in result
+        force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
+        # TrialScheduler and SearchAlgorithm still receive a
+        # notification because there may be special handling for
+        # the `on_trial_complete` hook.
+        if is_duplicate:
+            logger.debug("Trial finished without logging 'done'.")
+            result = trial.last_result
+            result.update(done=True)
+
+        self._total_time += result.get(TIME_THIS_ITER_S, 0)
+
+        flat_result = flatten_dict(result)
+        self._validate_result_metrics(flat_result)
+
+        # TrialRunner also adds some scheduling decisions.
+        if self._stopper(trial.trial_id, result) or trial.should_stop(
+                flat_result) or trial in self._stop_queue:
+            result.update(done=True)
+            self._decision_store.add_decision(
+                trial, SchedulingDecision(SchedulingDecision.STOP))
+        else:
+            with warn_if_slow("scheduler.on_trial_result"):
+                decisions = self._scheduler_alg.on_trial_result(
+                    self, trial, flat_result)
+            assert trial in decisions
+            if decisions[trial].type == SchedulingDecision.STOP:
+                result.update(done=True)
+                flat_result.update(done=True)
+            with warn_if_slow("search_alg.on_trial_result"):
+                self._search_alg.on_trial_result(trial.trial_id, flat_result)
+            self._decision_store.add_decisions(decisions)
+
+        if not is_duplicate:
+            with warn_if_slow("callbacks.on_trial_result"):
+                self._callbacks.on_trial_result(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    result=result.copy())
+            trial.update_last_result(result)
+            # Include in next experiment checkpoint
+            self.trial_executor.mark_trial_to_checkpoint(trial)
+
+        # Checkpoints to disk. This should be checked even if
+        # the scheduler decision is STOP or PAUSE. Note that
+        # PAUSE only checkpoints to memory and does not update
+        # the global checkpoint state.
+        if trial.should_checkpoint() or force_checkpoint:
+            self._decision_store.add_decision(
+                trial, SchedulingDecision(SchedulingDecision.STOP))
 
     def _validate_result_metrics(self, result):
         """
@@ -1121,8 +1212,13 @@ class TrialRunner:
             self.trial_executor.fetch_result(trial)
             trial.on_restore()
             logger.debug("Trial %s: Restore processed successfully", trial)
-            self.trial_executor.set_status(trial, Trial.RUNNING)
-            self.trial_executor.continue_training(trial)
+            if self._decision_store.should_save(trial):
+                self.trial_executor.save(trial)
+                scheduling_decision = SchedulingDecision(
+                    TrialSchedulerV2.CONTINUE)
+                self._decision_store.add_decision(trial, scheduling_decision)
+            else:
+                self.trial_executor.continue_training(trial)
             self._live_trials.add(trial)
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
@@ -1299,28 +1395,29 @@ class TrialRunner:
         return False
 
     def request_stop_trial(self, trial):
-        self._stop_queue.append(trial)
+        self._stop_queue.add(trial)
 
     def request_stop_experiment(self):
         self._should_stop_experiment = True
 
     def _process_stop_requests(self):
-        while self._stop_queue:
-            t = self._stop_queue.pop()
+        non_running_trials_to_stop = [
+            t for t in self._stop_queue if t.status != Trial.RUNNING
+        ]
+        # running trials are stopped during process_trial_result.
+        for t in non_running_trials_to_stop:
+            self._stop_queue.remove(t)
             self.stop_trial(t)
 
     def stop_trial(self, trial):
         """Stops trial.
 
-        Trials may be stopped at any time. If trial is in state PENDING
-        or PAUSED, calls `on_trial_remove`  for scheduler and
-        `on_trial_complete() for search_alg.
-        Otherwise waits for result for the trial and calls
-        `on_trial_complete` for scheduler and search_alg if RUNNING.
+        Trials may be in any external status when this function is called.
+        If trial is in state PENDING or PAUSED, calls `on_trial_remove` for
+        scheduler and `on_trial_complete()` for search_alg.
+        If trial is in state RUNNING, calls `on_trial_complete` for scheduler
+        and search_alg if RUNNING. Expect its internal state to be WAITING.
         """
-        error = False
-        error_msg = None
-
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
@@ -1328,29 +1425,15 @@ class TrialRunner:
             self._search_alg.on_trial_complete(trial.trial_id)
             self._callbacks.on_trial_complete(
                 iteration=self._iteration, trials=self._trials, trial=trial)
-        elif trial.status is Trial.RUNNING:
-            try:
-                results = self.trial_executor.fetch_result(trial)
-                result = results[-1]
-                trial.update_last_result(result)
-                self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(
-                    trial.trial_id, result=result)
-                self._callbacks.on_trial_complete(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-            except Exception:
-                error_msg = traceback.format_exc()
-                logger.exception("Error processing event.")
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-                error = True
-        self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
+        elif trial.status == Trial.RUNNING:
+            assert trial.internal_status == Trial.WAITING
+            self._scheduler_alg.on_trial_complete(
+                self, trial, flatten_dict(trial.last_result))
+            self._search_alg.on_trial_complete(
+                trial.trial_id, result=flatten_dict(trial.last_result))
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+        self.trial_executor.stop_trial(trial)
         self._live_trials.discard(trial)
 
     def cleanup_trials(self):

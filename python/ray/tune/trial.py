@@ -215,11 +215,42 @@ class Trial:
         "placement_group_factory",
     ]
 
+    # The followings are external Trial status.
+    # PENDING: The trial is just chosen by Searcher to run.
+    #   There is not yet any remote trainable associated with the trial.
+    # RUNNING: The trial has remote trainable associated with it. There
+    #   are more granular internal status if a trial is in `RUNNING` state.
+    #   They are:
+    #   * WAITING: The remote trainable is not doing anything right now.
+    #       This is mostly when the remote trainable is at the epoch boundary
+    #       or blocked at tune.report. The trial also doesn't have any
+    #       outstanding futures.
+    #   * TRAINING: The remote trainable is doing training. There is an
+    #       outstanding TRAIN future in RayTrialExecutor.
+    #   * SAVING: The remote trainable is saving checkpoint persistently.
+    #       There is an outstanding SAVE future in RayTrialExecutor.
+    #       trial.is_saving is expected to be True.
+    #   * RESTORING: The remote trainable is being restored from checkpoint.
+    #       There is an outstanding RESTORE future in RayTrialExecutor.
+    #       trial.is_restoring is expected to be True.
+    # PAUSED: The trial is temporarily paused and its remote trainable is
+    #   released for other trials to use.
+    # TERMINATED: The trial is permanently completed and there is no error.
+    #   Considered as a terminal status.
+    #   Under no circumstances should a trial go alive again from this status.
+    # ERROR: The trial errors out. There is not trainable associated with the trial.
+    #   Tune logic may try to recover it later on.
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
+
+    # ====== internal status if a trial is in `RUNNING` state ======
+    WAITING = "WAITING"
+    TRAINING = "TRAINING"
+    SAVING = "SAVING"
+    RESTORING = "RESTORING"
 
     def __init__(self,
                  trainable_name,
@@ -317,7 +348,10 @@ class Trial:
         self.metric_n_steps = {}
 
         self.export_formats = export_formats
-        self.status = Trial.PENDING
+        # External trial status.
+        self._status = Trial.PENDING
+        # Internal trial status is only meaningful if the trial is `RUNNING`.
+        self._internal_status = None
         self.start_time = None
         self.logdir = None
         self.runner = None
@@ -329,7 +363,7 @@ class Trial:
         self.custom_dirname = None
 
         # Checkpointing fields
-        self.saving_to = None
+        self._saving_to = None
         if remote_checkpoint_dir:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
@@ -351,7 +385,7 @@ class Trial:
 
         # Restoration fields
         self.restore_path = restore_path
-        self.restoring_from = None
+        self._restoring_from = None
         self.num_failures = 0
         self.has_new_resources = False
 
@@ -430,7 +464,7 @@ class Trial:
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
         is returned.
         """
-        if self.status == Trial.ERROR:
+        if self._status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
@@ -506,7 +540,7 @@ class Trial:
         Raises:
             ValueError if trial status is running.
         """
-        if self.status is Trial.RUNNING:
+        if self._status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
 
         placement_group_factory = None
@@ -540,13 +574,44 @@ class Trial:
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def internal_status(self):
+        return self._internal_status
+
     def set_status(self, status):
         """Sets the status of the trial."""
-        self.status = status
+        self._status = status
         if status == Trial.RUNNING:
             if self.start_time is None:
                 self.start_time = time.time()
+        else:
+            self._internal_status = None
         self.invalidate_json_state()
+
+    def mark_saving(self, checkpoint: Checkpoint):
+        assert self._status == Trial.RUNNING
+        assert self._internal_status == Trial.WAITING
+        assert checkpoint.storage == Checkpoint.PERSISTENT
+        self._internal_status = Trial.SAVING
+        self._saving_to = checkpoint
+
+    def mark_restoring(self, checkpoint: Checkpoint):
+        assert self._status == Trial.RUNNING
+        assert self._internal_status == Trial.WAITING
+        self._internal_status = Trial.RESTORING
+        self._restoring_from = checkpoint
+
+    def mark_waiting(self):
+        assert self._status == Trial.RUNNING
+        self._internal_status = Trial.WAITING
+
+    def mark_training(self):
+        assert self._status == Trial.RUNNING
+        self._internal_status = Trial.TRAINING
 
     def set_config(self, config):
         self.config = config
@@ -570,6 +635,7 @@ class Trial:
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
         if result.get(DONE):
+            # This is for function trainable case.
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
@@ -598,10 +664,10 @@ class Trial:
 
     def clear_checkpoint(self):
         self.checkpoint.value = None
-        self.restoring_from = None
+        self._restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint):
+    def assign_checkpoint(self, checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
@@ -610,11 +676,21 @@ class Trial:
         self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
 
+    def on_save(self, checkpoint_path: str):
+        assert self.is_saving
+        checkpoint = self._saving_to
+        checkpoint.value = checkpoint_path
+        self._saving_to = None
+        self.mark_waiting()
+        self.assign_checkpoint(checkpoint)
+        self.invalidate_json_state()
+
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.result
-        self.restoring_from = None
+        self.last_result = self._restoring_from.result
+        self._restoring_from = None
+        self.mark_waiting()
         self.invalidate_json_state()
 
     def should_recover(self):
@@ -680,15 +756,15 @@ class Trial:
         return get_trainable_cls(self.trainable_name)
 
     def is_finished(self):
-        return self.status in [Trial.ERROR, Trial.TERMINATED]
+        return self._status in [Trial.ERROR, Trial.TERMINATED]
 
     @property
     def is_restoring(self):
-        return self.restoring_from is not None
+        return self._status == Trial.RESTORING
 
     @property
     def is_saving(self):
-        return self.saving_to is not None
+        return self._internal_status == Trial.SAVING
 
     def __repr__(self):
         return self._trainable_name(include_trial_id=True)
@@ -757,8 +833,8 @@ class Trial:
         state["runner"] = None
         state["location"] = Location()
         # Avoid waiting for events that will never occur on resume.
-        state["restoring_from"] = None
-        state["saving_to"] = None
+        state["_restoring_from"] = None
+        state["_saving_to"] = None
 
         state["_state_json"] = None
         state["_state_valid"] = False
@@ -768,8 +844,9 @@ class Trial:
 
     def __setstate__(self, state):
 
-        if state["status"] == Trial.RUNNING:
-            state["status"] = Trial.PENDING
+        if state["_status"] == Trial.RUNNING:
+            state["_status"] = Trial.PENDING
+        state["_internal_status"] = None
         for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 

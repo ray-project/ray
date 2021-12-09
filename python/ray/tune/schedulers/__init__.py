@@ -1,5 +1,6 @@
 from ray._private.utils import get_function_args
-from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
+from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.schedulers.trial_scheduler_v2 import SchedulingDecision, TrialSchedulerV2
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.schedulers.async_hyperband import (AsyncHyperBandScheduler,
@@ -67,8 +68,9 @@ def create_scheduler(
 
 
 __all__ = [
-    "TrialScheduler", "HyperBandScheduler", "AsyncHyperBandScheduler",
-    "ASHAScheduler", "MedianStoppingRule", "FIFOScheduler",
-    "PopulationBasedTraining", "PopulationBasedTrainingReplay",
-    "HyperBandForBOHB", "ResourceChangingScheduler"
+    "TrialScheduler", "SchedulingDecision", "TrialSchedulerV2",
+    "HyperBandScheduler", "AsyncHyperBandScheduler", "ASHAScheduler",
+    "MedianStoppingRule", "FIFOScheduler", "PopulationBasedTraining",
+    "PopulationBasedTrainingReplay", "HyperBandForBOHB",
+    "ResourceChangingScheduler"
 ]
