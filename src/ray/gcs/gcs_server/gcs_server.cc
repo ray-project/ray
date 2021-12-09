@@ -65,18 +65,22 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   } else {
     RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
   }
-  // Init internal config.
+
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
     this->main_service_.stop();
   };
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.config_list);
+  // Run async operations from InternalConfigTable().Put()
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(),
                                                              stored_config, on_done));
-  // Run the main service to make the Put in sync mode
+  // Here we need to make sure the Put of internal config is happening in sync
+  // way. But the storage api is async. So we need to run the main_service_
+  // to block currenct thread to.
   main_service_.run();
-  // Reset the main service to the initial status
+  // Reset the main service to the initial status otherwise, the signal handler
+  // will be called.
   main_service_.restart();
 
   // Init GCS publisher instance.
