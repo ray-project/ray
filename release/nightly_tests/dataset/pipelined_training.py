@@ -218,8 +218,7 @@ def create_torch_iterator(split, batch_size, rank=None):
 def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
     if num_windows > 1:
         num_rows = ray.data.read_parquet(
-            files, _spread_resource_prefix="node:").count(
-            )  # This should only read Parquet metadata.
+            files).count()  # This should only read Parquet metadata.
         file_splits = np.array_split(files, num_windows)
 
         class Windower:
@@ -235,20 +234,19 @@ def create_dataset(files, num_workers=4, epochs=50, num_windows=1):
                     raise StopIteration()
                 split = file_splits[self.i % num_windows]
                 self.i += 1
-                return lambda: ray.data.read_parquet(
-                    list(split), _spread_resource_prefix="node:")
+                return lambda: ray.data.read_parquet(list(split))
 
         pipe = DatasetPipeline.from_iterable(Windower())
         split_indices = [
             i * num_rows // num_windows // num_workers
             for i in range(1, num_workers)
         ]
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split_at_indices(split_indices)
     else:
-        ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
+        ds = ray.data.read_parquet(files)
         pipe = ds.repeat(epochs)
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
         pipe_shards = pipe.split(num_workers, equal=True)
     return pipe_shards
 
