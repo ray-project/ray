@@ -107,9 +107,6 @@ class GcsPlacementGroup {
   /// Get debug string for the placement group.
   std::string DebugString() const;
 
-  /// Record internal metrics of the placement group manager.
-  void RecordMetrics() const;
-
   /// Below fields are used for automatic cleanup of placement groups.
 
   /// Get the actor id that created the placement group.
@@ -310,6 +307,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void Initialize(const GcsInitData &gcs_init_data);
 
   std::string DebugString() const;
+
+  /// Record internal metrics of the placement group manager.
+  void RecordMetrics() const;
 
  private:
   /// Push a placement group to pending queue.

@@ -151,6 +151,9 @@ class GcsServer {
   /// Dump the debug info to debug_state_gcs.txt.
   void DumpDebugStateToFile() const;
 
+  /// Collect stats from each module.
+  void RecordMetrics() const;
+
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 

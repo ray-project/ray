@@ -160,6 +160,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
+  RecordMetrics();
+
   periodical_runner_.RunFnPeriodically(
       [this] {
         RAY_LOG(INFO) << GetDebugState();
@@ -525,6 +527,14 @@ void GcsServer::InstallEventListeners() {
       });
     });
   }
+}
+
+void GcsServer::RecordMetrics() const {
+  gcs_actor_manager_->RecordMetrics();
+  gcs_placement_group_manager_->RecordMetrics();
+  execute_after(
+      main_service_, [this] { RecordMetrics(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
 void GcsServer::DumpDebugStateToFile() const {

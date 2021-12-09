@@ -1336,11 +1336,11 @@ std::string GcsActorManager::DebugString() const {
 }
 
 void GcsActorManager::RecordMetrics() const {
-  STATS_gcs_num_actors.Record(registered_actors_.size(), "Registered");
-  STATS_gcs_num_actors.Record(created_actors_.size(), "Created");
-  STATS_gcs_num_actors.Record(destroyed_actors_.size(), "Destroyed");
-  STATS_gcs_num_actors.Record(unresolved_actors_.size(), "Unresolved");
-  STATS_gcs_num_actors.Record(pending_actors_.size(), "Pending");
+  ray::stats::STATS_gcs_num_actors.Record(registered_actors_.size(), "Registered");
+  ray::stats::STATS_gcs_num_actors.Record(created_actors_.size(), "Created");
+  ray::stats::STATS_gcs_num_actors.Record(destroyed_actors_.size(), "Destroyed");
+  ray::stats::STATS_gcs_num_actors.Record(unresolved_actors_.size(), "Unresolved");
+  ray::stats::STATS_gcs_num_actors.Record(pending_actors_.size(), "Pending");
 }
 
 }  // namespace gcs

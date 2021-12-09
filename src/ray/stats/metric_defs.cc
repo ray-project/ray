@@ -51,7 +51,7 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
              ("Method"), (), ray::stats::COUNT);
 
 /// GCS Resource Manager
-DEFINE_stats(new_resource_creation_latency_ms,
+DEFINE_stats(gcs_new_resource_creation_latency_ms,
              "Time to persist newly created resources to Redis.", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
@@ -68,11 +68,16 @@ DEFINE_stats(gcs_placement_group_creation_latency_ms,
 DEFINE_stats(gcs_placement_group_scheduling_latency_ms,
              "scheduling latency of placement groups", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
-DEFINE_stats(gcs_num_placement_group, "Number of placement groups per type. There are registered/pending/infeasible types.", ("Type"), (),
-             ray::stats::GAUGE);
+DEFINE_stats(
+    gcs_num_placement_group,
+    "Number of placement groups per type. There are registered/pending/infeasible types.",
+    ("Type"), (), ray::stats::GAUGE);
 
 /// GCS Actor Manager
-DEFINE_stats(gcs_num_actors, "Number of actors per type. Types can be created/destroyed/named/unresolved/pending", ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(
+    gcs_num_actors,
+    "Number of actors per type. Types can be created/destroyed/named/unresolved/pending",
+    ("Type"), (), ray::stats::GAUGE);
 }  // namespace stats
 
 }  // namespace ray

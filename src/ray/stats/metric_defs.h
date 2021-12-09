@@ -46,7 +46,7 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// GCS Resource Manager
-DECLARE_stats(new_resource_creation_latency_ms);
+DECLARE_stats(gcs_new_resource_creation_latency_ms);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
