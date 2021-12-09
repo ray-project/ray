@@ -135,8 +135,8 @@ class DQNTrainer(SimpleQTrainer):
         super().validate_config(config)
 
         # Update effective batch size to include n-step
-        adjusted_rollout_len = max(
-            config["rollout_fragment_length"], config["n_step"])
+        adjusted_rollout_len = max(config["rollout_fragment_length"],
+                                   config["n_step"])
         config["rollout_fragment_length"] = adjusted_rollout_len
 
     @override(SimpleQTrainer)
