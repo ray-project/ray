@@ -350,7 +350,7 @@ Example:
   "env_vars": {"B": "new", "C", "c"}}
 
   # Child's actual `runtime_env` (merged with parent's)
-  {"pip": ["torch", "pendulum"],
+  {"pip": ["torch", "ray[serve]"],
   "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
 

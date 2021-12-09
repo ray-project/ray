@@ -15,7 +15,7 @@ runtime_env = {
     "conda": {
         "dependencies":
         ["toolz", "dill", "pip", {
-            "pip": ["pendulum", "ray[serve]"]
+            "pip": ["pendulum"]
         }]
     },
     "env_vars": {"TF_WARNINGS": "none"}
