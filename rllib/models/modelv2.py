@@ -35,8 +35,7 @@ class ModelV2:
             \-> value_function() -> V(s)
     """
 
-    def __init__(self, obs_space: Space,
-                 action_space: Space, num_outputs: int,
+    def __init__(self, obs_space: Space, action_space: Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 instance.
 
