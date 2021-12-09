@@ -5,7 +5,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from pydantic import (BaseModel, NonNegativeFloat, PositiveFloat,
+                      NonNegativeInt, PositiveInt, validator)
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto, AutoscalingConfig as
@@ -20,30 +21,38 @@ class AutoscalingConfig(BaseModel):
     # `src/ray/protobuf/serve.proto`.
 
     # Publicly exposed options
-    min_replicas: int = 1
-    max_replicas: int = 1
-    target_num_ongoing_requests_per_replica: int = 1
+    min_replicas: NonNegativeInt = 1
+    max_replicas: PositiveInt = 1
+    target_num_ongoing_requests_per_replica: NonNegativeInt = 1
 
     # Private options below.
 
     # Metrics scraping options
 
     # How often to scrape for metrics
-    metrics_interval_s: float = 10.0
+    metrics_interval_s: PositiveFloat = 10.0
     # Time window to average over for metrics.
-    look_back_period_s: float = 30.0
+    look_back_period_s: PositiveFloat = 30.0
 
     # Internal autoscaling configuration options
 
     # Multiplicative "gain" factor to limit scaling decisions
-    smoothing_factor: float = 1.0
+    smoothing_factor: PositiveFloat = 1.0
 
     # How frequently to make autoscaling decisions
     # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     # How long to wait before scaling down replicas
-    downscale_delay_s: float = 600.0
+    downscale_delay_s: NonNegativeFloat = 600.0
     # How long to wait before scaling up replicas
-    upscale_delay_s: float = 30.0
+    upscale_delay_s: NonNegativeFloat = 30.0
+
+    @validator("max_replicas")
+    def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
+        if "min_replicas" in values and v < values["min_replicas"]:
+            raise ValueError(f"""max_replicas ({v}) must be greater than """
+                             f"""or equal to min_replicas """
+                             f"""({values["min_replicas"]})!""")
+        return v
 
     # TODO(architkulkarni): implement below
     # The number of replicas to start with when creating the deployment
@@ -53,7 +62,6 @@ class AutoscalingConfig(BaseModel):
     # panic_mode_threshold: float = 2.0
 
     # TODO(architkulkarni): Add reasonable defaults
-    # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
 class DeploymentConfig(BaseModel):

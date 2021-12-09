@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
 
 import ray
 from ray import cloudpickle as pickle
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -630,13 +630,12 @@ class RolloutWorker(ParallelIteratorWorker):
         # vectorized under the hood).
         else:
             # Always use vector env for consistency even if num_envs = 1.
-            self.async_env: BaseEnv = BaseEnv.to_base_env(
+            self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
-                policy_config=policy_config,
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
@@ -1483,8 +1482,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
-        from ray.util.sgd import utils
-        return utils.find_free_port()
+        from ray.util.ml_utils.util import find_free_port
+        return find_free_port()
 
     def __del__(self):
         """If this worker is deleted, clears all resources used by it."""

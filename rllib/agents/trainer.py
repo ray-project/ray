@@ -4,6 +4,7 @@ from datetime import datetime
 import functools
 import gym
 import logging
+import math
 import numpy as np
 import os
 import pickle
@@ -271,17 +272,23 @@ COMMON_CONFIG: TrainerConfigDict = {
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that evaluation is currently not parallelized, and that for Ape-X
-    # metrics are already only reported for the lowest epsilon workers.
+    # Note that for Ape-X metrics are already only reported for the lowest
+    # epsilon workers (least random workers).
+    # Set to None (or 0) for no evaluation.
     "evaluation_interval": None,
-    # Number of episodes to run in total per evaluation period.
+    # Duration for which to run evaluation each `evaluation_interval`.
+    # The unit for the duration can be set via `evaluation_duration_unit` to
+    # either "episodes" (default) or "timesteps".
     # If using multiple evaluation workers (evaluation_num_workers > 1),
-    # episodes will be split amongst these.
-    # If "auto":
-    # - evaluation_parallel_to_training=True: Will run as many episodes as the
-    #   training step takes.
-    # - evaluation_parallel_to_training=False: Error.
-    "evaluation_num_episodes": 10,
+    # the load to run will be split amongst these.
+    # If the value is "auto":
+    # - For `evaluation_parallel_to_training=True`: Will run as many
+    #   episodes/timesteps that fit into the (parallel) training step.
+    # - For `evaluation_parallel_to_training=False`: Error.
+    "evaluation_duration": 10,
+    # The unit, with which to count the evaluation duration. Either "episodes"
+    # (default) or "timesteps".
+    "evaluation_duration_unit": "episodes",
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
     # E.g. evaluation_interval=2 -> For every other training iteration,
@@ -310,9 +317,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer.evaluate() method to see the default implementation. The
-    # trainer guarantees all eval workers have the latest policy state before
-    # this function is called.
+    # Trainer.evaluate() method to see the default implementation.
+    # The Trainer guarantees all eval workers have the latest policy state
+    # before this function is called.
     "custom_eval_function": None,
 
     # === Advanced Rollout Settings ===
@@ -520,6 +527,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Whether to write episode stats and videos to the agent log dir. This is
     # typically located in ~/ray_results.
     "monitor": DEPRECATED_VALUE,
+    # Replaced by `evaluation_duration=10` and
+    # `evaluation_duration_unit=episodes`.
+    "evaluation_num_episodes": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -560,11 +570,12 @@ class Trainer(Trainable):
     but this usually happens from local worker to all remote workers and
     after each training update.
 
-    You can write your own Trainer sub-classes by using the
-    rllib.agents.trainer_template.py::build_trainer() utility function.
-    This allows you to provide a custom `execution_plan`. You can find the
-    different built-in algorithms' execution plans in their respective main
-    py files, e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
+    You can write your own Trainer classes by sub-classing from `Trainer`
+    or any of its built-in sub-classes.
+    This allows you to override the `execution_plan` method to implement
+    your own algorithm logic. You can find the different built-in
+    algorithms' execution plans in their respective main py files,
+    e.g. rllib.agents.dqn.dqn.py or rllib.agents.impala.impala.py.
 
     The most important API methods a Trainer exposes are `train()`,
     `evaluate()`, `save()` and `restore()`. Trainer objects retain internal
@@ -661,8 +672,17 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
+        # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
+        self.evaluation_workers = None
+        self.evaluation_metrics = {}
+
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
+
+    @ExperimentalAPI
+    @classmethod
+    def get_default_config(cls) -> TrainerConfigDict:
+        return cls._default_config or COMMON_CONFIG
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
@@ -764,29 +784,60 @@ class Trainer(Trainable):
                 self.workers, self.config, **self._kwargs_for_execution_plan())
 
         # Evaluation WorkerSet setup.
-        self.evaluation_workers = None
-        self.evaluation_metrics = {}
         # User would like to setup a separate evaluation worker set.
+
+        # Update with evaluation settings:
+        user_eval_config = copy.deepcopy(self.config["evaluation_config"])
+
+        # Assert that user has not unset "in_evaluation".
+        assert "in_evaluation" not in user_eval_config or \
+               user_eval_config["in_evaluation"] is True
+
+        # Merge user-provided eval config with the base config. This makes sure
+        # the eval config is always complete, no matter whether we have eval
+        # workers or perform evaluation on the (non-eval) local worker.
+        eval_config = merge_dicts(self.config, user_eval_config)
+        self.config["evaluation_config"] = eval_config
+
         if self.config.get("evaluation_num_workers", 0) > 0 or \
                 self.config.get("evaluation_interval"):
-            # Update env_config with evaluation settings:
-            extra_config = copy.deepcopy(self.config["evaluation_config"])
-            # Assert that user has not unset "in_evaluation".
-            assert "in_evaluation" not in extra_config or \
-                extra_config["in_evaluation"] is True
-            evaluation_config = merge_dicts(self.config, extra_config)
+            logger.debug(f"Using evaluation_config: {user_eval_config}.")
+
             # Validate evaluation config.
-            self.validate_config(evaluation_config)
-            # Switch on complete_episode rollouts (evaluations are
-            # always done on n complete episodes) and set the
-            # `in_evaluation` flag. Also, make sure our rollout fragments
-            # are short so we don't have more than one episode in one rollout.
-            evaluation_config.update({
-                "batch_mode": "complete_episodes",
-                "rollout_fragment_length": 1,
-                "in_evaluation": True,
-            })
-            logger.debug("using evaluation_config: {}".format(extra_config))
+            self.validate_config(eval_config)
+
+            # Set the `in_evaluation` flag.
+            eval_config["in_evaluation"] = True
+
+            # Evaluation duration unit: episodes.
+            # Switch on `complete_episode` rollouts. Also, make sure
+            # rollout fragments are short so we never have more than one
+            # episode in one rollout.
+            if eval_config["evaluation_duration_unit"] == "episodes":
+                eval_config.update({
+                    "batch_mode": "complete_episodes",
+                    "rollout_fragment_length": 1,
+                })
+            # Evaluation duration unit: timesteps.
+            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
+            #   strictly along episode borders.
+            # Set `rollout_fragment_length` such that desired steps are divided
+            # equally amongst workers or - in "auto" duration mode - set it
+            # to a reasonably small number (10), such that a single `sample()`
+            # call doesn't take too much time so we can stop evaluation as soon
+            # as possible after the train step is completed.
+            else:
+                eval_config.update({
+                    "batch_mode": "truncate_episodes",
+                    "rollout_fragment_length": 10
+                    if self.config["evaluation_duration"] == "auto" else int(
+                        math.ceil(
+                            self.config["evaluation_duration"] /
+                            (self.config["evaluation_num_workers"] or 1))),
+                })
+
+            self.config["evaluation_config"] = eval_config
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
@@ -795,8 +846,11 @@ class Trainer(Trainable):
                 env_creator=self.env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                config=evaluation_config,
-                num_workers=self.config["evaluation_num_workers"])
+                config=eval_config,
+                num_workers=self.config["evaluation_num_workers"],
+                # Don't even create a local worker if num_workers > 0.
+                local_worker=False,
+            )
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -808,7 +862,8 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def get_default_policy_class(self, config: TrainerConfigDict):
+    def get_default_policy_class(self, config: TrainerConfigDict) -> \
+            Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -878,13 +933,32 @@ class Trainer(Trainable):
         """Attempts a single training step, including evaluation, if required.
 
         Override this method in your Trainer sub-classes if you would like to
-        keep the n attempts (catch worker failures) or override `step()`
-        directly if you would like to handle worker failures yourself.
+        keep the n step-attempts logic (catch worker failures) in place or
+        override `step()` directly if you would like to handle worker
+        failures yourself.
 
         Returns:
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
+
+        def auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done):
+            # Training is done and we already ran at least one
+            # evaluation -> Nothing left to run.
+            if num_units_done > 0 and \
+                    train_future.done():
+                return 0
+            # Count by episodes. -> Run n more
+            # (n=num eval workers).
+            elif unit == "episodes":
+                return num_eval_workers
+            # Count by timesteps. -> Run n*m*p more
+            # (n=num eval workers; m=rollout fragment length;
+            # p=num-envs-per-worker).
+            else:
+                return num_eval_workers * \
+                       eval_cfg["rollout_fragment_length"] * \
+                       eval_cfg["num_envs_per_worker"]
 
         # self._iteration gets incremented after this function returns,
         # meaning that e. g. the first time this function is called,
@@ -909,19 +983,15 @@ class Trainer(Trainable):
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     train_future = executor.submit(
                         lambda: next(self.train_exec_impl))
-                    if self.config["evaluation_num_episodes"] == "auto":
-
-                        # Run at least one `evaluate()` (num_episodes_done
-                        # must be > 0), even if the training is very fast.
-                        def episodes_left_fn(num_episodes_done):
-                            if num_episodes_done > 0 and \
-                                    train_future.done():
-                                return 0
-                            else:
-                                return self.config["evaluation_num_workers"]
+                    # Automatically determine duration of the evaluation.
+                    if self.config["evaluation_duration"] == "auto":
+                        unit = self.config["evaluation_duration_unit"]
 
                         evaluation_metrics = self.evaluate(
-                            episodes_left_fn=episodes_left_fn)
+                            duration_fn=functools.partial(
+                                auto_duration_fn, unit, self.config[
+                                    "evaluation_num_workers"], self.config[
+                                        "evaluation_config"]))
                     else:
                         evaluation_metrics = self.evaluate()
                     # Collect the training results from the future.
@@ -954,19 +1024,29 @@ class Trainer(Trainable):
         return step_results
 
     @PublicAPI
-    def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
-                 ) -> dict:
+    def evaluate(
+            self,
+            episodes_left_fn=None,  # deprecated
+            duration_fn: Optional[Callable[[int], int]] = None,
+    ) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
 
         Args:
-            episodes_left_fn: An optional callable taking the already run
+            duration_fn: An optional callable taking the already run
                 num episodes as only arg and returning the number of
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
+        if episodes_left_fn is not None:
+            deprecation_warning(
+                old="Trainer.evaluate(episodes_left_fn)",
+                new="Trainer.evaluate(duration_fn)",
+                error=False)
+            duration_fn = episodes_left_fn
+
         # In case we are evaluating (in a thread) parallel to training,
         # we may have to re-enable eager mode here (gets disabled in the
         # thread).
@@ -991,80 +1071,102 @@ class Trainer(Trainable):
                 raise ValueError("Custom eval function must return "
                                  "dict of metrics, got {}.".format(metrics))
         else:
-            # How many episodes do we need to run?
-            # In "auto" mode (only for parallel eval + training): Run one
-            # episode per eval worker.
-            num_episodes = self.config["evaluation_num_episodes"] if \
-                self.config["evaluation_num_episodes"] != "auto" else \
-                (self.config["evaluation_num_workers"] or 1)
+            if self.evaluation_workers is None and \
+                    self.workers.local_worker().input_reader is None:
+                raise ValueError(
+                    "Cannot evaluate w/o an evaluation worker set in "
+                    "the Trainer or w/o an env on the local worker!\n"
+                    "Try one of the following:\n1) Set "
+                    "`evaluation_interval` >= 0 to force creating a "
+                    "separate evaluation worker set.\n2) Set "
+                    "`create_env_on_driver=True` to force the local "
+                    "(non-eval) worker to have an environment to "
+                    "evaluate on.")
+
+            # How many episodes/timesteps do we need to run?
+            # In "auto" mode (only for parallel eval + training): Run as long
+            # as training lasts.
+            unit = self.config["evaluation_duration_unit"]
+            eval_cfg = self.config["evaluation_config"]
+            rollout = eval_cfg["rollout_fragment_length"]
+            num_envs = eval_cfg["num_envs_per_worker"]
+            duration = self.config["evaluation_duration"] if \
+                self.config["evaluation_duration"] != "auto" else \
+                (self.config["evaluation_num_workers"] or 1) * \
+                (1 if unit == "episodes" else rollout)
+            num_ts_run = 0
 
             # Default done-function returns True, whenever num episodes
             # have been completed.
-            if episodes_left_fn is None:
+            if duration_fn is None:
 
-                def episodes_left_fn(num_episodes_done):
-                    return num_episodes - num_episodes_done
+                def duration_fn(num_units_done):
+                    return duration - num_units_done
 
-            logger.info(
-                f"Evaluating current policy for {num_episodes} episodes.")
+            logger.info(f"Evaluating current policy for {duration} {unit}.")
 
             metrics = None
             # No evaluation worker set ->
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
             if self.evaluation_workers is None:
-                try:
-                    for _ in range(num_episodes):
-                        self.workers.local_worker().sample()
-                    metrics = collect_metrics(self.workers.local_worker())
-                except ValueError as e:
-                    if "RolloutWorker has no `input_reader` object" in \
-                            e.args[0]:
-                        raise ValueError(
-                            "Cannot evaluate w/o an evaluation worker set in "
-                            "the Trainer or w/o an env on the local worker!\n"
-                            "Try one of the following:\n1) Set "
-                            "`evaluation_interval` >= 0 to force creating a "
-                            "separate evaluation worker set.\n2) Set "
-                            "`create_env_on_driver=True` to force the local "
-                            "(non-eval) worker to have an environment to "
-                            "evaluate on.")
-                    else:
-                        raise e
+                # If unit=episodes -> Run n times `sample()` (each sample
+                # produces exactly 1 episode).
+                # If unit=ts -> Run 1 `sample()` b/c the
+                # `rollout_fragment_length` is exactly the desired ts.
+                iters = duration if unit == "episodes" else 1
+                for _ in range(iters):
+                    num_ts_run += len(self.workers.local_worker().sample())
+                metrics = collect_metrics(self.workers.local_worker())
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
-                for _ in range(num_episodes):
-                    self.evaluation_workers.local_worker().sample()
+                # If unit=episodes -> Run n times `sample()` (each sample
+                # produces exactly 1 episode).
+                # If unit=ts -> Run 1 `sample()` b/c the
+                # `rollout_fragment_length` is exactly the desired ts.
+                iters = duration if unit == "episodes" else 1
+                for _ in range(iters):
+                    num_ts_run += len(
+                        self.evaluation_workers.local_worker().sample())
 
             # Evaluation worker set has n remote workers.
             else:
                 # How many episodes have we run (across all eval workers)?
-                num_episodes_done = 0
+                num_units_done = 0
                 round_ = 0
                 while True:
-                    episodes_left_to_do = episodes_left_fn(num_episodes_done)
-                    if episodes_left_to_do <= 0:
+                    units_left_to_do = duration_fn(num_units_done)
+                    if units_left_to_do <= 0:
                         break
 
                     round_ += 1
                     batches = ray.get([
                         w.sample.remote() for i, w in enumerate(
                             self.evaluation_workers.remote_workers())
-                        if i < episodes_left_to_do
+                        if i * (1 if unit == "episodes" else rollout *
+                                num_envs) < units_left_to_do
                     ])
-                    # Per our config for the evaluation workers
-                    # (`rollout_fragment_length=1` and
-                    # `batch_mode=complete_episode`), we know that we'll have
-                    # exactly one episode per returned batch.
-                    num_episodes_done += len(batches)
-                    logger.info(
-                        f"Ran round {round_} of parallel evaluation "
-                        f"({num_episodes_done}/{num_episodes} episodes done)")
+                    # 1 episode per returned batch.
+                    if unit == "episodes":
+                        num_units_done += len(batches)
+                    # n timesteps per returned batch.
+                    else:
+                        ts = sum(len(b) for b in batches)
+                        num_ts_run += ts
+                        num_units_done += ts
+
+                    logger.info(f"Ran round {round_} of parallel evaluation "
+                                f"({num_units_done}/{duration} {unit} done)")
+
             if metrics is None:
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers())
+            metrics["timesteps_this_iter"] = num_ts_run
+
+        self.evaluation_metrics = metrics
+
         return {"evaluation": metrics}
 
     @DeveloperAPI
@@ -1679,6 +1781,7 @@ class Trainer(Trainable):
             policy_class: Type[Policy],
             config: TrainerConfigDict,
             num_workers: int,
+            local_worker: bool = True,
     ) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -1698,6 +1801,9 @@ class Trainer(Trainable):
             config: The Trainer's config.
             num_workers: Number of remote rollout workers to create.
                 0 for local only.
+            local_worker: Whether to create a local (non @ray.remote) worker
+                in the returned set as well (default: True). If `num_workers`
+                is 0, always create a local worker.
 
         Returns:
             The created WorkerSet.
@@ -1708,7 +1814,9 @@ class Trainer(Trainable):
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,
-            logdir=self.logdir)
+            local_worker=local_worker,
+            logdir=self.logdir,
+        )
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
@@ -1732,11 +1840,6 @@ class Trainer(Trainable):
         logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
-
-    @ExperimentalAPI
-    @classmethod
-    def get_default_config(cls) -> TrainerConfigDict:
-        return cls._default_config or COMMON_CONFIG
 
     @classmethod
     @override(Trainable)
@@ -1838,7 +1941,7 @@ class Trainer(Trainable):
         resolve_tf_settings()
 
     @ExperimentalAPI
-    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+    def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
         Users should override this method to implement custom validation
@@ -1985,6 +2088,18 @@ class Trainer(Trainable):
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
 
         # Evaluation settings.
+
+        # Deprecated setting: `evaluation_num_episodes`.
+        if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="evaluation_num_episodes",
+                new="`evaluation_duration` and `evaluation_duration_unit="
+                "episodes`",
+                error=False)
+            config["evaluation_duration"] = config["evaluation_num_episodes"]
+            config["evaluation_duration_unit"] = "episodes"
+            config["evaluation_num_episodes"] = DEPRECATED_VALUE
+
         # If `evaluation_num_workers` > 0, warn if `evaluation_interval` is
         # None (also set `evaluation_interval` to 1).
         if config["evaluation_num_workers"] > 0 and \
@@ -2008,18 +2123,18 @@ class Trainer(Trainable):
                 "`evaluation_parallel_to_training` to False.")
             config["evaluation_parallel_to_training"] = False
 
-        # If `evaluation_num_episodes=auto`, error if
+        # If `evaluation_duration=auto`, error if
         # `evaluation_parallel_to_training=False`.
-        if config["evaluation_num_episodes"] == "auto":
+        if config["evaluation_duration"] == "auto":
             if not config["evaluation_parallel_to_training"]:
                 raise ValueError(
-                    "`evaluation_num_episodes=auto` not supported for "
+                    "`evaluation_duration=auto` not supported for "
                     "`evaluation_parallel_to_training=False`!")
         # Make sure, it's an int otherwise.
-        elif not isinstance(config["evaluation_num_episodes"], int):
-            raise ValueError(
-                "`evaluation_num_episodes` ({}) must be an int and "
-                ">0!".format(config["evaluation_num_episodes"]))
+        elif not isinstance(config["evaluation_duration"], int) or \
+                config["evaluation_duration"] <= 0:
+            raise ValueError("`evaluation_duration` ({}) must be an int and "
+                             ">0!".format(config["evaluation_duration"]))
 
     @ExperimentalAPI
     @staticmethod
@@ -2186,7 +2301,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "`with_updates` may only be called on Trainer sub-classes "
             "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function!")
+            "build_trainer()` function (which has been deprecated)!")
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
@@ -2284,7 +2399,7 @@ class Trainer(Trainable):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="Trainer.evaluate()", error=False)
+    @Deprecated(new="Trainer.evaluate()", error=True)
     def _evaluate(self) -> dict:
         return self.evaluate()
 

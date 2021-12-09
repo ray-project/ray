@@ -12,7 +12,7 @@ import ray.rllib.agents.pg as pg
 from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import \
-    AssertNumEvalEpisodesCallback
+    AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -131,13 +131,13 @@ class TestTrainer(unittest.TestCase):
         config.update({
             "env": "CartPole-v0",
             "evaluation_interval": 2,
-            "evaluation_num_episodes": 2,
+            "evaluation_duration": 2,
             "evaluation_config": {
                 "gamma": 0.98,
             },
             # Use a custom callback that asserts that we are running the
             # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
+            "callbacks": AssertEvalCallback,
         })
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -169,7 +169,7 @@ class TestTrainer(unittest.TestCase):
             "evaluation_interval": None,
             # Use a custom callback that asserts that we are running the
             # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
+            "callbacks": AssertEvalCallback,
         })
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call

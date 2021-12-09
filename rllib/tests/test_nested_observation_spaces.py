@@ -9,7 +9,7 @@ import ray
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -420,7 +420,7 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_nested_dict_async(self):
         self.do_test_nested_dict(
-            lambda _: BaseEnv.to_base_env(NestedDictEnv()))
+            lambda _: convert_to_base_env(NestedDictEnv()))
 
     def test_nested_tuple_gym(self):
         self.do_test_nested_tuple(lambda _: NestedTupleEnv())
@@ -434,7 +434,7 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(
-            lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
+            lambda _: convert_to_base_env(NestedTupleEnv()))
 
     def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)

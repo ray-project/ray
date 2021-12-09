@@ -104,7 +104,10 @@ class Session:
         return func_output
 
     def get_next(self) -> Optional[TrainingResult]:
-        """Gets next result from the queue."""
+        """Gets the next ``TrainingResult`` from the result queue.
+
+        If the result queue is empty, then this function returns ``None``.
+        """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
         result = None

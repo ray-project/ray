@@ -50,12 +50,14 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
 GcsServer::~GcsServer() { Stop(); }
 
+RedisClientOptions GcsServer::GetRedisClientOptions() const {
+  return RedisClientOptions(config_.redis_address, config_.redis_port,
+                            config_.redis_password, config_.enable_sharding_conn);
+}
+
 void GcsServer::Start() {
   // Init backend client.
-  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password,
-                                          config_.enable_sharding_conn);
-  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+  redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
@@ -70,13 +72,17 @@ void GcsServer::Start() {
     // Init grpc based pubsub on GCS.
     // TODO: Move this into GcsPublisher.
     inner_publisher = std::make_unique<pubsub::Publisher>(
-        /*channels=*/std::vector<
-            rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                              rpc::ChannelType::GCS_JOB_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-                              rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-                              rpc::ChannelType::RAY_ERROR_INFO_CHANNEL},
+        /*channels=*/
+        std::vector<rpc::ChannelType>{
+            rpc::ChannelType::GCS_ACTOR_CHANNEL,
+            rpc::ChannelType::GCS_JOB_CHANNEL,
+            rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+            rpc::ChannelType::RAY_LOG_CHANNEL,
+            rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
+        },
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -190,6 +196,8 @@ void GcsServer::Stop() {
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
+
+    kv_manager_.reset();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
@@ -397,7 +405,16 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  std::unique_ptr<InternalKVInterface> instance;
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    instance = std::make_unique<MemoryInternalKV>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
+
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -414,7 +431,7 @@ void GcsServer::InitPubSubHandler() {
 
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto cb) {
+      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
         // A valid runtime env URI is of the form "plugin|protocol://hash".
         std::string plugin_sep = "|";
         std::string protocol_sep = "://";
@@ -424,23 +441,18 @@ void GcsServer::InitRuntimeEnvManager() {
             plugin_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
                          << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
-          cb(false);
+          callback(false);
         } else {
           auto protocol_pos = plugin_end_pos + plugin_sep.size();
           int protocol_len = protocol_end_pos - protocol_pos;
           auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
-            cb(true);
+            callback(true);
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
-            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
-              if (deleted_num == 0) {
-                cb(false);
-              } else {
-                cb(true);
-              }
-            });
+            this->kv_manager_->GetInstance().Del(
+                uri, [callback = std::move(callback)](bool deleted) { callback(false); });
           }
         }
       });

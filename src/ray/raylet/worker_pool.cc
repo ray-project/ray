@@ -25,7 +25,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -328,6 +328,7 @@ Process WorkerPool::StartWorkerProcess(
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
+  env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
   if (language == Language::CPP) {
