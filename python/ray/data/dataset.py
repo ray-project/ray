@@ -44,6 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -230,10 +231,10 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
+                if isinstance(applied, list) \
+                        or isinstance(applied, pa.Table) \
+                        or isinstance(applied, pd.core.frame.DataFrame):
                     applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
                 else:
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
@@ -399,12 +400,15 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
@@ -930,7 +934,7 @@ class Dataset(Generic[T]):
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if dataset_format == "arrow":
+        if dataset_format == "arrow" or dataset_format == "pandas":
             # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
@@ -963,32 +967,35 @@ class Dataset(Generic[T]):
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset.")
+                    "use a callable `on` argument or use an Arrow or Pandas"
+                    " Dataset instead of a simple Dataset.")
         return on
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
-        "simple".
+        "pandas", "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of"
+                " the dataset")
+
         try:
             import pyarrow as pa
-        except ModuleNotFoundError:
-            return "simple"
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine the format"
-                    " of the dataset")
             if isinstance(schema, pa.Schema):
                 return "arrow"
-            return "simple"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -1016,6 +1023,18 @@ class Dataset(Generic[T]):
         if not isinstance(on, list):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
@@ -1067,10 +1086,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1122,10 +1139,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1177,10 +1192,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
@@ -1232,10 +1245,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1297,10 +1308,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -2156,10 +2165,10 @@ class Dataset(Generic[T]):
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 

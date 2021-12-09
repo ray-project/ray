@@ -24,7 +24,7 @@ AggType = TypeVar("AggType")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", bytes]
+Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -177,11 +177,16 @@ class BlockAccessor(Generic[T]):
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
         import pyarrow
+        import pandas
 
         if isinstance(block, pyarrow.Table):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
+        elif isinstance(block, pandas.DataFrame):
+            from ray.data.impl.pandas_block import \
+                PandasBlockAccessor
+            return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor
