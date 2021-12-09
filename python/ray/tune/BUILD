@@ -184,7 +184,7 @@ py_test(
 
 py_test(
     name = "test_multinode_sync",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_multinode_sync.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "tests_dir_M"],
