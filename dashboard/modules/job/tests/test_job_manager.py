@@ -159,6 +159,7 @@ class TestShellScriptExecution:
 
         def cleaned_up():
             status = job_manager.get_job_status(job_id)
+            print(f">>>>>> status: {status}")
             if status.status != JobStatus.FAILED:
                 return False
             if ("Exception: Script failed with exception !" not in

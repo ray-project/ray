@@ -7,7 +7,7 @@ import traceback
 import random
 import subprocess
 import string
-
+from collections import deque
 from typing import Any, Dict, Iterator, Tuple, Optional
 
 import ray
@@ -80,6 +80,8 @@ class JobSupervisor:
     """
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    # Number of last N lines to put in job message upon failure.
+    NUM_LOG_LINES_ON_ERROR = 10
 
     def __init__(self, job_id: str, entrypoint: str,
                  user_metadata: Dict[str, str]):
@@ -221,7 +223,11 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
-                    log_tail = self._log_client.tail_logs(self._job_id)
+                    log_tail_iter = self._log_client.tail_logs(self._job_id)
+                    log_tail_deque = deque(maxlen=self.NUM_LOG_LINES_ON_ERROR)
+                    for line in log_tail_iter:
+                        log_tail_deque.append(line)
+                    log_tail = log_tail_deque.join("")
                     if log_tail is not None and log_tail != "":
                         message = ("Job failed due to an application error, "
                                    "last available logs:\n" + log_tail)
@@ -257,7 +263,7 @@ class JobManager:
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
     # Time that we will sleep while tailing logs if no new log line is
     # available.
-    LOG_TAIL_SLEEP_S = 0.1
+    LOG_TAIL_SLEEP_S = 1
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
