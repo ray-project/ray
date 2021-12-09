@@ -153,6 +153,10 @@ class ImportThread:
         elif key.startswith(b"FunctionsToRun"):
             with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)
+        elif key.startswith(b"ActorClass"):
+            # TODO(ekl) Actor export is only for geenrating the above
+            # "exported too many times" error message.
+            pass
         else:
             assert False, "This code should be unreachable."
 

@@ -399,6 +399,9 @@ class FunctionActorManager:
                                                 pickle.dumps(actor_class_info),
                                                 True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
+        # TODO(ekl) this isn't needed. We export it only for generating the
+        # "exported too many times" error message.
+        self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
