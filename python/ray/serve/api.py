@@ -876,7 +876,7 @@ class Deployment:
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
 
-        if _autoscaling_config is None:
+        if _autoscaling_config is not None:
             new_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:

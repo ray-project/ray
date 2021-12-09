@@ -11,7 +11,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.aggregate import AggregateFn
@@ -224,20 +224,23 @@ class ArrowBlockAccessor(BlockAccessor):
         return self._table.to_pandas()
 
     def to_numpy(self, column: str = None) -> np.ndarray:
-        if not column:
+        if column is None:
             raise ValueError(
                 "`column` must be specified when calling .to_numpy() "
                 "on Arrow blocks.")
         if column not in self._table.column_names:
             raise ValueError(
-                "Cannot find column {}, available columns: {}".format(
-                    column, self._table.column_names))
+                f"Cannot find column {column}, available columns: "
+                f"{self._table.column_names}")
         array = self._table[column]
         if array.num_chunks > 1:
-            # TODO(ekl) combine fails since we can't concat ArrowTensorType?
+            # TODO(ekl) combine fails since we can't concat
+            # ArrowTensorType?
             array = array.combine_chunks()
-        assert array.num_chunks == 1, array
-        return self._table[column].chunk(0).to_numpy()
+        else:
+            assert array.num_chunks == 1, array
+            array = array.chunk(0)
+        return array.to_numpy(zero_copy_only=False)
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
@@ -423,7 +426,8 @@ class ArrowBlockAccessor(BlockAccessor):
             ret = pyarrow.concat_tables(blocks, promote=True)
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
-        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+        return ret, ArrowBlockAccessor(ret).get_metadata(
+            None, exec_stats=BlockExecStats.TODO)
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -509,7 +513,8 @@ class ArrowBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+        return ret, ArrowBlockAccessor(ret).get_metadata(
+            None, exec_stats=BlockExecStats.TODO)
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":

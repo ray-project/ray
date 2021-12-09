@@ -36,10 +36,10 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 std::string serialized_runtime_env = "") {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
-  builder.SetCommonTaskSpec(
-      TaskID::Nil(), "dummy_task", Language::PYTHON, function_descriptor, JobID::Nil(),
-      TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, resources, resources,
-      std::make_pair(PlacementGroupID::Nil(), -1), true, serialized_runtime_env, depth);
+  builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
+                            function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
+                            TaskID::Nil(), empty_address, 1, resources, resources,
+                            serialized_runtime_env, depth);
   return builder.Build();
 }
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
@@ -120,10 +120,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return false;
   }
 
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         const Status *status,
-                         const rpc::RayException *creation_task_exception = nullptr,
-                         bool immediately_mark_object_fail = true) override {
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                              const Status *status,
+                              const rpc::RayErrorInfo *ray_error_info = nullptr,
+                              bool mark_task_object_failed = true) override {
     num_tasks_failed++;
     return true;
   }
@@ -134,9 +134,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskFailed(
+  void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
-      const rpc::RayException *creation_task_exception = nullptr) override {}
+      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 

@@ -27,8 +27,9 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
-    GcsSubscriber
+    GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -434,8 +435,13 @@ class Worker:
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job.
         """
-        subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
-        subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+        if self.gcs_pubsub_enabled:
+            subscriber = self.gcs_log_subscriber
+            subscriber.subscribe()
+        else:
+            subscriber = self.redis_client.pubsub(
+                ignore_subscribe_messages=True)
+            subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -449,7 +455,10 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                msg = subscriber.get_message()
+                if self.gcs_pubsub_enabled:
+                    msg = subscriber.poll()
+                else:
+                    msg = subscriber.get_message()
                 if msg is None:
                     num_consecutive_messages_received = 0
                     self.threads_stopped.wait(timeout=0.01)
@@ -463,7 +472,10 @@ class Worker:
                         "logs to the driver, use "
                         "'ray.init(log_to_driver=False)'.")
 
-                data = json.loads(ray._private.utils.decode(msg["data"]))
+                if self.gcs_pubsub_enabled:
+                    data = msg
+                else:
+                    data = json.loads(ray._private.utils.decode(msg["data"]))
 
                 # Don't show logs from other drivers.
                 if (self.filter_logs_by_job and data["job"]
@@ -1266,7 +1278,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
     # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
-    worker.gcs_subscriber.subscribe_error()
+    worker.gcs_error_subscriber.subscribe()
 
     try:
         if _internal_kv_initialized():
@@ -1281,7 +1293,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            _, error_data = worker.gcs_subscriber.poll_error()
+            _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
             if error_data.job_id not in [
@@ -1371,7 +1383,11 @@ def connect(node,
     if worker.gcs_pubsub_enabled:
         worker.gcs_publisher = GcsPublisher(
             channel=worker.gcs_channel.channel())
-        worker.gcs_subscriber = GcsSubscriber(
+        worker.gcs_error_subscriber = GcsErrorSubscriber(
+            channel=worker.gcs_channel.channel())
+        worker.gcs_log_subscriber = GcsLogSubscriber(
+            channel=worker.gcs_channel.channel())
+        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
             channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
@@ -1533,8 +1549,7 @@ def connect(node,
                 lambda worker_info: sys.path.insert(1, script_directory))
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and len(
-                job_config.get_runtime_env_uris()) == 0:
+        if not job_config.client_job and not job_config.runtime_env_has_uris():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory))
@@ -1576,8 +1591,10 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_subscriber"):
-            worker.gcs_subscriber.close()
+        if worker.gcs_pubsub_enabled:
+            worker.gcs_function_key_subscriber.close()
+            worker.gcs_error_subscriber.close()
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
@@ -2021,7 +2038,8 @@ def make_decorator(num_returns=None,
                    placement_group="default",
                    worker=None,
                    retry_exceptions=None,
-                   concurrency_groups=None):
+                   concurrency_groups=None,
+                   scheduling_strategy: SchedulingStrategyT = None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2051,7 +2069,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group)
+                runtime_env, placement_group, scheduling_strategy)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2079,7 +2097,8 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(
                 function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, accelerator_type, max_restarts,
-                max_task_retries, runtime_env, concurrency_groups)
+                max_task_retries, runtime_env, concurrency_groups,
+                scheduling_strategy)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2189,6 +2208,16 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
+        scheduling_strategy (SchedulingStrategy): Strategy about how to
+            schedule a remote function or actor. Possible values are
+            None: ray will figure out the scheduling strategy to use, it
+            will either be the PlacementGroupSchedulingStrategy using parent's
+            placement group if parent has one and has
+            placement_group_capture_child_tasks set to true,
+            or the DefaultSchedulingStrategy;
+            "DEFAULT": default hybrid scheduling;
+            `PlacementGroupSchedulingStrategy`:
+            placement group based scheduling.
     """
     worker = global_worker
 
@@ -2213,6 +2242,7 @@ def remote(*args, **kwargs):
         "retry_exceptions",
         "placement_group",
         "concurrency_groups",
+        "scheduling_strategy",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2248,6 +2278,7 @@ def remote(*args, **kwargs):
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
+    scheduling_strategy = kwargs.get("scheduling_strategy")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2265,4 +2296,5 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [])
+        concurrency_groups=concurrency_groups or [],
+        scheduling_strategy=scheduling_strategy)

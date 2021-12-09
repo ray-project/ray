@@ -69,7 +69,7 @@ if __name__ == "__main__":
     # Set up evaluation.
     config["evaluation_num_workers"] = 1
     config["evaluation_interval"] = 1
-    config["evaluation_num_episodes"] = 10
+    config["evaluation_duration"] = 10
     # This should be False b/c iterations are very long and this would
     # cause evaluation to lag one iter behind training.
     config["evaluation_parallel_to_training"] = False

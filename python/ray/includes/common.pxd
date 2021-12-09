@@ -150,6 +150,18 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
+    cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
+        CDefaultSchedulingStrategy()
+    cdef cppclass CPlacementGroupSchedulingStrategy "ray::rpc::PlacementGroupSchedulingStrategy":  # noqa: E501
+        CPlacementGroupSchedulingStrategy()
+        void set_placement_group_id(const c_string& placement_group_id)
+        void set_placement_group_bundle_index(int64_t placement_group_bundle_index)  # noqa: E501
+        void set_placement_group_capture_child_tasks(c_bool placement_group_capture_child_tasks)  # noqa: E501
+    cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
+        CSchedulingStrategy()
+        void clear_scheduling_strategy()
+        CDefaultSchedulingStrategy* mutable_default_scheduling_strategy()
+        CPlacementGroupSchedulingStrategy* mutable_placement_group_scheduling_strategy()  # noqa: E501
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString() const
@@ -238,8 +250,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     c_string serialized_runtime_env,
-                     c_vector[c_string] runtime_env_uris)
+                     c_string serialized_runtime_env)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -252,10 +263,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
-            c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks,
+            const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
-            c_vector[c_string] runtime_env_uris,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order)
 

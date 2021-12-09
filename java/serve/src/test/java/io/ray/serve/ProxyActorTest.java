@@ -1,5 +1,6 @@
 package io.ray.serve;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
@@ -63,13 +64,15 @@ public class ProxyActorTest {
                   deploymentInfo,
                   replicaTag,
                   controllerName,
-                  (RayServeConfig) null)
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .setName(replicaTag)
               .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
-      ProxyActor proxyActor = new ProxyActor(controllerName, null);
+      ProxyActor proxyActor =
+          new ProxyActor(
+              controllerName, ImmutableMap.of(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
       Assert.assertTrue(proxyActor.ready());
 
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);

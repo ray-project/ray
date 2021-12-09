@@ -4,11 +4,12 @@ import ray
 
 import pytest
 import grpc
+from grpc._channel import _InactiveRpcError
 import psutil
 
 import ray.ray_constants as ray_constants
 
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import NodeID
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -102,6 +103,7 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
@@ -294,8 +296,11 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         print(f"Sending a shutdown request to {ip}:{port}")
-        stub.ShutdownRaylet(
-            node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        try:
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        except _InactiveRpcError:
+            assert not graceful
 
     """
     Kill the first worker non-gracefully.

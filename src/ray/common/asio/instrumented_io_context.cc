@@ -13,20 +13,18 @@
 // limitations under the License.
 
 #include "ray/common/asio/instrumented_io_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
-#include "ray/stats/metric.h"
 
-DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(operation_run_time_ms, "operation execution time", ("Method"), (),
-             ray::stats::GAUGE);
-DEFINE_stats(operation_queue_time_ms, "operation queuing time", ("Method"), (),
-             ray::stats::GAUGE);
-DEFINE_stats(operation_active_count, "activate operation number", ("Method"), (),
-             ray::stats::GAUGE);
+#include "ray/common/asio/asio_chaos.h"
+#include "ray/common/asio/asio_util.h"
+#include "ray/stats/metric.h"
+#include "ray/stats/metric_defs.h"
+
 namespace {
 
 /// A helper for creating a snapshot view of the global stats.
@@ -65,34 +63,48 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-  if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+  if (RayConfig::instance().event_stats()) {
+    // References are only invalidated upon deletion of the corresponding item from the
+    // table, which we won't do until this io_context is deleted. Provided that
+    // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
+    // handler stats it->second from multiple threads without acquiring a table-level
+    // readers lock in the callback.
+    const auto stats_handle = RecordStart(name);
+    handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+      RecordExecution(handler, std::move(stats_handle));
+    };
   }
-  const auto stats_handle = RecordStart(name);
-  // References are only invalidated upon deletion of the corresponding item from the
-  // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
-  // handler stats it->second from multiple threads without acquiring a table-level
-  // readers lock in the callback.
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  auto defer_us = ray::asio::testing::get_delay_us(name);
+  if (defer_us == 0) {
+    boost::asio::io_context::post(std::move(handler));
+  } else {
+    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
+    execute_after_us(*this, std::move(handler), defer_us);
+  }
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
-  if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+  size_t defer_us = 0;
+  if (stats_handle) {
+    defer_us = ray::asio::testing::get_delay_us(stats_handle->handler_name);
   }
-  // Reset the handle start time, so that we effectively measure the queueing
-  // time only and not the time delay from RecordStart().
-  // TODO(ekl) it would be nice to track this delay too,.
-  stats_handle->ZeroAccumulatedQueuingDelay();
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(handler, std::move(stats_handle));
-      });
+  if (RayConfig::instance().event_stats()) {
+    // Reset the handle start time, so that we effectively measure the queueing
+    // time only and not the time delay from RecordStart().
+    // TODO(ekl) it would be nice to track this delay too,.
+    stats_handle->ZeroAccumulatedQueuingDelay();
+    handler = [handler = std::move(handler), stats_handle = stats_handle]() {
+      RecordExecution(handler, std::move(stats_handle));
+    };
+  }
+  if (defer_us == 0) {
+    return boost::asio::io_context::post(std::move(handler));
+  } else {
+    RAY_LOG(DEBUG) << "Deferring " << stats_handle->handler_name << " by " << defer_us
+                   << "us";
+    execute_after_us(*this, std::move(handler), defer_us);
+  }
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,
@@ -121,8 +133,8 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
     stats->stats.cum_count++;
     curr_count = ++stats->stats.curr_count;
   }
-  STATS_operation_count.Record(curr_count, name);
-  STATS_operation_active_count.Record(curr_count, name);
+  ray::stats::STATS_operation_count.Record(curr_count, name);
+  ray::stats::STATS_operation_active_count.Record(curr_count, name);
   return std::make_shared<StatsHandle>(
       name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
       global_stats_);
@@ -143,7 +155,8 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
-  STATS_operation_run_time_ms.Record(execution_time_ns / 1000000, handle->handler_name);
+  ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
+                                                 handle->handler_name);
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
@@ -151,13 +164,15 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     stats->stats.cum_execution_time += execution_time_ns;
     // Handler-specific current count.
     stats->stats.curr_count--;
-    STATS_operation_active_count.Record(stats->stats.curr_count, handle->handler_name);
+    ray::stats::STATS_operation_active_count.Record(stats->stats.curr_count,
+                                                    handle->handler_name);
     // Handler-specific running count.
     stats->stats.running_count--;
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
-  STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000, handle->handler_name);
+  ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
+                                                   handle->handler_name);
   {
     auto global_stats = handle->global_stats;
     absl::MutexLock lock(&(global_stats->mutex));

@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
+#include <fstream>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
@@ -42,6 +44,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
+      periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {}
 
@@ -67,13 +70,17 @@ void GcsServer::Start() {
     // Init grpc based pubsub on GCS.
     // TODO: Move this into GcsPublisher.
     inner_publisher = std::make_unique<pubsub::Publisher>(
-        /*channels=*/std::vector<
-            rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                              rpc::ChannelType::GCS_JOB_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-                              rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-                              rpc::ChannelType::RAY_ERROR_INFO_CHANNEL},
+        /*channels=*/
+        std::vector<rpc::ChannelType>{
+            rpc::ChannelType::GCS_ACTOR_CHANNEL,
+            rpc::ChannelType::GCS_JOB_CHANNEL,
+            rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+            rpc::ChannelType::RAY_LOG_CHANNEL,
+            rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
+        },
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -151,13 +158,20 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
-  // Print debug info periodically.
-  PrintDebugInfo();
-
-  // Print the asio event loop stats periodically if configured.
-  PrintAsioStats();
-
   CollectStats();
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        RAY_LOG(INFO) << GetDebugState();
+        PrintAsioStats();
+      },
+      /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
+      "GCSServer.deadline_timer.debug_state_event_stats_print");
+
+  periodical_runner_.RunFnPeriodically(
+      [this] { DumpDebugStateToFile(); },
+      /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
+      "GCSServer.deadline_timer.debug_state_dump");
 
   is_started_ = true;
 }
@@ -387,7 +401,16 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  std::unique_ptr<InternalKVInterface> instance;
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    instance = std::make_unique<RedisInternalKV>(redis_client_.get());
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    instance = std::make_unique<MemoryInternalKV>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
+
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -404,7 +427,7 @@ void GcsServer::InitPubSubHandler() {
 
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto cb) {
+      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
         // A valid runtime env URI is of the form "plugin|protocol://hash".
         std::string plugin_sep = "|";
         std::string protocol_sep = "://";
@@ -414,23 +437,18 @@ void GcsServer::InitRuntimeEnvManager() {
             plugin_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
                          << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
-          cb(false);
+          callback(false);
         } else {
           auto protocol_pos = plugin_end_pos + plugin_sep.size();
           int protocol_len = protocol_end_pos - protocol_pos;
           auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
-            cb(true);
+            callback(true);
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
-            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
-              if (deleted_num == 0) {
-                cb(false);
-              } else {
-                cb(true);
-              }
-            });
+            this->kv_manager_->GetInstance().Del(
+                uri, [callback = std::move(callback)](bool deleted) { callback(false); });
           }
         }
       });
@@ -515,24 +533,27 @@ void GcsServer::CollectStats() {
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
-void GcsServer::PrintDebugInfo() {
+void GcsServer::DumpDebugStateToFile() const {
+  std::fstream fs;
+  fs.open(config_.log_dir + "/debug_state_gcs.txt",
+          std::fstream::out | std::fstream::trunc);
+  fs << GetDebugState() << "\n\n";
+  fs << main_service_.StatsString();
+  fs.close();
+}
+
+std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n"
-         << gcs_actor_manager_->DebugString() << "\n"
-         << gcs_placement_group_manager_->DebugString() << "\n"
-         << gcs_publisher_->DebugString() << "\n"
-         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+  stream << gcs_node_manager_->DebugString() << "\n\n"
+         << gcs_actor_manager_->DebugString() << "\n\n"
+         << gcs_resource_manager_->DebugString() << "\n\n"
+         << gcs_placement_group_manager_->DebugString() << "\n\n"
+         << gcs_publisher_->DebugString() << "\n\n";
 
   if (config_.grpc_based_resource_broadcast) {
-    stream << "\n" << grpc_based_resource_broadcaster_->DebugString();
+    stream << grpc_based_resource_broadcaster_->DebugString();
   }
-  // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
-  // gcs_debug_state.txt.
-  RAY_LOG(INFO) << stream.str();
-  execute_after(
-      main_service_, [this] { PrintDebugInfo(); },
-      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-       60000) /* milliseconds */);
+  return stream.str();
 }
 
 void GcsServer::PrintAsioStats() {
@@ -541,9 +562,6 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
-    execute_after(
-        main_service_, [this] { PrintAsioStats(); },
-        event_stats_print_interval_ms /* milliseconds */);
   }
 }
 

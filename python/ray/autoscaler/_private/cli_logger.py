@@ -54,6 +54,7 @@ class _ColorfulMock:
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
+    _cf.use_8_ansi_colors()
 except ModuleNotFoundError:
     # We mock Colorful to restrict the colors used for consistency
     # anyway, so we also allow for not having colorful at all.
@@ -77,7 +78,6 @@ class _ColorfulProxy:
         "bold",
         "italic",
         "underlined",
-        "with_style",
 
         # used instead of `gray` as `dimmed` adapts to
         # both light and dark themes
@@ -86,7 +86,9 @@ class _ColorfulProxy:
         "limeGreen",  # success
         "red",  # error
         "orange",  # warning
-        "skyBlue"  # label
+        "skyBlue",  # label
+        "magenta",  # syntax highlighting key words and symbols
+        "yellow",  # syntax highlighting strings
     ]
 
     def __getattr__(self, name):

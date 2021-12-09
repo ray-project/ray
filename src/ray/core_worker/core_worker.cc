@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <google/protobuf/util/json_util.h>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -126,6 +128,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
   job_config_->ParseFromString(serialized_job_config);
+  auto job_serialized_runtime_env =
+      job_config_->runtime_env_info().serialized_runtime_env();
+  if (!job_serialized_runtime_env.empty()) {
+    job_runtime_env_.reset(new rpc::RuntimeEnv());
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                  job_config_->runtime_env_info().serialized_runtime_env(),
+                  job_runtime_env_.get())
+                  .ok());
+  }
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -225,7 +236,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
-        [this] { CheckForRayletFailure(); },
+        [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
@@ -657,23 +668,17 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure() {
-  auto env_pid = RayConfig::instance().RAYLET_PID();
-  bool should_shutdown = IsRayletFailed(env_pid);
+void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
+  RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
     std::ostringstream stream;
     stream << "Shutting down the core worker because the local raylet failed. "
-           << "Check out the raylet.out log file.";
-    if (!env_pid.empty()) {
-      auto pid = static_cast<pid_t>(std::stoi(env_pid));
-      stream << " Raylet pid: " << pid;
-    }
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
     RAY_LOG(WARNING) << stream.str();
-    if (options_.worker_type == WorkerType::WORKER) {
-      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
-    } else {
-      Shutdown();
-    }
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 
@@ -1328,7 +1333,17 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
-    PlacementGroupID placement_group_id, int64_t bundle_index) {
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  auto placement_group_id = PlacementGroupID::Nil();
+  auto bundle_index = -1;
+  if (scheduling_strategy.scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    placement_group_id = PlacementGroupID::FromBinary(
+        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+    bundle_index = scheduling_strategy.placement_group_scheduling_strategy()
+                       .placement_group_bundle_index();
+  }
   if (bundle_index < 0) {
     RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
   }
@@ -1348,6 +1363,122 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
+rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
+    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+  // By default, the child runtime env inherits non-specified options from the
+  // parent. There is one exception to this:
+  //     - The env_vars dictionaries are merged, so environment variables
+  //       not specified by the child are still inherited from the parent.
+
+  // Override environment variables.
+  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
+  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
+  // Inherit all other non-specified options from the parent.
+  rpc::RuntimeEnv result_runtime_env(*parent);
+  // TODO(SongGuyang): avoid dupliacated fields.
+  result_runtime_env.MergeFrom(child);
+  if (child.py_modules().size() > 0 && parent->py_modules().size() > 0) {
+    result_runtime_env.clear_py_modules();
+    for (auto &module : child.py_modules()) {
+      result_runtime_env.add_py_modules(module);
+    }
+    result_runtime_env.mutable_uris()->clear_py_modules_uris();
+    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
+        child.uris().py_modules_uris());
+  }
+  if (child.has_pip_runtime_env() && parent->has_pip_runtime_env()) {
+    result_runtime_env.clear_pip_runtime_env();
+    result_runtime_env.mutable_pip_runtime_env()->CopyFrom(child.pip_runtime_env());
+  }
+  if (!result_env_vars.empty()) {
+    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
+                                                  result_env_vars.end());
+  }
+  return result_runtime_env;
+}
+
+// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
+// logic clearly.
+static std::string encode_plugin_uri(std::string plugin, std::string uri) {
+  return plugin + "|" + uri;
+}
+
+static std::vector<std::string> GetUrisFromRuntimeEnv(
+    const rpc::RuntimeEnv *runtime_env) {
+  std::vector<std::string> result;
+  if (runtime_env == nullptr) {
+    return result;
+  }
+  if (!runtime_env->uris().working_dir_uri().empty()) {
+    const auto &uri = runtime_env->uris().working_dir_uri();
+    result.emplace_back(encode_plugin_uri("working_dir", uri));
+  }
+  for (const auto &uri : runtime_env->uris().py_modules_uris()) {
+    result.emplace_back(encode_plugin_uri("py_modules", uri));
+  }
+  if (!runtime_env->uris().conda_uri().empty()) {
+    const auto &uri = runtime_env->uris().conda_uri();
+    result.emplace_back(encode_plugin_uri("conda", uri));
+  }
+  for (const auto &uri : runtime_env->uris().plugin_uris()) {
+    result.emplace_back(encode_plugin_uri("plugin", uri));
+  }
+  return result;
+}
+
+static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
+    const std::string &serialized_runtime_env) {
+  rpc::RuntimeEnv runtime_env;
+  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
+           .ok()) {
+    RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+    // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+    // exception raised in runtime env agent. Actually, we can fail the task here.
+    return {};
+  }
+  return GetUrisFromRuntimeEnv(&runtime_env);
+}
+
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    std::vector<std::string> *runtime_env_uris) {
+  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    if (serialized_runtime_env == "") {
+      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
+      return job_config_->runtime_env_info().serialized_runtime_env();
+    }
+    parent = job_runtime_env_;
+  } else {
+    if (serialized_runtime_env == "") {
+      *runtime_env_uris =
+          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
+      return worker_context_.GetCurrentSerializedRuntimeEnv();
+    }
+    parent = worker_context_.GetCurrentRuntimeEnv();
+  }
+  if (parent) {
+    rpc::RuntimeEnv child_runtime_env;
+    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
+                                                     &child_runtime_env)
+             .ok()) {
+      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+      // exception raised in runtime env agent. Actually, we can fail the task here.
+      return serialized_runtime_env;
+    }
+    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+    std::string result;
+    RAY_CHECK(
+        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
+    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
+    return result;
+  } else {
+    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
+    return serialized_runtime_env;
+  }
+}
+
 void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -1355,24 +1486,17 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string &debugger_breakpoint, int64_t depth,
     const std::string &serialized_runtime_env,
-    const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
+  std::vector<std::string> runtime_env_uris;
+  auto override_runtime_env =
+      OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, depth,
-      // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
-      // Worker. A common process is needed.
-      // If runtime env is not provided, use job config. Only for Java and C++ because it
-      // has been set in Python by `prepare_runtime_env`.
-      (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
-          ? job_config_->runtime_env().serialized_runtime_env()
-          : serialized_runtime_env,
+      required_placement_resources, debugger_breakpoint, depth, override_runtime_env,
       runtime_env_uris, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -1383,15 +1507,18 @@ void CoreWorker::BuildCommonTaskSpec(
 std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-    BundleID placement_options, bool placement_group_capture_child_tasks,
+    const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint) {
+  RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-  auto constrained_resources = AddPlacementGroupConstraint(
-      task_options.resources, placement_options.first, placement_options.second);
+  auto constrained_resources =
+      AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
@@ -1402,12 +1529,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions);
+                      constrained_resources, required_resources, debugger_breakpoint,
+                      depth, task_options.serialized_runtime_env);
+  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
@@ -1428,6 +1554,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
+  RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
+            rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
+
   if (actor_creation_options.is_asyncio && options_.is_local_mode) {
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
@@ -1444,11 +1573,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
-                                  actor_creation_options.placement_options.first,
-                                  actor_creation_options.placement_options.second);
+                                  actor_creation_options.scheduling_strategy);
   auto new_resource = AddPlacementGroupConstraint(
-      actor_creation_options.resources, actor_creation_options.placement_options.first,
-      actor_creation_options.placement_options.second);
+      actor_creation_options.resources, actor_creation_options.scheduling_strategy);
   const auto actor_name = actor_creation_options.name;
   const auto task_name =
       actor_name.empty()
@@ -1458,11 +1585,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, actor_creation_options.placement_options,
-                      actor_creation_options.placement_group_capture_child_tasks,
-                      "" /* debugger_breakpoint */, depth,
-                      actor_creation_options.serialized_runtime_env,
-                      actor_creation_options.runtime_env_uris);
+                      new_placement_resources, "" /* debugger_breakpoint */, depth,
+                      actor_creation_options.serialized_runtime_env);
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1477,8 +1601,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
-      actor_id, serialized_actor_handle, actor_creation_options.max_restarts,
-      actor_creation_options.max_task_retries,
+      actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
+      actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
@@ -1493,6 +1617,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
     // it looks like two actors with two different namespaces become the
@@ -1655,12 +1780,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true,  /* placement_group_capture_child_tasks */
-                      "",    /* debugger_breakpoint */
-                      depth, /*depth*/
-                      "{}",  /* serialized_runtime_env */
-                      {},    /* runtime_env_uris */
+                      required_resources, "", /* debugger_breakpoint */
+                      depth,                  /*depth*/
+                      "{}",                   /* serialized_runtime_env */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -1671,6 +1793,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
 
   // Submit task.
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
