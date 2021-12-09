@@ -73,18 +73,18 @@ Code example
         import time
 
         ray.init()
-            for size in [200000, 4000000, 8000000, 10000000, 20000000]:
-                print(f'Array size: {size}')
-                unsorted = random.randint(1000000, size=(size)).tolist()
-                s = time.time()
-                quick_sort(unsorted)
-                print(f"Sequential execution: {(time.time() - s):.3f}")
-                s = time.time()
-                # put the large object in the global store and pass only the reference
-                unsorted_obj = ray.put(unsorted)
-                ray.get(quick_sort_distributed.remote(unsorted_obj))
-                print(f"Distributed execution: {(time.time() - s):.3f}")
-                print("--" * 10)
+        for size in [200000, 4000000, 8000000, 10000000, 20000000]:
+            print(f'Array size: {size}')
+            unsorted = random.randint(1000000, size=(size)).tolist()
+            s = time.time()
+            quick_sort(unsorted)
+            print(f"Sequential execution: {(time.time() - s):.3f}")
+            s = time.time()
+            # put the large object in the global store and pass only the reference
+            unsorted_obj = ray.put(unsorted)
+            ray.get(quick_sort_distributed.remote(unsorted_obj))
+            print(f"Distributed execution: {(time.time() - s):.3f}")
+            print("--" * 10)
 
 .. code-block:: text
 
