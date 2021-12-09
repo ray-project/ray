@@ -966,12 +966,18 @@ class TrialRunner:
                         result=result.copy())
 
             _trigger_callback_complete = True
-            decision = TrialScheduler.STOP
+            decision = {trial: TrialScheduler.STOP}
         else:
             with warn_if_slow("scheduler.on_trial_result"):
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, flat_result)
-            if decision == TrialScheduler.STOP:
+
+            if not isinstance(decision, dict):
+                decision = {trial: decision}
+
+            trial_decision = decision.get(trial, TrialScheduler.CONTINUE)
+
+            if trial_decision == TrialScheduler.STOP:
                 result.update(done=True)
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
@@ -981,7 +987,7 @@ class TrialRunner:
                     trials=self._trials,
                     trial=trial,
                     result=result.copy())
-            if decision == TrialScheduler.STOP:
+            if trial_decision == TrialScheduler.STOP:
                 with warn_if_slow("search_alg.on_trial_complete"):
                     self._search_alg.on_trial_complete(
                         trial.trial_id, result=flat_result)
@@ -1010,10 +1016,12 @@ class TrialRunner:
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
-            self._cached_trial_decisions[trial.trial_id] = decision
+            for t, d in decision.items():
+                self._cached_trial_decisions[t.trial_id] = d
             return None
         else:
-            self._queue_decision(trial, decision)
+            for t, d in decision.items():
+                self._queue_decision(t, d)
             return decision
 
     def _validate_result_metrics(self, result):
