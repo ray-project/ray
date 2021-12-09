@@ -226,9 +226,9 @@ install_upgrade_pip() {
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
-      "${python}" -W ignore -m pip config -q --user set global.no-color True
-      "${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      "${python}" -W ignore -m pip config -q --user set global.quiet True
+      # "${python}" -W ignore -m pip config -q --user set global.no-color True
+      # "${python}" -W ignore -m pip config -q --user set global.progress_bar off
+      # "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
 
     "${python}" -m ensurepip
