@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_ops import get_placeholder
+from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
