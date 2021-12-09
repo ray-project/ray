@@ -17,7 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
