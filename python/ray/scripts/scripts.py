@@ -591,7 +591,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 cf.bold("--port"))
             external_addresses = []
             if external_kv_storage_config is not None:
-                re_obj = re.match(r'(redis):(.*)', external_kv_storage_config,
+                re_obj = re.match(r"(redis):(.*)", external_kv_storage_config,
                                   re.M | re.I)
                 if re_obj is None:
                     raise ValueError(
