@@ -5,6 +5,7 @@ build --enable_platform_specific_config
 # On all platforms, provide: PYTHON3_BIN_PATH=python
 ###############################################################################
 build --action_env=PATH
+build --local_cpu_resources=4
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.

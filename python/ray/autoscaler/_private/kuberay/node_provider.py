@@ -1,10 +1,11 @@
 import logging
+import requests
 import threading
 from typing import Any, Dict, List, Union
 
-from ray.core.generated import kuberay_pb2
-from ray.core.generated import kuberay_pb2_grpc
-import grpc
+import kubernetes
+from kubernetes.config.config_exception import ConfigException
+
 from ray.autoscaler.node_provider import NodeProvider
 
 
@@ -12,6 +13,15 @@ from ray.autoscaler.node_provider import NodeProvider
 logger = logging.getLogger(__name__)
 
 provider_exists = False
+
+
+def to_label_selector(tags):
+    label_selector = ""
+    for k, v in tags.items():
+        if label_selector != "":
+            label_selector += ","
+        label_selector += "{}={}".format(k, v)
+    return label_selector
 
 
 class KuberayNodeProvider(NodeProvider):  # type: ignore
@@ -22,7 +32,16 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         _allow_multiple: bool = False,
     ):
         logger.info("Creating ClientNodeProvider.")
-        self._grpc_channel = None
+        self.namespace = provider_config["namespace"]
+        self.cluster_name = cluster_name
+
+        with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
+            token = secret.read()
+
+        self.headers = {
+            "Authorization": "Bearer " + token,
+        }
+        self.verify = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
         # Disallow multiple node providers, unless explicitly allowed for testing.
         global provider_exists
@@ -37,27 +56,6 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
         super().__init__(provider_config, cluster_name)
 
-        # Map of node ids (pod names) to cached tags (`metadata.labels`)
-        self.tag_cache: Dict[str, Dict[str, str]] = {}
-        # Map of node ids (pod names) to cached pod ips.
-        self.ip_cache: Dict[str, str] = {}
-        # Lock the caches, which are accessed by main autoscaler thread and node
-        # launcher child thread.
-        self.cache_lock = threading.RLock()
-
-        self._connect_client_and_instantiate_stub()
-
-    def _connect_client_and_instantiate_stub(self) -> None:
-        server_address = self.provider_config.get("server_address")
-        assert server_address is not None
-        self._grpc_channel = grpc.insecure_channel(server_address)
-        self._node_provider_stub = kuberay_pb2_grpc.KuberayNodeProviderStub(
-            self._grpc_channel
-        )
-
-    def __del__(self) -> None:
-        if self._grpc_channel:
-            self._grpc_channel.close()
 
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
@@ -65,36 +63,46 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Creates a number of nodes within the namespace.
         Returns a mapping from created node ids to node metadata.
         """
-        tags["ray-cluster-name"] = self.cluster_name
-        request = kuberay_pb2.CreateNodeRequest(tags=tags, count=count)
-        response = self._node_provider_stub.CreateNode(request)
-        node_to_meta = _node_meta_response_to_dict(response)
-        return node_to_meta
 
-    def _internal_ip_rpc(self, node_id: str) -> str:
-        """Returns the ip of the given node by direct RPC to the operator.
-        """
-        request = kuberay_pb2.InternalIpRequest(node_id=node_id)
-        response = self._node_provider_stub.InternalIp(request)
-        return response.node_ip
+        # requests.get("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
 
-    def _node_tags_rpc(self, node_id: str) -> Dict[str, str]:
-        """Returns the tags of the given node (string dict) by direct RPC to the operator."""
-        request = kuberay_pb2.NodeTagsRequest(node_id=node_id)
-        response = self._node_provider_stub.NodeTags(request)
-        return response.node_tags
+        # headers = {"Authorization": "Bearer " + open("/var/run/secrets/kubernetes.io/serviceaccount/token").read()}
+
+        # requests.get("https://kubernetes.default:443/api/v1/namespaces/default/pods/", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+
+        # scale up
+        # requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]', headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+
+        # requests.get("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+
+        # scale down
+
+        # requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster
+        # ...: -complete", '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete"
+        # ...: : ["raycluster-complete-worker-small-group-jjvz4"]}}]', headers={**headers, "Content-type": "application/json
+        # ...: -patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+
+        # get ip
+
+        # requests.get("https://kubernetes.default:443/api/v1/namespaces/default/pods/raycluster-complete-worker-small-group-2mbv6", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()["podIp"]
+
+        ## requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", '[{"op": "add", "path": "/spec/workerGroupSpecs/0/scaleStrategy/workersToDelete", "value": "raycluster-complete-worker-small-group-jjvz4"}]', headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+
+        # c = kubernetes.client.ApiClient()
+        # api_instance = kubernetes.client.CustomObjectsApi(c)
+        # api_response = api_instance.get_namespaced_custom_object("ray.io", "v1alpha1", "default", "rayclusters", "raycluster-complete")
+
+        # api_instance.patch_namespaced_custom_object("ray.io", "v1alpha1", "default", "rayclusters", "raycluster-complete", {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 2})
+
+
+        # core_api()
+
+        return {}
 
     def internal_ip(self, node_id: str) -> str:
-        """Returns the ip of the given node from the ip cache.
-        Falls back to direct RPC if necessary.
-        """
-        with self.cache_lock:
-            ip = self.ip_cache.get(node_id, None)
-            if ip is None:
-                logger.warning(f"IP of node {node_id} not found in the cache.")
-                ip = self._internal_ip_rpc(node_id)
-                self.ip_cache[node_id] = ip
-            return ip
+        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
+        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        return data["podIP"]
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         """Returns the tags of the given node (string dict) from the tag cache.
@@ -112,28 +120,10 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Return a list of node ids filtered by the specified tags dict.
         Also updates caches of ips and tags.
         """
-        request = kuberay_pb2.NonTerminatedNodesRequest(
-            tag_filters=tag_filters, cluster_name=self.cluster_name
-        )
-        response = self._node_provider_stub.NonTerminatedNodes(request)
+        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/"
+        data = requests.get(url, headers=self.headers, verify=self.verify).json()
 
-        with self.cache_lock:
-            # If we're not filtering on anything, we're about to extract data on
-            # all Ray nodes in the cluster. We may as well take the opportunity to
-            # clear the caches of stale data before re-filling the caches.
-            if tag_filters == {}:
-                # Clear caches. (This logic is accessed at least once per autoscaler update.)
-                self.tag_cache = {}
-                self.ip_cache = {}
-
-            # Fill caches.
-            for node_id, node_ip, node_tags_message in zip(
-                response.node_ids, response.node_ips, response.node_tags_list
-            ):
-                self.tag_cache[node_id] = node_tags_message.node_tags
-                self.ip_cache[node_id] = node_ip
-
-        return list(response.node_ids)
+        return [pod["metadata"]["name"] for pod in data["items"] if "ray.io/cluster" in pod["metadata"]["labels"] and pod["metadata"]["labels"]["ray.io/cluster"] == "raycluster-complete"]
 
     def terminate_node(self, node_id: str) -> None:
         """Terminates the specified node."""
@@ -147,15 +137,3 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         response = self._node_provider_stub.TerminateNodes(request)
         node_to_meta = _node_meta_response_to_dict(response)
         return node_to_meta
-
-
-def _node_meta_response_to_dict(
-    response: Union[
-        kuberay_pb2.CreateNodeResponse, kuberay_pb2.TerminateNodesResponse
-    ]
-) -> Dict[str, Dict[str, str]]:
-    # Convert response values to dicts
-    node_to_meta = {
-        key: dict(value.node_meta) for key, value in response.node_to_meta.items()
-    }
-    return node_to_meta
