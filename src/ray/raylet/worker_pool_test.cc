@@ -492,7 +492,7 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
-  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
+  auto [proc, token] = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
                                                   JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
@@ -984,7 +984,7 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
 TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // Start a Java worker process.
   PopWorkerStatus status;
-  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
+  auto [proc, token] = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
                                                   JOB_ID, &status);
   auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
   auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
@@ -1036,7 +1036,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
   for (int i = 0; i < num_workers; i++) {
     PopWorkerStatus status;
-    Process proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
@@ -1130,7 +1130,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // Start two IO workers. These don't count towards the limit.
   {
     PopWorkerStatus status;
-    Process proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
@@ -1142,7 +1142,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   }
   {
     PopWorkerStatus status;
-    Process proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
@@ -1185,7 +1185,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   int num_workers = POOL_SIZE_SOFT_LIMIT * 2;
   for (int i = 0; i < num_workers; i++) {
     PopWorkerStatus status;
-    Process proc = worker_pool_->StartWorkerProcess(
+    auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
@@ -1248,7 +1248,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
   for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
     for (const auto &language : languages) {
       PopWorkerStatus status;
-      Process proc = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
+      auto[proc, token] = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
                                                       JOB_ID, &status);
       int workers_to_start =
           language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
