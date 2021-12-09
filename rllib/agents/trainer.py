@@ -364,7 +364,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
-    "metrics_smoothing_episodes": 100,
+    "metrics_smoothing_num_episodes": 100,
     # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
@@ -530,6 +530,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
+    # Use `metrics_smoothing_num_episodes` instead.
+    "metrics_smoothing_episodes": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -1692,7 +1694,7 @@ class Trainer(Trainable):
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
-            min_history=self.config["metrics_smoothing_episodes"],
+            min_history=self.config["metrics_smoothing_num_episodes"],
             selected_workers=selected_workers)
 
     @override(Trainable)
@@ -2086,6 +2088,16 @@ class Trainer(Trainable):
             raise ValueError(
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
+
+        # Metrics settings.
+        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="metrics_smoothing_episodes",
+                new="metrics_smoothing_num_episodes",
+                error=False,
+            )
+            config["metrics_smoothing_num_episodes"] = \
+                config["metrics_smoothing_episodes"]
 
         # Evaluation settings.
 
