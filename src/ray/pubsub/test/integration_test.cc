@@ -164,7 +164,7 @@ class IntegrationTest : public ::testing::Test {
         },
         /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
-        /*subscriber_timeout_ms=*/30e6,
+        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
     publisher_service_ = std::make_unique<PublisherServiceImpl>(std::move(publisher));
 
