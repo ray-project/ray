@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsFunctionKeySubscriber
 from ray._private.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
@@ -70,6 +72,7 @@ def test_auto_global_gc(shutdown_only):
     assert ray.get(test.collected.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -137,8 +140,13 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(
+        # TODO (Alex): We need to fix
+        # https://github.com/ray-project/ray/issues/20203 to remove this flag.
+        num_cpus=2,
+        _system_config={"worker_cap_initial_backoff_delay_ms": 0})
 
     @ray.remote
     def g():
@@ -169,6 +177,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
         wait_for_pid_to_exit(pid)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1,
@@ -178,7 +187,8 @@ def test_fair_queueing(shutdown_only):
             # the more parallism we have,
             # the more workers we need to start to execute f and g tasks
             # before we can execute the first h task.
-            "max_pending_lease_requests_per_scheduling_category": 1
+            "max_pending_lease_requests_per_scheduling_category": 1,
+            "worker_cap_enabled": True,
         })
 
     @ray.remote
@@ -201,6 +211,7 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
     import ray
@@ -272,7 +283,7 @@ def test_worker_startup_count(ray_start_cluster):
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
-    debug_state_path = session_path / "debug_state.txt"
+    debug_state_path = session_path / "logs" / "debug_state.txt"
 
     def get_num_workers():
         with open(debug_state_path) as f:
@@ -284,7 +295,7 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
-    timeout_limit = 40 if sys.platform == "win32" else 10
+    timeout_limit = 15
     start = time.time()
     wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
@@ -304,6 +315,7 @@ def test_worker_startup_count(ray_start_cluster):
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_function_unique_export(ray_start_regular):
     @ray.remote
     def f():
@@ -313,10 +325,33 @@ def test_function_unique_export(ray_start_regular):
     def g():
         ray.get(f.remote())
 
-    ray.get(g.remote())
-    num_exports = ray.worker.global_worker.redis_client.llen("Exports")
-    ray.get([g.remote() for _ in range(5)])
-    assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+    if gcs_pubsub_enabled():
+        subscriber = GcsFunctionKeySubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        subscriber.subscribe()
+
+        ray.get(g.remote())
+
+        # Poll pubsub channel for messages generated from running task g().
+        num_exports = 0
+        while True:
+            key = subscriber.poll(timeout=1)
+            if key is None:
+                break
+            else:
+                num_exports += 1
+        print(f"num_exports after running g(): {num_exports}")
+
+        ray.get([g.remote() for _ in range(5)])
+
+        key = subscriber.poll(timeout=1)
+        assert key is None, f"Unexpected function key export: {key}"
+    else:
+        ray.get(g.remote())
+        num_exports = ray.worker.global_worker.redis_client.llen("Exports")
+        ray.get([g.remote() for _ in range(5)])
+        assert ray.worker.global_worker.redis_client.llen("Exports") == \
+               num_exports
 
 
 @pytest.mark.skipif(

@@ -2,18 +2,21 @@ import numpy as np
 
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
 
 
 # yapf: disable
 # __sphinx_doc_begin__
 class RandomAgent(Trainer):
-    """Policy that takes random actions and never learns."""
+    """Trainer that produces random actions and never learns."""
 
-    _name = "RandomAgent"
-    _default_config = with_common_config({
-        "rollouts_per_iteration": 10,
-        "framework": "tf",  # not used
-    })
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return with_common_config({
+            "rollouts_per_iteration": 10,
+            "framework": "tf",  # not used
+        })
 
     @override(Trainer)
     def _init(self, config, env_creator):

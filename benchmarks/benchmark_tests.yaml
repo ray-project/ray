@@ -23,7 +23,7 @@
 
   run:
     timeout: 3600
-    prepare: sleep 0
+    prepare: python distributed/wait_cluster.py --num-nodes=50
     script: python object_store/test_object_store.py
 
 - name: many_actors

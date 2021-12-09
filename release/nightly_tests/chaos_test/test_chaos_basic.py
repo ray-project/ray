@@ -10,8 +10,7 @@ import numpy as np
 import ray
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray._private.test_utils import (monitor_memory_usage, wait_for_condition,
-                                     get_and_run_node_killer)
+from ray._private.test_utils import (monitor_memory_usage, wait_for_condition)
 
 
 def run_task_workload(total_num_cpus, smoke):
@@ -33,7 +32,7 @@ def run_task_workload(total_num_cpus, smoke):
         time.sleep(0.8)
         return ray.get(task.remote())
 
-    multiplier = 25
+    multiplier = 75
     # For smoke mode, run less number of tasks
     if smoke:
         multiplier = 1
@@ -48,7 +47,8 @@ def run_task_workload(total_num_cpus, smoke):
     wait_for_condition(
         lambda: (
             ray.cluster_resources().get("CPU", 0)
-            == ray.available_resources().get("CPU", 0)))
+            == ray.available_resources().get("CPU", 0)),
+        timeout=60)
 
 
 def run_actor_workload(total_num_cpus, smoke):
@@ -112,7 +112,8 @@ def run_actor_workload(total_num_cpus, smoke):
     wait_for_condition(
         lambda: (
             ray.cluster_resources().get("CPU", 0)
-            == ray.available_resources().get("CPU", 0)))
+            == ray.available_resources().get("CPU", 0)),
+        timeout=60)
     letter_set = set()
     for db_actor in db_actors:
         letter_set.update(ray.get(db_actor.get.remote()))
@@ -196,9 +197,10 @@ def main():
 
     # Step 3
     print("Running with failures")
-    node_killer = get_and_run_node_killer(
-        node_kill_interval_s=args.node_kill_interval)
     start = time.time()
+    node_killer = ray.get_actor(
+        "node_killer", namespace="release_test_namespace")
+    node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
     print(f"Total node failures: "
@@ -211,6 +213,8 @@ def main():
 
     # Report the result.
     ray.get(monitor_actor.stop_run.remote())
+    print("Total number of killed nodes: "
+          f"{ray.get(node_killer.get_total_killed_nodes.remote())}")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
             json.dumps({

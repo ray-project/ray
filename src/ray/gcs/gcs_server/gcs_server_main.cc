@@ -115,6 +115,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.grpc_based_resource_broadcast =
       RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
+  gcs_server_config.log_dir = log_dir;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

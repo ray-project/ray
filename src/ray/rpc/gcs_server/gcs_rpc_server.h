@@ -62,9 +62,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER)     \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 // Unlimited max active RPCs, because of long poll.
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
@@ -606,6 +605,9 @@ class InternalPubSubGcsServiceHandler {
  public:
   virtual ~InternalPubSubGcsServiceHandler() = default;
 
+  virtual void HandleGcsPublish(const GcsPublishRequest &request, GcsPublishReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGcsSubscriberPoll(const GcsSubscriberPollRequest &request,
                                        GcsSubscriberPollReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -626,6 +628,7 @@ class InternalPubSubGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);
   }

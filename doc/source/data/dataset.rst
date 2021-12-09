@@ -34,9 +34,7 @@ Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to
    :width: 650px
    :align: center
 
-See the following for more Dataset ML use cases and benchmarks:
-
-- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more Datasets ML use cases and benchmarks.
 
 General Parallel Compute
 ------------------------
@@ -192,7 +190,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 .. code-block:: python
 
     import ray
-    
+
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
     # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
@@ -386,6 +384,15 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+
+.. _data-talks:
+
+Talks and Materials
+-------------------
+
+- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+
 
 Contributing
 ------------

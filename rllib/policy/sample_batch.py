@@ -6,13 +6,13 @@ import tree  # pip install dm_tree
 from typing import Dict, Iterator, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import DeveloperAPI, \
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
     PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import concat_aligned
-from ray.rllib.utils.typing import PolicyID, TensorType
+from ray.rllib.utils.typing import PolicyID, TensorType, ViewRequirementsDict
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -40,6 +40,8 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    # This is only computed and used when RE3 exploration strategy is enabled
+    OBS_EMBEDS = "obs_embeds"
     T = "t"
 
     # Extra action fetches keys.
@@ -194,8 +196,15 @@ class SampleBatch(dict):
             if s.count > 0:
                 assert s.zero_padded == zero_padded
                 assert s.time_major == time_major
+                if (s.max_seq_len is None or max_seq_len is None)\
+                   and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "Samples must consistently provide or omit max_seq_len"
+                    )
                 if zero_padded:
                     assert s.max_seq_len == max_seq_len
+                if max_seq_len is not None:
+                    max_seq_len = max(max_seq_len, s.max_seq_len)
                 concat_samples.append(s)
                 if s.get(SampleBatch.SEQ_LENS) is not None:
                     concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
@@ -960,23 +969,20 @@ class SampleBatch(dict):
                 i += slice_size
         return data_slices, data_slices_states
 
-    # TODO: deprecate
-    @property
-    def data(self):
-        deprecation_warning(
-            old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
-        return self
-
-    # TODO: (sven) Experimental method.
-    def get_single_step_input_dict(self, view_requirements, index="last"):
+    @ExperimentalAPI
+    def get_single_step_input_dict(
+            self,
+            view_requirements: ViewRequirementsDict,
+            index: Union[str, int] = "last",
+    ) -> "SampleBatch":
         """Creates single ts SampleBatch at given index from `self`.
 
-        For usage as input-dict for model calls.
+        For usage as input-dict for model (action or value function) calls.
 
         Args:
-            sample_batch (SampleBatch): A single-trajectory SampleBatch object
-                to generate the compute_actions input dict from.
-            index (Union[int, str]): An integer index value indicating the
+            view_requirements: A view requirements dict from the model for
+                which to produce the input_dict.
+            index: An integer index value indicating the
                 position in the trajectory for which to generate the
                 compute_actions input dict. Set to "last" to generate the dict
                 at the very end of the trajectory (e.g. for value estimation).
@@ -984,7 +990,7 @@ class SampleBatch(dict):
                 final NEXT_OBS as observation input.
 
         Returns:
-            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
+            The (single-timestep) input dict for ModelV2 calls.
         """
         last_mappings = {
             SampleBatch.OBS: SampleBatch.NEXT_OBS,
@@ -994,50 +1000,45 @@ class SampleBatch(dict):
 
         input_dict = {}
         for view_col, view_req in view_requirements.items():
+            if view_req.used_for_compute_actions is False:
+                continue
+
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":
                 data_col = last_mappings.get(data_col, data_col)
                 # Range needed.
                 if view_req.shift_from is not None:
-                    data = self[view_col][-1]
                     # Batch repeat value > 1: We have single frames in the
-                    # batch at each timestep.
-                    if view_req.batch_repeat_value > 1:
-                        traj_len = len(self[data_col])
-                        missing_at_end = traj_len % view_req.batch_repeat_value
-                        obs_shift = -1 if data_col in [
-                            SampleBatch.OBS, SampleBatch.NEXT_OBS
-                        ] else 0
-                        from_ = view_req.shift_from + obs_shift
-                        to_ = view_req.shift_to + obs_shift + 1
-                        if to_ == 0:
-                            to_ = None
-                        input_dict[view_col] = np.array([
-                            np.concatenate(
-                                [self[data_col][-missing_at_end:],
-                                 data])[from_:to_]
-                        ])
-                    # Batch repeat value = 1: We already have framestacks
-                    # at each timestep.
-                    else:
-                        input_dict[view_col] = data[None]
+                    # batch at each timestep (for the `data_col`).
+                    data = self[view_col][-1]
+                    traj_len = len(self[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    # Index into the observations column must be shifted by
+                    # -1 b/c index=0 for observations means the current (last
+                    # seen) observation (after having taken an action).
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate(
+                            [data,
+                             self[data_col][-missing_at_end:]])[from_:to_]
+                    ])
                 # Single index.
                 else:
                     input_dict[view_col] = tree.map_structure(
                         lambda v: v[-1:],  # keep as array (w/ 1 element)
                         self[data_col],
                     )
+            # Single index somewhere inside the trajectory (non-last).
             else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = self[data_col][index[0]:index[1] +
-                                          1 if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = self[data_col][
-                        index:index + 1 if index != -1 else None]
+                input_dict[view_col] = self[data_col][index:index + 1
+                                                      if index != -1 else None]
 
         return SampleBatch(input_dict, seq_lens=np.array([1], dtype=np.int32))
 

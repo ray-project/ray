@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from typing import Optional, List
+import uuid
 
 # Ray modules
 import ray
@@ -334,8 +335,10 @@ def get_node_to_connect_for_driver(redis_address,
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
-def get_webui_url_from_redis(redis_client):
-    webui_url = redis_client.hmget("webui", "url")[0]
+def get_webui_url_from_internal_kv():
+    assert ray.experimental.internal_kv._internal_kv_initialized()
+    webui_url = ray.experimental.internal_kv._internal_kv_get(
+        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     return ray._private.utils.decode(
         webui_url) if webui_url is not None else None
 
@@ -852,6 +855,7 @@ def start_reaper(fate_share=None):
 def start_redis(node_ip_address,
                 redirect_files,
                 resource_spec,
+                session_dir_path,
                 port=None,
                 redis_shard_ports=None,
                 num_redis_shards=1,
@@ -868,6 +872,8 @@ def start_redis(node_ip_address,
             for recording the log filenames in Redis.
         redirect_files: The list of (stdout, stderr) file pairs.
         resource_spec (ResourceSpec): Resources for the node.
+        session_dir_path (str): Path to the session directory of
+            this Ray cluster.
         port (int): If provided, the primary Redis shard will be started on
             this port.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
@@ -926,6 +932,7 @@ def start_redis(node_ip_address,
         # Start the primary Redis shard.
         port, p = _start_redis_instance(
             redis_executable,
+            session_dir_path,
             port=port,
             password=password,
             redis_max_clients=redis_max_clients,
@@ -985,6 +992,7 @@ def start_redis(node_ip_address,
 
             redis_shard_port, p = _start_redis_instance(
                 redis_executable,
+                session_dir_path,
                 port=redis_shard_port,
                 password=password,
                 redis_max_clients=redis_max_clients,
@@ -1008,6 +1016,7 @@ def start_redis(node_ip_address,
 
 
 def _start_redis_instance(executable,
+                          session_dir_path,
                           port,
                           redis_max_clients=None,
                           num_retries=20,
@@ -1027,6 +1036,8 @@ def _start_redis_instance(executable,
 
     Args:
         executable (str): Full path of the redis-server executable.
+        session_dir_path (str): Path to the session directory of
+            this Ray cluster.
         port (int): Try to start a Redis server at this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
@@ -1068,17 +1079,30 @@ def _start_redis_instance(executable,
         command += (["--port", str(port), "--loglevel", "warning"])
         if listen_to_localhost_only:
             command += ["--bind", "127.0.0.1"]
+        pidfile = os.path.join(session_dir_path,
+                               "redis-" + uuid.uuid4().hex + ".pid")
+        command += ["--pidfile", pidfile]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
-        time.sleep(0.1)
-        # Check if Redis successfully started (or at least if it the executable
-        # did not exit within 0.1 seconds).
-        if process_info.process.poll() is None:
-            break
+        try:
+            wait_for_redis_to_start("127.0.0.1", port, password=password)
+        except (redis.exceptions.ResponseError, RuntimeError):
+            # Connected to redis with the wrong password, or exceeded
+            # the number of retries. This means we got the wrong redis
+            # or there is some error in starting up redis.
+            # Try the next port by looping again.
+            pass
+        else:
+            r = redis.StrictRedis(
+                host="127.0.0.1", port=port, password=password)
+            # Check if Redis successfully started and we connected
+            # to the right server.
+            if r.config_get("pidfile")["pidfile"] == pidfile:
+                break
         port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
@@ -1262,6 +1286,7 @@ def start_dashboard(require_dashboard,
             import ray.dashboard.optional_deps  # noqa: F401
         except ImportError:
             if require_dashboard:
+                logger.exception("dashboard dependency error")
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
                 return None, None
@@ -1289,10 +1314,15 @@ def start_dashboard(require_dashboard,
         # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
+        from ray._private.gcs_utils import GcsClient
+        gcs_client = GcsClient.create_from_redis(redis_client)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
-            dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break
@@ -1919,6 +1949,7 @@ def start_monitor(redis_address,
 
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        gcs_address (str): The address of GCS server.
         logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.

@@ -5,7 +5,7 @@ import ray.autoscaler.sdk
 
 import json
 import os
-from time import sleep, perf_counter
+from time import perf_counter
 from tqdm import tqdm
 
 NUM_NODES = 50
@@ -20,16 +20,8 @@ def num_alive_nodes():
     return n
 
 
-def scale_to(target):
-    while num_alive_nodes() != target:
-        ray.autoscaler.sdk.request_resources(bundles=[{"node": 1}] * target)
-        print(f"Current # nodes: {num_alive_nodes()}, target: {target}")
-        print("Waiting ...")
-        sleep(5)
-
-
 def test_object_broadcast():
-    scale_to(NUM_NODES)
+    assert num_alive_nodes() == NUM_NODES
 
     @ray.remote(num_cpus=1, resources={"node": 1})
     class Actor:

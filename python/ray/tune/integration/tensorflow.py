@@ -3,13 +3,15 @@ import logging
 
 import ray
 import os
-from ray.tune.result import RESULT_DUPLICATE
+from ray.util.ml_utils.util import find_free_port
 from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
+from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.trainable import DistributedTrainable
-from ray.util.placement_group import remove_placement_group
+from ray.tune.utils import detect_checkpoint_function
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
-from ray.tune.utils import detect_checkpoint_function, find_free_port
+from ray.util.placement_group import remove_placement_group
 from typing import Callable, Dict, Type, Optional
 
 logger = logging.getLogger(__name__)
@@ -182,11 +184,10 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            return Resources(
-                cpu=0,
-                gpu=0,
-                extra_cpu=num_workers * num_cpus_per_worker,
-                extra_gpu=num_workers * num_gpus_per_worker)
+            return PlacementGroupFactory([{}] + [{
+                "CPU": cls._num_cpus_per_worker,
+                "GPU": cls._num_gpus_per_worker
+            }] * num_workers)
 
     return WrappedDistributedTensorFlowTrainable
 

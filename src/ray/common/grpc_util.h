@@ -91,6 +91,12 @@ inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
 inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   if (grpc_status.ok()) {
     return Status::OK();
+  } else if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED) {
+    // DEADLINE_EXCEEDED means the gRPC request has timedout. Convert it to Ray timeout
+    // status code.
+    return Status(StatusCode::TimedOut,
+                  absl::StrCat("RPC Error message: ", grpc_status.error_message(),
+                               " RPC Error details: ", grpc_status.error_details()));
   } else {
     return Status(Status::StringToCode(grpc_status.error_message()),
                   grpc_status.error_details());

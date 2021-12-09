@@ -1,10 +1,10 @@
 import asyncio
 import logging
 import pickle
-import traceback
 import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
+import aiorwlock
 
 import starlette.responses
 
@@ -26,7 +26,7 @@ from ray.serve.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
-from ray.exceptions import RayTaskError
+from ray.serve.utils import wrap_to_ray_error
 
 logger = _get_logger()
 
@@ -151,26 +151,14 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
-            return await self.replica.prepare_for_shutdown()
+            if self.replica is not None:
+                return await self.replica.prepare_for_shutdown()
 
         async def run_forever(self):
             await self.shutdown_event.wait()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
-
-
-def wrap_to_ray_error(function_name: str,
-                      exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 class RayServeReplica:
@@ -187,6 +175,7 @@ class RayServeReplica:
         self.is_function = is_function
         self.user_config = user_config
         self.version = version
+        self.rwlock = aiorwlock.RWLock()
 
         self.num_ongoing_requests = 0
 
@@ -346,35 +335,38 @@ class RayServeReplica:
         return result
 
     async def reconfigure(self, user_config: Any):
-        self.user_config = user_config
-        self.version = DeploymentVersion(
-            self.version.code_version, user_config=user_config)
-        if self.is_function:
-            raise ValueError(
-                "deployment_def must be a class to use user_config")
-        elif not hasattr(self.callable, RECONFIGURE_METHOD):
-            raise RayServeException("user_config specified but deployment " +
-                                    self.deployment_name + " missing " +
-                                    RECONFIGURE_METHOD + " method")
-        reconfigure_method = sync_to_async(
-            getattr(self.callable, RECONFIGURE_METHOD))
-        await reconfigure_method(user_config)
+        async with self.rwlock.writer_lock:
+            self.user_config = user_config
+            self.version = DeploymentVersion(
+                self.version.code_version, user_config=user_config)
+            if self.is_function:
+                raise ValueError(
+                    "deployment_def must be a class to use user_config")
+            elif not hasattr(self.callable, RECONFIGURE_METHOD):
+                raise RayServeException("user_config specified but deployment "
+                                        + self.deployment_name + " missing " +
+                                        RECONFIGURE_METHOD + " method")
+            reconfigure_method = sync_to_async(
+                getattr(self.callable, RECONFIGURE_METHOD))
+            await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
-        request.tick_enter_replica = time.time()
-        logger.debug("Replica {} received request {}".format(
-            self.replica_tag, request.metadata.request_id))
+        async with self.rwlock.reader_lock:
+            request.tick_enter_replica = time.time()
+            logger.debug("Replica {} received request {}".format(
+                self.replica_tag, request.metadata.request_id))
 
-        num_running_requests = self._get_handle_request_stats()["running"]
-        self.num_processing_items.set(num_running_requests)
+            num_running_requests = self._get_handle_request_stats()["running"]
+            self.num_processing_items.set(num_running_requests)
 
-        result = await self.invoke_single(request)
-        request_time_ms = (time.time() - request.tick_enter_replica) * 1000
-        logger.debug("Replica {} finished request {} in {:.2f}ms".format(
-            self.replica_tag, request.metadata.request_id, request_time_ms))
+            result = await self.invoke_single(request)
+            request_time_ms = (time.time() - request.tick_enter_replica) * 1000
+            logger.debug("Replica {} finished request {} in {:.2f}ms".format(
+                self.replica_tag, request.metadata.request_id,
+                request_time_ms))
 
-        # Returns a small object for router to track request status.
-        return b"", result
+            # Returns a small object for router to track request status.
+            return b"", result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.

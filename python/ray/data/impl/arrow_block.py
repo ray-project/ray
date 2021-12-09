@@ -70,6 +70,9 @@ class ArrowRow:
     def __repr__(self):
         return str(self)
 
+    def __len__(self):
+        return self._row.num_columns
+
 
 class DelegatingArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -77,7 +80,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
 
     def add(self, item: Any) -> None:
         if self._builder is None:
-            if isinstance(item, dict):
+            if isinstance(item, dict) or isinstance(item, ArrowRow):
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
@@ -221,20 +224,23 @@ class ArrowBlockAccessor(BlockAccessor):
         return self._table.to_pandas()
 
     def to_numpy(self, column: str = None) -> np.ndarray:
-        if not column:
+        if column is None:
             raise ValueError(
                 "`column` must be specified when calling .to_numpy() "
                 "on Arrow blocks.")
         if column not in self._table.column_names:
             raise ValueError(
-                "Cannot find column {}, available columns: {}".format(
-                    column, self._table.column_names))
+                f"Cannot find column {column}, available columns: "
+                f"{self._table.column_names}")
         array = self._table[column]
         if array.num_chunks > 1:
-            # TODO(ekl) combine fails since we can't concat ArrowTensorType?
+            # TODO(ekl) combine fails since we can't concat
+            # ArrowTensorType?
             array = array.combine_chunks()
-        assert array.num_chunks == 1, array
-        return self._table[column].chunk(0).to_numpy()
+        else:
+            assert array.num_chunks == 1, array
+            array = array.chunk(0)
+        return array.to_numpy(zero_copy_only=False)
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
