@@ -48,10 +48,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_started_(false),
       is_stopped_(false) {
   // Init backend client.
-  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password,
-                                          config_.enable_sharding_conn);
-  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+  redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
@@ -109,6 +106,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 }
 
 GcsServer::~GcsServer() { Stop(); }
+
+RedisClientOptions GcsServer::GetRedisClientOptions() const {
+  return RedisClientOptions(config_.redis_address, config_.redis_port,
+                            config_.redis_password, config_.enable_sharding_conn);
+}
 
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
@@ -213,6 +215,8 @@ void GcsServer::Stop() {
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
+
+    kv_manager_.reset();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
@@ -423,7 +427,7 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
   if (RayConfig::instance().gcs_storage() == "redis") {
-    instance = std::make_unique<RedisInternalKV>(redis_client_.get());
+    instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (RayConfig::instance().gcs_storage() == "memory") {
     instance = std::make_unique<MemoryInternalKV>(main_service_);
   } else {
