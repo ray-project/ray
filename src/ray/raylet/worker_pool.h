@@ -599,7 +599,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param startup_token The counter representing the worker.
+  /// \param startup_token The startup token representing the worker.
   /// \param worker A new idle worker. If the worker is empty, we could also callback
   /// to the task.
   /// \param status The pop worker status which will be forwarded to
