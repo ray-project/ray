@@ -13,7 +13,6 @@ import tempfile
 import zipfile
 
 from itertools import chain
-from itertools import takewhile
 from enum import Enum
 
 import urllib.error
