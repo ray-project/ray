@@ -327,11 +327,12 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
         if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
+        obs = {env_id: obs}
         return obs
 
     @override(BaseEnv)

@@ -1482,8 +1482,8 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
-        from ray.util.sgd import utils
-        return utils.find_free_port()
+        from ray.util.ml_utils.util import find_free_port
+        return find_free_port()
 
     def __del__(self):
         """If this worker is deleted, clears all resources used by it."""
