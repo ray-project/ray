@@ -7,19 +7,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-<<<<<<< HEAD
 from ray._private.test_utils import dicts_equal
-=======
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsFunctionKeySubscriber
-from ray._private.test_utils import (
-    dicts_equal,
-    wait_for_pid_to_exit,
-    wait_for_condition,
-)
-from ray.autoscaler._private.constants import RAY_PROCESSES
-from pathlib import Path
->>>>>>> master
 
 import ray
 
@@ -137,6 +125,7 @@ def test_many_fractional_resources(shutdown_only):
             break
     if not correct_available_resources:
         assert False, "Did not get correct available resources."
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vvv", __file__]))
