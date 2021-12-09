@@ -65,7 +65,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   } else {
     RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
   }
-  // Init internal config
+  // Init internal config.
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
     this->main_service_.stop();
