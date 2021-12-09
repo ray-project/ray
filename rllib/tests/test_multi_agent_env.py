@@ -15,7 +15,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     RoundRobinMultiAgent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -69,13 +69,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def test_no_reset_until_poll(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 1)
+        env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 1)
         self.assertFalse(env.get_sub_environments()[0].resetted)
         env.poll()
         self.assertTrue(env.get_sub_environments()[0].resetted)
 
     def test_vectorize_basic(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 2)
+        env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
@@ -133,8 +133,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                     1: 0
                 }
             }))
-        self.assertEqual(env.try_reset(0), {0: 0, 1: 0})
-        self.assertEqual(env.try_reset(1), {0: 0, 1: 0})
+        self.assertEqual(env.try_reset(0), {0: {0: 0, 1: 0}})
+        self.assertEqual(env.try_reset(1), {1: {0: 0, 1: 0}})
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
@@ -154,7 +154,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             })
 
     def test_vectorize_round_robin(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: RoundRobinMultiAgent(2), [], 2)
+        env = MultiAgentEnvWrapper(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})

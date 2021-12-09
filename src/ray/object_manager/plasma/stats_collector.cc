@@ -17,6 +17,8 @@
 
 #include "ray/object_manager/plasma/stats_collector.h"
 
+#include "ray/stats/metric_defs.h"
+
 namespace plasma {
 
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {

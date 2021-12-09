@@ -395,34 +395,6 @@ message StoredConfig {
   string config = 1;
 }
 
-message ObjectLocationInfo {
-  bytes object_id = 1;
-  repeated ObjectTableData locations = 2;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
-}
-
-// A notification message about one object's locations being changed.
-message ObjectLocationChange {
-  bool is_add = 1;
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes node_id = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
-}
-
 // A notification message about one node's resources being changed.
 message NodeResourceChange {
   // ID of the node whose resources have changed.

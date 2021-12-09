@@ -4,6 +4,7 @@ import ray
 
 import pytest
 import grpc
+from grpc._channel import _InactiveRpcError
 import psutil
 
 import ray.ray_constants as ray_constants
@@ -287,8 +288,11 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         print(f"Sending a shutdown request to {ip}:{port}")
-        stub.ShutdownRaylet(
-            node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        try:
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        except _InactiveRpcError:
+            assert not graceful
 
     """
     Kill the first worker non-gracefully.

@@ -229,11 +229,13 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id_binary) {
-    RAY_LOG(FATAL) << "No need to implement it for testing.";
-  }
+                      const std::string &key_id_binary) {}
 
   void Publish(const rpc::PubMessage &pub_message) {
+    if (pub_message.channel_type() == rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
+      // TODO(swang): Test object locations pubsub too.
+      return;
+    }
     auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
     const auto oid = ObjectID::FromBinary(pub_message.key_id());
     if (maybe_subscribers.has_value()) {
