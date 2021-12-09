@@ -1835,8 +1835,9 @@ cdef class CoreWorker:
 
     cdef store_task_output(self, serialized_object, const CObjectID &return_id,
                            size_t data_size, shared_ptr[CBuffer] &metadata,
-                           const c_vector[CObjectID] &contained_id, int64_t *task_output_inlined_bytes, shared_ptr[CRayObject]
-                           *return_ptr):
+                           const c_vector[CObjectID] &contained_id,
+                           int64_t *task_output_inlined_bytes,
+                           shared_ptr[CRayObject] *return_ptr):
         """Store a task return value in plasma or as an inlined object."""
         with nogil:
             check_status(

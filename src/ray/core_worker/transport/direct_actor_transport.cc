@@ -105,7 +105,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         if (!return_objects[i]) {
           // This should only happen if the local raylet died. Caller should
           // retry the task.
-          RAY_LOG(WARNING) << "Failed to create task return object " << id << " in the object store, exiting.";
+          RAY_LOG(WARNING) << "Failed to create task return object " << id
+                           << " in the object store, exiting.";
           QuickExit();
         }
         const auto &result = return_objects[i];
