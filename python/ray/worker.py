@@ -2208,14 +2208,15 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (SchedulingStrategy): Strategy about how to
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
             will either be the PlacementGroupSchedulingStrategy using parent's
             placement group if parent has one and has
             placement_group_capture_child_tasks set to true,
-            or the DefaultSchedulingStrategy;
+            or "DEFAULT";
             "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """
