@@ -401,7 +401,16 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  std::unique_ptr<InternalKVInterface> instance;
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    instance = std::make_unique<RedisInternalKV>(redis_client_.get());
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    instance = std::make_unique<MemoryInternalKV>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
+
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -418,7 +427,7 @@ void GcsServer::InitPubSubHandler() {
 
 void GcsServer::InitRuntimeEnvManager() {
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto cb) {
+      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
         // A valid runtime env URI is of the form "plugin|protocol://hash".
         std::string plugin_sep = "|";
         std::string protocol_sep = "://";
@@ -428,23 +437,18 @@ void GcsServer::InitRuntimeEnvManager() {
             plugin_end_pos == std::string::npos) {
           RAY_LOG(ERROR) << "Plugin URI must be of form "
                          << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
-          cb(false);
+          callback(false);
         } else {
           auto protocol_pos = plugin_end_pos + plugin_sep.size();
           int protocol_len = protocol_end_pos - protocol_pos;
           auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
           if (protocol != "gcs") {
             // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
-            cb(true);
+            callback(true);
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
-            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
-              if (deleted_num == 0) {
-                cb(false);
-              } else {
-                cb(true);
-              }
-            });
+            this->kv_manager_->GetInstance().Del(
+                uri, [callback = std::move(callback)](bool deleted) { callback(false); });
           }
         }
       });

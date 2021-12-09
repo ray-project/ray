@@ -19,7 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace {
 const ray::rpc::ActorDeathCause GenRuntimeEnvFailedCause(const std::string &error_msg) {
