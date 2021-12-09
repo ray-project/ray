@@ -32,11 +32,11 @@ class ClusterInfo:
 
 def get_job_submission_client_cluster_info(
         address: str,
-        # For backwards compatibility
-        *,
-        # only used in importlib case in parse_cluster_info, but needed
-        # in function signature.
-        create_cluster_if_needed: Optional[bool] = False,
+        # Only used in importlib case in parse_cluster_info, but needed
+        # in function signature. Included in ray 1.9 release.
+        create_cluster_if_needed: bool,
+        # NOTE: For compatibility, do not touch positional args above, only
+        # add new kwargs below.
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
@@ -63,7 +63,7 @@ def get_job_submission_client_cluster_info(
 
 def parse_cluster_info(
         address: str,
-        create_cluster_if_needed: bool = False,
+        create_cluster_if_needed: bool,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
@@ -80,7 +80,7 @@ def parse_cluster_info(
     elif module_string == "ray":
         return get_job_submission_client_cluster_info(
             inner_address,
-            create_cluster_if_needed=create_cluster_if_needed,
+            create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers)
@@ -98,7 +98,7 @@ def parse_cluster_info(
 
         return module.get_job_submission_client_cluster_info(
             inner_address,
-            create_cluster_if_needed=create_cluster_if_needed,
+            create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers)
@@ -116,8 +116,12 @@ class JobSubmissionClient:
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``")
 
-        cluster_info = parse_cluster_info(address, create_cluster_if_needed,
-                                          cookies, metadata, headers)
+        cluster_info = parse_cluster_info(
+            address,
+            create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
