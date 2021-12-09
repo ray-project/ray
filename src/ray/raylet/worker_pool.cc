@@ -455,12 +455,12 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       bool used;
       TaskID task_id;
       InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
-                                        proc_startup_token, nullptr, status,
-                                        &found, &used, &task_id);
+                                        proc_startup_token, nullptr, status, &found,
+                                        &used, &task_id);
       if (!found) {
         InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
-                                          proc_startup_token, nullptr,
-                                          status, &found, &used, &task_id);
+                                          proc_startup_token, nullptr, status, &found,
+                                          &used, &task_id);
       }
       state.starting_worker_processes.erase(it);
       if (IsIOWorkerType(worker_type)) {
@@ -816,7 +816,8 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::InvokePopWorkerCallbackForProcess(
-    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
+        &starting_workers_to_tasks,
     StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
@@ -841,8 +842,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   bool used;
   TaskID task_id;
   InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
-                                    worker->GetStartupToken(), worker, PopWorkerStatus::OK,
-                                    &found, &used, &task_id);
+                                    worker->GetStartupToken(), worker,
+                                    PopWorkerStatus::OK, &found, &used, &task_id);
   if (found) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
@@ -854,8 +855,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
-                                    worker->GetStartupToken(), worker, PopWorkerStatus::OK,
-                                    &found, &used, &task_id);
+                                    worker->GetStartupToken(), worker,
+                                    PopWorkerStatus::OK, &found, &used, &task_id);
   // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
     // Put the worker to the idle pool.

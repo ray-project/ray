@@ -492,8 +492,8 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
-  auto [proc, token] = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
-                                                  JOB_ID, &status);
+  auto [proc, token] = worker_pool_->StartWorkerProcess(
+      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
@@ -984,8 +984,8 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
 TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // Start a Java worker process.
   PopWorkerStatus status;
-  auto [proc, token] = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
-                                                  JOB_ID, &status);
+  auto [proc, token] = worker_pool_->StartWorkerProcess(
+      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
   auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
   auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
 
@@ -1248,8 +1248,8 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
   for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
     for (const auto &language : languages) {
       PopWorkerStatus status;
-      auto[proc, token] = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
-                                                      JOB_ID, &status);
+      auto [proc, token] = worker_pool_->StartWorkerProcess(
+          language, rpc::WorkerType::WORKER, JOB_ID, &status);
       int workers_to_start =
           language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
       for (int j = 0; j < workers_to_start; j++) {
