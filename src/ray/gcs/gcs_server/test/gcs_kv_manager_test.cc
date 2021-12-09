@@ -64,8 +64,8 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
 
   kv_instance->Keys("A_", [](std::vector<std::string> keys) {
-    auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
-    ASSERT_EQ(expected, keys);
+    auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
+    ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
   });
 }
 
