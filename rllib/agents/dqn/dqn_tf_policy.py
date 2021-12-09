@@ -348,7 +348,7 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    model_out, state = model(input_batch)#, state_batches or [], seq_lens)
+    model_out, state = model(input_batch, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
         (action_scores, z, support_logits_per_action, logits,

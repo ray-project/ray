@@ -13,7 +13,7 @@ torch, nn = try_import_torch()
 class TestR2D2(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -39,7 +39,7 @@ class TestR2D2(unittest.TestCase):
         num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config):
             trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()

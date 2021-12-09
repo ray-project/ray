@@ -374,8 +374,8 @@ class _AgentCollector:
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
             if col == SampleBatch.INFOS or col.startswith("state_out_") or (
-                    col == SampleBatch.ACTIONS
-                    and not self.policy.config.get("_disable_action_flattening")):
+                    col == SampleBatch.ACTIONS and
+                    not self.policy.config.get("_disable_action_flattening")):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]
@@ -706,8 +706,8 @@ class SimpleListCollector(SampleCollector):
 
         return SampleBatch(
             input_dict,
-            seq_lens=np.ones(batch_size, dtype=np.int32) if
-            "state_in_0" in input_dict else None)
+            seq_lens=np.ones(batch_size, dtype=np.int32)
+            if "state_in_0" in input_dict else None)
 
     @override(SampleCollector)
     def postprocess_episode(
