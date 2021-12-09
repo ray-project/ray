@@ -163,7 +163,8 @@ def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
         "_system_config": {
             "num_workers_soft_limit": 0,
         },
-    }], indirect=True)
+    }],
+    indirect=True)
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_task_level_gc(ray_start_cluster, field, spec_format, tmp_path):
