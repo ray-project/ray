@@ -327,7 +327,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {0, 1}
+    assert df.to_dict().keys() == {"0", "1"}
 
 
 def test_arrow_block_slice_copy():
@@ -1267,7 +1267,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
+    df = pd.DataFrame({"0": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
@@ -2026,7 +2026,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         # The pandas column is "0", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["value"] == i + 1
+        assert row["0"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
