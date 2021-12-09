@@ -260,6 +260,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
+  /// Record the internal metrics.
   void RecordMetrics() override;
 
   /// The helper to dump the debug state of the cluster task manater.

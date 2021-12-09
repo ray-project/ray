@@ -4,9 +4,11 @@ This file defines the common pytest fixtures used in current directory.
 import os
 from contextlib import contextmanager
 import pytest
+import tempfile
 import subprocess
 import json
 import time
+from pathlib import Path
 
 import ray
 from ray.cluster_utils import (Cluster, AutoscalingCluster,
@@ -269,6 +271,30 @@ def start_cluster(ray_start_cluster, request):
         address = cluster.address
 
     yield cluster, address
+
+
+@pytest.fixture(scope="function")
+def tmp_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+
+        hello_file = path / "hello"
+        with hello_file.open(mode="w") as f:
+            f.write("world")
+
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("def one():\n")
+            f.write("    return 1\n")
+
+        init_file = module_path / "__init__.py"
+        with init_file.open(mode="w") as f:
+            f.write("from test_module.test import one\n")
+
+        yield tmp_dir
 
 
 @pytest.fixture
