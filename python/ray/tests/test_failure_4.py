@@ -16,8 +16,10 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     run_string_as_driver, wait_for_condition)
+from ray._private.test_utils import (
+    init_error_pubsub, get_error_message,
+    run_string_as_driver,
+    wait_for_condition)
 
 
 def search_raylet(cluster):
@@ -439,12 +441,11 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
     #   1. when worker failed to register, raylet will print useful log
     #   2. raylet will kill hanging worker
     with monkeypatch.context() as m:
-        # delay internal kv for 5s
         # this delay will make worker start slow
         m.setenv(
             "RAY_testing_asio_delay_us",
             "InternalKVGcsService.grpc_server.InternalKVGet"
-            "=999999999:999999999")
+            "=2000000:2000000")
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
@@ -456,10 +457,11 @@ ray.init(address='auto')
 def task():
     return None
 
-ray.get(task.remote(), timeout=4)
+ray.get(task.remote(), timeout=3)
 """
         with pytest.raises(subprocess.CalledProcessError) as e:
             run_string_as_driver(script)
+
         # make sure log is correct
         assert ("The process is still alive, probably "
                 "it's hanging during start") in e.value.output.decode()
