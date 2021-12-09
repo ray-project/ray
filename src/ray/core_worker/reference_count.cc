@@ -256,7 +256,9 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
   absl::MutexLock lock(&mutex_);
-  for (auto &ref : object_id_refs_) {
+  /// NOTE: A copy here to avoid the risk of iterator invalidation issue.
+  auto all_refs_copy = object_id_refs_;
+  for (auto &ref : all_refs_copy) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
       RemoveLocalReferenceInternal(ref.first, nullptr);
     }
