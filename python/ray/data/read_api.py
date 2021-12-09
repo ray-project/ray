@@ -534,7 +534,6 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
     partitions = df.to_delayed()
     persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
-
     return from_pandas_refs(
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
