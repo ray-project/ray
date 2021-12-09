@@ -364,10 +364,11 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
+        stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks = simple_shuffle(self._blocks, num_blocks)
+            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
             return Dataset(new_blocks, self._epoch,
-                           self._stats.child_TODO("repartition"))
+                           stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
@@ -449,17 +450,18 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        stats = self._stats.child_builder("random_shuffle")
 
         if num_blocks is None:
             num_blocks = self._blocks.executed_num_blocks()  # Blocking.
-        new_blocks = simple_shuffle(
+        new_blocks, stage_info = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks, self._epoch,
-                       self._stats.child_TODO("random_shuffle"))
+                       stats.build_multistage(stage_info))
 
     def split(self,
               n: int,
