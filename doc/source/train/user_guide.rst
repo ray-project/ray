@@ -536,7 +536,9 @@ Concrete examples are provided to demonstrate how checkpoints are saved
 appropriately in distributed training.
 
 .. tabs::
+
   .. group-tab:: PyTorch
+
     .. code-block:: python
 
         import ray.train.torch
@@ -589,6 +591,7 @@ appropriately in distributed training.
 
 
   .. group-tab:: TensorFlow
+
     .. code-block:: python
 
         from ray import train
@@ -608,6 +611,7 @@ appropriately in distributed training.
 
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
+                # toy neural network : 1-layer
                 model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
                 model.compile(loss="mean_squared_error", metrics=["mse"])
 
@@ -713,7 +717,9 @@ Checkpoints can be loaded into the training function in 2 steps:
    ``checkpoint`` to ``trainer.run()``.
 
 .. tabs::
+
   .. group-tab:: PyTorch
+
     .. code-block:: python
 
         import ray.train.torch
@@ -777,6 +783,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 
 
   .. group-tab:: TensorFlow
+
     .. code-block:: python
 
         from ray import train
@@ -798,6 +805,7 @@ Checkpoints can be loaded into the training function in 2 steps:
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
             with strategy.scope():
+                # toy neural network : 1-layer
                 model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
                 checkpoint = train.load_checkpoint()
                 if checkpoint:
