@@ -18,7 +18,7 @@ def _update_docker_compose(docker_compose_path: str,
                            project_name: str) -> bool:
     docker_compose_config = _read_yaml(docker_compose_path)
 
-    cmd = ["up", "-d"]
+    cmd = ["up", "-d", "--no-recreate"]
     shutdown = False
     if not docker_compose_config["services"]:
         # If no more nodes, run `down` instead of `up`

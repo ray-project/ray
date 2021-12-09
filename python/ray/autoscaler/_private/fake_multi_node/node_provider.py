@@ -43,22 +43,25 @@ DOCKER_NODE_SKELETON = {
     "volumes": [
         # Todo: Remove
         "/Users/kai/coding/ray/python/ray/autoscaler:"
-        "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler:ro"
+        "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler:ro",
+        "/Users/kai/coding/ray/python/ray/node.py:"
+        "/home/ray/anaconda3/lib/python3.7/site-packages/ray/node.py:ro"
     ]
 }
 
 DOCKER_HEAD_CMD = (
     "bash -c \""
+    "sudo mkdir -p {volume_dir} && "
+    "sudo chmod 777 {volume_dir} && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
     "sudo apt update && sudo apt install -y openssh-server && "
     "sudo service ssh start && "
     "sleep 1 && "
-    "sudo chmod 777 {volume_dir} && "
-    "RAY_FAKE_CLUSTER=1 ray start --head --port=6379 "
-    "--object-manager-port=8076 --dashboard-host 0.0.0.0 "
-    "--autoscaling-config={autoscaling_config} "
+    f"RAY_FAKE_CLUSTER=1 ray start --head "
+    f"--autoscaling-config=~/ray_bootstrap_config.yaml "
+    "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
     "--num-gpus {num_gpus} "
     # "--resources='{resources}' "
@@ -66,6 +69,8 @@ DOCKER_HEAD_CMD = (
 
 DOCKER_WORKER_CMD = (
     "bash -c \""
+    "sudo mkdir -p {volume_dir} && "
+    "sudo chmod 777 {volume_dir} && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
@@ -108,6 +113,7 @@ def create_node_spec(head: bool,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
+
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
@@ -165,6 +171,8 @@ class FakeMultiNodeProvider(NodeProvider):
             self._project_name = self.provider_config["project_name"]
             self._docker_image = self.provider_config["image"]
 
+            self._head_resources = self.provider_config["head_resources"]
+
             # subdirs:
             #  - ./shared (shared filesystem)
             #  - ./nodes/<node_id> (node-specific mounted filesystem)
@@ -173,8 +181,6 @@ class FakeMultiNodeProvider(NodeProvider):
                                                      "shared")
 
             os.makedirs(self._mounted_cluster_dir, mode=0o755, exist_ok=True)
-
-            resources = copy.deepcopy(provider_config.get("head_resources"))
 
             self._boostrap_config_path = os.path.join(self._volume_dir,
                                                       "bootstrap_config.yaml")
@@ -199,7 +205,7 @@ class FakeMultiNodeProvider(NodeProvider):
 
             self._nodes[FAKE_HEAD_NODE_ID][
                 "node_spec"] = self._create_node_spec_with_resources(
-                    head=True, node_id=FAKE_HEAD_NODE_ID, resources=resources)
+                    head=True, node_id=FAKE_HEAD_NODE_ID, resources=self._head_resources)
 
             self._docker_status = {}
 
@@ -225,6 +231,8 @@ class FakeMultiNodeProvider(NodeProvider):
         node_dir = os.path.join(self._volume_dir, "nodes", node_id)
         os.makedirs(node_dir, mode=0o755, exist_ok=True)
 
+        resource_str = json.dumps(resources, indent=None)
+
         return create_node_spec(
             head=head,
             docker_image=self._docker_image,
@@ -235,7 +243,7 @@ class FakeMultiNodeProvider(NodeProvider):
             resources=resources,
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
-                # "RAY_OVERRIDE_RESOURCES": json.dumps(resources, indent=None),
+                "RAY_OVERRIDE_RESOURCES": resource_str,
             },
             volume_dir=self._volume_dir,
             status_path=self._status_path,
@@ -334,10 +342,8 @@ class FakeMultiNodeProvider(NodeProvider):
             self._update_docker_status()
             ip = self._docker_status.get(node_id, {}).get("IP", None)
             if ip:
-                print("FOUND IP", ip)
                 return ip
             time.sleep(3)
-        print("FOUND NO IP", self._docker_status)
         return None
 
     def external_ip(self, node_id):
@@ -362,6 +368,14 @@ class FakeMultiNodeProvider(NodeProvider):
             else:
                 return self._create_node_with_resources_docker(
                     node_config, tags, count, resources)
+
+    def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
+                    count: int) -> Optional[Dict[str, Any]]:
+        if self.uses_docker:
+            resources = self._head_resources
+            return self.create_node_with_resources(node_config, tags, count, resources)
+        else:
+            raise NotImplementedError
 
     def _create_node_with_resources_core(self, node_config, tags, count,
                                          resources):
@@ -395,7 +409,6 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def _create_node_with_resources_docker(self, node_config, tags, count,
                                            resources):
-        node_type = tags[TAG_RAY_USER_NODE_TYPE]
         is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
 
         if is_head:
@@ -403,16 +416,8 @@ class FakeMultiNodeProvider(NodeProvider):
         else:
             next_id = self._next_hex_node_id()
 
-        overwrite_tags = {
-            TAG_RAY_NODE_KIND: (NODE_KIND_WORKER
-                                if not is_head else NODE_KIND_HEAD),
-            TAG_RAY_USER_NODE_TYPE: node_type,
-            TAG_RAY_NODE_NAME: next_id,
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-        }
-
         self._nodes[next_id] = {
-            "tags": overwrite_tags,
+            "tags": tags,
             "node_spec": self._create_node_spec_with_resources(
                 head=is_head, node_id=next_id, resources=resources)
         }

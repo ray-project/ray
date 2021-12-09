@@ -15,6 +15,7 @@ provider:
     project_name: fake_docker
     image: rayproject/ray:nightly
     shared_volume_dir: /tmp/fake_docker
+
     head_resources:
       CPU: 4
       GPU: 0
@@ -51,6 +52,18 @@ available_node_types:
 head_node_type: ray.head.default
 upscaling_speed: 1.0
 idle_timeout_minutes: 0.1
+
+# Todo: The start commands currently don't work - docker doesn't seem to like docker exec
+# and Ray only works when including it in the docker-compose command
+head_start_ray_commands: []
+#    - RAY_FAKE_CLUSTER=1 ray stop
+#    - RAY_FAKE_CLUSTER=1 ray start --head --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands: []
+#    - RAY_FAKE_CLUSTER=1 ray stop
+#    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=1000000000
+
 #
 # !!! Configurations below are not supported in fake cluster mode !!!
 #
@@ -59,8 +72,6 @@ initialization_commands: []
 setup_commands: []
 head_setup_commands: []
 worker_setup_commands: []
-head_start_ray_commands: []
-worker_start_ray_commands: []
 file_mounts: {}
 cluster_synced_files: []
 file_mounts_sync_continuously: false
