@@ -22,6 +22,8 @@ def test_background_tasks_with_max_calls(shutdown_only):
         num_cpus=2,
         _system_config={"worker_cap_initial_backoff_delay_ms": 0})
 
+    num_tasks = 3
+
     @ray.remote
     def g():
         time.sleep(.1)
@@ -31,7 +33,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
     def f():
         return [g.remote()]
 
-    nested = ray.get([f.remote() for _ in range(10)])
+    nested = ray.get([f.remote() for _ in range(num_tasks)])
 
     # Should still be able to retrieve these objects, since f's workers will
     # wait for g to finish before exiting.
@@ -41,7 +43,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
     def f():
         return os.getpid(), g.remote()
 
-    nested = ray.get([f.remote() for _ in range(10)])
+    nested = ray.get([f.remote() for _ in range(num_tasks)])
     while nested:
         pid, g_id = nested.pop(0)
         assert ray.get(g_id) == 0
