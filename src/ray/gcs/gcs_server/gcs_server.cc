@@ -72,12 +72,13 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   };
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.config_list);
-  // Run async operations from InternalConfigTable().Put()
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(),
                                                              stored_config, on_done));
   // Here we need to make sure the Put of internal config is happening in sync
-  // way. But the storage api is async. So we need to run the main_service_
-  // to block currenct thread to.
+  // way. But since the storage API is async, we need to run the main_service_
+  // to block currenct thread.
+  // This will run async operations from InternalConfigTable().Put() above
+  // inline.
   main_service_.run();
   // Reset the main service to the initial status otherwise, the signal handler
   // will be called.
