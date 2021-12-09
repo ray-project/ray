@@ -1,5 +1,3 @@
-import copy
-import json
 import logging
 import os
 from pathlib import Path
@@ -8,8 +6,11 @@ from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 import ray
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
+                                             encode_plugin_uri)
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
+from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,12 @@ def validate_uri(uri: str):
             "be dynamically uploaded is only supported at the job level "
             "(i.e., passed to `ray.init`).")
 
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for remote URIs.")
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a user-provided 'py_modules' option.
+    """Parses and validates a 'py_modules' option.
 
     This should be a list of URIs.
     """
@@ -48,7 +49,7 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+    """Parses and validates a 'working_dir' option.
 
     This should be a URI.
     """
@@ -68,7 +69,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
     Conda can be one of three cases:
         1) A dictionary describing the env. This is passed through directly.
-        2) A string referring to a preinstalled conda env.
+        2) A string referring to the name of a preinstalled conda env.
         3) A string pointing to a local conda YAML file. This is detected
            by looking for a '.yaml' or '.yml' suffix. In this case, the file
            will be read as YAML and passed through as a dictionary.
@@ -260,6 +261,7 @@ class ParsedRuntimeEnv(dict):
 
     def __init__(self, runtime_env: Dict[str, Any], _validate: bool = True):
         super().__init__()
+        self._cached_pb = None
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -334,51 +336,33 @@ class ParsedRuntimeEnv(dict):
             self.clear()
 
     def get_uris(self) -> List[str]:
-        # TODO(edoakes): this should be extended with other resource URIs.
-        return [self["working_dir"]] if "working_dir" in self else []
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        plugin_uris = []
+        if "working_dir" in self:
+            plugin_uris.append(
+                encode_plugin_uri("working_dir", self["working_dir"]))
+        if "py_modules" in self:
+            for uri in self["py_modules"]:
+                plugin_uris.append(encode_plugin_uri("py_modules", uri))
+        if "conda" or "pip" in self:
+            uri = conda.get_uri(self)
+            if uri is not None:
+                plugin_uris.append(encode_plugin_uri("conda", uri))
+
+        return plugin_uris
+
+    def get_proto_runtime_env(self):
+        """Return the protobuf structure of runtime env."""
+        if self._cached_pb is None:
+            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
+
+        return self._cached_pb
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
-        return cls(json.loads(serialized), _validate=False)
+        runtime_env = RuntimeEnv(serialized_runtime_env=serialized)
+        return cls(runtime_env.to_dict(), _validate=False)
 
     def serialize(self) -> str:
-        # Sort the keys we can compare the serialized string for equality.
-        return json.dumps(self, sort_keys=True)
-
-
-def override_task_or_actor_runtime_env(
-        child_runtime_env: ParsedRuntimeEnv,
-        parent_runtime_env: ParsedRuntimeEnv) -> ParsedRuntimeEnv:
-    """Merge the given child runtime env with the parent runtime env.
-
-    If running in a driver, the current runtime env comes from the
-    JobConfig.  Otherwise, we are running in a worker for an actor or
-    task, and the current runtime env comes from the current TaskSpec.
-
-    By default, the child runtime env inherits non-specified options from the
-    parent. There is one exception to this:
-        - The env_vars dictionaries are merged, so environment variables
-          not specified by the child are still inherited from the parent.
-
-    Returns:
-        The resulting merged ParsedRuntimeEnv.
-    """
-    assert child_runtime_env is not None
-    assert parent_runtime_env is not None
-
-    # Override environment variables.
-    result_env_vars = copy.deepcopy(parent_runtime_env.get("env_vars") or {})
-    child_env_vars = child_runtime_env.get("env_vars") or {}
-    result_env_vars.update(child_env_vars)
-
-    # Inherit all other non-specified options from the parent.
-    result = copy.deepcopy(parent_runtime_env)
-    result.update(child_runtime_env)
-    if len(result_env_vars) > 0:
-        result["env_vars"] = result_env_vars
-
-    # NOTE(architkulkarni): This allows worker caching code in C++ to
-    # check if a runtime env is empty without deserializing it.
-    assert all(val is not None for val in result.values())
-
-    return result
+        return self.get_proto_runtime_env().serialize()

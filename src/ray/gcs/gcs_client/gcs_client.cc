@@ -67,6 +67,7 @@ void GcsSubscriberClient::PubsubCommandBatch(
     const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
   rpc::GcsSubscriberCommandBatchRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  *req.mutable_commands() = request.commands();
   rpc_client_->GcsSubscriberCommandBatch(
       req, [callback](const Status &status,
                       const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
@@ -131,7 +132,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
   };
 
@@ -156,7 +156,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
         std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
                                       rpc::ChannelType::GCS_JOB_CHANNEL,
                                       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
+                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
         /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
         /*get_client=*/
         [this](const rpc::Address &) {
@@ -174,7 +175,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
-  object_accessor_ = std::make_unique<ObjectInfoAccessor>(this);
   stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);
@@ -203,6 +203,7 @@ void GcsClient::Disconnect() {
   gcs_subscriber_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
+  disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
 
@@ -272,10 +273,8 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
     // If GCS sever address has changed, reconnect to GCS server and redo
     // subscription.
     ReconnectGcsServer();
-    // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
-    // because we use the same Redis server for both GCS storage and pub-sub. So the
-    // following flag is always false.
-    resubscribe_func_(false);
+    // If using GCS server for pubsub, resubscribe to GCS publishers.
+    resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
     // Resend resource usage after reconnected, needed by resource view in GCS.
     node_resource_accessor_->AsyncReReportResourceUsage();
     break;
@@ -289,6 +288,9 @@ void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+    if (disconnected_) {
+      return;
+    }
     if (get_server_address_func_(&address)) {
       // After GCS is restarted, the gcs client will reestablish the connection. At
       // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to

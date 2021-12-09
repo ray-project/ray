@@ -1,7 +1,9 @@
 import itertools
+import time
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
+import uuid
 
 import numpy as np
 if TYPE_CHECKING:
@@ -15,7 +17,9 @@ if TYPE_CHECKING:
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    MaybeBlockPartition, BlockExecStats, BlockPartitionMetadata
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
@@ -23,9 +27,9 @@ from ray.data.datasource import Datasource, RangeDatasource, \
 from ray.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
-    BlockPartitionMetadata
+from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
 from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
@@ -60,10 +64,11 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
-            BlockAccessor.for_block(block).get_metadata(input_files=None))
+            BlockAccessor.for_block(block).get_metadata(
+                input_files=None, exec_stats=BlockExecStats.TODO))
         i += block_size
 
-    return Dataset(BlockList(blocks, metadata), 0)
+    return Dataset(BlockList(blocks, metadata), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")
@@ -110,15 +115,15 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 @PublicAPI(stability="beta")
 def range_tensor(n: int, *, shape: Tuple = (1, ),
-                 parallelism: int = 200) -> Dataset[np.ndarray]:
+                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
-        >>> ds.map_batches(lambda arr: arr ** 2).show()
+        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show()
 
-    This is similar to range(), but uses np.ndarrays to hold the integers
-    in tensor form. The dataset has overall the shape ``(n,) + shape``.
+    This is similar to range_arrow(), but uses the ArrowTensorArray extension
+    type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -127,7 +132,7 @@ def range_tensor(n: int, *, shape: Tuple = (1, ),
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers as tensors.
+        Dataset holding the integers as Arrow tensor records.
     """
     return read_datasource(
         RangeDatasource(),
@@ -158,9 +163,29 @@ def read_datasource(datasource: Datasource[T],
     """
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
+    context = DatasetContext.get_current()
+    stats_actor = get_or_create_stats_actor()
+    stats_uuid = uuid.uuid4()
 
-    def remote_read(task: ReadTask) -> Block:
-        return task()
+    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
+        DatasetContext._set_current(context)
+        start_time, start_cpu = time.perf_counter(), time.process_time()
+        exec_stats = BlockExecStats()
+
+        # Execute the read task.
+        block = task()
+
+        exec_stats.cpu_time_s = time.process_time() - start_cpu
+        exec_stats.wall_time_s = time.perf_counter() - start_time
+        if context.block_splitting_enabled:
+            metadata = task.get_metadata()
+            metadata.exec_stats = exec_stats
+        else:
+            metadata = BlockAccessor.for_block(block).get_metadata(
+                input_files=task.get_metadata().input_files,
+                exec_stats=exec_stats)
+        stats_actor.add.remote(stats_uuid, i, metadata)
+        return block
 
     if ray_remote_args is None:
         ray_remote_args = {}
@@ -182,33 +207,30 @@ def read_datasource(datasource: Datasource[T],
         # If no spread resource prefix given, yield an empty dictionary.
         resource_iter = itertools.repeat({})
 
-    calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
+    calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
-    for task in read_tasks:
+    for i, task in enumerate(read_tasks):
         calls.append(
-            lambda task=task,
+            lambda i=i, task=task,
             resources=next(resource_iter): remote_read.options(
                 **ray_remote_args,
-                resources=resources).remote(task))
+                resources=resources).remote(i, task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
-        get_schema = cached_remote_fn(_get_schema)
-        schema0 = ray.get(get_schema.remote(next(block_list.iter_blocks())))
-        block_list.set_metadata(
-            0,
-            BlockMetadata(
-                num_rows=metadata[0].num_rows,
-                size_bytes=metadata[0].size_bytes,
-                schema=schema0,
-                input_files=metadata[0].input_files,
-            ))
+        block_list.ensure_schema_for_first_block()
 
-    return Dataset(block_list, 0)
+    return Dataset(
+        block_list, 0,
+        DatasetStats(
+            stages={"read": metadata},
+            parent=None,
+            stats_actor=stats_actor,
+            stats_uuid=stats_uuid))
 
 
 @PublicAPI(stability="beta")
@@ -583,7 +605,8 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
+    return Dataset(
+        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
 
 
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
@@ -599,7 +622,8 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
+    return Dataset(
+        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")
@@ -639,7 +663,8 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
-    return Dataset(BlockList(tables, ray.get(metadata)), 0)
+    return Dataset(
+        BlockList(tables, ray.get(metadata)), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")
@@ -665,21 +690,18 @@ def from_spark(df: "pyspark.sql.DataFrame",
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     import pyarrow as pa
     block = pa.table(df)
-    return (block,
-            BlockAccessor.for_block(block).get_metadata(input_files=None))
+    return (block, BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO))
 
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     import pyarrow as pa
     from ray.data.extensions import TensorArray
     table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
-    return (table,
-            BlockAccessor.for_block(table).get_metadata(input_files=None))
-
-
-def _get_schema(block: Block) -> Any:
-    return BlockAccessor.for_block(block).schema()
+    return (table, BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO))
 
 
 def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
-    return BlockAccessor.for_block(table).get_metadata(input_files=None)
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO)

@@ -28,6 +28,7 @@ SUPPORTED_BAZEL = (4, 2, 1)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -69,6 +70,7 @@ class BuildType(Enum):
     DEFAULT = 1
     DEBUG = 2
     ASAN = 3
+    TSAN = 4
 
 
 class SetupSpec:
@@ -82,6 +84,8 @@ class SetupSpec:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
         else:
             self.version = version
         self.description: str = description
@@ -102,6 +106,8 @@ if build_type == "debug":
     BUILD_TYPE = BuildType.DEBUG
 elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
+elif build_type == "tsan":
+    BUILD_TYPE = BuildType.TSAN
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -162,6 +168,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/aws/cloudwatch/prometheus.yml",
+    "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
@@ -192,16 +200,19 @@ if setup_spec.type == SetupType.RAY:
         ],
         "default": [
             "aiohttp >= 3.7",
+            "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
+            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
+            "smart_open"
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -209,6 +220,12 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
+    else:
+        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -480,6 +497,9 @@ def build(build_python, build_java, build_cpp):
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_LIMIT_CPUS:
+        n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
+        bazel_flags.append(f"--local_cpu_resources={n}")
 
     if not is_automated_build:
         bazel_precmd_flags = []
@@ -509,6 +529,8 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
         bazel_flags.extend(["--config=asan-build"])
+    if setup_spec.build_type == BuildType.TSAN:
+        bazel_flags.extend(["--config=tsan"])
 
     return bazel_invoke(
         subprocess.check_call,

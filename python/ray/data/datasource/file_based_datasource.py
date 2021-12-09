@@ -1,18 +1,18 @@
 import logging
 from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
-    TYPE_CHECKING
+    Iterator, Iterable, TYPE_CHECKING
 import urllib.parse
 
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
-from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
+from ray.data.block import Block, BlockAccessor, BlockExecStats
+from ray.data.context import DatasetContext
+from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult, \
-    _get_or_create_block_owner_actor
+from ray.data.impl.output_buffer import BlockOutputBuffer
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -122,41 +122,39 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Creates and returns read tasks for a file-based datasource.
         """
         _check_pyarrow_version()
-        import pyarrow as pa
         import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_infos = _expand_paths(paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
 
-        read_file = self._read_file
+        read_stream = self._read_stream
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         if open_stream_args is None:
             open_stream_args = {}
 
-        def read_files(
-                read_paths: List[str],
-                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
+        def read_files(read_paths: List[str],
+                       fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]
+                       ) -> Iterable[Block]:
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            builder = DelegatingArrowBlockBuilder()
+            ctx = DatasetContext.get_current()
+            output_buffer = BlockOutputBuffer(
+                block_udf=_block_udf,
+                target_max_block_size=ctx.target_max_block_size)
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
-                    data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table) or isinstance(
-                            data, np.ndarray):
-                        builder.add_block(data)
-                    else:
-                        builder.add(data)
-            block = builder.build()
-            if _block_udf is not None:
-                block = _block_udf(block)
-            return block
+                    for data in read_stream(f, read_path, **reader_args):
+                        output_buffer.add_block(data)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
-        owner = _get_or_create_block_owner_actor()
         read_tasks = []
         for read_paths, file_sizes in zip(
                 np.array_split(paths, parallelism),
@@ -172,27 +170,36 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 num_rows=num_rows,
                 size_bytes=sum(file_sizes),
                 schema=schema,
-                input_files=read_paths)
+                input_files=read_paths,
+                exec_stats=BlockExecStats.TODO)
             read_task = ReadTask(
-                lambda read_paths=read_paths, meta=meta: [(ray.put(read_files(
-                    read_paths, filesystem), _owner=owner), meta)], meta
+                lambda read_paths=read_paths: read_files(
+                    read_paths, filesystem), meta
             )
             read_tasks.append(read_task)
 
         return read_tasks
 
     def _rows_per_file(self):
-        """Returns the number of rows per file, or None if unknown.
-        """
+        """Returns the number of rows per file, or None if unknown."""
         return None
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str,
+                     **reader_args) -> Iterator[Block]:
+        """Streaming read a single file, passing all kwargs to the reader.
+
+        By default, delegates to self._read_file().
+        """
+        yield self._read_file(f, path, **reader_args)
+
+    def _read_file(self, f: "pyarrow.NativeFile", path: str,
+                   **reader_args) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_files().")
+            "Subclasses of FileBasedDatasource must implement _read_file().")
 
     def do_write(self,
                  blocks: List[ObjectRef[Block]],

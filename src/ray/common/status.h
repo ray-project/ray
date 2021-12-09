@@ -205,6 +205,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static StatusCode StringToCode(const std::string &str);
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 

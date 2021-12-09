@@ -15,14 +15,14 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
-from ray.rllib.utils.tf_ops import get_gpu_devices
+from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
@@ -284,6 +284,13 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
+        # Switch off is_training flag in our batch.
+        if isinstance(input_dict, SampleBatch):
+            input_dict.set_training(False)
+        else:
+            # Deprecated dict input.
+            input_dict["is_training"] = False
+
         builder = TFRunBuilder(self.get_session(),
                                "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
@@ -318,7 +325,7 @@ class TFPolicy(Policy):
 
         builder = TFRunBuilder(self.get_session(), "compute_actions")
 
-        input_dict = {SampleBatch.OBS: obs_batch}
+        input_dict = {SampleBatch.OBS: obs_batch, "is_training": False}
         if state_batches:
             for i, s in enumerate(state_batches):
                 input_dict[f"state_in_{i}"] = s
@@ -399,6 +406,9 @@ class TFPolicy(Policy):
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
 
+        # Switch on is_training flag in our batch.
+        postprocessed_batch.set_training(True)
+
         builder = TFRunBuilder(self.get_session(), "learn_on_batch")
 
         # Callback handling.
@@ -418,6 +428,8 @@ class TFPolicy(Policy):
             postprocessed_batch: SampleBatch) -> \
             Tuple[ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
+        # Switch on is_training flag in our batch.
+        postprocessed_batch.set_training(True)
         builder = TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
@@ -1116,7 +1128,7 @@ class TFPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch.is_training = True
+        train_batch.set_training(True)
 
         # Build the feed dict from the batch.
         feed_dict = {}

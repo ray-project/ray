@@ -263,32 +263,6 @@ Status ActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
-Status ActorInfoAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [subscribe, done](
-                        const Status &status,
-                        const std::vector<rpc::ActorTableData> &actor_info_list) {
-      for (auto &actor_info : actor_info_list) {
-        subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
-      }
-      if (done) {
-        done(status);
-      }
-    };
-    RAY_CHECK_OK(AsyncGetAll(callback));
-  };
-
-  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllActors(subscribe, done);
-  };
-
-  return subscribe_all_operation_(
-      [this, done](const Status &status) { fetch_all_data_operation_(done); });
-}
-
 Status ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
@@ -312,19 +286,32 @@ Status ActorInfoAccessor::AsyncSubscribe(
     RAY_CHECK_OK(AsyncGet(actor_id, callback));
   };
 
-  auto subscribe_operation = [this, actor_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    return client_impl_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe,
-                                                           subscribe_done);
-  };
-
   {
     absl::MutexLock lock(&mutex_);
-    subscribe_operations_[actor_id] = subscribe_operation;
+    resubscribe_operations_[actor_id] =
+        [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
+          // Unregister the previous subscription before subscribing the to new
+          // GCS instance. Otherwise, the existing long poll on the previous GCS
+          // instance could leak or access invalid memory when returned.
+          // In future if long polls can be cancelled, this might become unnecessary.
+          while (true) {
+            Status s = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
+            if (s.ok()) {
+              break;
+            }
+            RAY_LOG(WARNING) << "Unsubscribing failed for " << actor_id.Hex()
+                             << ", retrying ...";
+            absl::SleepFor(absl::Seconds(1));
+          }
+          return client_impl_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe,
+                                                                 subscribe_done);
+        };
     fetch_data_operations_[actor_id] = fetch_data_operation;
   }
-  return subscribe_operation(
-      [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
+
+  return client_impl_->GetGcsSubscriber().SubscribeActor(
+      actor_id, subscribe,
+      [fetch_data_operation, done](const Status &) { fetch_data_operation(done); });
 }
 
 Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
@@ -332,7 +319,7 @@ Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
                  << ", job id = " << actor_id.JobId();
   auto status = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
   absl::MutexLock lock(&mutex_);
-  subscribe_operations_.erase(actor_id);
+  resubscribe_operations_.erase(actor_id);
   fetch_data_operations_.erase(actor_id);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id << ", job id = " << actor_id.JobId();
@@ -341,24 +328,13 @@ Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
 
 void ActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
-  auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
-                     "server or pub-sub server is restarted.";
-  };
-
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
-    if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
-        fetch_all_data_operation_(fetch_all_done);
-      }));
-    }
-    for (auto &item : subscribe_operations_) {
-      auto &actor_id = item.first;
-      RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
+    for (auto &[actor_id, resubscribe_op] : resubscribe_operations_) {
+      RAY_CHECK_OK(resubscribe_op([this, actor_id = actor_id](const Status &status) {
         absl::MutexLock lock(&mutex_);
         auto fetch_data_operation = fetch_data_operations_[actor_id];
         // `fetch_data_operation` is called in the callback function of subscribe.
@@ -370,9 +346,6 @@ void ActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
       }));
     }
   } else {
-    if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(fetch_all_done);
-    }
     for (auto &item : fetch_data_operations_) {
       item.second(nullptr);
     }
@@ -586,11 +559,14 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   // Add the notification to our cache.
   RAY_LOG(INFO) << "Received notification for node id = " << node_id
                 << ", IsAlive = " << is_alive;
+
+  auto &node = node_cache_[node_id];
   if (is_alive) {
-    node_cache_[node_id] = node_info;
+    node = node_info;
   } else {
-    node_cache_[node_id].set_state(rpc::GcsNodeInfo::DEAD);
-    node_cache_[node_id].set_timestamp(node_info.timestamp());
+    node.set_node_id(node_info.node_id());
+    node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.set_timestamp(node_info.timestamp());
   }
 
   // If the notification is new, call registered callback.
@@ -601,7 +577,9 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
       removed_nodes_.insert(node_id);
     }
     GcsNodeInfo &cache_data = node_cache_[node_id];
-    node_change_callback_(node_id, cache_data);
+    if (node_change_callback_) {
+      node_change_callback_(node_id, cache_data);
+    }
   }
 }
 
@@ -1017,230 +995,6 @@ void TaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
 
 bool TaskInfoAccessor::IsTaskLeaseUnsubscribed(const TaskID &task_id) {
   return client_impl_->GetGcsSubscriber().IsTaskLeaseUnsubscribed(task_id);
-}
-
-ObjectInfoAccessor::ObjectInfoAccessor(GcsClient *client_impl)
-    : client_impl_(client_impl) {}
-
-Status ObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id,
-    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
-  RAY_LOG(DEBUG) << "Getting object locations, object id = " << object_id
-                 << ", job id = " << object_id.TaskId().JobId();
-  rpc::GetObjectLocationsRequest request;
-  request.set_object_id(object_id.Binary());
-  client_impl_->GetGcsRpcClient().GetObjectLocations(
-      request, [object_id, callback](const Status &status,
-                                     const rpc::GetObjectLocationsReply &reply) {
-        callback(status, reply.location_info());
-        RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
-                       << ", object id = " << object_id
-                       << ", job id = " << object_id.TaskId().JobId();
-      });
-  return Status::OK();
-}
-
-Status ObjectInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::ObjectLocationInfo> &callback) {
-  RAY_LOG(DEBUG) << "Getting all object locations.";
-  rpc::GetAllObjectLocationsRequest request;
-  client_impl_->GetGcsRpcClient().GetAllObjectLocations(
-      request,
-      [callback](const Status &status, const rpc::GetAllObjectLocationsReply &reply) {
-        std::vector<rpc::ObjectLocationInfo> result;
-        result.reserve((reply.object_location_info_list_size()));
-        for (int index = 0; index < reply.object_location_info_list_size(); ++index) {
-          result.emplace_back(reply.object_location_info_list(index));
-        }
-        callback(status, result);
-        RAY_LOG(DEBUG) << "Finished getting all object locations, status = " << status;
-      });
-  return Status::OK();
-}
-
-Status ObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
-                                            const NodeID &node_id, size_t object_size,
-                                            const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Adding object location, object id = " << object_id
-                 << ", node id = " << node_id
-                 << ", job id = " << object_id.TaskId().JobId();
-  rpc::AddObjectLocationRequest request;
-  request.set_object_id(object_id.Binary());
-  request.set_node_id(node_id.Binary());
-  request.set_size(object_size);
-
-  auto operation = [this, request, object_id, node_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().AddObjectLocation(
-        request, [object_id, node_id, callback, done_callback](
-                     const Status &status, const rpc::AddObjectLocationReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-
-          RAY_LOG(DEBUG) << "Finished adding object location, status = " << status
-                         << ", object id = " << object_id << ", node id = " << node_id
-                         << ", job id = " << object_id.TaskId().JobId();
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(object_id, operation);
-  return Status::OK();
-}
-
-Status ObjectInfoAccessor::AsyncAddSpilledUrl(const ObjectID &object_id,
-                                              const std::string &spilled_url,
-                                              const NodeID &spilled_node_id,
-                                              size_t object_size,
-                                              const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
-                 << ", spilled_url = " << spilled_url
-                 << ", job id = " << object_id.TaskId().JobId();
-  rpc::AddObjectLocationRequest request;
-  request.set_object_id(object_id.Binary());
-  request.set_spilled_url(spilled_url);
-  request.set_spilled_node_id(spilled_node_id.Binary());
-  request.set_size(object_size);
-
-  auto operation = [this, request, callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().AddObjectLocation(
-        request, [callback, done_callback](const Status &status,
-                                           const rpc::AddObjectLocationReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(object_id, operation);
-  return Status::OK();
-}
-
-Status ObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
-                                               const NodeID &node_id,
-                                               const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Removing object location, object id = " << object_id
-                 << ", node id = " << node_id
-                 << ", job id = " << object_id.TaskId().JobId();
-  rpc::RemoveObjectLocationRequest request;
-  request.set_object_id(object_id.Binary());
-  request.set_node_id(node_id.Binary());
-
-  auto operation = [this, request, object_id, node_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RemoveObjectLocation(
-        request, [object_id, node_id, callback, done_callback](
-                     const Status &status, const rpc::RemoveObjectLocationReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished removing object location, status = " << status
-                         << ", object id = " << object_id << ", node id = " << node_id
-                         << ", job id = " << object_id.TaskId().JobId();
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(object_id, operation);
-  return Status::OK();
-}
-
-Status ObjectInfoAccessor::AsyncSubscribeToLocations(
-    const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr)
-      << "Failed to subscribe object location, object id = " << object_id
-      << ", job id = " << object_id.TaskId().JobId();
-
-  auto fetch_data_operation = [this, object_id,
-                               subscribe](const StatusCallback &fetch_done) {
-    auto callback = [object_id, subscribe, fetch_done](
-                        const Status &status,
-                        const boost::optional<rpc::ObjectLocationInfo> &result) {
-      if (status.ok()) {
-        std::vector<rpc::ObjectLocationChange> notification;
-        for (const auto &loc : result->locations()) {
-          rpc::ObjectLocationChange update;
-          update.set_is_add(true);
-          update.set_node_id(loc.manager());
-          update.set_size(result->size());
-          notification.push_back(update);
-        }
-        if (!result->spilled_url().empty()) {
-          rpc::ObjectLocationChange update;
-          update.set_spilled_url(result->spilled_url());
-          update.set_spilled_node_id(result->spilled_node_id());
-          update.set_size(result->size());
-          notification.push_back(update);
-        }
-        subscribe(object_id, notification);
-      }
-      if (fetch_done) {
-        fetch_done(status);
-      }
-    };
-    RAY_CHECK_OK(AsyncGetLocations(object_id, callback));
-  };
-
-  auto subscribe_operation = [this, object_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    return client_impl_->GetGcsSubscriber().SubscribeObject(object_id, subscribe,
-                                                            subscribe_done);
-  };
-
-  {
-    absl::MutexLock lock(&mutex_);
-    subscribe_object_operations_[object_id] = subscribe_operation;
-    fetch_object_data_operations_[object_id] = fetch_data_operation;
-  }
-  return subscribe_operation(
-      [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
-}
-
-void ObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(DEBUG) << "Reestablishing subscription for object locations.";
-  // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
-  // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
-  // server first, then fetch data from the GCS server.
-  absl::MutexLock lock(&mutex_);
-  if (is_pubsub_server_restarted) {
-    for (auto &item : subscribe_object_operations_) {
-      RAY_CHECK_OK(item.second([this, item](const Status &status) {
-        absl::MutexLock lock(&mutex_);
-        auto fetch_object_data_operation = fetch_object_data_operations_[item.first];
-        // `fetch_object_data_operation` is called in the callback function of subscribe.
-        // Before that, if the user calls `AsyncUnsubscribeToLocations` function, the
-        // corresponding fetch function will be deleted, so we need to check if it's null.
-        if (fetch_object_data_operation != nullptr) {
-          fetch_object_data_operation(nullptr);
-        }
-      }));
-    }
-  } else {
-    for (auto &item : fetch_object_data_operations_) {
-      item.second(nullptr);
-    }
-  }
-}
-
-Status ObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unsubscribing object location, object id = " << object_id
-                 << ", job id = " << object_id.TaskId().JobId();
-  auto status = client_impl_->GetGcsSubscriber().UnsubscribeObject(object_id);
-  absl::MutexLock lock(&mutex_);
-  subscribe_object_operations_.erase(object_id);
-  fetch_object_data_operations_.erase(object_id);
-  RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id
-                 << ", job id = " << object_id.TaskId().JobId();
-  return status;
-}
-
-bool ObjectInfoAccessor::IsObjectUnsubscribed(const ObjectID &object_id) {
-  return client_impl_->GetGcsSubscriber().IsObjectUnsubscribed(object_id);
 }
 
 StatsInfoAccessor::StatsInfoAccessor(GcsClient *client_impl)

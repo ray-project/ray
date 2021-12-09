@@ -30,21 +30,21 @@ Backend Configurations
 TorchConfig
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.TorchConfig
+.. autoclass:: ray.train.torch.TorchConfig
 
 .. _train-api-tensorflow-config:
 
 TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.TensorflowConfig
+.. autoclass:: ray.train.tensorflow.TensorflowConfig
 
 .. _train-api-horovod-config:
 
 HorovodConfig
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.HorovodConfig
+.. autoclass:: ray.train.horovod.HorovodConfig
 
 
 Callbacks
@@ -109,3 +109,28 @@ train.local_rank
 ~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.local_rank
+
+train.world_size
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.world_size
+
+.. _train-api-torch-utils:
+
+PyTorch Training Function Utilities
+-----------------------------------
+
+train.torch.prepare_model
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_model
+
+train.torch.prepare_data_loader
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_data_loader
+
+train.torch.get_device
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.get_device

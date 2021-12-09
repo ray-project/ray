@@ -19,6 +19,7 @@ DEFAULT_BLACKLIST = [
     "gpustat",
     "opencensus",
     "prometheus_client",
+    "smart_open"
 ]
 
 

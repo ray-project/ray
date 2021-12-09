@@ -51,7 +51,6 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
-  RAY_LOG(DEBUG) << "Getting gcs server address from raylet.";
   raylet_client_->GetGcsServerAddress([this](const Status &status,
                                              const rpc::GetGcsServerAddressReply &reply) {
     if (!status.ok()) {
@@ -64,8 +63,23 @@ void GcsServerAddressUpdater::UpdateGcsServerAddress() {
              "the worker might crash. Connection status "
           << status;
       if (failed_ping_count_ == RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
-        RAY_LOG(FATAL) << "Failed to receive the GCS address from the raylet for "
-                       << failed_ping_count_ << " times. Killing itself.";
+        std::stringstream os;
+        os << "Failed to receive the GCS address for " << failed_ping_count_
+           << " times without success. The worker will exit ungracefully. It is because ";
+        if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+          RAY_LOG(WARNING) << os.str()
+                           << "raylet has died, and it couldn't obtain the GCS address "
+                              "from the raylet anymore. Please check the log from "
+                              "raylet.err on this address.";
+        } else {
+          RAY_LOG(ERROR)
+              << os.str()
+              << "GCS has died. It could be because there was an issue that "
+                 "kills GCS, such as high memory usage triggering OOM killer "
+                 "to kill GCS. Cluster will be highly likely unavailable if you see "
+                 "this log. Please check the log from gcs_server.err.";
+        }
+        QuickExit();
       }
     } else {
       failed_ping_count_ = 0;

@@ -13,7 +13,7 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
-    SignalActor, wait_for_condition, wait_for_pid_to_exit)
+    SignalActor, wait_for_condition, wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
 
@@ -756,7 +756,8 @@ def test_detached_actor_cleanup(ray_start_regular):
             actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(
                 actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
@@ -777,6 +778,7 @@ def test_detached_actor_cleanup(ray_start_regular):
 import ray
 import ray._private.gcs_utils as gcs_utils
 import time
+from ray._private.test_utils import convert_actor_state
 ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
@@ -792,7 +794,7 @@ ray.kill(detached_actor)
 actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
-while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+while actor_status["State"] != convert_actor_state(gcs_utils.ActorTableData.DEAD): # noqa
     actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
@@ -875,7 +877,8 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
@@ -1311,7 +1314,6 @@ def test_get_actor_after_killed(shutdown_only):
     actor = A.options(
         name="actor", namespace="namespace", lifetime="detached").remote()
     ray.kill(actor)
-    # This could be flaky due to our caching named actor mechanism.
     with pytest.raises(ValueError):
         ray.get_actor("actor", namespace="namespace")
 
@@ -1324,11 +1326,81 @@ def test_get_actor_after_killed(shutdown_only):
     assert ray.get(
         ray.get_actor("actor_2", namespace="namespace").ready.remote())
 
-    # TODO(sang): This currently doesn't pass without time.sleep.
-    # ray.kill(actor, no_restart=False)
-    # # Now the actor is killed.
-    # with pytest.raises(ValueError):
-    #     ray.get_actor("actor_2", namespace="namespace")
+
+def test_get_actor_race_condition(shutdown_only):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "ok"
+
+    @ray.remote
+    def getter(name):
+        try:
+            try:
+                actor = ray.get_actor(name)
+            except Exception:
+                print("Get failed, trying to create", name)
+                actor = Actor.options(name=name, lifetime="detached").remote()
+        except Exception:
+            print("Someone else created it, trying to get")
+            actor = ray.get_actor(name)
+        result = ray.get(actor.ping.remote())
+        return result
+
+    def do_run(name, concurrency=4):
+        name = "actor_" + str(name)
+        tasks = [getter.remote(name) for _ in range(concurrency)]
+        result = ray.get(tasks)
+        ray.kill(ray.get_actor(name))  # Cleanup
+        return result
+
+    for i in range(50):
+        CONCURRENCY = 8
+        results = do_run(i, concurrency=CONCURRENCY)
+        assert ["ok"] * CONCURRENCY == results
+
+
+def test_get_actor_in_remote_workers(ray_start_cluster):
+    """Make sure we can get and create actors without
+        race condition in a remote worker.
+
+        Check https://github.com/ray-project/ray/issues/20092. # noqa
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address, namespace="xxx")
+
+    @ray.remote(num_cpus=0)
+    class RemoteProc:
+        def __init__(self):
+            pass
+
+        def procTask(self, a, b):
+            print("[%s]-> %s" % (a, b))
+            return a, b
+
+    @ray.remote
+    def submit_named_actors():
+        RemoteProc.options(
+            name="test",
+            lifetime="detached",
+            max_concurrency=10,
+            namespace="xxx").remote()
+        proc = ray.get_actor("test", namespace="xxx")
+        ray.get(proc.procTask.remote(1, 2))
+        # Should be able to create an actor with the same name
+        # immediately after killing it.
+        ray.kill(proc)
+        RemoteProc.options(
+            name="test",
+            lifetime="detached",
+            max_concurrency=10,
+            namespace="xxx").remote()
+        proc = ray.get_actor("test", namespace="xxx")
+        return ray.get(proc.procTask.remote(1, 2))
+
+    assert (1, 2) == ray.get(submit_named_actors.remote())
 
 
 if __name__ == "__main__":

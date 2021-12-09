@@ -41,6 +41,9 @@ MOCK_MODULES = [
     "gym",
     "gym.spaces",
     "horovod",
+    "horovod.runner",
+    "horovod.runner.common",
+    "horovod.runner.common.util",
     "horovod.ray",
     "horovod.ray.runner",
     "horovod.ray.utils",
@@ -59,7 +62,9 @@ MOCK_MODULES = [
     "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
+    "ray.core.generated.runtime_env_common_pb2",
     "ray.core.generated.gcs_pb2",
+    "ray.core.generated.logging_pb2",
     "ray.core.generated.ray.protocol.Task",
     "ray.serve.generated",
     "ray.serve.generated.serve_pb2",
@@ -268,6 +273,10 @@ pygments_style = 'pastie'
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
+
+# Do not check anchors for links because it produces many false positives
+# and is slow (it needs to download the linked website).
+linkcheck_anchors = False
 
 # -- Options for HTML output ----------------------------------------------
 

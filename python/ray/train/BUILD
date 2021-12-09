@@ -35,7 +35,7 @@ py_test(
     size = "large",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
@@ -47,7 +47,7 @@ py_test(
     size = "medium",
     main = "examples/tune_cifar_pytorch_pbt_example.py",
     srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
-    tags = ["team:ml", "exclusive", "pytorch"],
+    tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -57,7 +57,7 @@ py_test(
     size = "medium",
     main = "examples/tune_linear_dataset_example.py",
     srcs = ["examples/tune_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
+    tags = ["team:ml", "exclusive", "gpu_only", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test", "--use-gpu"]
 )
@@ -67,7 +67,7 @@ py_test(
     size = "medium",
     main = "examples/tune_linear_example.py",
     srcs = ["examples/tune_linear_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -81,6 +81,22 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_callbacks",
+    size = "medium",
+    srcs = ["tests/test_callbacks.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_examples",
+    size = "large",
+    srcs = ["tests/test_examples.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -113,7 +129,7 @@ py_test(
     name = "test_tune",
     size = "medium",
     srcs = ["tests/test_tune.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"]
 )
 

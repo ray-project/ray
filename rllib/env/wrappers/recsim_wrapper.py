@@ -14,6 +14,8 @@ from typing import List
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
+from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+
 
 class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
     """Fix RecSim environment's observation space
@@ -41,6 +43,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
                 ("doc", doc_space),
                 ("response", obs_space["response"]),
             ]))
+        self._sampled_obs = self.observation_space.sample()
 
     def observation(self, obs):
         new_obs = OrderedDict()
@@ -50,6 +53,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
             for k, (_, v) in enumerate(obs["doc"].items())
         }
         new_obs["response"] = obs["response"]
+        new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
 
 
@@ -64,9 +68,14 @@ class RecSimResetWrapper(gym.Wrapper):
     behavior to doing nothing.
     """
 
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+        self._sampled_obs = self.env.observation_space.sample()
+
     def reset(self):
         obs = super().reset()
         obs["response"] = self.env.observation_space["response"].sample()
+        obs = convert_element_to_space_type(obs, self._sampled_obs)
         return obs
 
     def close(self):

@@ -17,7 +17,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import get_placeholder
+from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
@@ -250,7 +250,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict.is_training = self._get_is_training_placeholder()
+        self._input_dict.set_training(self._get_is_training_placeholder())
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -464,7 +464,7 @@ class DynamicTFPolicy(TFPolicy):
             buffer_index: int = 0,
     ) -> int:
         # Set the is_training flag of the batch.
-        batch.is_training = True
+        batch.set_training(True)
 
         # Shortcut for 1 CPU only: Store batch in
         # `self._loaded_single_cpu_batch`.
@@ -679,7 +679,8 @@ class DynamicTFPolicy(TFPolicy):
                         key not in [
                             SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                            SampleBatch.REWARDS, SampleBatch.INFOS]:
+                            SampleBatch.REWARDS, SampleBatch.INFOS,
+                            SampleBatch.OBS_EMBEDS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
@@ -703,8 +704,11 @@ class DynamicTFPolicy(TFPolicy):
                             "automatically remove non-used items from the "
                             "data stream. Remove the `del` from your "
                             "postprocessing function.".format(key))
-                    else:
+                    # If we are not writing output to disk, safe to erase
+                    # this key to save space in the sample batch.
+                    elif self.config["output"] is None:
                         del self.view_requirements[key]
+
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Add those data_cols (again) that are missing and have

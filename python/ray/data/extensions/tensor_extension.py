@@ -1254,7 +1254,9 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             raise ValueError("Must give ndarray or iterable of ndarrays.")
 
-    def _to_numpy(self, index: Optional[int] = None):
+    def _to_numpy(self,
+                  index: Optional[int] = None,
+                  zero_copy_only: bool = False):
         """
         Helper for getting either an element of the array of tensors as an
         ndarray, or the entire array of tensors as a single ndarray.
@@ -1263,6 +1265,11 @@ class ArrowTensorArray(pa.ExtensionArray):
             index: The index of the tensor element that we wish to return as
                 an ndarray. If not given, the entire array of tensors is
                 returned as an ndarray.
+            zero_copy_only: If True, an exception will be raised if the
+                conversion to a NumPy array would require copying the
+                underlying data (e.g. in presence of nulls, or for
+                non-primitive types). This argument is currently ignored, so
+                zero-copy isn't enforced even if this argument is true.
 
         Returns:
             The corresponding tensor element as an ndarray if an index was
@@ -1275,14 +1282,21 @@ class ArrowTensorArray(pa.ExtensionArray):
         storage_list_type = self.storage.type
         ext_dtype = storage_list_type.value_type.to_pandas_dtype()
         shape = self.type.shape
-        # Size in bytes of the underlying ndarray item.
-        item_byte_width = storage_list_type.value_type.bit_width // 8
+        value_type = storage_list_type.value_type
+        if pa.types.is_boolean(value_type):
+            # Boolean array buffers are byte-packed, with 8 entries per byte,
+            # and are accessed via bit offsets.
+            buffer_item_width = value_type.bit_width
+        else:
+            # We assume all other array types are accessed via byte array
+            # offsets.
+            buffer_item_width = value_type.bit_width // 8
         # Number of items per inner ndarray.
         num_items_per_element = np.prod(shape) if shape else 1
         # Base offset into data buffer, e.g. due to zero-copy slice.
         buffer_offset = self.offset * num_items_per_element
-        # Offset (in bytes) of array data in buffer.
-        offset = item_byte_width * buffer_offset
+        # Offset of array data in buffer.
+        offset = buffer_item_width * buffer_offset
         if index is not None:
             # Getting a single tensor element of the array.
             offset_buffer = buffers[1]
@@ -1291,19 +1305,27 @@ class ArrowTensorArray(pa.ExtensionArray):
             # Offset into array to reach logical index.
             index_offset = offset_array[index]
             # Add the index offset to the base offset.
-            offset += item_byte_width * index_offset
+            offset += buffer_item_width * index_offset
         else:
             # Getting the entire array of tensors.
             shape = (len(self), ) + shape
+        # TODO(Clark): Enforce zero_copy_only.
         # TODO(Clark): Support strides?
         return np.ndarray(
             shape, dtype=ext_dtype, buffer=data_buffer, offset=offset)
 
-    def to_numpy(self):
+    def to_numpy(self, zero_copy_only: bool = True):
         """
         Convert the entire array of tensors into a single ndarray.
+
+        Args:
+            zero_copy_only: If True, an exception will be raised if the
+                conversion to a NumPy array would require copying the
+                underlying data (e.g. in presence of nulls, or for
+                non-primitive types). This argument is currently ignored, so
+                zero-copy isn't enforced even if this argument is true.
 
         Returns:
             A single ndarray representing the entire array of tensors.
         """
-        return self._to_numpy()
+        return self._to_numpy(zero_copy_only=zero_copy_only)

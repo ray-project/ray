@@ -7,6 +7,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
+from ray.core.generated import gcs_pb2
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
 from ray._private.resource_spec import NODE_ID_PREFIX
@@ -83,55 +84,6 @@ class GlobalState:
             self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
 
-    def object_table(self, object_ref=None):
-        """Fetch and parse the object table info for one or more object refs.
-
-        Args:
-            object_ref: An object ref to fetch information about. If this is
-                None, then the entire object table is fetched.
-
-        Returns:
-            Information from the object table.
-        """
-        self._check_connected()
-
-        if object_ref is not None:
-            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
-            object_info = self.global_state_accessor.get_object_info(
-                object_ref)
-            if object_info is None:
-                return {}
-            else:
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_info)
-                return self._gen_object_info(object_location_info)
-        else:
-            object_table = self.global_state_accessor.get_object_table()
-            results = {}
-            for i in range(len(object_table)):
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_table[i])
-                results[binary_to_hex(object_location_info.object_id)] = \
-                    self._gen_object_info(object_location_info)
-            return results
-
-    def _gen_object_info(self, object_location_info):
-        """Parse object location info.
-        Returns:
-            Information from object.
-        """
-        locations = []
-        for location in object_location_info.locations:
-            locations.append(
-                ray._private.utils.binary_to_hex(location.manager))
-
-        object_info = {
-            "ObjectRef": ray._private.utils.binary_to_hex(
-                object_location_info.object_id),
-            "Locations": locations,
-        }
-        return object_info
-
     def actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
 
@@ -172,6 +124,8 @@ class GlobalState:
         """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "ActorClassName": actor_table_data.class_name,
+            "IsDetached": actor_table_data.is_detached,
             "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
@@ -185,11 +139,13 @@ class GlobalState:
                 "NodeID": binary_to_hex(
                     actor_table_data.owner_address.raylet_id),
             },
-            "State": actor_table_data.state,
+            "State": gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.
+            values_by_number[actor_table_data.state].name,
             "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
             "StartTime": actor_table_data.start_time,
             "EndTime": actor_table_data.end_time,
+            "DeathCause": actor_table_data.death_cause
         }
         return actor_info
 
@@ -388,6 +344,7 @@ class GlobalState:
                 raise ValueError(
                     f"Invalid strategy returned: {PlacementStrategy}")
 
+        stats = placement_group_info.stats
         assert placement_group_info is not None
         return {
             "placement_group_id": binary_to_hex(
@@ -402,6 +359,17 @@ class GlobalState:
             },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
+            "stats": {
+                "end_to_end_creation_latency_ms": (
+                    stats.end_to_end_creation_latency_us / 1000.0),
+                "scheduling_latency_ms": (
+                    stats.scheduling_latency_us / 1000.0),
+                "scheduling_attempt": stats.scheduling_attempt,
+                "highest_retry_delay_ms": stats.highest_retry_delay_ms,
+                "scheduling_state": gcs_pb2.PlacementGroupStats.
+                SchedulingState.DESCRIPTOR.values_by_number[
+                    stats.scheduling_state].name
+            }
         }
 
     def _seconds_to_microseconds(self, time_in_seconds):
