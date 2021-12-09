@@ -228,8 +228,8 @@ class Dataset(Generic[T]):
 
                 applied = fn(view)
                 if isinstance(applied, list) \
-                    or isinstance(applied, pa.Table) \
-                    or isinstance(applied, pd.core.frame.DataFrame):
+                        or isinstance(applied, pa.Table) \
+                        or isinstance(applied, pd.core.frame.DataFrame):
                     applied = applied
                 else:
                     raise ValueError("The map batches UDF returned the value "

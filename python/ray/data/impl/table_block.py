@@ -4,7 +4,6 @@ from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
 
 T = TypeVar("T")
