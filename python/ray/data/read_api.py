@@ -618,7 +618,8 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = [get_metadata.remote(df) for df in dfs]
-        return Dataset(BlockList(dfs, ray.get(metadata)), 0)
+        return Dataset(
+            BlockList(dfs, ray.get(metadata)), 0, DatasetStats.TODO())
 
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
