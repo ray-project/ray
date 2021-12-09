@@ -15,7 +15,6 @@
 #include "ray/raylet/scheduling/scheduling_policy.h"
 
 #include <functional>
-#include <random>
 
 namespace ray {
 
@@ -87,12 +86,13 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   // place.
   std::sort(round.begin() + start_index, round.end());
 
+  int64_t best_node_id = -1;
   float best_utilization_score = INFINITY;
   bool best_is_available = false;
-  std::vector<int64_t> best_nodes;
 
   // Step 2: Perform the round robin.
-  for (auto round_it = round.begin(); round_it != round.end(); round_it++) {
+  auto round_it = round.begin();
+  for (; round_it != round.end(); round_it++) {
     const auto &node_id = *round_it;
     const auto &it = nodes.find(node_id);
     RAY_CHECK(it != nodes.end());
@@ -109,8 +109,8 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       // pulled.
       ignore_pull_manager_at_capacity = true;
     }
-    const bool is_available = node.GetLocalView().IsAvailable(
-        resource_request, ignore_pull_manager_at_capacity);
+    bool is_available = node.GetLocalView().IsAvailable(resource_request,
+                                                        ignore_pull_manager_at_capacity);
     RAY_LOG(DEBUG) << "Node " << node_id << " is "
                    << (is_available ? "available" : "not available");
     float critical_resource_utilization =
@@ -119,47 +119,31 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
       critical_resource_utilization = 0;
     }
 
-    bool add_best_node = false;
+    bool update_best_node = false;
 
     if (is_available) {
       // Always prioritize available nodes over nodes where the task must be queued first.
       if (!best_is_available) {
-        best_nodes.clear();
-        add_best_node = true;
+        update_best_node = true;
       } else if (critical_resource_utilization < best_utilization_score) {
         // Break ties between available nodes by their critical resource utilization.
-        best_nodes.clear();
-        add_best_node = true;
-      } else if (critical_resource_utilization == best_utilization_score) {
-        add_best_node = true;
+        update_best_node = true;
       }
     } else if (!best_is_available &&
-               critical_resource_utilization <= best_utilization_score &&
+               critical_resource_utilization < best_utilization_score &&
                !require_available) {
       // Pick the best feasible node by critical resource utilization.
-      if (critical_resource_utilization < best_utilization_score) {
-        best_nodes.clear();
-      }
-      add_best_node = true;
+      update_best_node = true;
     }
 
-    if (add_best_node) {
-      best_nodes.emplace_back(node_id);
+    if (update_best_node) {
+      best_node_id = node_id;
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;
     }
   }
 
-  if (best_nodes.empty()) {
-    return -1;
-  } else if (spread_threshold > 0) {
-    return best_nodes[0];
-  } else {
-    std::random_device rd;
-    std::mt19937 rng(rd());
-    std::uniform_int_distribution<size_t> distrib(1, best_nodes.size());
-    return best_nodes[distrib(rng) - 1];
-  }
+  return best_node_id;
 }
 
 int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
