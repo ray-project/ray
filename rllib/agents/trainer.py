@@ -33,7 +33,7 @@ from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
     synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
-    train_one_step, load_train_batch_and_train_one_step
+    train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -1372,8 +1372,9 @@ class Trainer(Trainable):
         if self.config.get("simple_optimizer") is True:
             train_results = train_one_step(self, train_batch)
         else:
-            train_results = load_train_batch_and_train_one_step(
-                self, train_batch)
+            raise NotImplementedError(
+                "`_disable_distributed_execution_api=True` only supported for "
+                "SimpleOptimizer so far!")
 
         return train_results
 
