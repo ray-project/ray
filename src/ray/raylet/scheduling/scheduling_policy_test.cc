@@ -348,6 +348,36 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   ASSERT_EQ(to_schedule, -1);
 }
 
+TEST_F(SchedulingPolicyTest, SpreadSchedulingTest) {
+  StringIdMap map;
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
+  int64_t local_node = 0;
+  int64_t remote_node_1 = 1;
+  int64_t remote_node_2 = 2;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node_1, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node_2, CreateNodeResources(20, 20, 0, 0, 0, 0));
+
+  raylet_scheduling_policy::SchedulingPolicy scheduling_policy(local_node, nodes);
+
+  int64_t to_schedule =
+      scheduling_policy.HybridPolicy(req, 0, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, local_node);
+
+  nodes.emplace(local_node, CreateNodeResources(19, 20, 0, 0, 0, 0));
+  to_schedule =
+      scheduling_policy.HybridPolicy(req, 0, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_1);
+
+  // Make sure we don't always scan from beginning for spread scheduling.
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  to_schedule =
+      scheduling_policy.HybridPolicy(req, 0, false, false, [](auto) { return true; });
+  ASSERT_EQ(to_schedule, remote_node_2);
+}
+
 TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
   // Prefer to schedule on CPU nodes first.
   // GPU nodes should be preferred as a last resort.
