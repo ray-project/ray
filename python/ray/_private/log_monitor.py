@@ -297,11 +297,11 @@ class LogMonitor:
                     next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
+                    if next_line == "\n":
+                        continue
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
-                    else:
-                        file_info.file_handle.seek(o)
-                        break
+
                     if next_line.startswith(
                             ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
