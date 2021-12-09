@@ -23,7 +23,7 @@ def merge_dicts(d1: dict, d2: dict) -> dict:
 def deep_update(
         original: dict,
         new_dict: dict,
-        new_keys_allowed: str = False,
+        new_keys_allowed: bool = False,
         allow_new_subkey_list: Optional[List[str]] = None,
         override_all_if_type_changes: Optional[List[str]] = None) -> dict:
     """Updates original dict with values from new_dict recursively.

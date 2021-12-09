@@ -22,10 +22,11 @@ def _update_docker_compose(docker_compose_path: str,
         print("Docker compose currently empty")
         return False
 
-    cmd = ["up", "-d", "--no-recreate"]
+    cmd = ["up", "-d"]
     shutdown = False
     if not docker_compose_config["services"]:
         # If no more nodes, run `down` instead of `up`
+        print("Shutting down nodes")
         cmd = ["down"]
         shutdown = True
     try:

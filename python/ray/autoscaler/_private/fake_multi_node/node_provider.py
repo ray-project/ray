@@ -18,6 +18,7 @@ from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
                                  NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE,
                                  TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
                                  STATUS_UP_TO_DATE)
+from ray.ray_constants import DEFAULT_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ logger = logging.getLogger(__name__)
 # starting with fffff*00000 for the head node, fffff*00001, etc. for workers.
 FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
 FAKE_HEAD_NODE_TYPE = "ray.head.default"
+
+FAKE_DOCKER_DEFAULT_GCS_PORT = 16379
+FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT = 18076
+FAKE_DOCKER_DEFAULT_CLIENT_PORT = 10002
 
 DOCKER_COMPOSE_SKELETON = {
     "version": "3.9",
@@ -123,7 +128,7 @@ def create_node_spec(head: bool,
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
         node_spec["ports"] = [
-            f"{host_gcs_port}:6379",
+            f"{host_gcs_port}:{DEFAULT_PORT}",
             f"{host_object_manager_port}:8076",
             f"{host_client_port}:10001",
         ]
@@ -181,11 +186,12 @@ class FakeMultiNodeProvider(NodeProvider):
             self._docker_image = self.provider_config["image"]
 
             self._host_gcs_port = self.provider_config.get(
-                "host_gcs_port", 16379)
+                "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT)
             self._host_object_manager_port = self.provider_config.get(
-                "host_object_manager_port", 18076)
+                "host_object_manager_port",
+                FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT)
             self._host_client_port = self.provider_config.get(
-                "host_client_port", 10002)
+                "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
 
             self._head_resources = self.provider_config["head_resources"]
 

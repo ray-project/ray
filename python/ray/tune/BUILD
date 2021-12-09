@@ -183,6 +183,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multinode_sync",
+    size = "small",
+    srcs = ["tests/test_multinode_sync.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "tests_dir_M"],
+)
+
+py_test(
     name = "test_progress_reporter",
     size = "medium",
     srcs = ["tests/test_progress_reporter.py"],
