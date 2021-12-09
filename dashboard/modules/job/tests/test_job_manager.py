@@ -456,6 +456,19 @@ class TestAsyncAPI:
 
 
 class TestTailLogs:
+    async def _tail_and_assert_logs(self,
+                                    job_id,
+                                    job_manager,
+                                    expected_log="",
+                                    num_iteration=5):
+        i = 0
+        async for lines in job_manager.tail_job_logs(job_id):
+            assert all(s == expected_log for s in lines.strip().split("\n"))
+            print(lines, end="")
+            if i == num_iteration:
+                break
+            i += 1
+
     @pytest.mark.asyncio
     async def test_unknown_job(self, job_manager):
         with pytest.raises(
@@ -480,14 +493,11 @@ class TestTailLogs:
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())
 
-            i = 0
-            async for lines in job_manager.tail_job_logs(job_id):
-                print(lines, end="")
-                assert all(
-                    s == "Waiting..." for s in lines.strip().split("\n"))
-                if i == 5:
-                    break
-                i += 1
+            await self._tail_and_assert_logs(
+                job_id,
+                job_manager,
+                expected_log="Waiting...",
+                num_iteration=5)
 
             # Signal the job to exit by writing to the file.
             with open(tmp_file, "w") as f:
@@ -505,17 +515,13 @@ class TestTailLogs:
     async def test_failed_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pid_file, tmp_file, job_id = _run_hanging_command(
-                job_manager, tmp_dir)
+            pid_file, _, job_id = _run_hanging_command(job_manager, tmp_dir)
 
-            i = 0
-            async for lines in job_manager.tail_job_logs(job_id):
-                assert all(
-                    s == "Waiting..." for s in lines.strip().split("\n"))
-                print(lines, end="")
-                if i == 5:
-                    break
-                i += 1
+            await self._tail_and_assert_logs(
+                job_id,
+                job_manager,
+                expected_log="Waiting...",
+                num_iteration=5)
 
             # Kill the job unexpectedly.
             with open(pid_file, "r") as f:
@@ -533,17 +539,13 @@ class TestTailLogs:
     async def test_stopped_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pid_file, tmp_file, job_id = _run_hanging_command(
-                job_manager, tmp_dir)
+            _, _, job_id = _run_hanging_command(job_manager, tmp_dir)
 
-            i = 0
-            async for lines in job_manager.tail_job_logs(job_id):
-                assert all(
-                    s == "Waiting..." for s in lines.strip().split("\n"))
-                print(lines, end="")
-                if i == 5:
-                    break
-                i += 1
+            await self._tail_and_assert_logs(
+                job_id,
+                job_manager,
+                expected_log="Waiting...",
+                num_iteration=5)
 
             # Stop the job via the API.
             job_manager.stop_job(job_id)
