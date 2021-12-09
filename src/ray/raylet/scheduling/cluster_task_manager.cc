@@ -1492,6 +1492,7 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
   int64_t _unused;
   return cluster_resource_scheduler_->GetBestSchedulableNode(
       work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
+      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
       requires_object_store_memory,
       work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
       is_infeasible);
