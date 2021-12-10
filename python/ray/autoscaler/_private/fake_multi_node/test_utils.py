@@ -1,15 +1,19 @@
+import json
+import logging
 import os
 import shutil
 import subprocess
 import tempfile
 import time
 from typing import Dict, Any, Optional
+import yaml
 
 import ray
-import yaml
 from ray.autoscaler._private.fake_multi_node.node_provider import \
     FAKE_DOCKER_DEFAULT_CLIENT_PORT, FAKE_DOCKER_DEFAULT_GCS_PORT
 from ray.util.ml_utils.dict import deep_update
+
+logger = logging.getLogger(__name__)
 
 
 class DockerMonitor:
@@ -81,8 +85,22 @@ class DockerCluster:
     def update_config(self, config: Optional[Dict[str, Any]] = None):
         assert self._tempdir, "Call setup() first"
 
+        config = config or {}
+
         if config:
             self._partial_config = config
+
+        docker_image = None
+        if not config.get("provider", {}).get("image"):
+            # No image specified, trying to parse from buildkite
+            buildkite_plugins_str = os.environ.get("BUILDKITE_PLUGINS")
+            if buildkite_plugins_str:
+                plugins = json.loads(buildkite_plugins_str)
+                for plugin in plugins:
+                    for plugin_name, data in plugin.items():
+                        if ("buildkite-plugins/docker-buildkite-plugin" in
+                                plugin_name):
+                            docker_image = data.get("image")
 
         with open(self._base_config_file, "rt") as f:
             cluster_config = yaml.safe_load(f)
@@ -90,10 +108,16 @@ class DockerCluster:
         if self._partial_config:
             deep_update(
                 cluster_config, self._partial_config, new_keys_allowed=True)
+
+        if docker_image:
+            cluster_config["provider"]["image"] = docker_image
+
         self._cluster_config = cluster_config
 
         with open(self._config_file, "wt") as f:
             yaml.safe_dump(self._cluster_config, f)
+
+        logging.info(f"Updated cluster config to: {self._cluster_config}")
 
     def setup(self):
         self._tempdir = tempfile.mkdtemp()

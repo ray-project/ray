@@ -246,6 +246,18 @@
       --test_tag_filters=tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
       python/ray/tune/...
 
+
+- label: ":octopus: Tune multinode tests"
+  conditions: [ "RAY_CI_TUNE_AFFECTED" ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    - sudo service docker start
+    # Because Python version changed, we need to re-install Ray here
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
+      python/ray/tune/...
+
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
