@@ -11,7 +11,8 @@ from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
                                              encode_plugin_uri)
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
-from ray._private.runtime_env.conda import _resolve_install_from_source_ray_extras, get_uri as get_conda_uri
+from ray._private.runtime_env.conda import (
+    _resolve_install_from_source_ray_extras, get_uri as get_conda_uri)
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
@@ -110,10 +111,20 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
-    Conda can be one of two cases:
+    The value of the input 'pip' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
            file contents will be read split into a list.
+
+    The returned parsed value will be a list of pip packages. If a Ray library
+    (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
+    dependencies (e.g. "uvicorn", "requests").
+
+    Raises:
+        ValueError: If the base Ray package (e.g. "ray>1.4" or "ray") is
+            specified in the input. Specifying a Ray library (e.g.
+            "ray[serve]", "ray[tune, rllib]") is okay and will not raise an
+            error.
     """
     assert pip is not None
 
@@ -150,8 +161,8 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
                     "version compatibility issues. When using the `pip` "
                     "field of `runtime_env`, it is recommended to "
                     "preinstall Ray on all nodes in the cluster and to "
-                    "not include Ray in the `pip` field. To disable this error, "
-                    "set the environment variable "
+                    "not include Ray in the `pip` field. To disable this "
+                    "error, set the environment variable "
                     f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
             extras = _resolve_install_from_source_ray_extras()
             for library in libraries:
@@ -164,8 +175,6 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
 
     if len(result) == 0:
         result = None
-
-    return result
 
     return result
 

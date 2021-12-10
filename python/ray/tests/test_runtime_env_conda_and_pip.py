@@ -1,10 +1,9 @@
 import os
 import pytest
 import sys
-from ray._private.runtime_env.conda_utils import (
-    pip_requirement_specifier_is_ray)
 from ray._private.test_utils import wait_for_condition, chdir
-from ray._private.runtime_env.conda import _resolve_install_from_source_ray_dependencies
+from ray._private.runtime_env.conda import (
+    _resolve_install_from_source_ray_dependencies)
 import yaml
 import tempfile
 from pathlib import Path
@@ -221,15 +220,6 @@ def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
         assert not check_local_files_gced(cluster)
         ray.kill(actors[i])
     wait_for_condition(lambda: check_local_files_gced(cluster))
-
-
-@pytest.mark.parametrize("test_input,expected_output",
-                         [("ray", True), ("ray>1.4", True),
-                          ("raytracing", False), ("ray[default]", True),
-                          ("ray [serve]", True), ("  ray == 1.4", True),
-                          ("ray[serve]@https://rays.com/fake.whl", True)])
-def test_pip_requirement_specifier_is_ray(test_input, expected_output):
-    assert pip_requirement_specifier_is_ray(test_input) is expected_output
 
 
 if __name__ == "__main__":

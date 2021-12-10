@@ -37,7 +37,7 @@ def _resolve_current_ray_path() -> str:
 
 def _get_ray_setup_spec():
     """Find the Ray setup_spec from the currently running Ray.
-    
+
     This function works even when Ray is built from source with pip install -e.
     """
     ray_source_python_path = _resolve_current_ray_path()
