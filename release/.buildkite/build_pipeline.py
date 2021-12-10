@@ -144,6 +144,10 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+        "many_actors_redis_ha",
+        "many_tasks_redis_ha",
+        "many_pgs_redis_ha",
+        "many_nodes_redis_ha",
     ],
 }
 
