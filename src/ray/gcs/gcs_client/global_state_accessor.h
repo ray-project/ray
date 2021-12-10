@@ -59,7 +59,7 @@ class GlobalStateAccessor {
   std::vector<std::string> GetAllJobInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
-  /// v
+  ///
   /// \return Next job id.
   JobID GetNextJobID() LOCKS_EXCLUDED(mutex_);
 

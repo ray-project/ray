@@ -20,6 +20,7 @@ import uuid
 
 # Ray modules
 import ray
+from ray._raylet import GcsClientOptions
 import ray.ray_constants as ray_constants
 import redis
 from ray.core.generated.common_pb2 import Language
@@ -290,9 +291,7 @@ def find_redis_address_or_die():
     return redis_addresses.pop()
 
 
-def wait_for_node(redis_address,
-                  node_plasma_store_socket_name,
-                  redis_password=None,
+def wait_for_node(gcs_options,
                   timeout=30):
     """Wait until this node has appeared in the client table.
 
@@ -311,6 +310,7 @@ def wait_for_node(redis_address,
     redis_ip_address, redis_port = redis_address.split(":")
     wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
     global_state = ray.state.GlobalState()
+    gcs_options = GcsClientOptions.from_redis_address(redis_address, redis_password)
     global_state._initialize_global_state(redis_address, redis_password)
     start_time = time.time()
     while time.time() - start_time < timeout:
