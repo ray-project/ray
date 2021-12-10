@@ -684,7 +684,7 @@ class Worker:
                         runtime_env, tmp_dir, logger=logger)
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)
-                    job_config.set_runtime_env(runtime_env)
+                    job_config.set_runtime_env(runtime_env, validate=True)
 
                 serialized_job_config = pickle.dumps(job_config)
 
@@ -716,7 +716,8 @@ class Worker:
                 "object_store_memory": md.object_store_memory,
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
-                "runtime_env": md.runtime_env
+                "runtime_env": md.runtime_env,
+                "scheduling_strategy": md.scheduling_strategy,
             })
         return key
 
@@ -736,6 +737,7 @@ class Worker:
                 "num_returns": func._num_returns,
                 "memory": func._memory,
                 "runtime_env": func._runtime_env,
+                "scheduling_strategy": func._scheduling_strategy,
             })
         return key
 

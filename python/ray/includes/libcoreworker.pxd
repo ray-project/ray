@@ -44,6 +44,7 @@ from ray.includes.common cimport (
     LocalMemoryBuffer,
     CJobConfig,
     CConcurrencyGroup,
+    CSchedulingStrategy,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -95,7 +96,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
-        int MaxPendingCalls() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -108,8 +108,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CTaskOptions &options,
             int max_retries,
             c_bool retry_exceptions,
-            c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks,
+            const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,

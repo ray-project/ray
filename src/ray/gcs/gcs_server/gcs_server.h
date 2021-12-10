@@ -48,6 +48,8 @@ struct GcsServerConfig {
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
   std::string log_dir;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
@@ -84,6 +86,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.

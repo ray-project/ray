@@ -40,6 +40,8 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    # This is only computed and used when RE3 exploration strategy is enabled
+    OBS_EMBEDS = "obs_embeds"
     T = "t"
 
     # Extra action fetches keys.

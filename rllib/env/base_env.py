@@ -1,5 +1,7 @@
-from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
+    Union
 
+import gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
@@ -29,12 +31,6 @@ class BaseEnv:
     gym.Env => rllib.VectorEnv => rllib.BaseEnv
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
-
-    Attributes:
-        action_space (gym.Space): Action space. This must be defined for
-            single-agent envs. Multi-agent envs can set this to None.
-        observation_space (gym.Space): Observation space. This must be defined
-            for single-agent envs. Multi-agent envs can set this to None.
 
     Examples:
         >>> env = MyBaseEnv()
@@ -160,8 +156,8 @@ class BaseEnv:
         raise NotImplementedError
 
     @PublicAPI
-    def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+    def try_reset(self, env_id: Optional[EnvID] = None
+                  ) -> Optional[Union[MultiAgentDict, MultiEnvDict]]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be
@@ -171,6 +167,12 @@ class BaseEnv:
             env_id: The sub-environment's ID if applicable. If None, reset
                 the entire Env (i.e. all sub-environments).
 
+        Note: A MultiAgentDict is returned when using the deprecated wrapper
+        classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv`,
+        however for consistency with the poll() method, a `MultiEnvDict` is
+        returned from the new wrapper classes, such as
+        `ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper`.
+
         Returns:
             The reset (multi-agent) observation dict. None if reset is not
             supported.
@@ -178,12 +180,18 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
+        Args:
+            as_dict: If True, return a dict mapping from env_id to env.
+
         Returns:
-            List of the underlying sub environments or [].
+            List or dictionary of the underlying sub environments or [] / {}.
         """
+        if as_dict:
+            return {}
         return []
 
     @PublicAPI
@@ -210,6 +218,61 @@ class BaseEnv:
     @Deprecated(new="get_sub_environments", error=False)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
+
+    @PublicAPI
+    @property
+    def observation_space(self) -> gym.spaces.Dict:
+        """Returns the observation space for each environment.
+
+        Note: samples from the observation space need to be preprocessed into a
+            `MultiEnvDict` before being used by a policy.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    @property
+    def action_space(self) -> gym.Space:
+        """Returns the action space for each environment.
+
+        Note: samples from the action space need to be preprocessed into a
+            `MultiEnvDict` before being passed to `send_actions`.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        self._space_contains(self.observation_space, x)
+
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        return self._space_contains(self.action_space, x)
+
+    @staticmethod
+    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if the given space contains the observations of x.
+
+        Args:
+            space: The space to if x's observations are contained in.
+            x: The observations to check.
+
+        Returns:
+            True if the observations of x are contained in space.
+        """
+        # this removes the agent_id key and inner dicts
+        # in MultiEnvDicts
+        flattened_obs = {
+            env_id: list(obs.values())
+            for env_id, obs in x.items()
+        }
+        ret = True
+        for env_id in flattened_obs:
+            for obs in flattened_obs[env_id]:
+                ret = ret and space[env_id].contains(obs)
+        return ret
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -436,7 +499,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            # Allow `__common__` entry in `infos` for data unrelated with any
+            # agent, but rather with the environment itself.
+            if set(infos).difference(set(obs) | {"__common__"}):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
             if "__all__" not in dones:
@@ -489,7 +554,7 @@ class _MultiAgentEnvState:
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
-        infos = {}
+        infos = {"__common__": self.last_infos.get("__common__")}
 
         # If episode is done, release everything we have.
         if dones["__all__"]:
@@ -536,7 +601,7 @@ class _MultiAgentEnvState:
         self.last_obs = self.env.reset()
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
-        self.last_infos = {}
+        self.last_infos = {"__common__": {}}
         return self.last_obs
 
 

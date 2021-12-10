@@ -15,6 +15,7 @@ from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.exploration.stochastic_sampling import \
     StochasticSampling
+from ray.rllib.utils.exploration.random_encoder import RE3
 
 __all__ = [
     "Curiosity",
@@ -29,4 +30,5 @@ __all__ = [
     "Random",
     "SoftQ",
     "StochasticSampling",
+    "RE3",
 ]

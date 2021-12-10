@@ -45,7 +45,7 @@ public class RayServeReplicaTest {
                   deploymentInfo,
                   replicaTag,
                   controllerName,
-                  (RayServeConfig) null)
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .remote();
 
       // ready

@@ -327,7 +327,7 @@ class Subscriber : public SubscriberInterface {
     }
   }
 
-  ~Subscriber() = default;
+  ~Subscriber();
 
   bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  const rpc::ChannelType channel_type,
@@ -371,6 +371,7 @@ class Subscriber : public SubscriberInterface {
   /// Testing fields
   ///
 
+  FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
@@ -381,7 +382,7 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
-  bool CheckNoLeaks() const;
+  bool CheckNoLeaks() const LOCKS_EXCLUDED(mutex_);
 
   ///
   /// Private fields
