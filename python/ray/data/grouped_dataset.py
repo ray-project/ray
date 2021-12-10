@@ -112,7 +112,9 @@ class GroupedDataset(Generic[T]):
         reduce_bar.close()
 
         metadata = ray.get(metadata)
-        return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
+        return Dataset(
+            BlockList(blocks, metadata), self._dataset._epoch,
+            self._dataset._stats.child_TODO("groupby"))
 
     def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
                       **kwargs):

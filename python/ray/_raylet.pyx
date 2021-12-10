@@ -57,6 +57,8 @@ from ray.includes.common cimport (
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CSchedulingStrategy,
+    CPlacementGroupSchedulingStrategy,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -112,6 +114,11 @@ from ray.exceptions import (
     AsyncioActorExit,
 )
 from ray import external_storage
+from ray.util.scheduling_strategies import (
+    DEFAULT_SCHEDULING_STRATEGY,
+    SPREAD_SCHEDULING_STRATEGY,
+    PlacementGroupSchedulingStrategy,
+)
 import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
@@ -1421,6 +1428,40 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    cdef python_scheduling_strategy_to_c(
+            self, python_scheduling_strategy,
+            CSchedulingStrategy *c_scheduling_strategy):
+        cdef:
+            CPlacementGroupSchedulingStrategy \
+                *c_placement_group_scheduling_strategy
+        assert python_scheduling_strategy is not None
+        if python_scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
+            c_scheduling_strategy[0].mutable_default_scheduling_strategy()
+        elif python_scheduling_strategy == SPREAD_SCHEDULING_STRATEGY:
+            c_scheduling_strategy[0].mutable_spread_scheduling_strategy()
+        elif isinstance(python_scheduling_strategy,
+                        PlacementGroupSchedulingStrategy):
+            c_placement_group_scheduling_strategy = \
+                c_scheduling_strategy[0] \
+                .mutable_placement_group_scheduling_strategy()
+            c_placement_group_scheduling_strategy[0].set_placement_group_id(
+                python_scheduling_strategy
+                .placement_group.id.binary())
+            c_placement_group_scheduling_strategy[0] \
+                .set_placement_group_bundle_index(
+                    python_scheduling_strategy.placement_group_bundle_index)
+            c_placement_group_scheduling_strategy[0]\
+                .set_placement_group_capture_child_tasks(
+                    python_scheduling_strategy
+                    .placement_group_capture_child_tasks)
+        else:
+            raise ValueError(
+                f"Invalid scheduling_strategy value "
+                f"{python_scheduling_strategy}. "
+                f"Valid values are [\"DEFAULT\""
+                f" | \"SPREAD\""
+                f" | PlacementGroupSchedulingStrategy]")
+
     def submit_task(self,
                     Language language,
                     FunctionDescriptor function_descriptor,
@@ -1430,9 +1471,7 @@ cdef class CoreWorker:
                     resources,
                     int max_retries,
                     c_bool retry_exceptions,
-                    PlacementGroupID placement_group_id,
-                    int64_t placement_group_bundle_index,
-                    c_bool placement_group_capture_child_tasks,
+                    scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env,
                     ):
@@ -1440,9 +1479,11 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            CPlacementGroupID c_placement_group_id = \
-                placement_group_id.native()
             c_vector[CObjectReference] return_refs
+            CSchedulingStrategy c_scheduling_strategy
+
+        self.python_scheduling_strategy_to_c(
+            scheduling_strategy, &c_scheduling_strategy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1460,9 +1501,7 @@ cdef class CoreWorker:
                     b"",
                     serialized_runtime_env),
                 max_retries, retry_exceptions,
-                c_pair[CPlacementGroupID, int64_t](
-                    c_placement_group_id, placement_group_bundle_index),
-                placement_group_capture_child_tasks,
+                c_scheduling_strategy,
                 debugger_breakpoint)
 
             return VectorToObjectRefs(return_refs)
@@ -1480,12 +1519,10 @@ cdef class CoreWorker:
                      c_string name,
                      c_string ray_namespace,
                      c_bool is_asyncio,
-                     PlacementGroupID placement_group_id,
-                     int64_t placement_group_bundle_index,
-                     c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
                      c_string serialized_runtime_env,
                      concurrency_groups_dict,
+                     scheduling_strategy,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1494,9 +1531,11 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
-            CPlacementGroupID c_placement_group_id = \
-                placement_group_id.native()
             c_vector[CConcurrencyGroup] c_concurrency_groups
+            CSchedulingStrategy c_scheduling_strategy
+
+        self.python_scheduling_strategy_to_c(
+            scheduling_strategy, &c_scheduling_strategy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1517,10 +1556,7 @@ cdef class CoreWorker:
                         dynamic_worker_options, is_detached, name,
                         ray_namespace,
                         is_asyncio,
-                        c_pair[CPlacementGroupID, int64_t](
-                            c_placement_group_id,
-                            placement_group_bundle_index),
-                        placement_group_capture_child_tasks,
+                        c_scheduling_strategy,
                         serialized_runtime_env,
                         c_concurrency_groups,
                         # execute out of order for

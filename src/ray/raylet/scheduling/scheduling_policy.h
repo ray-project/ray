@@ -23,11 +23,8 @@ namespace raylet_scheduling_policy {
 
 class SchedulingPolicy {
  public:
-  SchedulingPolicy(int64_t local_node_id, const absl::flat_hash_map<int64_t, Node> &nodes,
-                   float spread_threshold)
-      : local_node_id_(local_node_id),
-        nodes_(nodes),
-        spread_threshold_(spread_threshold) {}
+  SchedulingPolicy(int64_t local_node_id, const absl::flat_hash_map<int64_t, Node> &nodes)
+      : local_node_id_(local_node_id), nodes_(nodes) {}
 
   /// This scheduling policy was designed with the following assumptions in mind:
   ///   1. Scheduling a task on a new node incurs a cold start penalty (warming the worker
@@ -62,8 +59,9 @@ class SchedulingPolicy {
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
   int64_t HybridPolicy(
-      const ResourceRequest &resource_request, bool force_spillback,
-      bool require_available, std::function<bool(int64_t)> is_node_available,
+      const ResourceRequest &resource_request, float spread_threshold,
+      bool force_spillback, bool require_available,
+      std::function<bool(int64_t)> is_node_available,
       bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
  private:
@@ -72,8 +70,6 @@ class SchedulingPolicy {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   const absl::flat_hash_map<int64_t, Node> &nodes_;
-  /// The threshold at which to switch from packing to spreading.
-  const float spread_threshold_;
 
   enum class NodeFilter {
     /// Default scheduling.
@@ -94,7 +90,8 @@ class SchedulingPolicy {
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
   int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
-                                 bool force_spillback, bool require_available,
+                                 float spread_threshold, bool force_spillback,
+                                 bool require_available,
                                  std::function<bool(int64_t)> is_node_available,
                                  NodeFilter node_filter = NodeFilter::kAny);
 };
