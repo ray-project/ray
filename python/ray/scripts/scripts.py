@@ -601,9 +601,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     external_addresses = re_obj.group(2).split(",")
             elif address is not None:
                 cli_logger.warning(
-                    "{} will be deprecated,"
-                    "using --external-kv-storage-config instead.",
-                    cf.bold("--address"))
+                    "Using --address on head node is deprecated."
+                    "If you are starting a node to connect to a Ray cluster,"
+                    "please remove the --head option. Otherwise if you want"
+                    "to specify an external Redis address for storage,"
+                    "please use --external-kv-storage-config=redis:...")
                 external_addresses = address.split(",")
 
             # We reuse primary redis as sharding when there's only one
