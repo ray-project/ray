@@ -1338,6 +1338,12 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    if test_config.get("app_env_vars") is not None:
+        if app_config["env_vars"] is None:
+            app_config["env_vars"] = test_config["app_env_vars"]
+        else:
+            app_config["env_vars"].update(test_config["app_env_vars"])
+        logger.info(f"Using app config:\n{app_config}")
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -2006,12 +2012,6 @@ def run_test(test_config_file: str,
             f"at `{test_config_file}`.")
 
     test_config = test_config_dict[test_name]
-
-    if test_config.get("app_env_vars") is not None:
-        app_env_vars = test_config.get("app_env_vars")
-        if not isinstance(app_env_vars, dict):
-            raise ValueError("`app_env_vars` has to be a dict")
-        os.environ["APP_ENV_VARS"] = app_env_vars
 
     if smoke_test and "smoke_test" in test_config:
         smoke_test_config = test_config.pop("smoke_test")
