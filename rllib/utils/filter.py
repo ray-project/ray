@@ -4,6 +4,8 @@ import threading
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.numpy import SMALL_NUMBER
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.typing import TensorStructType
 
 logger = logging.getLogger(__name__)
 
@@ -11,11 +13,11 @@ logger = logging.getLogger(__name__)
 class Filter:
     """Processes input, possibly statefully."""
 
-    def apply_changes(self, other, *args, **kwargs):
+    def apply_changes(self, other: "Filter", *args, **kwargs) -> None:
         """Updates self with "new state" from other filter."""
         raise NotImplementedError
 
-    def copy(self):
+    def copy(self) -> "Filter":
         """Creates a new object with same state as self.
 
         Returns:
@@ -23,22 +25,26 @@ class Filter:
         """
         raise NotImplementedError
 
-    def sync(self, other):
+    def sync(self, other: "Filter") -> None:
         """Copies all state from other filter to self."""
         raise NotImplementedError
 
-    def clear_buffer(self):
-        """Creates copy of current state and clears accumulated state"""
+    def reset_buffer(self) -> None:
+        """Creates copy of current state and resets accumulated state"""
         raise NotImplementedError
 
-    def as_serializable(self):
+    def as_serializable(self) -> "Filter":
         raise NotImplementedError
+
+    @Deprecated(new="Filter.reset_buffer()", error=False)
+    def clear_buffer(self):
+        return self.reset_buffer()
 
 
 class NoFilter(Filter):
     is_concurrent = True
 
-    def __call__(self, x, update=True):
+    def __call__(self, x: TensorStructType, update=True):
         # Process no further if already np.ndarray, dict, or tuple.
         if isinstance(x, (np.ndarray, dict, tuple)):
             return x
@@ -48,19 +54,19 @@ class NoFilter(Filter):
         except Exception:
             raise ValueError("Failed to convert to array", x)
 
-    def apply_changes(self, other, *args, **kwargs):
+    def apply_changes(self, other: "NoFilter", *args, **kwargs) -> None:
         pass
 
-    def copy(self):
+    def copy(self) -> "NoFilter":
         return self
 
-    def sync(self, other):
+    def sync(self, other: "NoFilter") -> None:
         pass
 
-    def clear_buffer(self):
+    def reset_buffer(self) -> None:
         pass
 
-    def as_serializable(self):
+    def as_serializable(self) -> "NoFilter":
         return self
 
 
@@ -162,12 +168,16 @@ class MeanStdFilter(Filter):
         # The buffer is used to keep track of deltas amongst all the
         # observation filters.
         self.buffer = None
-        self.clear_buffer()
+        self.reset_buffer()
 
-    def clear_buffer(self):
+    def reset_buffer(self) -> None:
         self.buffer = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
-    def apply_changes(self, other: "MeanStdFilter", with_buffer: bool = False):
+    def apply_changes(self,
+                      other: "MeanStdFilter",
+                      with_buffer: bool = False,
+                      *args,
+                      **kwargs) -> None:
         """Applies updates from the buffer of another filter.
 
         Args:
@@ -195,16 +205,16 @@ class MeanStdFilter(Filter):
         if with_buffer:
             self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
-    def copy(self):
+    def copy(self) -> "MeanStdFilter":
         """Returns a copy of `self`."""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def as_serializable(self):
+    def as_serializable(self) -> "MeanStdFilter":
         return self.copy()
 
-    def sync(self, other):
+    def sync(self, other: "MeanStdFilter") -> None:
         """Syncs all fields together from other filter.
 
         Examples:
@@ -227,7 +237,8 @@ class MeanStdFilter(Filter):
         self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
-    def __call__(self, x, update=True):
+    def __call__(self, x: TensorStructType, update: bool = True) -> \
+            TensorStructType:
         if self.no_preprocessor:
             x = tree.map_structure(lambda x_: np.asarray(x_), x)
         else:
@@ -265,7 +276,7 @@ class MeanStdFilter(Filter):
         else:
             return _helper(x, self.rs, self.buffer, self.shape)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)
@@ -287,19 +298,19 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
         self.__getattribute__ = lock_wrap(self.__getattribute__)
 
-    def as_serializable(self):
+    def as_serializable(self) -> "MeanStdFilter":
         """Returns non-concurrent version of current class"""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def copy(self):
+    def copy(self) -> "ConcurrentMeanStdFilter":
         """Returns a copy of Filter."""
         other = ConcurrentMeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)

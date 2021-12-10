@@ -179,7 +179,9 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):
             if i in self.cnns:
-                cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
+                cnn_out, _ = self.cnns[i](SampleBatch({
+                    SampleBatch.OBS: component
+                }))
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [torch.int32, torch.int64, torch.uint8]:
@@ -189,19 +191,19 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     }
                 else:
                     one_hot_in = {SampleBatch.OBS: component}
-                one_hot_out, _ = self.one_hot[i](one_hot_in)
+                one_hot_out, _ = self.one_hot[i](SampleBatch(one_hot_in))
                 outs.append(one_hot_out)
             else:
-                nn_out, _ = self.flatten[i]({
+                nn_out, _ = self.flatten[i](SampleBatch({
                     SampleBatch.OBS: torch.reshape(component,
                                                    [-1, self.flatten_dims[i]])
-                })
+                }))
                 outs.append(nn_out)
 
         # Concat all outputs and the non-image inputs.
         out = torch.cat(outs, dim=1)
         # Push through (optional) FC-stack (this may be an empty stack).
-        out, _ = self.post_fc_stack({SampleBatch.OBS: out}, [], None)
+        out, _ = self.post_fc_stack(SampleBatch({SampleBatch.OBS: out}))
 
         # No logits/value branches.
         if self.logits_layer is None:
