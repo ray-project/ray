@@ -73,7 +73,8 @@ class GlobalState:
         self.gcs_client_options = gcs_client_options
 
     def _really_init_global_state(self, timeout=20):
-        self.global_state_accessor = GlobalStateAccessor(self.gcs_client_options)
+        self.global_state_accessor = GlobalStateAccessor(
+            self.gcs_client_options)
         self.global_state_accessor.connect()
 
     def actor_table(self, actor_id):

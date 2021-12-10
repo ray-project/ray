@@ -291,8 +291,7 @@ def find_redis_address_or_die():
     return redis_addresses.pop()
 
 
-def wait_for_node(gcs_options,
-                  timeout=30):
+def wait_for_node(gcs_options, timeout=30):
     """Wait until this node has appeared in the client table.
 
     Args:
@@ -310,7 +309,8 @@ def wait_for_node(gcs_options,
     redis_ip_address, redis_port = redis_address.split(":")
     wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                      redis_password)
     global_state._initialize_global_state(redis_address, redis_password)
     start_time = time.time()
     while time.time() - start_time < timeout:
