@@ -166,6 +166,7 @@ The interface for a custom input reader is as follows:
 
 .. autoclass:: ray.rllib.offline.InputReader
     :members:
+    :noindex:
 
 Example Custom Input API
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -198,6 +199,7 @@ The interface for the ``IOContext`` is the following:
 
 .. autoclass:: ray.rllib.offline.IOContext
     :members:
+    :noindex:
 
 See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
 
@@ -215,3 +217,4 @@ The interface for a custom output writer is as follows:
 
 .. autoclass:: ray.rllib.offline.OutputWriter
     :members:
+    :noindex:
