@@ -56,16 +56,12 @@ public abstract class ObjectStore {
    * @param object The object to put.
    * @return Id of the object.
    */
-  public ObjectId put(Object object, Boolean isArrowData) {
+  public ObjectId put(Object object) {
     if (object instanceof NativeRayObject) {
       throw new IllegalArgumentException(
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
-    if (isArrowData) {
-      return putRaw(ObjectSerializer.serializeArrow(object));
-    } else {
-      return putRaw(ObjectSerializer.serialize(object));
-    }
+    return putRaw(ObjectSerializer.serialize(object));
   }
 
   /**
@@ -76,16 +72,12 @@ public abstract class ObjectStore {
    * @param ownerActorId The id of the actor to assign ownership.
    * @return Id of the object.
    */
-  public ObjectId put(Object object, ActorId ownerActorId, Boolean isArrowData) {
+  public ObjectId put(Object object, ActorId ownerActorId) {
     if (object instanceof NativeRayObject) {
       throw new IllegalArgumentException(
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
-    if (isArrowData) {
-      return putRaw(ObjectSerializer.serializeArrow(object), ownerActorId);
-    } else {
-      return putRaw(ObjectSerializer.serialize(object), ownerActorId);
-    }
+    return putRaw(ObjectSerializer.serialize(object), ownerActorId);
   }
 
   /**

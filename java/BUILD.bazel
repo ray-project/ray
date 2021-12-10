@@ -92,6 +92,9 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
         "@maven//:org_yaml_snakeyaml",
+        "@maven//:org_apache_arrow_arrow_vector",
+        "@maven//:org_apache_arrow_arrow_memory_core",
+        "@maven//:com_fasterxml_jackson_core_jackson_databind"
     ],
 )
 

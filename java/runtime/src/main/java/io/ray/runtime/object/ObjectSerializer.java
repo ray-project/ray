@@ -1,5 +1,6 @@
 package io.ray.runtime.object;
 
+import com.fasterxml.jackson.databind.util.ByteBufferBackedInputStream;
 import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
@@ -13,12 +14,18 @@ import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.ipc.ArrowStreamReader;
+import org.apache.arrow.vector.ipc.ArrowStreamWriter;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -80,7 +87,12 @@ public class ObjectSerializer {
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
-        return nativeRayObject.buffer;
+        try (ArrowStreamReader reader = new ArrowStreamReader(new ByteBufferBackedInputStream(nativeRayObject.buffer), new RootAllocator(Long.MAX_VALUE))) {
+          reader.loadNextBatch();
+          return reader.getVectorSchemaRoot();
+        } catch (Exception e) {
+          e.printStackTrace();
+        }
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
@@ -172,6 +184,21 @@ public class ObjectSerializer {
         buffer.get(bytes);
       }
       return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_RAW);
+    } else if (object instanceof VectorSchemaRoot) {
+      // serialize arrow data using IPC Stream format
+      try {
+        ByteArrayOutputStream sink = new ByteArrayOutputStream();
+        ArrowStreamWriter writer = new ArrowStreamWriter((VectorSchemaRoot) object, null, sink);
+        writer.start();
+        writer.writeBatch();
+        writer.end();
+        writer.close();
+        NativeRayObject result = new NativeRayObject(sink.toByteArray(), OBJECT_METADATA_TYPE_ARROW);
+        sink.close();
+        return result;
+      } catch (Exception e) {
+        throw new RayException("IO Exception");
+      }
     } else if (object instanceof RayTaskException) {
       RayTaskException taskException = (RayTaskException) object;
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
