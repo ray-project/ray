@@ -60,12 +60,16 @@ message PlacementGroupSchedulingStrategy {
 
 message DefaultSchedulingStrategy {}
 
+message SpreadSchedulingStrategy {}
+
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.
     DefaultSchedulingStrategy default_scheduling_strategy = 1;
     // Placement group based scheduling strategy.
     PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    // Best effort spread scheduling strategy.
+    SpreadSchedulingStrategy spread_scheduling_strategy = 3;
   }
 }
 

@@ -17,7 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
@@ -865,7 +865,9 @@ std::string ObjectManager::DebugString() const {
   return result.str();
 }
 
-void ObjectManager::RecordMetrics() const {
+void ObjectManager::RecordMetrics() {
+  pull_manager_->RecordMetrics();
+  push_manager_->RecordMetrics();
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreFallbackMemory().Record(
