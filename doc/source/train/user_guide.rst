@@ -540,7 +540,7 @@ appropriately in distributed training.
   .. group-tab:: PyTorch
 
     .. code-block:: python
-        :emphasize-lines: 21, 37, 38, 39
+        :emphasize-lines: 37, 38, 39
 
         import ray.train.torch
         from ray import train
@@ -595,7 +595,7 @@ appropriately in distributed training.
   .. group-tab:: TensorFlow
 
     .. code-block:: python
-        :emphasize-lines: 16, 17, 19, 20, 24
+        :emphasize-lines: 24
 
         from ray import train
         from ray.train import Trainer
@@ -726,7 +726,7 @@ Checkpoints can be loaded into the training function in 2 steps:
   .. group-tab:: PyTorch
 
     .. code-block:: python
-        :emphasize-lines: 26, 30, 34
+        :emphasize-lines: 24, 26, 27, 30, 31, 35
 
         import ray.train.torch
         from ray import train
@@ -791,7 +791,7 @@ Checkpoints can be loaded into the training function in 2 steps:
   .. group-tab:: TensorFlow
 
     .. code-block:: python
-        :emphasize-lines: 22, 26
+        :emphasize-lines: 16, 22, 23, 26, 27, 30
 
         from ray import train
         from ray.train import Trainer
