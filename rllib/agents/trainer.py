@@ -443,7 +443,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     #    "s3://bucket/2.json"]).
     #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - A callable that returns a ray.rllib.offline.InputReader.
+    #  - A callable that takes an `IOContext` object as only arg and returns a
+    #    ray.rllib.offline.InputReader.
     #  - A string key that indexes a callable with tune.registry.register_input
     "input": "sampler",
     # Arguments accessible from the IOContext for configuring custom input

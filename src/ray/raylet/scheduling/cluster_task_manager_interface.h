@@ -128,8 +128,8 @@ class ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;
 
-  /// Report high frequency scheduling metrics.
-  virtual void RecordMetrics() = 0;
+  /// Record the internal metrics.
+  virtual void RecordMetrics() const = 0;
 
   /// Check if there are enough available resources for the given input.
   virtual bool IsLocallySchedulable(const RayTask &task) const = 0;
