@@ -57,13 +57,11 @@ boto3
 cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
-google-auth-oauthlib~=0.4.6
 google-api-python-client
 google-cloud-storage
 gym-minigrid
 kubernetes
 lxml
-markdown~=3.3.6
 moto
 mypy
 networkx
@@ -76,7 +74,6 @@ opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
-pyasn1==0.4.8
 pygments
 pyspark==3.1.2
 pytest==5.4.3
