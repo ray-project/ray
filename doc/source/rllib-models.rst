@@ -1,11 +1,11 @@
 .. include:: rllib/we_are_hiring.rst
 
-RLlib Models and Action Distributions
-=====================================
+RLlib Models, Preprocessors, and Action Distributions
+=====================================================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib.
 We start with an ``Environment``, which - given an action - produces an observation.
-The observation is preprocessed by a ``Filter`` (e.g. for running mean normalization)
+The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization)
 before being sent to a neural network ``Model``. The model output is in turn
 interpreted by an ``ActionDistribution`` to determine the next action.
 
@@ -136,18 +136,20 @@ For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <#r
     It is not possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
 
 
-Customizing Models and Model Inputs
------------------------------------
+Customizing Preprocessors and Models
+------------------------------------
 
-Custom Environment Filters
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Custom Preprocessors and Environment Filters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. warning::
 
-    Custom preprocessors are no longer supported and the RLlib built-in preprocessors (such as Tuple/Dict flattening) will soon be deprecated.
+    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
+    Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+    Note that the built-in **default** Preprocessors described above will still be used and won't be deprecated.
 
-
-In order to customize your env's observations directly, use `gym's wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environments.
+Instead of using the deprecated custom Preprocessors, you should use ``gym.Wrappers`` to preprocess your environment's output (observations and rewards),
+but also your Model's computed actions before sending them back to the environment.
 
 For example, for manipulating your env's observations or rewards, do:
 
