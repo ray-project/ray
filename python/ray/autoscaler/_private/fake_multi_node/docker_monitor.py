@@ -6,7 +6,7 @@ import subprocess
 import time
 
 import yaml
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 
 
 def _read_yaml(path: str):
@@ -14,8 +14,8 @@ def _read_yaml(path: str):
         return yaml.safe_load(f)
 
 
-def _update_docker_compose(docker_compose_path: str,
-                           project_name: str) -> bool:
+def _update_docker_compose(docker_compose_path: str, project_name: str,
+                           status: Optional[Dict[str, Any]]) -> bool:
     docker_compose_config = _read_yaml(docker_compose_path)
 
     if not docker_compose_config:
@@ -23,6 +23,9 @@ def _update_docker_compose(docker_compose_path: str,
         return False
 
     cmd = ["up", "-d"]
+    if status and len(status) > 0:
+        cmd += ["--no-recreate"]
+
     shutdown = False
     if not docker_compose_config["services"]:
         # If no more nodes, run `down` instead of `up`
@@ -93,6 +96,8 @@ def _update_docker_status(docker_compose_path: str, project_name: str,
     with open(docker_status_path, "wt") as f:
         json.dump(status, f)
 
+    return status
+
 
 def monitor_docker(docker_compose_path: str,
                    status_path: str,
@@ -110,20 +115,21 @@ def monitor_docker(docker_compose_path: str,
     # Force update
     next_update = time.monotonic() - 1.
     shutdown = False
+    status = None
     while not shutdown:
         new_docker_config = _read_yaml(docker_compose_path)
         if new_docker_config != docker_config:
             # Update cluster
             shutdown = _update_docker_compose(docker_compose_path,
-                                              project_name)
+                                              project_name, status)
 
             # Force status update
             next_update = time.monotonic() - 1.
 
         if time.monotonic() > next_update:
             # Update docker status
-            _update_docker_status(docker_compose_path, project_name,
-                                  status_path)
+            status = _update_docker_status(docker_compose_path, project_name,
+                                           status_path)
             next_update = time.monotonic() + update_interval
 
         docker_config = new_docker_config
@@ -154,20 +160,22 @@ def start_monitor(config_file: str):
     docker_compose_config_path = os.path.join(volume_dir,
                                               "docker-compose.yaml")
 
-    status_path = os.path.join(volume_dir, "status.json")
+    # node_state_path = os.path.join(volume_dir, "nodes.json")
+    docker_status_path = os.path.join(volume_dir, "status.json")
 
     if os.path.exists(docker_compose_config_path):
         os.remove(docker_compose_config_path)
 
-    if os.path.exists(status_path):
-        os.remove(status_path)
+    if os.path.exists(docker_status_path):
+        os.remove(docker_status_path)
         # Create empty file so it can be mounted
-        with open(status_path, "wt") as f:
+        with open(docker_status_path, "wt") as f:
             f.write("{}")
 
     print(f"Starting monitor process. Please start Ray cluster with:\n"
           f"   RAY_FAKE_CLUSTER=1 ray up {config_file}")
-    monitor_docker(docker_compose_config_path, status_path, project_name)
+    monitor_docker(docker_compose_config_path, docker_status_path,
+                   project_name)
 
 
 if __name__ == "__main__":
