@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -11,10 +11,11 @@ torch, _ = try_import_torch()
 
 class PolynomialSchedule(Schedule):
     """Polynomial interpolation between `initial_p` and `final_p`.
-    
+
     Over `schedule_timesteps`. After this many time steps, always returns
     `final_p`.
     """
+
     def __init__(self,
                  schedule_timesteps: int,
                  final_p: float,

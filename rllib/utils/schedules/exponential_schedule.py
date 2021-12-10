@@ -14,6 +14,7 @@ class ExponentialSchedule(Schedule):
     Reduces output over `schedule_timesteps`. After this many time steps
     always returns `final_p`.
     """
+
     def __init__(self,
                  schedule_timesteps: int,
                  framework: Optional[str] = None,

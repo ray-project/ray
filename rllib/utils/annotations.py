@@ -90,7 +90,8 @@ def ExperimentalAPI(obj):
         >>> class TorchPolicy(Policy):
         ...     ...
         ...     # Indicates that the `TorchPolicy.loss` method is a new and
-        ...     # experimental API and may change frequently in future releases.
+        ...     # experimental API and may change frequently in future
+        ...     # releases.
         ...     @ExperimentalAPI
         ...     def loss(self, model, action_dist, train_batch):
         ...         # ...

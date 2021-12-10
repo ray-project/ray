@@ -16,8 +16,7 @@ class PiecewiseSchedule(Schedule):
     def __init__(self,
                  endpoints: List[Tuple[int, float]],
                  framework: Optional[str] = None,
-                 interpolation: Callable[[TensorType, TensorType,
-                                          TensorType],
+                 interpolation: Callable[[TensorType, TensorType, TensorType],
                                          TensorType] = _linear_interpolation,
                  outside_value: Optional[float] = None):
         """Initializes a PiecewiseSchedule instance.
