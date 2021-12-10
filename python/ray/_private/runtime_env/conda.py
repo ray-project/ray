@@ -25,21 +25,33 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 default_logger = logging.getLogger(__name__)
 
 
-def _resolve_current_ray_path():
+def _resolve_current_ray_path() -> str:
     # When ray is built from source with pip install -e,
-    # ray.__file__ returns .../python/ray/__init__.py.
-    # When ray is installed from a prebuilt binary, it returns
-    # .../site-packages/ray/__init__.py
+    # ray.__file__ returns .../python/ray/__init__.py and this function returns
+    # ".../python".
+    # When ray is installed from a prebuilt binary, ray.__file__ returns
+    # .../site-packages/ray/__init__.py and this function returns
+    # ".../site-packages".
     return os.path.split(os.path.split(ray.__file__)[0])[0]
 
 
-def _resolve_install_from_source_ray_dependencies():
-    """Find the ray dependencies when Ray is install from source"""
+def _get_ray_setup_spec():
+    """Find the Ray setup_spec from the currently running Ray.
+    
+    This function works even when Ray is built from source with pip install -e.
+    """
     ray_source_python_path = _resolve_current_ray_path()
     setup_py_path = os.path.join(ray_source_python_path, "setup.py")
-    ray_install_requires = runpy.run_path(setup_py_path)[
-        "setup_spec"].install_requires
-    return ray_install_requires
+    return runpy.run_path(setup_py_path)["setup_spec"]
+
+
+def _resolve_install_from_source_ray_dependencies():
+    """Find the Ray dependencies when Ray is installed from source"""
+    return _get_ray_setup_spec().install_requires
+
+
+def _resolve_install_from_source_ray_extras() -> Dict[str, List[str]]:
+    return _get_ray_setup_spec().extras
 
 
 def _inject_ray_to_conda_site(

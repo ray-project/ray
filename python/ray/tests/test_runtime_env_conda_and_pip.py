@@ -4,6 +4,7 @@ import sys
 from ray._private.runtime_env.conda_utils import (
     pip_requirement_specifier_is_ray)
 from ray._private.test_utils import wait_for_condition, chdir
+from ray._private.runtime_env.conda import _resolve_install_from_source_ray_dependencies
 import yaml
 import tempfile
 from pathlib import Path
@@ -14,6 +15,12 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+
+
+def test_resolve_install_from_source_ray_dependencies():
+    ray_install_requires = _resolve_install_from_source_ray_dependencies()
+    print(ray_install_requires
+          )  # TODO(architkulkarni): Check some basic pkgs in this list
 
 
 def check_local_files_gced(cluster):

@@ -3,8 +3,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
-from ray._private.runtime_env.conda_utils import (
-    pip_requirement_specifier_is_ray)
+from pkg_resources import Requirement
 import yaml
 
 import ray
@@ -12,7 +11,7 @@ from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
                                              encode_plugin_uri)
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
-from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.conda import _resolve_install_from_source_ray_extras, get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
@@ -118,7 +117,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """
     assert pip is not None
 
-    result = None
+    pip_list = None
     if sys.platform == "win32":
         raise NotImplementedError("The 'pip' field in runtime_env "
                                   "is not currently supported on "
@@ -128,27 +127,45 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
         pip_file = Path(pip)
         if not pip_file.is_file():
             raise ValueError(f"{pip_file} is not a valid file")
-        result = pip_file.read_text().strip().split("\n")
+        pip_list = pip_file.read_text().strip().split("\n")
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        if len(pip) == 0:
-            result = None
-        else:
-            result = pip
+        pip_list = pip
     else:
         raise TypeError("runtime_env['pip'] must be of type str or "
                         f"List[str], got {type(pip)}")
-    for specifier in result:
-        if (pip_requirement_specifier_is_ray(specifier)
-                and os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) == "1"):
-            raise ValueError(
-                "Ray was specified in the `pip` field of the "
-                f"`runtime_env`: '{specifier}'. This may cause Ray "
-                "version compatibility issues. When using the `pip` "
-                "field of `runtime_env`, it is recommended to "
-                "preinstall Ray on all nodes in the cluster and to "
-                "not include Ray in the `pip` field. To disable this error, "
-                "set the environment variable "
-                f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
+
+    result = []
+    extra_pip_dependencies = []
+    for specifier in pip_list:
+        requirement = Requirement.parse(specifier)
+        package_name = requirement.name
+        if package_name == "ray":
+            libraries = requirement.extras  # e.g. ("serve", "tune")
+            # TODO(architkulkarni): add unit test for test env var
+            if libraries == (
+            ) and os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) != "1":
+                raise ValueError(
+                    "Ray was specified in the `pip` field of the "
+                    f"`runtime_env`: '{specifier}'. This may cause Ray "
+                    "version compatibility issues. When using the `pip` "
+                    "field of `runtime_env`, it is recommended to "
+                    "preinstall Ray on all nodes in the cluster and to "
+                    "not include Ray in the `pip` field. To disable this error, "
+                    "set the environment variable "
+                    f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
+            extras = _resolve_install_from_source_ray_extras()
+            for library in libraries:
+                extra_pip_dependencies += extras[library]
+        else:
+            result.append(specifier)
+    # `pip install` may error with duplicate dependencies, so eliminate
+    # duplicates here.
+    result = list(set(result + extra_pip_dependencies))
+
+    if len(result) == 0:
+        result = None
+
+    return result
 
     return result
 
