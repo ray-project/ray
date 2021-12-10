@@ -58,6 +58,7 @@ To programmatically create a fake multi-node autoscaling cluster and connect to 
 
 .. literalinclude:: /../../python/ray/tests/test_autoscaler_fake_multinode.py
    :language: python
+   :dedent: 4
    :start-after: __example_begin__
    :end-before: __example_end__
 

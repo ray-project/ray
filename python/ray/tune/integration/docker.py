@@ -33,7 +33,7 @@ class DockerSyncer(NodeSyncer):
         from ray.tune.integration.docker import DockerSyncer
         tune.run(train,
                  sync_config=tune.SyncConfig(
-                     sync_to_driver=DockerSyncer))
+                     syncer=DockerSyncer))
 
     """
 

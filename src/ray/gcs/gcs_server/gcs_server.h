@@ -47,6 +47,9 @@ struct GcsServerConfig {
   std::string node_ip_address;
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
+  std::string log_dir;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
@@ -83,6 +86,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
@@ -145,7 +151,10 @@ class GcsServer {
   void CollectStats();
 
   /// Print debug info periodically.
-  void PrintDebugInfo();
+  std::string GetDebugState() const;
+
+  /// Dump the debug info to debug_state_gcs.txt.
+  void DumpDebugStateToFile() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -216,6 +225,8 @@ class GcsServer {
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;

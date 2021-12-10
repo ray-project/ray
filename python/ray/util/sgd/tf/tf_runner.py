@@ -3,7 +3,7 @@ import json
 import os
 
 import ray
-from ray.util.sgd import utils
+from ray.util.ml_utils.util import find_free_port
 
 logger = logging.getLogger(__name__)
 
@@ -151,4 +151,4 @@ class TFRunner:
 
     def find_free_port(self):
         """Finds a free port on the current node."""
-        return utils.find_free_port()
+        return find_free_port()

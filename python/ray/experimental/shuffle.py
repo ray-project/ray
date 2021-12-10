@@ -100,14 +100,28 @@ class _StatusTracker:
     def __init__(self):
         self.num_map = 0
         self.num_reduce = 0
+        self.map_refs = []
+        self.reduce_refs = []
 
-    def inc(self):
-        self.num_map += 1
-
-    def inc2(self):
-        self.num_reduce += 1
+    def register_objectrefs(self, map_refs, reduce_refs):
+        self.map_refs = map_refs
+        self.reduce_refs = reduce_refs
 
     def get_progress(self):
+        if self.map_refs:
+            ready, self.map_refs = ray.wait(
+                self.map_refs,
+                timeout=1,
+                num_returns=len(self.map_refs),
+                fetch_local=False)
+            self.num_map += len(ready)
+        elif self.reduce_refs:
+            ready, self.reduce_refs = ray.wait(
+                self.reduce_refs,
+                timeout=1,
+                num_returns=len(self.reduce_refs),
+                fetch_local=False)
+            self.num_reduce += len(ready)
         return self.num_map, self.num_reduce
 
 
@@ -194,6 +208,8 @@ def simple_shuffle(*,
     ]
 
     if tracker:
+        tracker.register_objectrefs.remote(
+            [map_out[0] for map_out in shuffle_map_out], shuffle_reduce_out)
         render_progress_bar(tracker, input_num_partitions,
                             output_num_partitions)
 
@@ -216,14 +232,15 @@ def run(ray_address=None,
         num_nodes=None,
         num_cpus=8,
         no_streaming=False,
-        use_wait=False):
+        use_wait=False,
+        tracker=None):
     import numpy as np
     import time
 
     is_multi_node = num_nodes
     if ray_address:
         print("Connecting to a existing cluster...")
-        ray.init(address=ray_address)
+        ray.init(address=ray_address, ignore_reinit_error=True)
     elif is_multi_node:
         print("Emulating a cluster...")
         print(f"Num nodes: {num_nodes}")
@@ -238,14 +255,14 @@ def run(ray_address=None,
     partition_size = int(partition_size)
     num_partitions = num_partitions
     rows_per_partition = partition_size // (8 * 2)
-    tracker = _StatusTracker.remote()
+    if tracker is None:
+        tracker = _StatusTracker.remote()
     use_wait = use_wait
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
         for _ in range(num_partitions):
             yield np.ones(
                 (rows_per_partition // num_partitions, 2), dtype=np.int64)
-        tracker.inc.remote()
 
     def output_writer(i: PartitionID,
                       shuffle_inputs: List[ObjectRef]) -> OutType:
@@ -261,7 +278,6 @@ def run(ray_address=None,
                 arr = ray.get(ready)
                 total += arr.size * arr.itemsize
 
-        tracker.inc2.remote()
         return total
 
     def output_writer_non_streaming(i: PartitionID,
@@ -269,7 +285,6 @@ def run(ray_address=None,
         total = 0
         for arr in shuffle_inputs:
             total += arr.size * arr.itemsize
-        tracker.inc2.remote()
         return total
 
     if no_streaming:

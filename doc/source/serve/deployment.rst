@@ -1,10 +1,11 @@
 ===================
 Deploying Ray Serve
 ===================
+This section should help you:
 
-In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
-This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your Serve application over time.
+- understand how Ray Serve runs on a Ray cluster beyond the basics mentioned in :doc:`core-apis`
+- deploy and update your Serve application over time
+- monitor your Serve application using the Ray Dashboard and logging
 
 .. contents:: Deploying Ray Serve
 
@@ -76,6 +77,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
     return "hello"
 
   my_func.deploy()
+
 
 Deploying on Kubernetes
 =======================
@@ -221,8 +223,8 @@ Ray cluster and re-deploys all Serve deployments into that cluster.
   the long term roadmap and being actively worked on.
 
 Ray Serve added an experimental feature to help recovering the state.
-This features enables Serve to write all your deployment configuration and code into a storage location. 
-Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+This features enables Serve to write all your deployment configuration and code into a storage location.
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
 Here is how to use it:
 
@@ -237,7 +239,7 @@ You can use both the start argument and the CLI to specify it:
 
     serve.start(_checkpoint_path=...)
 
-or 
+or
 
 .. code-block:: shell
 
@@ -248,9 +250,10 @@ The checkpoint path argument accepts the following format:
 
 - ``file://local_file_path``
 - ``s3://bucket/path``
+- ``gs://bucket/path``
 - ``custom://importable.custom_python.Class/path``
 
-While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
 
 In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
 For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.
@@ -450,7 +453,7 @@ For example, after running the script for some time and refreshing ``localhost:8
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a :ref:`custom metric <ray-metrics>` to use in your deployment, and tag it with the current deployment or replica.
+You can even define a :ref:`custom metric <application-level-metrics>` to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py

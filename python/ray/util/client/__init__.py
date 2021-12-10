@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-09-22"
+CURRENT_PROTOCOL_VERSION = "2021-12-07"
 
 
 class _ClientContext:
@@ -167,9 +167,9 @@ class _ClientContext:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
         server_handle, address_info = ray_client_server.init_and_serve(
-            "localhost:50051", *args, **kwargs)
+            "127.0.0.1:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        self.connect("127.0.0.1:50051")
         self._connected_with_init = True
         return address_info
 

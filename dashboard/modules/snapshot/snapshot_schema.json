@@ -30,6 +30,9 @@
                     "status": {
                       "type": ["string", "null"]
                     },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },

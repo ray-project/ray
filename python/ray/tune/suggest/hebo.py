@@ -50,9 +50,11 @@ class HEBOSearch(Searcher):
     to kickstart the search process. In order to achieve good results,
     we recommend setting the number of trials to at least 16.
 
-    Maximum number of concurrent trials is determined by `max_concurrent`
-    argument. Trials will be done in batches of `max_concurrent` trials.
-    It is not recommended to use this Searcher in a `ConcurrencyLimiter`.
+    Maximum number of concurrent trials is determined by ``max_concurrent``
+    argument. Trials will be done in batches of ``max_concurrent`` trials.
+    If this Searcher is used in a ``ConcurrencyLimiter``, the
+    ``max_concurrent`` value passed to it will override the value passed
+    here.
 
     Args:
         space (dict|hebo.design_space.design_space.DesignSpace):
@@ -79,6 +81,9 @@ class HEBOSearch(Searcher):
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
         max_concurrent (int, 8): Number of maximum concurrent trials.
+            If this Searcher is used in a ``ConcurrencyLimiter``, the
+            ``max_concurrent`` value passed to it will override the
+            value passed here.
         **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
@@ -173,6 +178,10 @@ class HEBOSearch(Searcher):
         if space:
             self._setup_optimizer()
 
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        self._max_concurrent = max_concurrent
+        return True
+
     def _setup_optimizer(self):
         # HEBO internally minimizes, so "max" => -1
         if self._mode == "max":
@@ -221,6 +230,7 @@ class HEBOSearch(Searcher):
             return False
         space = self.convert_search_space(config)
         self._space = space
+
         if metric:
             self._metric = metric
         if mode:

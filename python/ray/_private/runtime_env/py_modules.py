@@ -2,12 +2,14 @@ import logging
 import os
 from types import ModuleType
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
+from ray._private.runtime_env.utils import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -18,8 +20,8 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for remote URIs.")
 
     return protocol is not None
 
@@ -46,6 +48,8 @@ def upload_py_modules_if_needed(
         if isinstance(module, str):
             # module_path is a local path or a URI.
             module_path = module
+        elif isinstance(module, Path):
+            module_path = str(module)
         elif isinstance(module, ModuleType):
             # NOTE(edoakes): Python allows some installed Python packages to
             # be split into multiple directories. We could probably handle
@@ -100,14 +104,14 @@ class PyModulesManager:
         return deleted
 
     def setup(self,
-              runtime_env: dict,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("py_modules"):
+        if not runtime_env.py_modules():
             return
 
         module_dirs = []
-        for uri in runtime_env["py_modules"]:
+        for uri in runtime_env.py_modules():
             module_dir = download_and_unpack_package(
                 uri, self._resources_dir, logger=logger)
             module_dirs.append(module_dir)

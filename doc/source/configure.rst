@@ -238,7 +238,7 @@ TLS Authentication
 ------------------
 
 Ray can be configured to use TLS on it's gRPC channels.
-This has means that connecting to the Ray client on the head node will
+This means that connecting to the Ray client on the head node will
 require an appropriate set of credentials and also that data exchanged between
 various processes (client, head, workers) will be encrypted.
 
@@ -324,5 +324,11 @@ The list of available driver options:
   - Type: ``String``
   - Default: empty string.
   - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
+
+- ``ray.job.namespace``
+
+  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces cannot access each other. If it's not specified, a randomized value will be used instead.
+  - Type: ``String``
+  - Default: A random UUID string value.
 
 .. _`Apache Arrow`: https://arrow.apache.org/

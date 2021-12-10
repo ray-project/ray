@@ -145,7 +145,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
   gcs_address.set_port(current_gcs_server_address_.second);
-  /// TODO: refactor pubsub::Subscriber to avoid this.
+  /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
   gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
 
   std::unique_ptr<pubsub::Subscriber> subscriber;
@@ -203,6 +203,7 @@ void GcsClient::Disconnect() {
   gcs_subscriber_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
+  disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
 
@@ -287,6 +288,9 @@ void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+    if (disconnected_) {
+      return;
+    }
     if (get_server_address_func_(&address)) {
       // After GCS is restarted, the gcs client will reestablish the connection. At
       // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to

@@ -2,6 +2,15 @@
 Core API: Deployments
 =====================
 
+This section should help you:
+
+- create, query, update and configure deployments
+- configure resources of your deployments
+- specify different Python dependencies across different deployment using Runtime Environments
+
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 .. contents::
 
 Creating a Deployment
@@ -279,7 +288,7 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)

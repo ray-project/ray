@@ -29,7 +29,6 @@ using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
-using rpc::ObjectLocationInfo;
 using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;
@@ -211,17 +210,6 @@ class GcsTaskReconstructionTable
 
  private:
   JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
-};
-
-class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
- public:
-  explicit GcsObjectTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
-  }
-
- private:
-  JobID GetJobIdFromKey(const ObjectID &key) override { return key.TaskId().JobId(); }
 };
 
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {

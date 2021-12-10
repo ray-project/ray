@@ -92,13 +92,23 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
     # tf vs torch).
     learner_info_builder = LearnerInfoBuilder(num_devices=1)
-    for policy_id in policies.keys():
+    for policy_id, policy in policies.items():
         if policy_id not in samples.policy_batches:
             continue
 
         batch = samples.policy_batches[policy_id]
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
+
+        # Check to make sure that the sgd_minibatch_size is not smaller
+        # than max_seq_len otherwise this will cause indexing errors while
+        # performing sgd when using a RNN or Attention model
+        if policy.is_recurrent() and \
+           policy.config["model"]["max_seq_len"] > sgd_minibatch_size:
+            raise ValueError("`sgd_minibatch_size` ({}) cannot be smaller than"
+                             "`max_seq_len` ({}).".format(
+                                 sgd_minibatch_size,
+                                 policy.config["model"]["max_seq_len"]))
 
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):

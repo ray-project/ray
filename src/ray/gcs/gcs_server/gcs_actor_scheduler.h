@@ -79,6 +79,8 @@ class GcsActorSchedulerInterface {
   /// \param actor The actor to be destoryed.
   virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
 
+  virtual std::string DebugString() const = 0;
+
   virtual ~GcsActorSchedulerInterface() {}
 };
 
@@ -154,6 +156,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor The actor to be destoryed.
   void OnActorDestruction(std::shared_ptr<GcsActor> actor) override {}
+
+  std::string DebugString() const override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -256,6 +260,12 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
   void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
                                      const rpc::RequestWorkerLeaseReply &reply);
+
+  /// Handler to process runtime env setup failure.
+  ///
+  /// \param actor Contains the resources needed to lease workers from the specified node.
+  /// \param node_id The node where the runtime env is failed to setup.
+  void OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor, const NodeID &node_id);
 
   /// Create the specified actor on the specified worker.
   ///

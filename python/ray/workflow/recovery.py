@@ -4,7 +4,8 @@ import ray
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow.common import (Workflow, StepID, WorkflowRef,
-                                 WorkflowExecutionResult)
+                                 WorkflowStaticRef, WorkflowExecutionResult,
+                                 StepType)
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
@@ -50,6 +51,37 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
     return func(*args, **kwargs)
 
 
+def _reconstruct_wait_step(reader: workflow_storage.WorkflowStorage,
+                           result: workflow_storage.StepInspectResult,
+                           input_map: Dict[StepID, Any]):
+    input_workflows = []
+    step_options = result.step_options
+    wait_options = step_options.ray_options.get("wait_options", {})
+    for i, _step_id in enumerate(result.workflows):
+        # Check whether the step has been loaded or not to avoid
+        # duplication
+        if _step_id in input_map:
+            r = input_map[_step_id]
+        else:
+            r = _construct_resume_workflow_from_step(reader, _step_id,
+                                                     input_map)
+            input_map[_step_id] = r
+        if isinstance(r, Workflow):
+            input_workflows.append(r)
+        else:
+            assert isinstance(r, StepID)
+            # TODO (Alex): We should consider caching these outputs too.
+            output = reader.load_step_output(r)
+            # Simulate a workflow with a workflow reference so it could be
+            # used directly by 'workflow.wait'.
+            static_ref = WorkflowStaticRef(step_id=r, ref=ray.put(output))
+            wf = Workflow.from_ref(static_ref)
+            input_workflows.append(wf)
+
+    from ray import workflow
+    return workflow.wait(input_workflows, **wait_options)
+
+
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage, step_id: StepID,
         input_map: Dict[StepID, Any]) -> Union[Workflow, StepID]:
@@ -78,6 +110,11 @@ def _construct_resume_workflow_from_step(
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
 
+    step_options = result.step_options
+    # Process the wait step as a special case.
+    if step_options.step_type == StepType.WAIT:
+        return _reconstruct_wait_step(reader, result, input_map)
+
     with serialization.objectref_cache():
         input_workflows = []
         for i, _step_id in enumerate(result.workflows):
@@ -99,7 +136,6 @@ def _construct_resume_workflow_from_step(
 
         args, kwargs = reader.load_step_args(step_id, input_workflows,
                                              workflow_refs)
-        step_options = result.step_options
         recovery_workflow: Workflow = _recover_workflow_step.step(
             args, kwargs, input_workflows, workflow_refs)
         recovery_workflow._step_id = step_id

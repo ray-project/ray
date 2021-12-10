@@ -5,7 +5,7 @@ from typing import TypeVar, List, Optional, Dict, Any
 import numpy as np
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
@@ -23,7 +23,7 @@ def simple_shuffle(input_blocks: BlockList,
                    map_ray_remote_args: Optional[Dict[str, Any]] = None,
                    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
                    _spread_resource_prefix: Optional[str] = None) -> BlockList:
-    input_blocks = list(input_blocks.iter_blocks())
+    input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
@@ -131,5 +131,6 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         num_rows=accessor.num_rows(),
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
-        input_files=None)
+        input_files=None,
+        exec_stats=BlockExecStats.TODO)
     return new_block, new_metadata

@@ -290,7 +290,7 @@ py_test(
     name = "learning_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -468,7 +468,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -478,7 +478,7 @@ py_test(
 py_test(
     name = "learning_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
@@ -1222,6 +1222,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_rnn_sequencing",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_rnn_sequencing.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["team:ml", "policy"],
     size = "small",
@@ -1254,6 +1261,13 @@ py_test(
     tags = ["team:ml", "utils"],
     size = "medium",
     srcs = ["utils/exploration/tests/test_parameter_noise.py"]
+)
+
+py_test(
+    name = "test_random_encoder",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_random_encoder.py"]
 )
 
 # Schedules
@@ -1488,6 +1502,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_nn_framework_import_errors",
+    tags = ["team:ml", "tests_dir", "tests_dir_N"],
+    size = "small",
+    srcs = ["tests/test_nn_framework_import_errors.py"]
+)
+
+py_test(
     name = "tests/test_pettingzoo_env",
     tags = ["team:ml", "tests_dir", "tests_dir_P"],
     size = "medium",
@@ -1654,7 +1675,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=60"]
+    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
@@ -1663,7 +1684,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=60", "--framework torch"]
+    args = ["--as-test", "--stop-reward=70", "--framework torch"]
 )
 
 py_test(
@@ -2321,34 +2342,34 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=13"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
+    name = "examples/parallel_evaluation_and_training_auto_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_11_episodes_tf2",
+    name = "examples/parallel_evaluation_and_training_211_ts_tf2",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=11"]
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_14_episodes_torch",
+    name = "examples/parallel_evaluation_and_training_auto_ts_torch",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=14"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2487,10 +2508,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/remote_vector_env_with_custom_api",
+    name = "examples/remote_base_env_with_custom_api",
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
-    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    srcs = ["examples/remote_base_env_with_custom_api.py"],
     args = ["--stop-iters=3"]
 )
 
@@ -2710,8 +2731,16 @@ py_test(
 #
 # Tag: documentation
 #
-# NOTE: Add tests alphabetically into this list.
+# NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/custom_gym_env",
+    main = "examples/documentation/custom_gym_env.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/custom_gym_env.py"],
+)
 
 py_test(
     name = "examples/documentation/rllib_in_60s",
@@ -2719,4 +2748,20 @@ py_test(
     tags = ["team:ml", "documentation"],
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_ray_readme",
+    main = "examples/documentation/rllib_on_ray_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_ray_readme.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_rllib_readme",
+    main = "examples/documentation/rllib_on_rllib_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
 )
