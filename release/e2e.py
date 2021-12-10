@@ -1338,6 +1338,9 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    # A lot of staging tests share the same app config yaml, except the flags.
+    # `app_env_vars` in test config will help this one.
+    # Here we extend the env_vars to use the one specified in the test config.
     if test_config.get("app_env_vars") is not None:
         if app_config["env_vars"] is None:
             app_config["env_vars"] = test_config["app_env_vars"]
