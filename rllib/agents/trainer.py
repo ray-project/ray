@@ -986,7 +986,6 @@ class Trainer(Trainable):
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
                 step_results = next(self.train_exec_impl)
-
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
             # Parallel eval + training.
@@ -998,23 +997,23 @@ class Trainer(Trainable):
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
 
-                        evaluation_metrics = self.evaluate(
-                            duration_fn=functools.partial(
-                                auto_duration_fn, unit, self.config[
-                                    "evaluation_num_workers"], self.config[
-                                        "evaluation_config"]))
+                        self.evaluate(duration_fn=functools.partial(
+                            auto_duration_fn,
+                            unit,
+                            self.config["evaluation_num_workers"],
+                            self.config["evaluation_config"]))
                     else:
-                        evaluation_metrics = self.evaluate()
+                        self.evaluate()
                     # Collect the training results from the future.
                     step_results = train_future.result()
             # Sequential: train (already done above), then eval.
             else:
-                evaluation_metrics = self.evaluate()
+                self.evaluate()
 
-            # Add evaluation results to train results.
-            assert isinstance(evaluation_metrics, dict), \
-                "Trainer.evaluate() needs to return a dict."
-            step_results.update(evaluation_metrics)
+        # Attach latest available evaluation results to train results.
+        assert isinstance(self.evaluation_metrics, dict), \
+            "Trainer.evaluate() needs to return a dict."
+        step_results.update(self.evaluation_metrics)
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config["env_task_fn"] is not None:
@@ -1176,9 +1175,10 @@ class Trainer(Trainable):
                     self.evaluation_workers.remote_workers())
             metrics["timesteps_this_iter"] = num_ts_run
 
-        self.evaluation_metrics = metrics
-
-        return {"evaluation": metrics}
+        # Usually evaluation does not run for every step.
+        # Save evaluation metrics on trainer, so it can be attached to
+        # subsequent step results as latest evaluation result.
+        self.evaluation_metrics = {"evaluation": metrics}
 
     @DeveloperAPI
     @staticmethod
