@@ -630,7 +630,8 @@ class DynamicTFPolicy(TFPolicy):
         # Fields that have not been accessed are not needed for action
         # computations -> Tag them as `used_for_compute_actions=False`.
         for key, view_req in self.view_requirements.items():
-            if key not in self._input_dict.accessed_keys:
+            if not key.startswith("state_in_") and \
+                    key not in self._input_dict.accessed_keys:
                 view_req.used_for_compute_actions = False
         for key, value in self._extra_action_fetches.items():
             self._dummy_batch[key] = get_dummy_batch_for_space(
