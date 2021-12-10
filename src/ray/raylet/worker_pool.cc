@@ -438,25 +438,16 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc = proc, proc_startup_token, worker_type,
-                     this](const boost::system::error_code e) mutable {
+  timer->async_wait([timer, language, proc, proc_startup_token, worker_type,
+                     this](const boost::system::error_code e) {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(ERROR)
-          << "Some workers of the worker process(" << proc.GetId()
-          << ") have not registered within the timeout. "
-          << (proc.IsAlive()
-                  ? "The process is still alive, probably it's hanging during start."
-                  : "The process is dead, probably it crashed during start.");
-
-      if (proc.IsAlive()) {
-        proc.Kill();
-      }
-
+      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
+                    << ") have not registered to raylet within timeout.";
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool found;
