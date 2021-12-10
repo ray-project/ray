@@ -207,13 +207,14 @@ class HTTPProxy:
 
         self.request_error_counter = metrics.Counter(
             "serve_num_http_error_requests",
-            description="The number of non-200 HTTP Response processed.",
+            description="The number of non-200 HTTP responses.",
             tag_keys=("route", ))
 
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
-            description=
-            "The number of non-200 HTTP Response processed by each deployment.",
+            description=(
+                "The number of non-200 HTTP responses returned by each "
+                "deployment."),
             tag_keys=("deployment", ))
 
     def _update_routes(self,

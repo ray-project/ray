@@ -277,8 +277,8 @@ class Client:
 
         Args:
             deployment_name (str): A registered service deployment.
-            missing_ok (bool): If true, then Serve won't check the deployment is
-                registered. False by default.
+            missing_ok (bool): If true, then Serve won't check the deployment
+                is registered. False by default.
             sync (bool): If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.

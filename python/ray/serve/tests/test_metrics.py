@@ -91,7 +91,7 @@ def test_deployment_logger(serve_instance):
 
 def test_http_metrics(serve_instance):
     expected_metrics = [
-        'serve_num_http_requests', 'serve_num_http_error_requests'
+        "serve_num_http_requests", "serve_num_http_error_requests"
     ]
 
     def verify_metrics(expected_metrics, do_assert=False):
@@ -118,7 +118,7 @@ def test_http_metrics(serve_instance):
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
-    expected_metrics.append('serve_num_deployment_http_error_requests')
+    expected_metrics.append("serve_num_deployment_http_error_requests")
 
     @serve.deployment(name="A")
     class A:
