@@ -818,7 +818,7 @@ class Trainer(Trainable):
                 num_workers=self.config["num_workers"])
 
             # Function defining one single training iteration's behavior.
-            if config["_disable_distributed_execution_api"]:
+            if self.config["_disable_distributed_execution_api"]:
                 # Ensure remote workers are initially in sync with the
                 # local worker.
                 self.workers.sync_weights()
@@ -1088,8 +1088,7 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
 
-        use_exec_api = not self.config.get(
-            "_disable_distributed_execution_api")
+        use_exec_api = not self.config["_disable_distributed_execution_api"]
 
         def auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done):
             # Training is done and we already ran at least one

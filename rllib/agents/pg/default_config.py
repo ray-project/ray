@@ -11,7 +11,8 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate.
     "lr": 0.0004,
     # PG is the first algo (experimental) to not use the distr. exec API
-    # anymore.
+    # anymore. Only supported for simple_optimizer=True so far.
+    "simple_optimizer": True,
     "_disable_distributed_execution_api": True,
 })
 
