@@ -1,6 +1,9 @@
 import logging
 import numpy as np
 import threading
+import tree  # pip install dm_tree
+
+from ray.rllib.utils.numpy import SMALL_NUMBER
 
 logger = logging.getLogger(__name__)
 
@@ -137,25 +140,33 @@ class MeanStdFilter(Filter):
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
+        # We don't have a preprocessor, if shape is None
+        self.no_preprocessor = shape is None or (
+            isinstance(self.shape, (dict, tuple))
+            and isinstance(tree.flatten(self.shape)[0], np.ndarray))
+        if not self.no_preprocessor:
+            self.shape = np.array(self.shape)
         self.demean = demean
         self.destd = destd
         self.clip = clip
-        self.rs = RunningStat(shape)
+        # Running stats.
+        self.rs = tree.map_structure(lambda s: RunningStat(s), self.shape)
+
         # In distributed rollouts, each worker sees different states.
         # The buffer is used to keep track of deltas amongst all the
         # observation filters.
-
-        self.buffer = RunningStat(shape)
+        self.buffer = None
+        self.clear_buffer()
 
     def clear_buffer(self):
-        self.buffer = RunningStat(self.shape)
+        self.buffer = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
-    def apply_changes(self, other, with_buffer=False):
+    def apply_changes(self, other: "MeanStdFilter", with_buffer: bool = False):
         """Applies updates from the buffer of another filter.
 
-        Params:
-            other (MeanStdFilter): Other filter to apply info from
-            with_buffer (bool): Flag for specifying if the buffer should be
+        Args:
+            other: Other filter to apply info from
+            with_buffer: Flag for specifying if the buffer should be
                 copied from other.
 
         Examples:
@@ -173,12 +184,13 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [4, 5.75, 1]
         """
-        self.rs.update(other.buffer)
+        tree.map_structure(lambda rs, other_rs: rs.update(other_rs), self.rs,
+                           other.buffer)
         if with_buffer:
-            self.buffer = other.buffer.copy()
+            self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def copy(self):
-        """Returns a copy of Filter."""
+        """Returns a copy of `self`."""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other
@@ -203,32 +215,49 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [1, array(10.0), 1]
         """
-        assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        self.rs = other.rs.copy()
-        self.buffer = other.buffer.copy()
+        self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
+        self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def __call__(self, x, update=True):
-        x = np.asarray(x)
-        if update:
-            if len(x.shape) == len(self.rs.shape) + 1:
-                # The vectorized case.
-                for i in range(x.shape[0]):
-                    self.rs.push(x[i])
-                    self.buffer.push(x[i])
-            else:
-                # The unvectorized case.
-                self.rs.push(x)
-                self.buffer.push(x)
-        if self.demean:
-            x = x - self.rs.mean
-        if self.destd:
-            x = x / (self.rs.std + 1e-8)
-        if self.clip:
-            x = np.clip(x, -self.clip, self.clip)
-        return x
+        if self.no_preprocessor:
+            x = tree.map_structure(lambda x_: np.asarray(x_), x)
+        else:
+            x = np.asarray(x)
+
+        def _helper(x, rs, buffer, shape):
+            # Discrete|MultiDiscrete spaces -> No normalization.
+            if shape is None:
+                return x
+
+            # Keep dtype as is througout this filter.
+            orig_dtype = x.dtype
+
+            if update:
+                if len(x.shape) == len(rs.shape) + 1:
+                    # The vectorized case.
+                    for i in range(x.shape[0]):
+                        rs.push(x[i])
+                        buffer.push(x[i])
+                else:
+                    # The unvectorized case.
+                    rs.push(x)
+                    buffer.push(x)
+            if self.demean:
+                x = x - rs.mean
+            if self.destd:
+                x = x / (rs.std + SMALL_NUMBER)
+            if self.clip:
+                x = np.clip(x, -self.clip, self.clip)
+            return x.astype(orig_dtype)
+
+        if self.no_preprocessor:
+            return tree.map_structure_up_to(x, _helper, x, self.rs,
+                                            self.buffer, self.shape)
+        else:
+            return _helper(x, self.rs, self.buffer, self.shape)
 
     def __repr__(self):
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(

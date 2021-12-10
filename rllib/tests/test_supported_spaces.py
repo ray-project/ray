@@ -5,17 +5,21 @@ import unittest
 import ray
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNetV2
-from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNetV2
-from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNetV2
-from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
+from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as \
+    ComplexNet
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
+from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
+from ray.rllib.models.torch.complex_input_net import ComplexInputNetwork as \
+    TorchComplexNet
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
+from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNet
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector1d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
@@ -33,10 +37,10 @@ ACTION_SPACES_TO_TEST = {
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "vector1d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "vizdoomgym": Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
                     Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
     "dict": Dict({
@@ -78,17 +82,27 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             stat = "unsupported"
         else:
             if alg not in ["DDPG", "ES", "ARS", "SAC"]:
+                # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model,
-                                          TorchVisionNetV2)
+                        assert isinstance(a.get_policy().model, TorchVisionNet)
                     else:
-                        assert isinstance(a.get_policy().model, VisionNetV2)
-                elif o_name in ["vector", "vector2"]:
+                        assert isinstance(a.get_policy().model, VisionNet)
+                # 1D input: Expect FCNet.
+                elif o_name == "vector1d":
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model, TorchFCNetV2)
+                        assert isinstance(a.get_policy().model, TorchFCNet)
                     else:
-                        assert isinstance(a.get_policy().model, FCNetV2)
+                        assert isinstance(a.get_policy().model, FCNet)
+                # Could be either one: ComplexNet (if disabled Preprocessor)
+                # or FCNet (w/ Preprocessor).
+                elif o_name == "vector2d":
+                    if fw == "torch":
+                        assert isinstance(a.get_policy().model,
+                                          (TorchComplexNet, TorchFCNet))
+                    else:
+                        assert isinstance(a.get_policy().model,
+                                          (ComplexNet, FCNet))
             if train:
                 a.train()
             a.stop()
