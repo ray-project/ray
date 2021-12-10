@@ -532,7 +532,7 @@ workers to be saved on the ``Trainer`` (where your python script is executed).
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
 
-Concrete examples are provided to demonstrate how checkpoints are saved
+Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
 appropriately in distributed training.
 
 .. tabs::
@@ -540,6 +540,7 @@ appropriately in distributed training.
   .. group-tab:: PyTorch
 
     .. code-block:: python
+        :emphasize-lines: 21, 37, 38, 39
 
         import ray.train.torch
         from ray import train
@@ -557,18 +558,18 @@ appropriately in distributed training.
             # create a toy dataset
             # data   : X - dim = (n, 4)
             # target : Y - dim = (n, 1)
-            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
             X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
             # toy neural network : 1-layer
             # wrap the model in DDP
             model = ray.train.torch.prepare_model(nn.Linear(4, 1))
-            mse = nn.MSELoss()
+            criterion = nn.MSELoss()
 
             optimizer = Adam(model.parameters(), lr=3e-4)
             for epoch in range(config["num_epochs"]):
                 y = model.forward(X)
                 # compute loss
-                loss = mse(y, Y)
+                loss = criterion(y, Y)
                 # back-propagate loss
                 optimizer.zero_grad()
                 loss.backward()
@@ -577,9 +578,9 @@ appropriately in distributed training.
                 # w/o DDP: model.state_dict()
                 # w/  DDP: model.module.state_dict()
                 # See: https://github.com/ray-project/ray/issues/20915
-                ddp_state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(ddp_state_dict, "module.")
-                train.save_checkpoint(epoch=epoch, model_weights=ddp_state_dict)
+                state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
 
 
         trainer = Trainer(backend="torch", num_workers=2)
@@ -588,11 +589,13 @@ appropriately in distributed training.
         trainer.shutdown()
 
         print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([0.1533])), ('weight', tensor([[0.4529, 0.4618, 0.2730, 0.0190]]))]), '_timestamp': 1639117274}
 
 
   .. group-tab:: TensorFlow
 
     .. code-block:: python
+        :emphasize-lines: 16, 17, 19, 20, 24
 
         from ray import train
         from ray.train import Trainer
@@ -606,17 +609,17 @@ appropriately in distributed training.
             # create a toy dataset
             # data   : X - dim = (n, 4)
             # target : Y - dim = (n, 1)
-            Y = np.random.uniform(0, 1, size=(n, 1))
             X = np.random.normal(0, 1, size=(n, 4))
+            Y = np.random.uniform(0, 1, size=(n, 1))
 
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
                 # toy neural network : 1-layer
-                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
-                model.compile(loss="mean_squared_error", metrics=["mse"])
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             for epoch in range(config["num_epochs"]):
-                model.fit(X, Y, epochs=epoch, batch_size=20)
+                model.fit(X, Y, batch_size=20)
                 train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
 
 
@@ -626,6 +629,8 @@ appropriately in distributed training.
         trainer.shutdown()
 
         print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': [array([[-0.03075046], [-0.8020745 ], [-0.13172336], [ 0.6760253 ]], dtype=float32), array([0.02125629], dtype=float32)], '_timestamp': 1639117674}
+
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
 directory <train-log-dir>` of each run.
@@ -721,6 +726,7 @@ Checkpoints can be loaded into the training function in 2 steps:
   .. group-tab:: PyTorch
 
     .. code-block:: python
+        :emphasize-lines: 26, 30, 34
 
         import ray.train.torch
         from ray import train
@@ -738,19 +744,19 @@ Checkpoints can be loaded into the training function in 2 steps:
             # create a toy dataset
             # data   : X - dim = (n, 4)
             # target : Y - dim = (n, 1)
-            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
             X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
 
             # toy neural network : 1-layer
             model = nn.Linear(4, 1)
-            mse = nn.MSELoss()
+            criterion = nn.MSELoss()
             optimizer = Adam(model.parameters(), lr=3e-4)
             start_epoch = 0
 
             checkpoint = train.load_checkpoint()
             if checkpoint:
                 # assume that we have run the train.save_checkpoint() example
-                #                and successfully save some model weights
+                # and successfully save some model weights
                 model.load_state_dict(checkpoint.get("model_weights"))
                 start_epoch = checkpoint.get("epoch", -1) + 1
 
@@ -759,14 +765,14 @@ Checkpoints can be loaded into the training function in 2 steps:
             for epoch in range(start_epoch, config["num_epochs"]):
                 y = model.forward(X)
                 # compute loss
-                loss = mse(y, Y)
+                loss = criterion(y, Y)
                 # back-propagate loss
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                ddp_state_dict = model.state_dict()
-                consume_prefix_in_state_dict_if_present(ddp_state_dict, "module.")
-                train.save_checkpoint(epoch=epoch, model_weights=ddp_state_dict)
+                state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
 
 
         trainer = Trainer(backend="torch", num_workers=2)
@@ -780,11 +786,12 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer.shutdown()
 
         print(trainer.latest_checkpoint)
-
+        # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
   .. group-tab:: TensorFlow
 
     .. code-block:: python
+        :emphasize-lines: 22, 26
 
         from ray import train
         from ray.train import Trainer
@@ -798,26 +805,25 @@ Checkpoints can be loaded into the training function in 2 steps:
             # create a toy dataset
             # data   : X - dim = (n, 4)
             # target : Y - dim = (n, 1)
-            Y = np.random.uniform(0, 1, size=(n, 1))
             X = np.random.normal(0, 1, size=(n, 4))
+            Y = np.random.uniform(0, 1, size=(n, 1))
 
             start_epoch = 0
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
             with strategy.scope():
                 # toy neural network : 1-layer
-                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear")])
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
                 checkpoint = train.load_checkpoint()
                 if checkpoint:
-                    model.build((None, 4))
                     # assume that we have run the train.save_checkpoint() example
-                    #                and successfully save some model weights
+                    # and successfully save some model weights
                     model.set_weights(checkpoint.get("model_weights"))
                     start_epoch = checkpoint.get("epoch", -1) + 1
-                model.compile(loss="mean_squared_error", metrics=["mse"])
+                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
             for epoch in range(start_epoch, config["num_epochs"]):
-                model.fit(X, Y, epochs=epoch, batch_size=20)
+                model.fit(X, Y, batch_size=20)
                 train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
 
 
@@ -837,6 +843,9 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer.shutdown()
 
         print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': [array([[ 0.06892418], [-0.73326826], [ 0.76637405], [ 0.06124062]], dtype=float32), array([0.05737507], dtype=float32)], '_timestamp': 1639117991}
+
+
 
 .. Running on the cloud
 .. --------------------
