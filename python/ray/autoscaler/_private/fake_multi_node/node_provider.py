@@ -126,8 +126,7 @@ def create_node_spec(head: bool,
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
 
-    # Todo: Change default to ""
-    fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "auto")
+    fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "")
     if fake_cluster_dev_dir:
         if fake_cluster_dev_dir == "auto":
             local_ray_dir = os.path.dirname(ray.__file__)
