@@ -52,10 +52,11 @@ class JsonReader(InputReader):
         """
 
         self.ioctx = ioctx or IOContext()
-        self.default_policy = None
+        self.default_policy = self.policy_map = None
         if self.ioctx.worker is not None:
-            self.default_policy = \
-                self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            self.policy_map = self.ioctx.worker.policy_map
+            self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
+
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
@@ -198,25 +199,32 @@ class JsonReader(InputReader):
         # necessary.
         if cfg.get("actions_in_input_normalized") is False and \
                 self.ioctx.worker is not None:
+
+            # If we have a complex action space and actions were flattened
+            # and we have to normalize -> Error.
+            error_msg = \
+                "Normalization of offline actions that are flattened is not "\
+                "supported! Make sure that you record actions into offline " \
+                "file with the `_disable_action_flattening=True` flag OR " \
+                "as already normalized (between -1.0 and 1.0) values. " \
+                "Also, when reading already normalized action values from " \
+                "offline files, make sure to set " \
+                "`actions_in_input_normalized=True` so that RLlib will not " \
+                "perform normalization on top."
+
             if isinstance(batch, SampleBatch):
                 pol = self.default_policy
-                # If we have a complex action space and actions were flattened
-                # and we have to normalize -> Error.
                 if isinstance(pol.action_space_struct, (tuple, dict)) and \
                         not pol.config.get("_disable_action_flattening"):
-                    raise ValueError(
-                        "Normalization of offline actions that are flattened "
-                        "is not supported! Make sure that you record actions "
-                        "into offline file with the "
-                        "`_disable_action_flattening=True` flag OR as already "
-                        "normalized (between -1.0 and 1.0) values. When "
-                        "reading already normalized action values, make sure "
-                        "to set `actions_in_input_normalized=True`.")
-                else:
-                    batch[SampleBatch.ACTIONS] = normalize_action(
-                        batch[SampleBatch.ACTIONS], pol.action_space_struct)
+                    raise ValueError(error_msg)
+                batch[SampleBatch.ACTIONS] = normalize_action(
+                    batch[SampleBatch.ACTIONS], pol.action_space_struct)
             else:
                 for pid, b in batch.policy_batches.items():
+                    pol = self.policy_map[pid]
+                    if isinstance(pol.action_space_struct, (tuple, dict)) and \
+                            not pol.config.get("_disable_action_flattening"):
+                        raise ValueError(error_msg)
                     b[SampleBatch.ACTIONS] = normalize_action(
                         b[SampleBatch.ACTIONS],
                         self.ioctx.worker.policy_map[pid].action_space_struct)
