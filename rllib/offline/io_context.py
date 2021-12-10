@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import TrainerConfigDict
