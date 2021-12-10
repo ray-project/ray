@@ -254,7 +254,7 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory, (2) a local existing zipped file with total size at most 100 MiB, or (3) a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 100 MiB, (2) a local existing zipped file with total unzipped size at most 100 MiB, or (3) a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
 
   - Examples
