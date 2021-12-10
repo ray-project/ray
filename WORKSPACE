@@ -17,4 +17,6 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-versions.check(minimum_bazel_version = "3.4.0")
+# When the bazel version is updated, make sure to update it
+# in setup.py as well.
+versions.check(minimum_bazel_version = "4.2.1")
