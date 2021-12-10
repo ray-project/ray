@@ -233,6 +233,13 @@ class JobSubmissionClient:
                     working_dir, excludes=runtime_env.get("excludes", None))
                 runtime_env["working_dir"] = package_uri
 
+    def get_version(self) -> str:
+        r = self._do_request("GET", "/api/version")
+        if r.status_code == 200:
+            return r.json().get("version")
+        else:
+            self._raise_error(r)
+
     def submit_job(
             self,
             *,

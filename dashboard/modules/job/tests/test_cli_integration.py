@@ -84,13 +84,14 @@ class TestRayAddress:
         assert "succeeded" in stdout
 
     def test_set_ray_http_address_first(self):
-        with ray_cluster_manager():
-            completed_process = subprocess.run(
-                ["ray", "job", "submit", "--", "echo hello"],
-                stdout=subprocess.PIPE)
-            stdout = completed_process.stdout.decode("utf-8")
-            assert "hello" in stdout
-            assert "succeeded" in stdout
+        with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
+            with ray_cluster_manager():
+                completed_process = subprocess.run(
+                    ["ray", "job", "submit", "--", "echo hello"],
+                    stdout=subprocess.PIPE)
+                stdout = completed_process.stdout.decode("utf-8")
+                assert "hello" in stdout
+                assert "succeeded" in stdout
 
     def test_set_ray_client_address_first(self):
         with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):

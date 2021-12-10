@@ -168,8 +168,9 @@ def job_submit(address: Optional[str], job_id: Optional[str],
             cli_logger.print(cf.bold(f"ray job stop {job_id}"))
 
     cli_logger.newline()
-
-    if not no_wait:
+    sdk_version = client.get_version()
+    # sdk version 0 does not have log streaming
+    if not no_wait and int(sdk_version) > 0:
         cli_logger.print("Tailing logs until the job exits "
                          "(disable with --no-wait):")
         asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
@@ -263,7 +264,9 @@ def job_logs(address: Optional[str], job_id: str, follow: bool):
         >>> ray job logs <my_job_id>
     """
     client = _get_sdk_client(address)
-    if follow:
+    sdk_version = client.get_version()
+    # sdk version 0 did not have log streaming
+    if follow and int(sdk_version) > 0:
         asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
     else:
         print(client.get_job_logs(job_id), end="")
