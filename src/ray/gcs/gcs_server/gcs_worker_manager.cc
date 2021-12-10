@@ -14,7 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {

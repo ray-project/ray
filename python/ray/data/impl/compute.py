@@ -1,7 +1,9 @@
+import time
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockPartition
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    BlockPartition, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
@@ -29,7 +31,8 @@ def _map_block_split(block: Block, fn: Any,
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
             schema=accessor.schema(),
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=BlockExecStats.TODO)
         owner = DatasetContext.get_current().block_owner
         output.append((ray.put(new_block, _owner=owner), new_meta))
     return output
@@ -37,12 +40,17 @@ def _map_block_split(block: Block, fn: Any,
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
+    start_time, start_cpu = time.perf_counter(), time.process_time()
+    exec_stats = BlockExecStats()
     builder = DelegatingArrowBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(input_files=input_files)
+    exec_stats.cpu_time_s = time.process_time() - start_cpu
+    exec_stats.wall_time_s = time.perf_counter() - start_time
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=exec_stats)
 
 
 class TaskPool(ComputeStrategy):
@@ -54,7 +62,7 @@ class TaskPool(ComputeStrategy):
         if blocks.initial_num_blocks() == 0:
             return blocks
 
-        blocks = list(blocks.iter_blocks_with_metadata())
+        blocks = blocks.get_blocks_with_metadata()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
@@ -113,7 +121,7 @@ class ActorPool(ComputeStrategy):
               blocks: BlockList) -> BlockList:
         context = DatasetContext.get_current()
 
-        blocks_in = list(blocks.iter_blocks_with_metadata())
+        blocks_in = blocks.get_blocks_with_metadata()
         orig_num_blocks = len(blocks_in)
         results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)

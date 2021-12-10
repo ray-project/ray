@@ -31,10 +31,10 @@ RAY_CONFIG(bool, event_stats, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
+/// -1 means the feature is disabled. In this case, stats are available to
+/// debug_state_*.txt
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
@@ -246,7 +246,6 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
-
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Number of threads used by rpc server in gcs server.
@@ -271,8 +270,6 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-/// The interval at which the gcs server will print debug info.
-RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 // The interval at which the gcs server will pull a new resource.
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
@@ -282,6 +279,8 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+RAY_CONFIG(std::string, gcs_storage, "redis")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -527,3 +526,10 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+
+/// grpc delay testing flags
+///  To use this, simply do
+///      export RAY_testing_asio_delay_us="method1=min_val:max_val,method2=20:100"
+//  The delay is a random number between the interval. If method equals '*',
+//  it will apply to all methods.
+RAY_CONFIG(std::string, testing_asio_delay_us, "")

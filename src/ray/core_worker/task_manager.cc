@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/task_manager.h"
 
-#include "msgpack.hpp"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
@@ -380,10 +379,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    const Status *status,
-                                    const rpc::RayException *creation_task_exception,
-                                    bool immediately_mark_object_fail) {
+bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                                         const Status *status,
+                                         const rpc::RayErrorInfo *ray_error_info,
+                                         bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -430,8 +429,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    if (immediately_mark_object_fail) {
-      MarkPendingTaskFailed(spec, error_type, creation_task_exception);
+    if (mark_task_object_failed) {
+      MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
     }
   }
 
@@ -555,48 +554,19 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskFailed(
-    const TaskSpecification &spec, rpc::ErrorType error_type,
-    const rpc::RayException *creation_task_exception) {
+void TaskManager::MarkTaskReturnObjectsFailed(const TaskSpecification &spec,
+                                              rpc::ErrorType error_type,
+                                              const rpc::RayErrorInfo *ray_error_info) {
   const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    if (creation_task_exception != nullptr) {
-      // Structure of bytes stored in object store:
-
-      // First serialize RayException by the following steps:
-      // PB's RayException
-      // --(PB Serialization)-->
-      // --(msgpack Serialization)-->
-      // msgpack_serialized_exception(MSE)
-
-      // Then add it's length to the head(for coross-language deserialization):
-      // [MSE's length(9 bytes)] [MSE]
-
-      std::string pb_serialized_exception;
-      creation_task_exception->SerializeToString(&pb_serialized_exception);
-      msgpack::sbuffer msgpack_serialized_exception;
-      msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
-      packer.pack_bin(pb_serialized_exception.size());
-      packer.pack_bin_body(pb_serialized_exception.data(),
-                           pb_serialized_exception.size());
-      LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
-                                     kMessagePackOffset);
-      // copy msgpack-serialized bytes
-      std::memcpy(final_buffer.Data() + kMessagePackOffset,
-                  msgpack_serialized_exception.data(),
-                  msgpack_serialized_exception.size());
-      // copy offset
-      msgpack::sbuffer msgpack_int;
-      msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
-      std::memcpy(final_buffer.Data(), msgpack_int.data(), msgpack_int.size());
-      RAY_UNUSED(in_memory_store_->Put(
-          RayObject(error_type, final_buffer.Data(), final_buffer.Size()), object_id));
-    } else {
+    if (ray_error_info == nullptr) {
       RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type, ray_error_info), object_id));
     }
   }
 }

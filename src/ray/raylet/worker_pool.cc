@@ -25,9 +25,12 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(worker_register_time_ms, "end to end latency of register a worker process.",
+             (), ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace {
 
@@ -182,8 +185,7 @@ void WorkerPool::update_worker_startup_token_counter() {
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
-    const int runtime_env_hash, const std::string &serialized_runtime_env,
-    const std::string &serialized_runtime_env_context,
+    const int runtime_env_hash, const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -329,6 +331,7 @@ Process WorkerPool::StartWorkerProcess(
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
+  env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
   if (language == Language::CPP) {
@@ -357,19 +360,15 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
-      worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
-
+    if (serialized_runtime_env_context != "{}" &&
+        !serialized_runtime_env_context.empty()) {
       worker_command_args.push_back("--language=" + Language_Name(language));
 
       worker_command_args.push_back("--runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
 
-      if (serialized_runtime_env_context != "{}" &&
-          !serialized_runtime_env_context.empty()) {
-        worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                      serialized_runtime_env_context);
-      }
+      worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                    serialized_runtime_env_context);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -421,7 +420,8 @@ Process WorkerPool::StartWorkerProcess(
                                worker_type);
   state.starting_worker_processes.emplace(
       worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
+                                start});
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -438,16 +438,25 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc, proc_startup_token, worker_type,
-                     this](const boost::system::error_code e) {
+  timer->async_wait([timer, language, proc = proc, proc_startup_token, worker_type,
+                     this](const boost::system::error_code e) mutable {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not registered to raylet within timeout.";
+      RAY_LOG(ERROR)
+          << "Some workers of the worker process(" << proc.GetId()
+          << ") have not registered within the timeout. "
+          << (proc.IsAlive()
+                  ? "The process is still alive, probably it's hanging during start."
+                  : "The process is dead, probably it crashed during start.");
+
+      if (proc.IsAlive()) {
+        proc.Kill();
+      }
+
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool found;
@@ -550,9 +559,9 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.runtime_env().runtime_env_eager_install() &&
-      job_config.has_runtime_env()) {
-    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
+  if (job_config.has_runtime_env_info() &&
+      job_config.runtime_env_info().runtime_env_eager_install()) {
+    auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
     if (runtime_env != "{}" && runtime_env != "") {
       RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                     << ". The runtime environment was " << runtime_env << ".";
@@ -592,7 +601,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
+  auto it = state.starting_worker_processes.find(worker_startup_token);
+  if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING)
         << "Received a register request from an unknown worker shim process: "
         << worker_shim_pid;
@@ -613,8 +623,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
+  STATS_worker_register_time_ms.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", port: " << port
+                 << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
@@ -883,11 +898,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       }
     }
 
-    if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
-      // If the worker is pending exit, just skip it.
-      continue;
-    }
-
     if (now - idle_pair.second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
@@ -922,6 +932,13 @@ void WorkerPool::TryKillingIdleWorkers() {
         can_be_killed = false;
         break;
       }
+
+      // Skip killing the worker process if there's any inflight `Exit` RPC requests to
+      // this worker process.
+      if (pending_exit_idle_workers_.count(worker->WorkerId())) {
+        can_be_killed = false;
+        break;
+      }
     }
     if (!can_be_killed) {
       continue;
@@ -950,6 +967,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       if (!worker->IsDead()) {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
+        // This also means that there's an inflight `Exit` RPC request to the worker.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
         auto rpc_client = worker->rpc_client();
         RAY_CHECK(rpc_client);
@@ -958,6 +976,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc::ExitRequest request;
         rpc_client->Exit(request, [this, worker](const ray::Status &status,
                                                  const rpc::ExitReply &r) {
+          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
           }
@@ -983,9 +1002,6 @@ void WorkerPool::TryKillingIdleWorkers() {
             idle_of_all_languages_.pop_front();
             RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
           }
-
-          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
-          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         });
       } else {
         // Even it's a dead worker, we still need to remove them from the pool.
@@ -1026,8 +1042,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     PopWorkerStatus status = PopWorkerStatus::OK;
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
-        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env,
-        serialized_runtime_env_context, allocated_instances_serialized_json);
+        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env_context,
+        allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();

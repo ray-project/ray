@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import contextlib
 import gym
+from gym.spaces import Space
 import numpy as np
 from typing import Dict, List, Any, Union
 
@@ -34,8 +35,7 @@ class ModelV2:
             \-> value_function() -> V(s)
     """
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
+    def __init__(self, obs_space: Space, action_space: Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 instance.
 
@@ -54,8 +54,8 @@ class ModelV2:
             framework: Either "tf" or "torch".
         """
 
-        self.obs_space: gym.spaces.Space = obs_space
-        self.action_space: gym.spaces.Space = action_space
+        self.obs_space: Space = obs_space
+        self.action_space: Space = action_space
         self.num_outputs: int = num_outputs
         self.model_config: ModelConfigDict = model_config
         self.name: str = name or "default_model"
@@ -336,7 +336,7 @@ class ModelV2:
         """
 
         input_dict = train_batch.copy()
-        input_dict["is_training"] = is_training
+        input_dict.set_training(is_training)
         states = []
         i = 0
         while "state_in_{}".format(i) in input_dict:
@@ -361,7 +361,7 @@ def flatten(obs: TensorType, framework: str) -> TensorType:
 
 @DeveloperAPI
 def restore_original_dimensions(obs: TensorType,
-                                obs_space: gym.spaces.Space,
+                                obs_space: Space,
                                 tensorlib: Any = tf) -> TensorStructType:
     """Unpacks Dict and Tuple space observations into their original form.
 
@@ -370,8 +370,8 @@ def restore_original_dimensions(obs: TensorType,
     unflatten them into Dicts or Tuples of tensors.
 
     Args:
-        obs (TensorType): The flattened observation tensor.
-        obs_space (gym.spaces.Space): The flattened obs space. If this has the
+        obs: The flattened observation tensor.
+        obs_space: The flattened obs space. If this has the
             `original_space` attribute, we will unflatten the tensor to that
             shape.
         tensorlib: The library used to unflatten (reshape) the array/tensor.
@@ -395,7 +395,7 @@ def restore_original_dimensions(obs: TensorType,
 _cache = {}
 
 
-def _unpack_obs(obs: TensorType, space: gym.Space,
+def _unpack_obs(obs: TensorType, space: Space,
                 tensorlib: Any = tf) -> TensorStructType:
     """Unpack a flattened Dict or Tuple observation array/tensor.
 

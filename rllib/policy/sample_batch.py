@@ -40,6 +40,8 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    # This is only computed and used when RE3 exploration strategy is enabled
+    OBS_EMBEDS = "obs_embeds"
     T = "t"
 
     # Extra action fetches keys.
@@ -193,8 +195,15 @@ class SampleBatch(dict):
             if s.count > 0:
                 assert s.zero_padded == zero_padded
                 assert s.time_major == time_major
+                if (s.max_seq_len is None or max_seq_len is None)\
+                   and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "Samples must consistently provide or omit max_seq_len"
+                    )
                 if zero_padded:
                     assert s.max_seq_len == max_seq_len
+                if max_seq_len is not None:
+                    max_seq_len = max(max_seq_len, s.max_seq_len)
                 concat_samples.append(s)
                 if s.get(SampleBatch.SEQ_LENS) is not None:
                     concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
@@ -1233,7 +1242,7 @@ class MultiAgentBatch:
             columns: Set of column names to decompress.
 
         Returns:
-            This very MultiAgentBatch.
+            Self.
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
