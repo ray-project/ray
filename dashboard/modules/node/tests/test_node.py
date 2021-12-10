@@ -70,6 +70,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def getpid(self):
+            print(f"actor pid={os.getpid()}")
             return os.getpid()
 
     actors = [Actor.remote(), Actor.remote()]
