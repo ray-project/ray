@@ -66,7 +66,8 @@ class Dashboard:
         host(str): Host address of dashboard aiohttp server.
         port(int): Port number of dashboard aiohttp server.
         port_retries(int): The retry times to select a valid port.
-        redis_address(str): GCS address of a Ray cluster
+        gcs_address(str): GCS address of the cluster
+        redis_address(str): Redis address of a Ray cluster
         redis_password(str): Redis password to access GCS
         log_dir(str): Log directory of dashboard.
     """
@@ -75,6 +76,7 @@ class Dashboard:
                  host,
                  port,
                  port_retries,
+                 gcs_address,
                  redis_address,
                  redis_password=None,
                  log_dir=None):
@@ -82,6 +84,7 @@ class Dashboard:
             http_host=host,
             http_port=port,
             http_port_retries=port_retries,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=redis_password,
             log_dir=log_dir)
@@ -247,9 +250,11 @@ if __name__ == "__main__":
         gcs_publisher = None
         if args.gcs_address:
             gcs_publisher = GcsPublisher(address=args.gcs_address)
+            redis_client = None
         elif gcs_pubsub_enabled():
             gcs_publisher = GcsPublisher(
                 address=gcs_utils.get_gcs_address_from_redis(redis_client))
+            redis_client = None
         ray._private.utils.publish_error_to_driver(
             redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,

@@ -53,6 +53,7 @@ class DashboardAgent(object):
                  node_ip_address,
                  redis_address,
                  dashboard_agent_port,
+                 gcs_address,
                  redis_password=None,
                  temp_dir=None,
                  session_dir=None,
@@ -69,6 +70,11 @@ class DashboardAgent(object):
         self.ip = node_ip_address
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
+        self.gcs_address = gcs_address
+        if self.gcs_address is not None:
+            self.redis_address = None
+            self.redis_password = None
+
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
@@ -135,17 +141,18 @@ class DashboardAgent(object):
         if sys.platform not in ["win32", "cygwin"]:
             check_parent_task = create_task(_check_parent())
 
-        # Create an aioredis client for all modules.
-        try:
-            self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                self.redis_address, self.redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-        except (socket.gaierror, ConnectionRefusedError):
-            logger.error(
-                "Dashboard agent exiting: "
-                "Failed to connect to redis at %s", self.redis_address)
-            sys.exit(-1)
+        if self.gcs_address is None:
+            # Create an aioredis client for all modules.
+            try:
+                self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                    self.redis_address, self.redis_password,
+                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+            except (socket.gaierror, ConnectionRefusedError):
+                logger.error(
+                    "Dashboard agent exiting: "
+                    "Failed to connect to redis at %s", self.redis_address)
+                sys.exit(-1)
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -158,9 +165,12 @@ class DashboardAgent(object):
         # Start a grpc asyncio server.
         await self.server.start()
         # TODO: redis-removal bootstrap
-        gcs_address = await self.aioredis_client.get(
-            dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
-        self.gcs_client = GcsClient(address=gcs_address.decode())
+        if self.gcs_address is None:
+            gcs_address = await self.aioredis_client.get(
+                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+            self.gcs_client = GcsClient(address=gcs_address.decode())
+        else:
+            self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
@@ -358,6 +368,7 @@ if __name__ == "__main__":
             args.node_ip_address,
             args.redis_address,
             args.dashboard_agent_port,
+            args.gcs_address,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
@@ -385,14 +396,17 @@ if __name__ == "__main__":
             # Agent is failed to be started many times.
             # Push an error to all drivers, so that users can know the
             # impact of the issue.
+            gcs_publisher = None
             redis_client = ray._private.services.create_redis_client(
                 args.redis_address, password=args.redis_password)
-            gcs_publisher = None
             if args.gcs_address:
                 gcs_publisher = GcsPublisher(args.gcs_address)
+                redis_client = None
             elif gcs_pubsub_enabled():
                 gcs_publisher = GcsPublisher(
                     address=get_gcs_address_from_redis(redis_client))
+                redis_client = None
+
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (

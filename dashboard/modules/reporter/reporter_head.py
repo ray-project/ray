@@ -129,13 +129,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        # TODO: redis-removal pubsub
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        if self._dashboard_head.gcs_address is None:
+            aioredis_client = self._dashboard_head.aioredis_client
+            receiver = Receiver()
 
-        reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-        await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-        logger.info(f"Subscribed to {reporter_key}")
+            reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
+            await aioredis_client.psubscribe(receiver.pattern(reporter_key))
+            logger.info(f"Subscribed to {reporter_key}")
 
         async for sender, msg in receiver.iter():
             try:
