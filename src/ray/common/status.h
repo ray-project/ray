@@ -102,7 +102,11 @@ enum class StatusCode : char {
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
   // grpc status
+  // This represents UNAVAILABLE status code
+  // returned by grpc.
   GrpcUnavailable = 26,
+  // This represents all other status codes
+  // returned by grpc that are not defined above.
   GrpcUnknown = 27,
 };
 
