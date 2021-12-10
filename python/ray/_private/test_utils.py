@@ -957,7 +957,8 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 def get_and_run_node_killer(node_kill_interval_s,
                             namespace=None,
                             lifetime=None,
-                            no_start=False):
+                            no_start=False,
+                            max_nodes_to_kill=2):
     assert ray.is_initialized(), (
         "The API is only available when Ray is initialized.")
 
@@ -1058,7 +1059,9 @@ def get_and_run_node_killer(node_kill_interval_s,
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime).remote(
-            head_node_id, node_kill_interval_s=node_kill_interval_s)
+            head_node_id,
+            node_kill_interval_s=node_kill_interval_s,
+            max_nodes_to_kill=max_nodes_to_kill)
     print("Waiting for node killer actor to be ready...")
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")

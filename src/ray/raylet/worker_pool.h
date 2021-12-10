@@ -464,6 +464,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     Process proc;
+    /// The worker process start time.
+    std::chrono::high_resolution_clock::time_point start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
   };

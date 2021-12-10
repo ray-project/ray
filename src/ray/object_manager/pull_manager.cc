@@ -741,6 +741,10 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   return bytes_needed_calculated;
 }
 
+void PullManager::RecordMetrics() const {
+  // TODO(sang): Add metrics.
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
   std::stringstream result;
