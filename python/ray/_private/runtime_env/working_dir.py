@@ -26,10 +26,13 @@ def upload_working_dir_if_needed(
     if working_dir is None:
         return runtime_env
 
-    if not isinstance(working_dir, str):
+    if not isinstance(working_dir, str) and not isinstance(working_dir, Path):
         raise TypeError(
-            "working_dir must be a string (either a local path or remote "
-            f"URI), got {type(working_dir)}.")
+            "working_dir must be a string or Path (either a local path "
+            f"or remote URI), got {type(working_dir)}.")
+
+    if isinstance(working_dir, Path):
+        working_dir = str(working_dir)
 
     # working_dir is already a URI -- just pass it through.
     try:
