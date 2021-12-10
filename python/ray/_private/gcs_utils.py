@@ -289,6 +289,10 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @staticmethod
+    def create_from_gcs_address(gcs_address: str):
+        return GcsClient(GcsChannel(address=gcs_address))
+
+    @staticmethod
     def create_from_redis(redis_cli):
         return GcsClient(GcsChannel(redis_client=redis_cli))
 

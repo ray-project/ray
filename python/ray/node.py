@@ -94,6 +94,8 @@ class Node:
             raylet_ip_address = ray_params.raylet_ip_address
         else:
             raylet_ip_address = node_ip_address
+
+        self._gcs_address = ray_params.gcs_address
         self._gcs_client = None
 
         if raylet_ip_address != node_ip_address and (not connect_only or head):
@@ -455,9 +457,13 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = \
-                        ray._private.gcs_utils.GcsClient.create_from_redis(
-                            self.create_redis_client())
+                    if self._gcs_address is None:
+                        self._gcs_client = \
+                            ray._private.gcs_utils.GcsClient.create_from_redis(
+                                self.create_redis_client())
+                    else:
+                        self._gcs_client = ray._private.gcs_utils.GcsClient(
+                            address=self._gcs_address)
                     break
                 except Exception as e:
                     time.sleep(1)
