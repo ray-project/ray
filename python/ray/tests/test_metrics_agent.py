@@ -28,10 +28,6 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -63,7 +59,7 @@ _METRICS = [
     "ray_pending_placement_group",
     "ray_registered_placement_group",
     "ray_infeasible_placement_group",
-    "ray_placement_group_resource_persist_latency_ms_sum"
+    "ray_new_resource_creation_latency_ms_sum",
 ]
 
 # This list of metrics should be kept in sync with
@@ -78,7 +74,7 @@ _AUTOSCALER_METRICS = [
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
     "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
-    "autoscaler_drain_node_exceptions"
+    "autoscaler_drain_node_exceptions", "autoscaler_update_time"
 ]
 
 
@@ -87,7 +83,12 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True
+        })
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -147,7 +148,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 

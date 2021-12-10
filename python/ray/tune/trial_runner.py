@@ -944,16 +944,6 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
-        # If this is not a duplicate result, the callbacks should
-        # be informed about the result.
-        if not is_duplicate:
-            with warn_if_slow("callbacks.on_trial_result"):
-                self._callbacks.on_trial_result(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial,
-                    result=result.copy())
-
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             decision = TrialScheduler.STOP
@@ -968,6 +958,8 @@ class TrialRunner:
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
 
+        # If this is not a duplicate result, the callbacks should
+        # be informed about the result.
         if not is_duplicate:
             with warn_if_slow("callbacks.on_trial_result"):
                 self._callbacks.on_trial_result(
