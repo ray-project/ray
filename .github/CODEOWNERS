@@ -12,6 +12,9 @@
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
 
+# Metrics
+# /src/ray/stats/metric_defs.h @ray-project/ray-core
+
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 

@@ -18,8 +18,10 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/dependency.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/logging.proto";
+import "src/ray/protobuf/reporter.proto";
 
 /// Each channel is prefixed by the name of its components.
 /// For example, for pubsub channels that are used by core workers,
@@ -45,6 +47,10 @@ enum ChannelType {
   RAY_ERROR_INFO_CHANNEL = 8;
   /// A channel for logs from various Ray components.
   RAY_LOG_CHANNEL = 9;
+  /// A channel for keys to pickled python functions and actor classes.
+  RAY_PYTHON_FUNCTION_CHANNEL = 10;
+  /// A channel for reporting node resource usage stats.
+  RAY_NODE_RESOURCE_USAGE_CHANNEL = 11;
 }
 
 ///
@@ -68,6 +74,8 @@ message PubMessage {
     WorkerDeltaData worker_delta_message = 11;
     ErrorTableData error_info_message = 12;
     LogBatch log_batch_message = 13;
+    PythonFunction python_function_message = 14;
+    NodeResourceUsage node_resource_usage_message = 15;
 
     // The message that indicates the given key id is not available anymore.
     FailureMessage failure_message = 6;

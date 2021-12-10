@@ -1,5 +1,4 @@
 import os
-from contextlib import contextmanager
 from pathlib import Path
 import pytest
 import subprocess
@@ -21,7 +20,7 @@ from ray._private.runtime_env.conda import (
 from ray._private.runtime_env.conda_utils import get_conda_env_list
 from ray._private.test_utils import (run_string_as_driver,
                                      run_string_as_driver_nonblocking,
-                                     wait_for_condition, get_log_batch)
+                                     wait_for_condition, get_log_batch, chdir)
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 
 if not os.environ.get("CI"):
@@ -855,14 +854,6 @@ def test_e2e_complex(call_ray_start, tmp_path):
             "pip": ["pip-install-test"]
         }).remote()
         assert ray.get(a.test.remote()) == "Hello"
-
-
-@contextmanager
-def chdir(dir):
-    old_dir = os.getcwd()
-    os.chdir(dir)
-    yield
-    os.chdir(old_dir)
 
 
 @pytest.mark.skipif(

@@ -305,7 +305,7 @@ def post_mortem():
         host=None,
         port=None,
         patch_stdstreams=False,
-        quet=None,
+        quiet=None,
         debugger_external=ray.worker.global_worker.ray_debugger_external)
     rdb.post_mortem()
 

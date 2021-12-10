@@ -25,9 +25,12 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(worker_register_time_ms, "end to end latency of register a worker process.",
+             (), ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace {
 
@@ -328,6 +331,7 @@ Process WorkerPool::StartWorkerProcess(
     // need to add a new CLI parameter for both Python and Java workers.
     env.emplace(kEnvVarKeyJobId, job_id.Hex());
   }
+  env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
   if (language == Language::CPP) {
@@ -416,7 +420,8 @@ Process WorkerPool::StartWorkerProcess(
                                worker_type);
   state.starting_worker_processes.emplace(
       worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
+                                start});
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -433,16 +438,25 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc, proc_startup_token, worker_type,
-                     this](const boost::system::error_code e) {
+  timer->async_wait([timer, language, proc = proc, proc_startup_token, worker_type,
+                     this](const boost::system::error_code e) mutable {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not registered to raylet within timeout.";
+      RAY_LOG(ERROR)
+          << "Some workers of the worker process(" << proc.GetId()
+          << ") have not registered within the timeout. "
+          << (proc.IsAlive()
+                  ? "The process is still alive, probably it's hanging during start."
+                  : "The process is dead, probably it crashed during start.");
+
+      if (proc.IsAlive()) {
+        proc.Kill();
+      }
+
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool found;
@@ -587,7 +601,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
+  auto it = state.starting_worker_processes.find(worker_startup_token);
+  if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING)
         << "Received a register request from an unknown worker shim process: "
         << worker_shim_pid;
@@ -608,8 +623,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
+  STATS_worker_register_time_ms.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", port: " << port
+                 << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 

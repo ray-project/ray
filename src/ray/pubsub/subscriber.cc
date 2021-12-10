@@ -219,6 +219,10 @@ std::string SubscriberChannel::DebugString() const {
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
 
+Subscriber::~Subscriber() {
+  // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
+}
+
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
