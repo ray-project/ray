@@ -424,7 +424,8 @@ Process WorkerPool::StartWorkerProcess(
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
-                << " worker(s) with pid " << proc.GetId();
+                << " worker(s) with pid " << proc.GetId() << ", the token "
+                << worker_startup_token_counter_;
   MonitorStartingWorkerProcess(proc, worker_startup_token_counter_, language,
                                worker_type);
   state.starting_worker_processes.emplace(
@@ -628,7 +629,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   if (state.starting_worker_processes.count(worker_startup_token) == 0) {
     RAY_LOG(WARNING)
         << "Received a register request from an unknown worker shim process: "
-        << worker_shim_pid;
+        << worker_shim_pid << ", token: " << worker_startup_token;
     Status status = Status::Invalid("Unknown worker");
     send_reply_callback(status, /*port=*/0);
     return status;
