@@ -37,6 +37,14 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.enable_sync_conn_ = true;
   options.enable_async_conn_ = false;
   options.enable_subscribe_conn_ = false;
+  Init(options);
+}
+
+GlobalStateAccessor::GlobalStateAccessor(GcsClientOptions options) { Init(options); }
+
+GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
+
+GlobalStateAccessor::Init(GcsClientOptions options) {
   gcs_client_ = std::make_unique<GcsClient>(options);
 
   io_service_ = std::make_unique<instrumented_io_context>();
@@ -51,8 +59,6 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   });
   promise.get_future().get();
 }
-
-GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
 
 bool GlobalStateAccessor::Connect() {
   absl::WriterMutexLock lock(&mutex_);

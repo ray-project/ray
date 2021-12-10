@@ -56,11 +56,18 @@ class GcsClientOptions {
 
   GcsClientOptions() {}
 
-  // GCS server address
-  std::string server_ip_;
-  int server_port_;
+  GcsClientOptions(const std::string &gcs_address, int gcs_port)
+      : gcs_address_(gcs_address), gcs_port_(gcs_port);
 
-  // Password of GCS server.
+  // Gcs address
+  std::string gcs_address_;
+  int gcs_port_ = 0;
+
+  // Redis server address
+  std::string server_ip_;
+  int server_port_ = 0;
+
+  // Password of redis server.
   std::string password_;
 
   // Whether to enable connection for contexts.

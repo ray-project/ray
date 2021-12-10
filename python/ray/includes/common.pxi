@@ -13,14 +13,23 @@ cdef class GcsClientOptions:
     cdef:
         unique_ptr[CGcsClientOptions] inner
 
-    def __init__(self, redis_ip, int redis_port,
-                 redis_password):
+    @classmethod
+    def from_redis_address(cls, redis_ip, int redis_port,
+                           redis_password):
         if not redis_password:
             redis_password = ""
+        self = cls()
         self.inner.reset(
             new CGcsClientOptions(redis_ip.encode("ascii"),
                                   redis_port,
                                   redis_password.encode("ascii")))
+        return self
+
+    @classmethod
+    def from_gcs_address(cls, gcs_ip, gcs_port):
+        self = cls()
+        self.inner = make_unique[CGcsClientOptions](gcs_ip, gcs_port)
+        return self
 
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())

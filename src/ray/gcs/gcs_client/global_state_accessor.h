@@ -36,6 +36,11 @@ class GlobalStateAccessor {
   explicit GlobalStateAccessor(const std::string &redis_address,
                                const std::string &redis_password);
 
+  /// Constructor of GlobalStateAccessor.
+  ///
+  /// \param options The options for gcs client
+  explicit GlobalStateAccessor(const GcsClientOptions &options);
+
   ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 
   /// Connect gcs server.
@@ -54,7 +59,7 @@ class GlobalStateAccessor {
   std::vector<std::string> GetAllJobInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
-  ///
+  /// v
   /// \return Next job id.
   JobID GetNextJobID() LOCKS_EXCLUDED(mutex_);
 
@@ -182,6 +187,10 @@ class GlobalStateAccessor {
       LOCKS_EXCLUDED(mutex_);
 
  private:
+  /// Init global state accessor.
+  /// \param options The options for gcs client.
+  void Init(const GcsClientOptions &options);
+
   /// MultiItem transformation helper in template style.
   ///
   /// \return MultiItemCallback within in rpc type DATA.
