@@ -38,25 +38,27 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
-/// Per-channel index for subscribers and the entities they subscribe to.
+/// Per-channel two-way index for subscribers and the keys they subscribe to.
+/// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
   SubscriptionIndex() = default;
   ~SubscriptionIndex() = default;
 
-  /// Adds a new entry to the index.
+  /// Adds a new subscriber and the key it subscribes to.
+  /// When `key_id` is empty, the subscriber subscribes to all keys.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
   bool AddEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
-  /// Returns the set of subscriber ids that are subscribing to the given object ids.
-  absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
+  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
-  /// Erases the subscriber from the index.
+  /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
   bool EraseSubscriber(const SubscriberID &subscriber_id);
 
-  /// Erases the entity id and subscriber id from the index.
+  /// Erases the subscriber from the particular key.
+  /// When `key_id` is empty, the subscriber subscribes to all keys.
   bool EraseEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
   /// Test only.
@@ -298,6 +300,9 @@ class Publisher : public PublisherInterface {
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
   /// \return True if erased. False otherwise.
   bool UnregisterSubscriber(const SubscriberID &subscriber_id);
+
+  /// Flushes all inflight pollings and unregisters all subscribers.
+  void UnregisterAll();
 
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
