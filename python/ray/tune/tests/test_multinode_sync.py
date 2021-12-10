@@ -31,8 +31,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             },
         })
         self.cluster.start()
-        time.sleep(60)
-        self.cluster.connect()
+        self.cluster.connect(client=True, timeout=120)
 
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 

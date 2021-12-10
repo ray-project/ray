@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -62,11 +63,27 @@ class DockerCluster:
         return self._cluster_config.get("provider", {}).get(
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
 
-    def connect(self, client: bool = True):
+    def connect(self, client: bool = True, timeout: int = 60):
         if client:
-            address = f"ray://127.0.0.1:{self.client_port}"
+            port = self.client_port
+            address = f"ray://127.0.0.1:{port}"
         else:
-            address = f"127.0.0.1:{self.gcs_port}"
+            port = self.gcs_port
+            address = f"127.0.0.1:{port}"
+
+        timeout = time.monotonic() + timeout
+        port_open = False
+        while time.monotonic() < timeout:
+            a_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            location = ("127.0.0.1", port)
+            port_open = a_socket.connect_ex(location) == 0
+            if port_open:
+                break
+            time.sleep(1)
+
+        if not port_open:
+            raise RuntimeError(f"Timed out waiting on port {port} to open")
+
         ray.init(address)
         self.wait_for_resources({"CPU": 1})
 
@@ -111,6 +128,8 @@ class DockerCluster:
 
         if docker_image:
             cluster_config["provider"]["image"] = docker_image
+
+        cluster_config["provider"]["shared_volume_dir"] = self._tempdir
 
         self._cluster_config = cluster_config
 

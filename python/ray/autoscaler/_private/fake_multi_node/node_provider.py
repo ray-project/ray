@@ -126,7 +126,8 @@ def create_node_spec(head: bool,
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
 
-    fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "")
+    # Todo: Change default to ""
+    fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "auto")
     if fake_cluster_dev_dir:
         if fake_cluster_dev_dir == "auto":
             local_ray_dir = os.path.dirname(ray.__file__)
@@ -152,6 +153,14 @@ def create_node_spec(head: bool,
             f"{bootstrap_config_path}:{bootstrap_cfg_path_on_container}",
             f"{private_key_path}:{bootstrap_key_path_on_container}",
         ]
+
+        # Create file if it does not exist on local filesystem
+        for filename in [
+                node_state_path, docker_status_path, bootstrap_config_path
+        ]:
+            if not os.path.exists(filename):
+                with open(filename, "wt") as f:
+                    f.write("{}")
     else:
         node_spec["command"] = DOCKER_WORKER_CMD.format(**cmd_kwargs)
         node_spec["depends_on"] = [FAKE_HEAD_NODE_ID]
