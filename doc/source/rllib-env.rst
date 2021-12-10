@@ -266,7 +266,7 @@ Implementing a Centralized Critic
 
 Here are two ways to implement a centralized critic compatible with the multi-agent API:
 
-**Strategy 1: Sharing experiences in the trajectory preprocessor**:
+**Strategy 1: Sharing experiences in the trajectory postprocessor function**:
 
 The most general way of implementing a centralized critic involves defining the ``postprocess_fn`` method of a custom policy. ``postprocess_fn`` is called by ``Policy.postprocess_trajectory``, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
 

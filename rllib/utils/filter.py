@@ -140,10 +140,16 @@ class MeanStdFilter(Filter):
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
-        # We don't have a preprocessor, if shape is None
+        # We don't have a preprocessor, if shape is None (Discrete) or
+        # flat_shape is Tuple[np.ndarray] or Dict[str, np.ndarray]
+        # (complex inputs).
+        flat_shape = tree.flatten(self.shape)
         self.no_preprocessor = shape is None or (
-            isinstance(self.shape, (dict, tuple))
-            and isinstance(tree.flatten(self.shape)[0], np.ndarray))
+            isinstance(self.shape, (dict, tuple)) and len(flat_shape) > 0
+            and isinstance(flat_shape[0], np.ndarray))
+        # If preprocessing (flattning dicts/tuples), make sure shape
+        # is an np.ndarray so we don't confuse it with a complex Tuple
+        # space's shape structure (which is a Tuple[np.ndarray]).
         if not self.no_preprocessor:
             self.shape = np.array(self.shape)
         self.demean = demean
