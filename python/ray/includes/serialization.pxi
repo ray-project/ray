@@ -188,7 +188,6 @@ cdef class MessagePackSerializer(object):
                     return python_deserializer(msgpack.loads(data))
                 raise Exception('Unrecognized ext type id: {}'.format(code))
 
-
         with _temporarily_disable_gc():  # Performance optimization for msgpack
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False,
                                  strict_map_key=False)
