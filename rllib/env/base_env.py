@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
     Union
 
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
     from ray.rllib.env.vector_env import VectorEnv
 
 ASYNC_RESET_RETURN = "async_reset_return"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -195,6 +198,16 @@ class BaseEnv:
         return []
 
     @PublicAPI
+    def get_agent_ids(self) -> Dict[EnvID, List[AgentID]]:
+        """Return the agent ids for each sub-environment.
+
+        Returns:
+            A dict mapping from env_id to a list of agent_ids.
+        """
+        logger.warning("get_agent_ids() has not been implemented")
+        return {}
+
+    @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         """Tries to render the sub-environment with the given id or all.
 
@@ -245,10 +258,72 @@ class BaseEnv:
         """
         raise NotImplementedError
 
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random observation for each environment, and potentially
+            each agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        return {}
+
+    @PublicAPI
+    def last(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        """Returns the last observations, rewards, and done flags that were
+            returned by the environment.
+
+        Returns:
+            The last observations, rewards, and done flags for each environment
+        """
+        logger.warning("last has not been implemented for this environment.")
+        return {}, {}, {}, {}, {}
+
+    @PublicAPI
     def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given observation is valid for each environment.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observations are contained within their respective
+                spaces. False otherwise.
+        """
         self._space_contains(self.observation_space, x)
 
+    @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given actions is valid for each environment.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the actions are contained within their respective
+                spaces. False otherwise.
+        """
         return self._space_contains(self.action_space, x)
 
     @staticmethod
