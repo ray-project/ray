@@ -369,7 +369,7 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
-      -//python/ray/tests:test_client
+      -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -380,7 +380,7 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
-      -//python/ray/tests:test_multi_node
+      -//python/ray/tests:test_multi_node -//python/ray/tests:test_multi_node_3
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
