@@ -15,17 +15,18 @@ cdef class GcsClientOptions:
 
     @classmethod
     def from_redis_address(
-            cls, redis_ip, int redis_port,
+            cls, redis_address,
             redis_password,
             c_bool enable_sync_conn=True,
             c_bool enable_async_conn=True,
             c_bool enable_subscribe_conn=True):
         if not redis_password:
             redis_password = ""
+        redis_ip, redis_port = redis_password.split(":")
         self = GcsClientOptions()
         self.inner.reset(
             new CGcsClientOptions(redis_ip.encode("ascii"),
-                                  redis_port,
+                                  int(redis_port),
                                   redis_password.encode("ascii"),
                                   enable_sync_conn,
                                   enable_async_conn,

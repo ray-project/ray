@@ -186,10 +186,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     """
 
     def __init__(self, redis_address, redis_password, temp_dir):
-        addr, port = redis_address.split(":")
         ray.state.state._initialize_global_state(
             ray._raylet.GcsClientOptions.from_redis_address(
-                addr, int(port), redis_password))
+                redis_address, redis_password))
         self.redis_address = redis_address
         self.redis_password = redis_password
         self.temp_dir = temp_dir

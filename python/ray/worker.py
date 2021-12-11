@@ -1376,11 +1376,9 @@ def connect(node,
     worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    redis_address, redis_port = node.redis_address.split(":")
     ray.state.state._initialize_global_state(
         ray._raylet.GcsClientOptions.from_redis_address(
-            redis_address, int(redis_port),
-            redis_password=node.redis_password))
+            node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1454,9 +1452,9 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
+    redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        redis_address, int(redis_port), node.redis_password, False, False,
-        True)
+        node.redis_address, node.redis_password, False, False, True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
