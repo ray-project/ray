@@ -22,7 +22,7 @@ cdef class GcsClientOptions:
             c_bool enable_subscribe_conn=True):
         if not redis_password:
             redis_password = ""
-        redis_ip, redis_port = redis_password.split(":")
+        redis_ip, redis_port = redis_address.split(":")
         self = GcsClientOptions()
         self.inner.reset(
             new CGcsClientOptions(redis_ip.encode("ascii"),
