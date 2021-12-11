@@ -186,7 +186,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -458,7 +458,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -468,7 +468,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -478,7 +478,7 @@ py_test(
 py_test(
     name = "learning_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac-fake-gpus.yaml"],
@@ -660,7 +660,7 @@ py_test(
 # PPO: DDPPO
 py_test(
     name = "test_ddppo",
-    tags = ["team:ml", "trainers_dir", "flaky"],
+    tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
@@ -1181,7 +1181,7 @@ py_test(
 
 py_test(
     name = "test_distributions",
-    tags = ["team:ml", "models", "flaky"],
+    tags = ["team:ml", "models"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
@@ -1244,7 +1244,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["team:ml", "utils", "flaky"],
+    tags = ["team:ml", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1628,7 +1628,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:ml", "tests_dir", "tests_dir_S", "flaky"],
+    tags = ["team:ml", "tests_dir", "tests_dir_S"],
     size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]

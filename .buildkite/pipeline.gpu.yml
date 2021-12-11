@@ -6,7 +6,7 @@
 #    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,gpu,gpu_only python/ray/tune/...
+#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/tune/...
 
 - label: ":tv: :brain: RLlib: GPU Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -20,7 +20,7 @@
     # --jobs 1 is necessary as we only have 1 GPU on the machine and running tests in parallel
     # would cause timeouts as the other scripts would wait for the GPU to become available.
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --jobs 1
-      --test_tag_filters=gpu,-flaky, --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
+      --test_tag_filters=gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {C/D}"
@@ -31,7 +31,7 @@
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
 #    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-#      --test_tag_filters=examples_C,examples_D,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
+#      --test_tag_filters=examples_C,examples_D --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {E/P}"
@@ -42,7 +42,7 @@
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
 #    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-#      --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
+#      --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
 #      rllib/...
 
 # Todo: enable once tests pass
@@ -54,5 +54,5 @@
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
 #    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-#      --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
+#      --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
 #      rllib/...
