@@ -99,13 +99,13 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
           << " gRPC based pubsub has to be enabled";
       get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
-                                   *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
-                                   return true;
-                                 };
+        *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
+        return true;
+      };
     } else {
       // Connect to redis.
-      // We don't access redis shardings in GCS client, so we set `enable_sharding_conn` to
-      // false.
+      // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
+      // to false.
       RedisClientOptions redis_client_options(
           options_.redis_ip_, options_.redis_port_, options_.password_,
           /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
@@ -114,9 +114,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       RAY_CHECK_OK(redis_client_->Connect(io_service));
 
       get_server_address_func_ = [this](std::pair<std::string, int> *address) {
-                                   return GetGcsServerAddressFromRedis(
-                                       redis_client_->GetPrimaryContext()->sync_context(), address);
-                                 };
+        return GetGcsServerAddressFromRedis(
+            redis_client_->GetPrimaryContext()->sync_context(), address);
+      };
     }
   }
 

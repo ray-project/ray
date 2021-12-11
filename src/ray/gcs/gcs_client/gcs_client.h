@@ -44,9 +44,9 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  GcsClientOptions(const std::string &redis_ip, int redis_port, const std::string &password,
-                   bool enable_sync_conn = true, bool enable_async_conn = true,
-                   bool enable_subscribe_conn = true)
+  GcsClientOptions(const std::string &redis_ip, int redis_port,
+                   const std::string &password, bool enable_sync_conn = true,
+                   bool enable_async_conn = true, bool enable_subscribe_conn = true)
       : redis_ip_(redis_ip),
         redis_port_(redis_port),
         password_(password),
@@ -55,7 +55,7 @@ class GcsClientOptions {
         enable_subscribe_conn_(enable_subscribe_conn) {}
 
   GcsClientOptions(const std::string &gcs_address, int gcs_port)
-      : gcs_address_(gcs_address), gcs_port_(gcs_port) {};
+      : gcs_address_(gcs_address), gcs_port_(gcs_port){};
 
   GcsClientOptions() {}
 

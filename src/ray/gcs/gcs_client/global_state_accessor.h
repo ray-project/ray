@@ -32,7 +32,7 @@ class GlobalStateAccessor {
   /// Constructor of GlobalStateAccessor.
   ///
   /// \param gcs_client_options The client options to connect to gcs
-  explicit GlobalStateAccessor(const GcsClientOptions& gcs_client_options);
+  explicit GlobalStateAccessor(const GcsClientOptions &gcs_client_options);
 
   ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 

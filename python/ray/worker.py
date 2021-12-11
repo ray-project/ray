@@ -1452,13 +1452,9 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
-        node.redis_password,
-        False,
-        False,
-        True)
+    gcs_options = ray._raylet.GcsClientOptions(redis_address, int(redis_port),
+                                               node.redis_password, False,
+                                               False, True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 

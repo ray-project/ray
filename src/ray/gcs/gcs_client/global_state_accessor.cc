@@ -21,7 +21,7 @@
 namespace ray {
 namespace gcs {
 
-GlobalStateAccessor::GlobalStateAccessor(const GcsClientOptions& gcs_client_options) {
+GlobalStateAccessor::GlobalStateAccessor(const GcsClientOptions &gcs_client_options) {
   gcs_client_ = std::make_unique<GcsClient>(gcs_client_options);
   io_service_ = std::make_unique<instrumented_io_context>();
 

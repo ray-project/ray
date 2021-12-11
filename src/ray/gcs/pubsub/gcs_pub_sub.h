@@ -20,10 +20,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/ray_config.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/common/ray_config.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -265,9 +265,8 @@ class GcsSubscriber {
   GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
                 const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
-      : gcs_address_(gcs_address),
-        subscriber_(std::move(subscriber)) {
-    if(redis_client) {
+      : gcs_address_(gcs_address), subscriber_(std::move(subscriber)) {
+    if (redis_client) {
       pubsub_ = std::make_unique<GcsPubSub>(redis_client);
     } else {
       // RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())

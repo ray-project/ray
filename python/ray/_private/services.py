@@ -21,6 +21,7 @@ import uuid
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray._raylet import GcsClientOptions
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -311,8 +312,10 @@ def wait_for_node(redis_address,
     redis_ip_address, redis_port = redis_address.split(":")
     wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_ip_address, int(redis_port), redis_password)
-    global_state._initialize_global_state(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_ip_address,
+                                                      int(redis_port),
+                                                      redis_password)
+    global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
         clients = global_state.node_table()
