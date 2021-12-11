@@ -46,6 +46,18 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
   auto ray_status = GrpcStatusToRayStatus(grpc_status);
   ASSERT_TRUE(ray_status.IsInvalid());
   ASSERT_EQ(ray_status.message(), "not now");
+
+  grpc_status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "foo", "bar");
+  ray_status = GrpcStatusToRayStatus(grpc_status);
+  ASSERT_TRUE(ray_status.IsGrpcUnavailable());
+
+  grpc_status = grpc::Status(grpc::StatusCode::UNKNOWN, "foo", "bar");
+  ray_status = GrpcStatusToRayStatus(grpc_status);
+  ASSERT_TRUE(ray_status.IsGrpcUnknown());
+
+  grpc_status = grpc::Status(grpc::StatusCode::ABORTED, "foo", "bar");
+  ray_status = GrpcStatusToRayStatus(grpc_status);
+  ASSERT_TRUE(ray_status.IsIOError());
 }
 
 }  // namespace ray

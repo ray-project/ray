@@ -828,6 +828,9 @@ def _process_observations(
                 raise ValueError(
                     "observe() must return a dict of agent observations")
 
+        common_infos = infos[env_id].get("__common__", {})
+        episode._set_last_info("__common__", common_infos)
+
         # For each agent in the environment.
         # types: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
@@ -1031,7 +1034,7 @@ def _do_policy_eval(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: PolicyMap,
-        sample_collector,
+        sample_collector: SampleCollector,
         active_episodes: Dict[EnvID, Episode],
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
