@@ -43,6 +43,14 @@ def test_raydp_to_spark(spark_on_ray_small):
     assert values == rows
 
 
+def test_raydp_spark_to_pandas(spark_on_ray_small):
+    spark = spark_on_ray_small
+    spark_df = spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")],
+                                     ["one", "two"])
+    ds = ray.data.from_spark(spark_df)
+    df = ds.to_pandas()
+    assert df['one'].mean() == 2.0
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

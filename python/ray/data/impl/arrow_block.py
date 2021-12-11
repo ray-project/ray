@@ -138,11 +138,15 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._compact_if_needed()
         self._uncompacted_size.add(item)
 
-    def add_block(self, block: "pyarrow.Table") -> None:
-        assert isinstance(block, pyarrow.Table), block
-        self._tables.append(block)
-        self._tables_nbytes += block.nbytes
-        self._num_rows += block.num_rows
+    def add_block(self, block: Union["pyarrow.Table", bytes]) -> None:
+        if isinstance(block, bytes):
+            reader = pyarrow.ipc.open_stream(block)
+            tb = reader.read_all()
+        else:
+            tb = block
+        self._tables.append(tb)
+        self._tables_nbytes += tb.nbytes
+        self._num_rows += tb.num_rows
 
     def build(self) -> Block:
         if self._columns:
