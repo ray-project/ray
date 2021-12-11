@@ -63,7 +63,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
             error_message = "Task Error. Traceback: {}.".format(error)
             await Response(
                 error_message, status_code=500).send(scope, receive, send)
-            return 500
+            return "500"
         except RayActorError:
             logger.warning("Request failed due to replica failure. There are "
                            f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
@@ -79,13 +79,13 @@ async def _send_request_to_handle(handle, scope, receive, send):
                          f"{MAX_REPLICA_FAILURE_RETRIES} retries.")
         await Response(
             error_message, status_code=500).send(scope, receive, send)
-        return 500
+        return "500"
 
     if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
     else:
         await Response(result).send(scope, receive, send)
-    return 200
+    return None
 
 
 class LongestPrefixRouter:
@@ -208,7 +208,7 @@ class HTTPProxy:
         self.request_error_counter = metrics.Counter(
             "serve_num_http_error_requests",
             description="The number of non-200 HTTP responses.",
-            tag_keys=("route", ))
+            tag_keys=("route", "error_code"))
 
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
@@ -254,6 +254,7 @@ class HTTPProxy:
         """
 
         assert scope["type"] == "http"
+        route_path = scope["path"]
         self.request_counter.inc(tags={"route": scope["path"]})
 
         if scope["path"] == "/-/routes":
@@ -262,7 +263,10 @@ class HTTPProxy:
 
         route_prefix, handle = self.prefix_router.match_route(scope["path"])
         if route_prefix is None:
-            self.request_error_counter.inc(tags={"route": scope["path"]})
+            self.request_error_counter.inc(tags={
+                "route": scope["path"],
+                "error_code": "404"
+            })
             return await self._not_found(scope, receive, send)
 
         # Modify the path and root path so that reverse lookups and redirection
@@ -275,8 +279,11 @@ class HTTPProxy:
 
         status_code = await _send_request_to_handle(handle, scope, receive,
                                                     send)
-        if status_code != 200:
-            self.request_error_counter.inc(tags={"route": scope["path"]})
+        if status_code is not None:
+            self.request_error_counter.inc(tags={
+                "route": route_path,
+                "error_code": status_code
+            })
             self.deployment_request_error_counter.inc(
                 tags={"deployment": handle.deployment_name})
 

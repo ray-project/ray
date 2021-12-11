@@ -109,6 +109,7 @@ def test_http_metrics(serve_instance):
 
     # Trigger HTTP 404 error
     requests.get("http://127.0.0.1:8000/B/")
+    requests.get("http://127.0.0.1:8000/B/")
     try:
         wait_for_condition(
             verify_metrics,
@@ -131,6 +132,7 @@ def test_http_metrics(serve_instance):
 
     A.deploy()
     requests.get("http://127.0.0.1:8000/A/")
+    requests.get("http://127.0.0.1:8000/A/")
     try:
         wait_for_condition(
             verify_metrics,
@@ -139,6 +141,33 @@ def test_http_metrics(serve_instance):
             expected_metrics=expected_metrics)
     except RuntimeError:
         verify_metrics(expected_metrics, True)
+
+    def verify_error_count(do_assert=False):
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split('\n')
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_num_http_error_requests" in metrics:
+                # both route "/A/" and "/B/" should have error count 2
+                if do_assert:
+                    assert "2.0" in metrics
+                if "2.0" not in metrics:
+                    return False
+            elif "serve_num_deployment_http_error_requests" in metrics:
+                # deployment A should have error count 2
+                if do_assert:
+                    assert "deployment=\"A\"" in metrics and "2.0" in metrics
+                if "deployment=\"A\"" not in metrics or "2.0" not in metrics:
+                    return False
+        return True
+
+    # There is a delay in updating the counter
+    try:
+        wait_for_condition(
+            verify_error_count, retry_interval_ms=1000, timeout=10)
+    except RuntimeError:
+        verify_error_count(do_assert=True)
 
 
 if __name__ == "__main__":

@@ -186,7 +186,7 @@ class RayServeHandle:
 
     def __repr__(self):
         return (f"{self.__class__.__name__}"
-                "(deployment='{self.deployment_name}')")
+                f"(deployment='{self.deployment_name}')")
 
     def __reduce__(self):
         serialized_data = {
