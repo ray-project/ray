@@ -53,7 +53,7 @@ std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateA
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
-  ray::gcs::GcsClientOptions client_options(address[0], std::atoi(address[1]),
+  ray::gcs::GcsClientOptions client_options(address[0], std::stoi(address[1]),
                                             redis_password);
 
   auto global_state_accessor =

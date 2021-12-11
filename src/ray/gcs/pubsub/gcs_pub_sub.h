@@ -269,8 +269,8 @@ class GcsSubscriber {
     if (redis_client) {
       pubsub_ = std::make_unique<GcsPubSub>(redis_client);
     } else {
-      // RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
-      //     << "gRPC based pubsub has to be enabled";
+      RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
+          << "gRPC based pubsub has to be enabled";
     }
   }
 

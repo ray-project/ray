@@ -96,7 +96,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
     if (!options_.gcs_address_.empty()) {
-      RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
+      RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
           << " gRPC based pubsub has to be enabled";
       get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
         *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
