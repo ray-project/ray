@@ -23,6 +23,7 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -264,9 +265,15 @@ class GcsSubscriber {
   GcsSubscriber(const std::shared_ptr<RedisClient> &redis_client,
                 const rpc::Address &gcs_address,
                 std::unique_ptr<pubsub::Subscriber> subscriber)
-      : pubsub_(std::make_unique<GcsPubSub>(redis_client)),
-        gcs_address_(gcs_address),
-        subscriber_(std::move(subscriber)) {}
+      : gcs_address_(gcs_address),
+        subscriber_(std::move(subscriber)) {
+    if(redis_client) {
+      pubsub_ = std::make_unique<GcsPubSub>(redis_client);
+    } else {
+      // RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
+      //     << "gRPC based pubsub has to be enabled";
+    }
+  }
 
   /// Subscribe*() member functions below would be incrementally converted to use the GCS
   /// based subscriber, if available.
@@ -315,7 +322,7 @@ class GcsSubscriber {
   std::string DebugString() const;
 
  private:
-  const std::unique_ptr<GcsPubSub> pubsub_;
+  std::unique_ptr<GcsPubSub> pubsub_;
   const rpc::Address gcs_address_;
   const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };

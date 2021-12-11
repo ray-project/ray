@@ -21,24 +21,8 @@
 namespace ray {
 namespace gcs {
 
-GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
-                                         const std::string &redis_password) {
-  RAY_LOG(DEBUG) << "Redis server address = " << redis_address;
-  redis_address_ = redis_address;
-  std::vector<std::string> address;
-  boost::split(address, redis_address, boost::is_any_of(":"));
-  RAY_CHECK(address.size() == 2);
-  redis_ip_address_ = address[0];
-  GcsClientOptions options;
-  options.server_ip_ = address[0];
-  options.server_port_ = std::stoi(address[1]);
-  options.password_ = redis_password;
-  // Only synchronous connection is needed.
-  options.enable_sync_conn_ = true;
-  options.enable_async_conn_ = false;
-  options.enable_subscribe_conn_ = false;
-  gcs_client_ = std::make_unique<GcsClient>(options);
-
+GlobalStateAccessor::GlobalStateAccessor(const GcsClientOptions& gcs_client_options) {
+  gcs_client_ = std::make_unique<GcsClient>(gcs_client_options);
   io_service_ = std::make_unique<instrumented_io_context>();
 
   std::promise<bool> promise;

@@ -1456,7 +1456,9 @@ def connect(node,
         redis_address,
         int(redis_port),
         node.redis_password,
-    )
+        False,
+        False,
+        True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
