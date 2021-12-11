@@ -1455,9 +1455,8 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        redis_address, int(redis_port),
-        node.redis_password, False,
-        False, True)
+        redis_address, int(redis_port), node.redis_password, False, False,
+        True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -1495,7 +1494,6 @@ def connect(node,
         job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
-    print("!!!!")
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,

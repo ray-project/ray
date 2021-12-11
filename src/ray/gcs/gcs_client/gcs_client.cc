@@ -93,7 +93,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  if (!options_.gcs_address_.empty()) {
+  if (options_.gcs_address_.empty()) {
     // Connect to redis.
     // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
     // to false.
@@ -105,12 +105,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     RAY_CHECK_OK(redis_client_->Connect(io_service));
   } else {
     RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
-      << "If using gcs_address to start client, gRPC based pubsub has to be enabled";
+        << "If using gcs_address to start client, gRPC based pubsub has to be enabled";
   }
 
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
-    if(!options_.gcs_address_.empty()) {
+    if (!options_.gcs_address_.empty()) {
       get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
         *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
         return true;
