@@ -120,7 +120,6 @@ def test_limit_concurrency(shutdown_only):
     assert len(not_ready) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Times out on windows.")
 def test_zero_cpu_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -140,7 +139,8 @@ def test_zero_cpu_scheduling(shutdown_only):
     block_driver_ref = block_driver.acquire.remote()
 
     # Both tasks should be running, so the driver should be unblocked.
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    timeout_value = 5 if sys.platform == "win32" else 1
+    _, not_ready = ray.wait([block_driver_ref], timeout=timeout_value)
     assert len(not_ready) == 0
 
 
