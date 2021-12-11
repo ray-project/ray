@@ -518,6 +518,14 @@ COMMON_CONFIG: TrainerConfigDict = {
     # observations will arrive in model as they are returned by the env.
     # In the future, the default for this will be True.
     "_disable_preprocessor_api": False,
+    # Experimental flag.
+    # If True, RLlib will no longer flatten the policy-computed actions into
+    # a single tensor (for storage in SampleCollectors/output files/etc..),
+    # but leave (possibly nested) actions as-is. Disabling flattening affects:
+    # - SampleCollectors: Have to store possibly nested action structs.
+    # - Models that have the previous action(s) as part of their input.
+    # - Algorithms reading from offline files (incl. action information).
+    "_disable_action_flattening": False,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
