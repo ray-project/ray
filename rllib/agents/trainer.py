@@ -364,7 +364,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
-    "reporting_num_episodes_for_smoothing": 100,
+    "metrics_num_episodes_for_smoothing": 100,
     # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
@@ -539,7 +539,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
-    # Use `reporting_num_episodes_for_smoothing` instead.
+    # Use `metrics_num_episodes_for_smoothing` instead.
     "metrics_smoothing_episodes": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
@@ -1703,7 +1703,7 @@ class Trainer(Trainable):
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
-            min_history=self.config["reporting_num_episodes_for_smoothing"],
+            min_history=self.config["metrics_num_episodes_for_smoothing"],
             selected_workers=selected_workers)
 
     @override(Trainable)
@@ -2102,10 +2102,10 @@ class Trainer(Trainable):
         if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="metrics_smoothing_episodes",
-                new="reporting_num_episodes_for_smoothing",
+                new="metrics_num_episodes_for_smoothing",
                 error=False,
             )
-            config["reporting_num_episodes_for_smoothing"] = \
+            config["metrics_num_episodes_for_smoothing"] = \
                 config["metrics_smoothing_episodes"]
 
         # Evaluation settings.
