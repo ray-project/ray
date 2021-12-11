@@ -144,7 +144,7 @@ def test_http_metrics(serve_instance):
 
     def verify_error_count(do_assert=False):
         resp = requests.get("http://127.0.0.1:9999").text
-        resp = resp.split('\n')
+        resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
@@ -162,7 +162,7 @@ def test_http_metrics(serve_instance):
                     return False
         return True
 
-    # There is a delay in updating the counter
+    # There is a latency in updating the counter
     try:
         wait_for_condition(
             verify_error_count, retry_interval_ms=1000, timeout=10)
