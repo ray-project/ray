@@ -1,6 +1,3 @@
-import pytest
-
-
 class TestBackwardsCompatibility:
     # List of ray public releases that included job submission functionality
     # that we want to test compatibility against
