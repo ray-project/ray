@@ -139,8 +139,6 @@ class Monitor:
                  monitor_ip=None,
                  stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
-        ray.state.state._initialize_global_state(
-            redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         if monitor_ip:

@@ -93,26 +93,29 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
+  if (!options_.gcs_address_.empty()) {
+    // Connect to redis.
+    // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
+    // to false.
+    RedisClientOptions redis_client_options(
+        options_.redis_ip_, options_.redis_port_, options_.password_,
+        /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
+        options_.enable_async_conn_, options_.enable_subscribe_conn_);
+    redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+    RAY_CHECK_OK(redis_client_->Connect(io_service));
+  } else {
+    RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
+      << "If using gcs_address to start client, gRPC based pubsub has to be enabled";
+  }
+
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
-    if (!options_.gcs_address_.empty()) {
-      RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
-          << " gRPC based pubsub has to be enabled";
+    if(!options_.gcs_address_.empty()) {
       get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
         *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
         return true;
       };
     } else {
-      // Connect to redis.
-      // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
-      // to false.
-      RedisClientOptions redis_client_options(
-          options_.redis_ip_, options_.redis_port_, options_.password_,
-          /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
-          options_.enable_async_conn_, options_.enable_subscribe_conn_);
-      redis_client_ = std::make_shared<RedisClient>(redis_client_options);
-      RAY_CHECK_OK(redis_client_->Connect(io_service));
-
       get_server_address_func_ = [this](std::pair<std::string, int> *address) {
         return GetGcsServerAddressFromRedis(
             redis_client_->GetPrimaryContext()->sync_context(), address);
