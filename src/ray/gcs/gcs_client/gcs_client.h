@@ -65,7 +65,7 @@ class GcsClientOptions {
 
   // redis server address
   std::string redis_ip_;
-  int redis_port_;
+  int redis_port_ = 0;
 
   // Password of GCS server.
   std::string password_;
