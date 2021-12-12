@@ -201,9 +201,9 @@ def ray_start_object_store_memory(request):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(request, "param",
-                        "ray start --head --num-cpus=1 --min-worker-port=0 "
-                        "--max-worker-port=0 --port 0")
+    parameter = getattr(
+        request, "param", "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0")
     command_args = parameter.split(" ")
     out = ray._private.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
