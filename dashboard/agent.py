@@ -70,6 +70,8 @@ class DashboardAgent(object):
         self.ip = node_ip_address
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
+
+        # If gcs address is used, we'll not use redis in dashboard
         self.gcs_address = gcs_address
         if self.gcs_address is not None:
             self.redis_address = None
