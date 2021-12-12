@@ -52,7 +52,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             5,
             ray.get(
                 remote_task.options(
-                    num_cpus=1, num_gpus=2, placement_group=pg).remote(5)))
+                    num_cpus=1, num_gpus=1, placement_group=pg).remote(5)))
 
         print("Autoscaling worked")
 
