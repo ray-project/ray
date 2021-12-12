@@ -83,7 +83,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
   std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
   for (const auto &bundle_spec : bundle_specs) {
     if (PrepareBundle(*bundle_spec)) {
-      prepared_bundles.emplace_back(bundle_spec); 
+      prepared_bundles.emplace_back(bundle_spec);
     } else {
       // Terminate the preparation phase if any of bundle cannot be prepared.
       break;
@@ -98,7 +98,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
       // `bundle_spec_map_`.
       ReturnBundle(*bundle);
     }
-    return false; 
+    return false;
   }
   return true;
 }
@@ -185,6 +185,11 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     }
   }
   pg_bundles_.erase(it);
+  // Erase from `bundle_spec_map_`.
+  const auto &iter = bundle_spec_map_.find(bundle_spec.BundleId());
+  if (iter != bundle_spec_map_.end()) {
+    bundle_spec_map_.erase(iter);
+  }
   delete_resources_(deleted);
 }
 
