@@ -193,8 +193,7 @@ class DashboardHead:
                     "Dashboard head exiting: "
                     "Failed to connect to redis at %s", self.redis_address)
                 sys.exit(-1)
-        gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        return gcs_address
+        return await get_gcs_address_with_retry(self.aioredis_client)
 
     async def run(self):
 

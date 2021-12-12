@@ -218,6 +218,7 @@ if __name__ == "__main__":
             args.host,
             args.port,
             args.port_retries,
+            args.gcs_address,
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir)

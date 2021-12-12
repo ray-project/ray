@@ -549,17 +549,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     async def run(self, server):
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
         if gcs_pubsub_enabled():
-            gcs_addr = await aioredis_client.get("GcsServerAddress")
-            publisher = GcsAioPublisher(address=gcs_addr.decode())
-
+            gcs_addr = self._dashboard_agent.gcs_address
+            if gcs_addr is None:
+                gcs_addr = await aioredis_client.get("GcsServerAddress")
+                gcs_addr = gcs_addr.decode()
+            publisher = GcsAioPublisher(address=gcs_addr)
             async def publish(key: str, data: str):
                 await publisher.publish_resource_usage(key, data)
         else:
-
+            aioredis_client = await aioredis.create_redis_pool(
+                address=self._dashboard_agent.redis_address,
+                password=self._dashboard_agent.redis_password)
             async def publish(key: str, data: str):
                 await aioredis_client.publish(key, data)
 

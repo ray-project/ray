@@ -602,6 +602,7 @@ def init(
         include_dashboard: Optional[bool] = None,
         dashboard_host: str = ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port: Optional[int] = None,
+        gcs_server_port: Optional[int] = None,
         job_config: "ray.job_config.JobConfig" = None,
         configure_logging: bool = True,
         logging_level: int = ray_constants.LOGGER_LEVEL,
@@ -695,6 +696,7 @@ def init(
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
+        gcs_server_port(int, None): The port to start gcs server
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -894,6 +896,7 @@ def init(
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
+            gcs_server_port=gcs_server_port,
             memory=_memory,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,

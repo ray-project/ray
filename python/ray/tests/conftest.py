@@ -52,6 +52,8 @@ def get_default_fixture_ray_kwargs():
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
+    if ray._raylet.RayConfig.instance().bootstrap_with_gcs():
+        init_kwargs["gcs_server_port"] = 9993
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
 
@@ -199,9 +201,9 @@ def ray_start_object_store_memory(request):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(
-        request, "param", "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0")
+    parameter = getattr(request, "param",
+                        "ray start --head --num-cpus=1 --min-worker-port=0 "
+                        "--max-worker-port=0 --port 0")
     command_args = parameter.split(" ")
     out = ray._private.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))

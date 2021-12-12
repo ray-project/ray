@@ -409,7 +409,6 @@ if __name__ == "__main__":
                 gcs_publisher = GcsPublisher(
                     address=get_gcs_address_from_redis(redis_client))
                 redis_client = None
-
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (

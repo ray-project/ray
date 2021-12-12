@@ -111,3 +111,7 @@ cdef class Config:
     @staticmethod
     def record_ref_creation_sites():
         return RayConfig.instance().record_ref_creation_sites()
+
+    @staticmethod
+    def bootstrap_with_gcs():
+        return RayConfig.instance().bootstrap_with_gcs()
