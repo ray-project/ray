@@ -911,9 +911,11 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and \
-                    isinstance(view_req.space,
-                               (gym.spaces.Dict, gym.spaces.Tuple)):
+            data_col = view_req.data_col or view_col
+            if isinstance(
+                view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)) and \
+                (not self.config["_disable_preprocessor_api"] or
+                 data_col == "actions"):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
