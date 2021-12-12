@@ -40,7 +40,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 
         # Trigger autoscaling
-        pg = ray.util.placement_group([{"GPU": 1}] * 2)
+        pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}] * 2)
         timeout = time.monotonic() + 60
         while ray.cluster_resources().get("GPU", 0) < 2:
             if time.monotonic() > timeout:
@@ -49,7 +49,10 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         # Schedule task with resources
         self.assertEquals(
-            5, ray.get(remote_task.options(placement_group=pg).remote(5)))
+            5,
+            ray.get(
+                remote_task.options(
+                    num_cpus=1, num_gpus=2, placement_group=pg).remote(5)))
 
         print("Autoscaling worked")
 
