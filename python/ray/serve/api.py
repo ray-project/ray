@@ -28,7 +28,7 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (LoggingContext, ensure_serialization_context,
                              format_actor_name, get_current_node_resource_key,
-                             get_random_letters, logger)
+                             get_random_letters, logger, DEFAULT)
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
@@ -198,7 +198,7 @@ class Client:
             version: Optional[str] = None,
             prev_version: Optional[str] = None,
             route_prefix: Optional[str] = None,
-            url: str = "",
+            url: Optional[str] = None,
             _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -246,9 +246,14 @@ class Client:
 
         if _blocking:
             self._wait_for_goal(goal_id)
+
+            if url is not None:
+                url_part = f" at `{url}`"
+            else:
+                url_part = ""
             logger.info(
                 f"Deployment '{name}{':'+version if version else ''}' is ready"
-                f" at `{url}`. {tag}")
+                f"{url_part}. {tag}")
         else:
             return goal_id
 
@@ -635,7 +640,7 @@ class Deployment:
                  prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
                  init_kwargs: Optional[Tuple[Any]] = None,
-                 route_prefix: Optional[str] = None,
+                 route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
                  ray_actor_options: Optional[Dict] = None,
                  _internal=False) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -662,7 +667,7 @@ class Deployment:
             raise TypeError("init_args must be a tuple.")
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
             raise TypeError("init_kwargs must be a dict.")
-        if route_prefix is not None:
+        if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
             if not isinstance(route_prefix, str):
                 raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
@@ -744,6 +749,8 @@ class Deployment:
     @property
     def route_prefix(self) -> Optional[str]:
         """HTTP route prefix that this deployment is exposed under."""
+        if self._route_prefix is DEFAULT.VALUE:
+            return f"/{self._name}"
         return self._route_prefix
 
     @property
@@ -762,10 +769,13 @@ class Deployment:
         return self._init_args
 
     @property
-    def url(self):
+    def url(self) -> Optional[str]:
         """Full HTTP url for this deployment."""
-        return _get_global_client().root_url + (self._route_prefix
-                                                or f"/{self._name}")
+        if self._route_prefix is None:
+            # this deployment is not exposed over HTTP
+            return None
+
+        return _get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError("Deployments cannot be constructed directly. "
@@ -795,7 +805,7 @@ class Deployment:
             config=self._config,
             version=self._version,
             prev_version=self._prev_version,
-            route_prefix=self._route_prefix,
+            route_prefix=self.route_prefix,
             url=self.url,
             _blocking=_blocking)
 
@@ -829,7 +839,7 @@ class Deployment:
                 prev_version: Optional[str] = None,
                 init_args: Optional[Tuple[Any]] = None,
                 init_kwargs: Optional[Dict[Any, Any]] = None,
-                route_prefix: Optional[str] = None,
+                route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
                 num_replicas: Optional[int] = None,
                 ray_actor_options: Optional[Dict] = None,
                 user_config: Optional[Any] = None,
@@ -867,11 +877,9 @@ class Deployment:
         if init_kwargs is None:
             init_kwargs = self._init_kwargs
 
-        if route_prefix is None:
-            if self._route_prefix == f"/{self._name}":
-                route_prefix = None
-            else:
-                route_prefix = self._route_prefix
+        if route_prefix is DEFAULT.VALUE:
+            # Default is to keep the previous value
+            route_prefix = self._route_prefix
 
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
@@ -912,13 +920,9 @@ class Deployment:
         ])
 
     def __str__(self):
-        if self._route_prefix is None:
-            route_prefix = f"/{self._name}"
-        else:
-            route_prefix = self._route_prefix
         return (f"Deployment(name={self._name},"
                 f"version={self._version},"
-                f"route_prefix={route_prefix})")
+                f"route_prefix={self.route_prefix})")
 
     def __repr__(self):
         return str(self)
@@ -956,7 +960,7 @@ def deployment(
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Optional[str] = None,
+        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
