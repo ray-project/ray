@@ -176,6 +176,8 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     if len(result) == 0:
         result = None
 
+    logger.debug(f"Rewrote runtime_env `pip` field from {pip} to {result}.")
+
     return result
 
 
