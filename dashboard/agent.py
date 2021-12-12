@@ -144,10 +144,11 @@ class DashboardAgent(object):
         if self.gcs_address is None:
             # Create an aioredis client for all modules.
             try:
-                self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                    self.redis_address, self.redis_password,
-                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+                self.aioredis_client = \
+                    await dashboard_utils.get_aioredis_client(
+                        self.redis_address, self.redis_password,
+                        dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                        dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
             except (socket.gaierror, ConnectionRefusedError):
                 logger.error(
                     "Dashboard agent exiting: "

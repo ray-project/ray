@@ -180,10 +180,11 @@ class DashboardHead:
         # Create an aioredis client for all modules.
         if self.gcs_address is None:
             try:
-                self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                    self.redis_address, self.redis_password,
-                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+                self.aioredis_client = \
+                    await dashboard_utils.get_aioredis_client(
+                        self.redis_address, self.redis_password,
+                        dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                        dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
             except (socket.gaierror, ConnectionError):
                 logger.error(
                     "Dashboard head exiting: "
@@ -201,7 +202,8 @@ class DashboardHead:
         if self.gcs_address is None:
             # Waiting for GCS is ready.
             # TODO: redis-removal bootstrap
-            gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
+            gcs_address = await get_gcs_address_with_retry(
+                self.aioredis_client)
         else:
             gcs_address = self.gcs_address
 
