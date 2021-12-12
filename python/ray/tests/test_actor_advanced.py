@@ -1076,8 +1076,9 @@ def test_actor_resource_demand(shutdown_only):
     ray.shutdown()
     cluster = ray.init(num_cpus=3)
     global_state_accessor = GlobalStateAccessor(
-        GcsClientOptions.from_redis_address(cluster["redis_address"]),
-        ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     @ray.remote(num_cpus=2)
@@ -1130,7 +1131,9 @@ def test_actor_resource_demand(shutdown_only):
 def test_kill_pending_actor_with_no_restart_true():
     cluster = ray.init()
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     @ray.remote(resources={"WORKER": 1.0})
@@ -1164,7 +1167,9 @@ def test_kill_pending_actor_with_no_restart_true():
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)
