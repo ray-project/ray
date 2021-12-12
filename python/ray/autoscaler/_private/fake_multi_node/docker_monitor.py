@@ -33,11 +33,11 @@ def _update_docker_compose(docker_compose_path: str, project_name: str,
         cmd = ["down"]
         shutdown = True
     try:
-        subprocess.check_output([
-            "docker", "compose", "-f", docker_compose_path, "-p", project_name
-        ] + cmd + [
-            "--remove-orphans",
-        ])
+        subprocess.check_output(
+            ["docker-compose", "-f", docker_compose_path, "-p", project_name] +
+            cmd + [
+                "--remove-orphans",
+            ])
     except Exception as e:
         print(f"Ran into error when updating docker compose: {e}")
         # Ignore error
@@ -70,8 +70,7 @@ def _update_docker_status(docker_compose_path: str, project_name: str,
                           docker_status_path: str):
     try:
         data_str = subprocess.check_output([
-            "docker",
-            "compose",
+            "docker-compose",
             "-f",
             docker_compose_path,
             "-p",

@@ -252,6 +252,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    - pip install docker-compose
     - sudo service docker start
     # Because Python version changed, we need to re-install Ray here
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
