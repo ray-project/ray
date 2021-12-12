@@ -53,10 +53,14 @@ class PlacementGroupResourceManager {
   /// Lock the required resources from local available resources. Note that this is phase
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
-  /// \param bundle_specs: Specification of bundle whose resources will be prepared.
+  /// \param bundle_spec: Specification of bundle whose resources will be prepared.
+  virtual bool PrepareBundle(const BundleSpecification &bundle_spec) = 0;
+
+  /// Prepare resource batched, it's an encapsulation of function `PrepareBundle`.
+  /// 
+  /// \param bundle_specs: A set of bundles that waiting to be prepared.
   /// \return bool: True if all bundles successfully reserved resources, otherwise false.
-  virtual bool PrepareBundles(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
+  virtual bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
@@ -99,6 +103,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
           delete_resources);
 
   virtual ~NewPlacementGroupResourceManager() = default;
+
+  bool PrepareBundle(const BundleSpecification &bundle_spec);
 
   bool PrepareBundles(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);

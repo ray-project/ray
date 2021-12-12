@@ -191,7 +191,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   for (const auto &node_to_bundles : pending_bundles) {
     const auto &node_id = node_to_bundles.first;
     const auto &bundles = node_to_bundles.second;
-    lease_status_tracker->MarkPreparePhaseStarted(node_id, bundles);
+    for (const auto &bundle: bundles) {
+      lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
+    }
+    
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
     PrepareResources(bundles, gcs_node_manager_.GetAliveNode(node_id),
@@ -724,13 +727,10 @@ LeaseStatusTracker::LeaseStatusTracker(
   }
 }
 
-void LeaseStatusTracker::MarkPreparePhaseStarted(
-    const NodeID &node_id,
-    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
-  for (const auto &bundle : bundles) {
-    const auto &bundle_id = bundle->BundleId();
-    node_to_bundles_when_preparing_[node_id].emplace(bundle_id);
-  }
+bool LeaseStatusTracker::MarkPreparePhaseStarted(
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle) {
+  const auto &bundle_id = bundle->BundleId();
+  return node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second;
 }
 
 void LeaseStatusTracker::MarkPrepareRequestReturned(

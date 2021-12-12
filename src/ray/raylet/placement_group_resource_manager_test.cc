@@ -75,11 +75,11 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   auto group_id = PlacementGroupID::FromRandom();
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   /// 4. check remaining resources is correct.
   CheckAvailableResoueceEmpty("CPU");
 }
@@ -90,13 +90,13 @@ TEST_F(NewPlacementGroupResourceManagerTest,
   auto group_id = PlacementGroupID::FromRandom();
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 1.0});
   InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
@@ -105,11 +105,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   ASSERT_TRUE(update_called_);
@@ -137,11 +136,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   ASSERT_TRUE(update_called_);
@@ -164,13 +162,13 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   unit_resource.insert({"CPU", 1.0});
   auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   auto second_bundle_spec = Mocker::GenBundleCreation(group_id, 2, unit_resource);
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource, 2);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 2.0});
   InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare and commit two bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(first_bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(second_bundle_spec));
   ASSERT_FALSE(update_called_);
   ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->CommitBundle(first_bundle_spec);
@@ -234,14 +232,14 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
   auto group_id = PlacementGroupID::FromRandom();
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle resource 10 times.
   for (int i = 0; i < 10; i++) {
-    new_placement_group_resource_manager_->PrepareBundles(bundle_specs);
+    new_placement_group_resource_manager_->PrepareBundle(bundle_spec);
   }
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
@@ -262,15 +260,14 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource);
   /// 2. init local available resource.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle -> commit bundle -> prepare bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 1.0},
@@ -289,14 +286,14 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 5. prepare bundle -> commit bundle -> commit bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   // 6. check remaining resources is correct.
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 7. prepare bundle -> return bundle -> commit bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   // 8. check remaining resources is correct.
