@@ -235,7 +235,8 @@ class StandardAutoscaler:
                 index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
-                prom_metrics=self.prom_metrics)
+                prom_metrics=self.prom_metrics,
+                event_summarizer=self.event_summarizer)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -329,6 +330,11 @@ class StandardAutoscaler:
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
+
+        # Record the amount of time the autoscaler took for
+        # this _update() iteration.
+        update_time = time.time() - self.last_update_time
+        self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
         """Terminates nodes to enforce constraints defined by the autoscaling

@@ -186,7 +186,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -290,7 +290,7 @@ py_test(
     name = "learning_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-simpleq-fake-gpus.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -458,7 +458,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "flaky"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -660,7 +660,7 @@ py_test(
 # PPO: DDPPO
 py_test(
     name = "test_ddppo",
-    tags = ["team:ml", "trainers_dir", "flaky"],
+    tags = ["team:ml", "trainers_dir"],
     size = "medium",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
@@ -1181,7 +1181,7 @@ py_test(
 
 py_test(
     name = "test_distributions",
-    tags = ["team:ml", "models", "flaky"],
+    tags = ["team:ml", "models"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
@@ -1222,6 +1222,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_rnn_sequencing",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_rnn_sequencing.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["team:ml", "policy"],
     size = "small",
@@ -1237,7 +1244,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["team:ml", "utils", "flaky"],
+    tags = ["team:ml", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1254,6 +1261,13 @@ py_test(
     tags = ["team:ml", "utils"],
     size = "medium",
     srcs = ["utils/exploration/tests/test_parameter_noise.py"]
+)
+
+py_test(
+    name = "test_random_encoder",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_random_encoder.py"]
 )
 
 # Schedules
@@ -1480,6 +1494,14 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_nested_action_spaces",
+    main = "tests/test_nested_action_spaces.py",
+    tags = ["team:ml", "tests_dir", "tests_dir_N"],
+    size = "medium",
+    srcs = ["tests/test_nested_action_spaces.py"]
+)
+
+py_test(
     name = "tests/test_nested_observation_spaces",
     main = "tests/test_nested_observation_spaces.py",
     tags = ["team:ml", "tests_dir", "tests_dir_N"],
@@ -1614,7 +1636,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_evolution_algos",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:ml", "tests_dir", "tests_dir_S", "flaky"],
+    tags = ["team:ml", "tests_dir", "tests_dir_S"],
     size = "large",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesEvolutionAlgos"]
@@ -2328,34 +2350,34 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=13"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
+    name = "examples/parallel_evaluation_and_training_auto_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_11_episodes_tf2",
+    name = "examples/parallel_evaluation_and_training_211_ts_tf2",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=11"]
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_14_episodes_torch",
+    name = "examples/parallel_evaluation_and_training_auto_ts_torch",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=14"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2494,10 +2516,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/remote_vector_env_with_custom_api",
+    name = "examples/remote_base_env_with_custom_api",
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
-    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    srcs = ["examples/remote_base_env_with_custom_api.py"],
     args = ["--stop-iters=3"]
 )
 

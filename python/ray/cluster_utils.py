@@ -14,6 +14,8 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
+cluster_not_supported = (os.name == "nt")
+
 
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
@@ -21,7 +23,8 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict):
+    def __init__(self, head_resources: dict, worker_node_types: dict,
+                 **config_kwargs):
         """Create the cluster.
 
         Args:
@@ -29,10 +32,12 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
         """
         self._head_resources = head_resources
-        self._config = self._generate_config(head_resources, worker_node_types)
+        self._config = self._generate_config(head_resources, worker_node_types,
+                                             **config_kwargs)
         self._process = None
 
-    def _generate_config(self, head_resources, worker_node_types):
+    def _generate_config(self, head_resources, worker_node_types,
+                         **config_kwargs):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -45,9 +50,10 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+        custom_config.update(config_kwargs)
         return custom_config
 
-    def start(self):
+    def start(self, _system_config=None):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
@@ -68,6 +74,9 @@ class AutoscalingCluster:
         if self._head_resources:
             cmd.append("--resources='{}'".format(
                 json.dumps(self._head_resources)))
+        if _system_config is not None:
+            cmd.append("--system-config={}".format(
+                json.dumps(_system_config, separators=(",", ":"))))
         env = os.environ.copy()
         env.update({
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
@@ -102,6 +111,11 @@ class Cluster:
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
+        if cluster_not_supported:
+            logger.warning(
+                "Ray cluster mode is currently experimental and untested on "
+                "Windows. If you are using it and running into issues please "
+                "file a report at https://github.com/ray-project/ray/issues.")
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None

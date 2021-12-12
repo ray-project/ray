@@ -11,6 +11,11 @@ class TrialScheduler:
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
+    # Caution: Temporary and anti-pattern! This means Scheduler calls
+    # into Executor directly without going through TrialRunner.
+    # TODO(xwjiang): Deprecate this after we control the interaction
+    #  between schedulers and executor.
+    NOOP = "NOOP"
 
     _metric = None
 

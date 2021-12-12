@@ -18,4 +18,10 @@ If you think there is anything missing, please open an issue on `Github`_.
    :maxdepth: 2
 
    env.rst
+   trainer.rst
+   policy.rst
+   models.rst
+   evaluation.rst
+   offline.rst
+   execution.rst
    ../../rllib-package-ref

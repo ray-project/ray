@@ -411,8 +411,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retires max number of retry when the task fails.
-  /// \param[in] placement_options placement group options.
-  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
@@ -420,7 +419,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-      BundleID placement_options, bool placement_group_capture_child_tasks,
+      const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint);
 
   /// Create an actor.
@@ -568,7 +567,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              int64_t &task_output_inlined_bytes,
+                              int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -579,6 +578,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object);
+
+  /// Pin the local copy of the return object, if one exists.
+  ///
+  /// \param[in] return_id ObjectID of the return value.
+  /// \param[out] return_object The object that was pinned.
+  /// \return success if the object still existed and was pinned. Note that
+  /// pinning is done asynchronously.
+  bool PinExistingReturnObject(const ObjectID &return_id,
+                               std::shared_ptr<RayObject> *return_object);
 
   /// Get a handle to an actor.
   ///
@@ -760,6 +768,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  static rpc::RuntimeEnv OverrideRuntimeEnv(
+      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+
+  /// The following tests will use `OverrideRuntimeEnv` function.
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestPyModulesInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverridePyModules);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  std::string OverrideTaskOrActorRuntimeEnv(
+      const std::string &serialized_runtime_env,
+      std::vector<std::string> *runtime_env_uris /* output */);
+
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
       const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -767,10 +791,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
-      const std::vector<std::string> &runtime_env_uris,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -788,8 +810,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
 
-  /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
+  void ExitIfParentRayletDies();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -1150,6 +1172,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.

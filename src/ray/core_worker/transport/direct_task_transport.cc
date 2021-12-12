@@ -26,7 +26,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
@@ -52,7 +52,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
-              RAY_UNUSED(task_finisher_->PendingTaskFailed(
+              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
           }));
@@ -106,7 +106,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
     }
     if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
@@ -553,8 +553,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
+              RAY_UNUSED(task_finisher_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -607,13 +607,28 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-            RAY_LOG(WARNING)
-                << "The worker failed to receive a response from the local "
-                   "raylet because the raylet is crashed. Terminating the worker.";
-            QuickExit();
+          if (status.IsGrpcUnavailable()) {
+            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
+                             << "raylet because the raylet is unavailable (crashed). "
+                             << "Error: " << status;
+            if (worker_type_ == WorkerType::WORKER) {
+              // Exit the worker so that caller can retry somewhere else.
+              RAY_LOG(WARNING) << "Terminating the worker due to local raylet death";
+              QuickExit();
+            }
+            RAY_CHECK(worker_type_ == WorkerType::DRIVER);
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED, &status));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
           } else {
-            RAY_LOG(INFO)
+            RAY_LOG(WARNING)
                 << "The worker failed to receive a response from the local raylet, but "
                    "raylet is still alive. Try again on a local node. Error: "
                 << status;
@@ -685,7 +700,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
-            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
@@ -696,7 +710,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
@@ -738,7 +752,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduled_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
               task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
           return Status::OK();
         }

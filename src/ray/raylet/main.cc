@@ -32,6 +32,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
+DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,
@@ -208,6 +209,7 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
+        node_manager_config.log_dir = log_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;

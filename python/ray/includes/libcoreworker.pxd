@@ -44,6 +44,7 @@ from ray.includes.common cimport (
     LocalMemoryBuffer,
     CJobConfig,
     CConcurrencyGroup,
+    CSchedulingStrategy,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -107,8 +108,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CTaskOptions &options,
             int max_retries,
             c_bool retry_exceptions,
-            c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks,
+            const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,
@@ -139,11 +139,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
-            int64_t &task_output_inlined_bytes,
+            int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] return_object
+        )
+        c_bool PinExistingReturnObject(
+            const CObjectID& return_id,
+            shared_ptr[CRayObject] *return_object
         )
 
         CJobID GetCurrentJobId()

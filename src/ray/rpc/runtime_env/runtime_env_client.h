@@ -49,13 +49,15 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnv, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, CreateRuntimeEnv, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Delete URIs.
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteURIs, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(RuntimeEnvService, DeleteURIs, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// The RPC client.
