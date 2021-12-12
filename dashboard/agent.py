@@ -168,7 +168,7 @@ class DashboardAgent(object):
         # TODO: redis-removal bootstrap
         if self.gcs_address is None:
             gcs_address = await self.aioredis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+                dashboard_consts.GCS_SERVER_ADDRESS)
             self.gcs_client = GcsClient(address=gcs_address.decode())
         else:
             self.gcs_client = GcsClient(address=self.gcs_address)

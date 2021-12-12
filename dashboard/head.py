@@ -50,7 +50,7 @@ async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
             gcs_address = (await redis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)).decode()
+                dashboard_consts.GCS_SERVER_ADDRESS)).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
@@ -268,11 +268,11 @@ class DashboardHead:
         # TODO: Use async version if performance is an issue
         # Write the dashboard head port to gcs kv.
         internal_kv._internal_kv_put(
-            ray_constants.DASHBOARD_ADDRESS_KEY,
+            ray_constants.DASHBOARD_ADDRESS,
             f"{http_host}:{http_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
         internal_kv._internal_kv_put(
-            dashboard_consts.DASHBOARD_ADDRESS_RPC_KEY,
+            dashboard_consts.DASHBOARD_RPC_ADDRESS,
             f"{self.ip}:{self.grpc_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
