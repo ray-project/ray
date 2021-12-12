@@ -31,6 +31,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
  public:
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
       new_placement_group_resource_manager_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   rpc::GcsNodeInfo node_info_;
   void SetUp() {
@@ -40,7 +41,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
-    auto cluster_resource_scheduler_ =
+    cluster_resource_scheduler_ =
         std::make_shared<ClusterResourceScheduler>("local", unit_resource, *gcs_client_);
     new_placement_group_resource_manager_.reset(
         new raylet::NewPlacementGroupResourceManager(
@@ -54,14 +55,10 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
 
   void CheckAvailableResoueceEmpty(const std::string &resource) {
-    const auto cluster_resource_scheduler_ =
-        new_placement_group_resource_manager_->GetResourceScheduler();
     ASSERT_TRUE(cluster_resource_scheduler_->IsAvailableResourceEmpty(resource));
   }
 
   void CheckRemainingResourceCorrect(NodeResources &node_resources) {
-    const auto cluster_resource_scheduler_ =
-        new_placement_group_resource_manager_->GetResourceScheduler();
     auto local_node_resource = cluster_resource_scheduler_->GetLocalNodeResources();
     ASSERT_TRUE(local_node_resource == node_resources);
   }
@@ -300,6 +297,63 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", available_resource, *gcs_client_);
   remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
+}
+
+TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
+  // 1. create a placement group spec with 4 bundles and each required 1 CPU.
+  auto group_id = PlacementGroupID::FromRandom();
+  absl::flat_hash_map<std::string, double> unit_resource;
+  unit_resource.insert({"CPU", 1.0});
+  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource, 4);
+  // 2. init local available resource with 3 CPUs.
+  absl::flat_hash_map<std::string, double> available_resource = {
+      std::make_pair("CPU", 3.0)};
+  InitLocalAvailableResource(available_resource);
+  // 3. prepare resources for the four bundles.
+  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  // make sure it keeps Idempotency.
+  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  // 4. check remaining resources is correct.
+  absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
+  auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+      "remaining", remaining_resources, *gcs_client_);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
+  // 5. re-init the local available resource with 4 CPUs.
+  available_resource = {std::make_pair("CPU", 4.0)};
+  InitLocalAvailableResource(available_resource);
+  // 6. re-prepare resources for the four bundles, but this time it should be
+  // successfully.
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  for (const auto &bundle_spec : bundle_specs) {
+    new_placement_group_resource_manager_->CommitBundle(*bundle_spec);
+  }
+  // 7. re-check remaining resources is correct.
+  remaining_resources = {{"CPU_group_" + group_id.Hex(), 4.0},
+                         {"CPU_group_1_" + group_id.Hex(), 1.0},
+                         {"CPU_group_2_" + group_id.Hex(), 1.0},
+                         {"CPU_group_3_" + group_id.Hex(), 1.0},
+                         {"CPU_group_4_" + group_id.Hex(), 1.0},
+                         {"CPU", 4.0},
+                         {"bundle_group_1_" + group_id.Hex(), 1000},
+                         {"bundle_group_2_" + group_id.Hex(), 1000},
+                         {"bundle_group_3_" + group_id.Hex(), 1000},
+                         {"bundle_group_4_" + group_id.Hex(), 1000},
+                         {"bundle_group_" + group_id.Hex(), 4000}};
+  remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+      "remaining", remaining_resources, *gcs_client_);
+  std::shared_ptr<TaskResourceInstances> resource_instances =
+      std::make_shared<TaskResourceInstances>();
+  absl::flat_hash_map<std::string, double> allocating_resource;
+  allocating_resource.insert({"CPU", 4.0});
+  ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
+      allocating_resource, resource_instances));
+  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  RAY_LOG(INFO) << "The current local resource view: "
+                << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
