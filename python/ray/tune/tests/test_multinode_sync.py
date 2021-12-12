@@ -7,9 +7,13 @@ from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster, \
     DockerMonitor
 
 
+@ray.remote
+def remote_task(val):
+    return val
+
+
 class MultiNodeSyncTest(unittest.TestCase):
     def setUp(self):
-
         self.cluster = DockerCluster()
         self.cluster.setup()
 
@@ -31,18 +35,23 @@ class MultiNodeSyncTest(unittest.TestCase):
             },
         })
         self.cluster.start()
-        self.cluster.connect(client=True, timeout=120)
+        self.cluster.connect(client=True, timeout=60)
 
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 
-        pg = ray.util.placement_group([{"GPU": 1}] * 2)  # noqa: F841
+        # Trigger autoscaling
+        pg = ray.util.placement_group([{"GPU": 1}] * 2)
         timeout = time.monotonic() + 60
         while ray.cluster_resources().get("GPU", 0) < 2:
             if time.monotonic() > timeout:
                 raise RuntimeError("Autoscaling failed or too slow.")
             time.sleep(1)
 
-        print("Autoscaling worked.")
+        # Schedule task with resources
+        self.assertEquals(
+            5, ray.get(remote_task.options(placement_group=pg).remote(5)))
+
+        print("Autoscaling worked")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import shutil
-import socket
 import subprocess
 import tempfile
 import time
@@ -27,6 +26,7 @@ class DockerMonitor:
     def start(self):
         self._process = subprocess.Popen(
             ["python", self._monitor_script, self._config_file])
+        time.sleep(2)
 
     def stop(self):
         if self._process:
@@ -42,6 +42,7 @@ class DockerCluster:
             os.path.dirname(__file__), "example_docker.yaml")
         self._tempdir = None
         self._config_file = None
+        self._nodes_file = None
         self._partial_config = config
         self._cluster_config = None
 
@@ -71,21 +72,16 @@ class DockerCluster:
             port = self.gcs_port
             address = f"127.0.0.1:{port}"
 
-        timeout = time.monotonic() + timeout
-        port_open = False
-        while time.monotonic() < timeout:
-            a_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            location = ("127.0.0.1", port)
-            port_open = a_socket.connect_ex(location) == 0
-            if port_open:
+        timeout_at = time.monotonic() + timeout
+        while time.monotonic() < timeout_at:
+            try:
+                ray.init(address)
+                self.wait_for_resources({"CPU": 1})
+            except Exception:
+                pass
+            if ray.is_initialized:
                 break
-            time.sleep(1)
-
-        if not port_open:
-            raise RuntimeError(f"Timed out waiting on port {port} to open")
-
-        ray.init(address)
-        self.wait_for_resources({"CPU": 1})
+            time.sleep(1.)
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):
@@ -141,6 +137,7 @@ class DockerCluster:
     def setup(self):
         self._tempdir = tempfile.mkdtemp()
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
+        self._nodes_file = os.path.join(self._tempdir, "nodes.json")
         self.update_config()
 
     def teardown(self):

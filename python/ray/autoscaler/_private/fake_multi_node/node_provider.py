@@ -113,19 +113,15 @@ def create_node_spec(head: bool,
 
     resources = resources or {}
 
-    cmd_env = ""
-    fake_cluster_dev = os.environ.get("FAKE_CLUSTER_DEV", "")
-    if fake_cluster_dev:
-        cmd_env += f"FAKE_CLUSTER_DEV={fake_cluster_dev} "
-
     cmd_kwargs = dict(
-        CMD_ENV=cmd_env,
+        CMD_ENV="",
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
 
+    # Set to "auto" to mount current autoscaler directory to nodes for dev
     fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "")
     if fake_cluster_dev_dir:
         if fake_cluster_dev_dir == "auto":
@@ -137,6 +133,8 @@ def create_node_spec(head: bool,
         node_spec["volumes"] += [
             f"{local_ray_dir}/autoscaler:{docker_ray_dir}/autoscaler:ro",
         ]
+
+        cmd_kwargs["CMD_ENV"] = f"FAKE_CLUSTER_DEV={fake_cluster_dev_dir} "
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
@@ -264,9 +262,8 @@ class FakeMultiNodeProvider(NodeProvider):
                     resources=self._head_resources)
             self._possibly_terminated_nodes = dict()
 
-            # Disabled per default
             self._cleanup_interval = provider_config.get(
-                "cleanup_interval", 0.)
+                "cleanup_interval", .5)
 
             self._docker_status = {}
 
@@ -426,6 +423,7 @@ class FakeMultiNodeProvider(NodeProvider):
                         ok = False
                 if ok:
                     nodes.append(node_id)
+
             return nodes
 
     def is_running(self, node_id):
