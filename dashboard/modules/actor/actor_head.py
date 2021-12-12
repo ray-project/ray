@@ -138,7 +138,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         # Receive actors from channel.
         if gcs_pubsub_enabled():
             gcs_addr = await self._dashboard_head.get_gcs_address()
-            subscriber = GcsAioActorSubscriber(address=gcs_addr.decode())
+            subscriber = GcsAioActorSubscriber(address=gcs_addr)
             await subscriber.subscribe()
 
             while True:
