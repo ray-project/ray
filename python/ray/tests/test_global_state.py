@@ -221,8 +221,7 @@ def test_placement_group_load_report(ray_start_cluster):
     ray.init(address=cluster.address)
     global_state_accessor = GlobalStateAccessor(
         GcsClientOptions.from_redis_address(
-            cluster.address,
-            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
+            cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     class PgLoadChecker:
