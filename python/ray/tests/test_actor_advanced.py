@@ -15,7 +15,7 @@ from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
     SignalActor, wait_for_condition, wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray._raylet import GlobalStateAccessor
+from ray._raylet import GlobalStateAccessor, GcsClientOptions
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -1076,7 +1076,8 @@ def test_actor_resource_demand(shutdown_only):
     ray.shutdown()
     cluster = ray.init(num_cpus=3)
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(cluster["redis_address"]),
+        ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     global_state_accessor.connect()
 
     @ray.remote(num_cpus=2)
