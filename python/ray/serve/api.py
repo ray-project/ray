@@ -915,7 +915,8 @@ class Deployment:
             self._config == other._config,
             self._init_args == other._init_args,
             self._init_kwargs == other._init_kwargs,
-            self._route_prefix == other._route_prefix,
+            # compare route prefix with default value resolved
+            self.route_prefix == other.route_prefix,
             self._ray_actor_options == self._ray_actor_options,
         ])
 
