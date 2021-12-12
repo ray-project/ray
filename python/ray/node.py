@@ -745,12 +745,18 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
+        gcs_address = None
+        if self._ray_params.gcs_server_port is not None:
+            # We suppose redis is on the same host as gcs
+            host, port = self.redis_address.split(":")
+            gcs_address = f"{host}:{self._ray_params.gcs_server_port}"
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             self._logs_dir,
+            gcs_address=gcs_address,
             stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,

@@ -1219,6 +1219,7 @@ def start_dashboard(require_dashboard,
                     redis_address,
                     temp_dir,
                     logdir,
+                    gcs_address=None,
                     port=None,
                     stdout_file=None,
                     stderr_file=None,
@@ -1302,6 +1303,8 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
+        if gcs_address is not None:
+            command += [f"--gcs-address={gcs_address}"]
         if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(

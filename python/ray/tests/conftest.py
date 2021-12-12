@@ -52,7 +52,7 @@ def get_default_fixture_ray_kwargs():
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
-    if ray._raylet.RayConfig.instance().bootstrap_with_gcs():
+    if os.environ.get("RAY_bootstrap_with_gcs") in ("true", "1"):
         init_kwargs["gcs_server_port"] = 9993
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
