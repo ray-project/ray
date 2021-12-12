@@ -16,8 +16,8 @@
 
 #include <jni.h>
 
-#include "jni_utils.h"
 #include "boost/algorithm/string.hpp"
+#include "jni_utils.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
@@ -32,9 +32,9 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
   std::vector<std::string> results;
   boost::split(results, redis_address, boost::is_any_of(":"));
   RAY_CHECK(results.size() == 2);
-  ray::gcs::GcsClientOptions client_options(results[0], std::stoi(results[1]), redis_password);
-  gcs::GlobalStateAccessor *gcs_accessor =
-      new gcs::GlobalStateAccessor(client_options);
+  ray::gcs::GcsClientOptions client_options(results[0], std::stoi(results[1]),
+                                            redis_password);
+  gcs::GlobalStateAccessor *gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);
 }
 

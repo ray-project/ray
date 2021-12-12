@@ -1457,8 +1457,11 @@ def connect(node,
     # used in this gcs client. We would not open connection for it by setting
     # `enable_sync_conn` and `enable_async_conn` as false.
     gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        node.redis_address, node.redis_password, enable_sync_conn=False,
-        enable_async_conn=False, enable_subscribe_conn=True)
+        node.redis_address,
+        node.redis_password,
+        enable_sync_conn=False,
+        enable_async_conn=False,
+        enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
