@@ -993,6 +993,7 @@ def deployment(
             passed when you call `.deploy()` on the returned Deployment.
         route_prefix (Optional[str]): Requests to paths under this HTTP path
             prefix will be routed to this deployment. Defaults to '/{name}'.
+            When set to 'None', no HTTP endpoint will be created.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
             of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
