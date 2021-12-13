@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -126,17 +127,31 @@ class DockerCluster:
 
         logging.info(f"Updated cluster config to: {self._cluster_config}")
 
-    def pull_image(self):
+    def maybe_pull_image(self):
         if self._docker_image:
-            subprocess.check_output(
-                f"docker pull {self._docker_image}", shell=True)
+            try:
+                images_str = subprocess.check_output(
+                    f"docker images inspect {self._docker_image}", shell=True)
+                images = json.loads(images_str)
+            except Exception as e:
+                logger.error(
+                    f"Error inspecting image {self._docker_image}: {e}")
+                return
+
+            if not images:
+                try:
+                    subprocess.check_output(
+                        f"docker pull {self._docker_image}", shell=True)
+                except Exception as e:
+                    logger.error(
+                        f"Error pulling image {self._docker_image}: {e}")
 
     def setup(self):
         self._tempdir = tempfile.mkdtemp()
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
         self._nodes_file = os.path.join(self._tempdir, "nodes.json")
         self.update_config()
-        self.pull_image()
+        self.maybe_pull_image()
 
     def teardown(self):
         shutil.rmtree(self._tempdir)
