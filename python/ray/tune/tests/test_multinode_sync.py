@@ -35,13 +35,13 @@ class MultiNodeSyncTest(unittest.TestCase):
             },
         })
         self.cluster.start()
-        self.cluster.connect(client=True, timeout=60)
+        self.cluster.connect(client=True, timeout=120)
 
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 
         # Trigger autoscaling
         pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}] * 2)
-        timeout = time.monotonic() + 60
+        timeout = time.monotonic() + 120
         while ray.cluster_resources().get("GPU", 0) < 2:
             if time.monotonic() > timeout:
                 raise RuntimeError("Autoscaling failed or too slow.")

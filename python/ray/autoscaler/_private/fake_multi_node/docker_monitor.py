@@ -89,7 +89,10 @@ def _update_docker_status(docker_compose_path: str, project_name: str,
     for container in data:
         node_id = container["Service"]
         container_name = container["Name"]
-        ip = _get_ip(project_name, container_name)
+        if container["State"] == "running":
+            ip = _get_ip(project_name, container_name)
+        else:
+            ip = ""
         container["IP"] = ip
         status[node_id] = container
 

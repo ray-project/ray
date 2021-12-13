@@ -65,7 +65,7 @@ class DockerCluster:
         return self._cluster_config.get("provider", {}).get(
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
 
-    def connect(self, client: bool = True, timeout: int = 60):
+    def connect(self, client: bool = True, timeout: int = 120):
         if client:
             port = self.client_port
             address = f"ray://127.0.0.1:{port}"
@@ -79,10 +79,15 @@ class DockerCluster:
                 ray.init(address)
                 self.wait_for_resources({"CPU": 1})
             except Exception:
-                pass
-            if ray.is_initialized:
+                time.sleep(1)
+                continue
+            else:
                 break
-            time.sleep(1.)
+
+        try:
+            ray.cluster_resources()
+        except Exception as e:
+            raise RuntimeError(f"Timed out connecting to Ray: {e}")
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):

@@ -378,6 +378,11 @@ class FakeMultiNodeProvider(NodeProvider):
         self._save_node_state()
 
     def _container_name(self, node_id):
+        node_status = self._docker_status.get(node_id, {})
+        if node_status:
+            return node_status["Name"]
+
+        # Default schema (on Mac)
         return f"{self._project_name}_{node_id}_1"
 
     def get_command_runner(self,
