@@ -18,12 +18,6 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-def test_resolve_install_from_source_ray_dependencies():
-    ray_install_requires = _resolve_install_from_source_ray_dependencies()
-    print(ray_install_requires
-          )  # TODO(architkulkarni): Check some basic pkgs in this list
-
-
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda", "pip"]:

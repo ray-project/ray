@@ -46,7 +46,7 @@ def _get_ray_setup_spec():
 
 
 def _resolve_install_from_source_ray_dependencies():
-    """Find the Ray dependencies when Ray is installed from source"""
+    """Find the Ray dependencies when Ray is installed from source."""
     return _get_ray_setup_spec().install_requires
 
 

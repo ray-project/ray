@@ -205,11 +205,11 @@ class TestValidatePip:
         result = parse_and_validate_pip(PIP_LIST)
         assert result == PIP_LIST
 
-    def test_remove_ray(self, monkeypatch, capsys):
+    def test_remove_ray(self):
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
         assert result == ["pkg1", "pkg2"]
 
-    def test_remove_ray_env_var(self, monkeypatch, capsys):
+    def test_remove_ray_env_var(self, monkeypatch):
         monkeypatch.setenv(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP, "1")
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
         assert result == ["pkg1", "ray", "pkg2"]
