@@ -20,8 +20,6 @@ np.random.seed(1234)
 # We will run inference with this test batch
 test_data = {
     "obs": np.random.uniform(0, 1., size=(10, 4)).astype(np.float32),
-    "prev_rewards": np.array([0.], dtype=np.float32),
-    "prev_actions": np.array([0.], dtype=np.int),
 }
 
 # Start Ray and initialize a PPO trainer

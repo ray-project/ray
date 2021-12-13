@@ -259,10 +259,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
             logger.info(f"Received a log for {ip} and {pid}")
 
-        if self._dashboard_head.gcs_subscriber:
+        if self._dashboard_head.gcs_log_subscriber:
             while True:
                 log_batch = await \
-                    self._dashboard_head.gcs_subscriber.poll_logs()
+                    self._dashboard_head.gcs_log_subscriber.poll()
                 try:
                     process_log_batch(log_batch)
                 except Exception:
@@ -285,7 +285,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_error_info(self):
         def process_error(error_data):
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             message = error_data.error_message
             message = re.sub(r"\x1b\[\d+m", "", message)
             match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
@@ -303,10 +302,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")
 
-        if self._dashboard_head.gcs_subscriber:
+        if self._dashboard_head.gcs_error_subscriber:
             while True:
                 _, error_data = await \
-                    self._dashboard_head.gcs_subscriber.poll_error()
+                    self._dashboard_head.gcs_error_subscriber.poll()
                 try:
                     process_error(error_data)
                 except Exception:
