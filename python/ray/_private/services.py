@@ -650,7 +650,7 @@ def start_ray_process(command,
     # before the process itself is assigned to the job.
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         # CreateProcess, which underlies Popen, is limited to
         # 32,767 characters, including the Unicode terminating null
         # character

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 memoryGB = psutil.virtual_memory().available / 1024 / 1024 / 1024
 
-@pytest.mark.skipif(memoryGB < 8, reason='takes too long on weak machines')
+@pytest.mark.skipif(memoryGB < 8, reason="takes too long on weak machines")
 def test_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
@@ -96,7 +96,7 @@ def test_resource_constraints(shutdown_only):
     assert duration > 1
 
 
-@pytest.mark.skipif(memoryGB < 8, reason='takes too long on weak machines')
+@pytest.mark.skipif(memoryGB < 8, reason="takes too long on weak machines")
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=10)
@@ -564,7 +564,7 @@ def test_two_custom_resources(ray_start_cluster):
 def test_many_custom_resources(shutdown_only):
     # This eventually turns into a command line argument which on windows is
     # limited to 32,767 characters.
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         num_custom_resources = 4000
     else:
         num_custom_resources = 10000
