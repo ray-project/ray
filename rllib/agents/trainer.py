@@ -1000,6 +1000,8 @@ class Trainer(Trainable):
                         (not min_sample_ts or sampled >= min_sample_ts) and \
                         (not min_train_ts or trained >= min_train_ts):
                     break
+            else:
+                break
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
