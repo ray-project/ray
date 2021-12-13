@@ -4,6 +4,7 @@ import logging
 import hashlib
 import shutil
 
+from pathlib import Path
 from typing import Optional, List, Dict
 
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
@@ -64,7 +65,7 @@ class PipManager:
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-        logger.error(f"Got request to delete URI {uri}")
+        logger.info(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError("PipManager can only delete URIs with protocol "
@@ -91,6 +92,15 @@ class PipManager:
         target_dir = self._get_path_from_hash(_get_pip_hash(pip_packages))
 
         _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
+
+        # Despite Ray being removed from the input pip list during validation,
+        # other listed packages may include Ray as a dependency and therefore
+        # we may have inadvertently installed Ray in the target_dir anyway.
+        # Uninstall Ray here to make the workers use the Ray that is already
+        # installed in the cluster.
+        ray_path = Path(target_dir) / 'ray'
+        if ray_path.exists() and ray_path.is_dir():
+            shutil.rmtree(ray_path)
 
         # Insert the target directory into the PYTHONPATH.
         python_path = target_dir

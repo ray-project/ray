@@ -4,8 +4,7 @@ import pytest
 import sys
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.test_utils import wait_for_condition, chdir
-from ray._private.runtime_env.conda import (
-    _resolve_install_from_source_ray_dependencies)
+
 import yaml
 import tempfile
 from pathlib import Path
