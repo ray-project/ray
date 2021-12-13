@@ -145,7 +145,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
   gcs_address.set_port(current_gcs_server_address_.second);
-  /// TODO: refactor pubsub::Subscriber to avoid this.
+  /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
   gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
 
   std::unique_ptr<pubsub::Subscriber> subscriber;

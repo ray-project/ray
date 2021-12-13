@@ -171,7 +171,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-flaky
       -- //:all -rllib/... -core_worker_test
 
 - label: ":cpp: Tests (ASAN)"
@@ -181,7 +180,6 @@
     - bazel test --config=ci --config=asan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test
 
 - label: ":cpp: Tests (UBSAN)"
@@ -191,7 +189,6 @@
     - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test -//:logging_test
 
 - label: ":cpp: Tests (TSAN)"
@@ -201,7 +198,6 @@
     - bazel test --config=ci --config=tsan-clang $(./scripts/bazel_export_options)
       --build_tests_only
       --jobs=2
-      --test_tag_filters=-flaky
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
       -//:gcs_server_rpc_test -//:gcs_server_test
@@ -245,31 +241,13 @@
       python/ray/tests/test_runtime_env_ray_minimal
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_serve_ray_minimal
-- label: ":python: (Flaky tests)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    # - bazel test --config=ci $(./scripts/bazel_export_options)
-    #   --build_tests_only
-    #   --test_tag_filters=flaky
-    #   -- //:all -rllib/... -core_worker_test
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,flaky
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
+
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -277,7 +255,7 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests,-flaky
+      --test_tag_filters=-kubernetes,client_tests
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
 - label: ":python: (Medium A-J)"
@@ -285,14 +263,14 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -301,7 +279,7 @@
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,debug_tests,-flaky
+      --test_tag_filters=-kubernetes,debug_tests
       python/ray/tests/...
 - label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -310,7 +288,7 @@
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
       --config=asan-buildkite
-      --test_tag_filters=-kubernetes,asan_tests,-flaky
+      --test_tag_filters=-kubernetes,asan_tests
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -332,356 +310,73 @@
     - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
       rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
+- label: ":redis: HA GCS (Dashboard + Serve Tests)"
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_DASHBOARD_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/... -//python/ray/dashboard:test_dashboard
+      -//python/ray/dashboard:test_actor
+      -//python/ray/dashboard:test_job_manager
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-post_wheel_build
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      -- python/ray/serve/... -//python/ray/serve:test_cli -//python/ray/serve:test_standalone
+    # Re-enable after fixing.
+    #- bazel test --config=ci $(./scripts/bazel_export_options)
+    #  --test_tag_filters=team:serve
+    #  --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+    #  release/...
 - label: ":redis: HA GCS (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_env=RAY_gcs_grpc_based_pubsub=1
       -- //python/ray/tests/...
       -//python/ray/tests:test_failure_2
       -//python/ray/tests:test_job
       -//python/ray/tests:test_autoscaler_drain_node_api
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests,-flaky
+      --test_tag_filters=-kubernetes,client_tests
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
 - label: ":redis: HA GCS (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
-      -//python/ray/tests:test_client
+      -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
-      --test_env=RAY_gcs_grpc_based_pubsub=true
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
-      -//python/ray/tests:test_multi_node
-
-- label: ":brain: RLlib: Learning discr. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky
-      --test_arg=--framework=tf
-      rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky
-      --test_arg=--framework=tf
-      rllib/...
-- label: ":brain: RLlib: Learning discr. actions TF2-eager-tracing (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky,-multi_gpu,-no_tf_eager_tracing
-      --test_arg=--framework=tf2
-      rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF2-eager-tracing (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky,-multi_gpu
-      --test_arg=--framework=tf2
-      rllib/...
-- label: ":brain: RLlib: Learning discr. actions TF1-static-graph (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF1-static-graph (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-- label: ":brain: RLlib: Learning discr. actions PyTorch (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-tf_only,-flaky,-multi_gpu
-      --test_arg=--framework=torch
-      rllib/...
-- label: ":brain: RLlib: Learning cont. actions PyTorch (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-tf_only,-flaky,-multi_gpu
-      --test_arg=--framework=torch
-      rllib/...
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-torch_only,-flaky,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-# TODO: (sven) tf2 (eager) multi-GPU
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch (from rllib/tuned_examples/*.yaml)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=fake_gpus,-tf_only,-flaky,-multi_gpu
-      --test_arg=--framework=torch
-      rllib/...
-
-- label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=quick_train,-flaky,-multi_gpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: Trainer Tests"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    # Test all tests in the `agents` (soon to be "trainers") dir:
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=trainers_dir,-flaky,-multi_gpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: Everything else (env-, evaluation-, ... dirs)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    # Test everything that does not have any of the "main" labels:
-    # "learning_tests|quick_train|examples|tests_dir".
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=-learning_tests,-quick_train,-examples,-tests_dir,-trainers_dir,-documentation,-flaky,-multi_gpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: Examples {A/B}"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_A,examples_B,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-- label: ":brain: RLlib: Examples {Ca..t}"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_C_AtoT,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-- label: ":brain: RLlib: Examples {Cu..z}"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_C_UtoZ,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-- label: ":brain: RLlib: Examples {D/P}"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_D,examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: Examples {Q/Z}"
-  conditions: ["RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: tests/ dir (A-L)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-- label: ":brain: RLlib: tests/ dir (M-Z (no R))"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-- label: ":brain: RLlib: tests/ dir (R)"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_R,-flaky,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":brain: RLlib: Documentation code/examples"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=documentation,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-      rllib/...
-
-- label: ":octopus: Tune tests {A-R; no RLlib}"
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
-      python/ray/tune/...
-
-- label: ":octopus: Tune tests {S-Z; no RLlib}"
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-      --test_tag_filters=tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
-      python/ray/tune/...
-
-- label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
-
-- label: ":octopus: Tune examples {w/ tf/pytorch; no RLlib}"
-  conditions: ["RAY_CI_TUNE_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
-
-- label: ":octopus: :brain: Tune tests and examples {using RLlib}"
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib python/ray/tune/...
+      -//python/ray/tests:test_multi_node -//python/ray/tests:test_multi_node_3
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
@@ -690,90 +385,3 @@
     # no TUNE_TESTING=1 on purpose
     - ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
-
-- label: ":steam_locomotive: Train tests and examples"
-  conditions: ["RAY_CI_TRAIN_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,-tune python/ray/train/...
-
-- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
-  conditions: ["RAY_CI_TRAIN_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only python/ray/train/...
-
-- label: ":octopus: SGD tests and examples"
-  conditions: ["RAY_CI_SGD_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - SGD_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-client,-gpu_only python/ray/util/sgd/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-client,-gpu_only python/ray/util/sgd/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client_unit_tests,-gpu_only --test_env=RAY_CLIENT_MODE=1 python/ray/util/sgd/...
-
-- label: ":octopus: Tune/SGD/Modin/Dask tests and examples. Python 3.7"
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky,-client python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/horovod/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/ray_lightning/...
-
-- label: ":octopus: Ludwig tests and examples. Python 3.7"
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - SGD_TESTING=1 PYTHON=3.7 INSTALL_LUDWIG=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/tests/ludwig/...
-
-- label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
-  conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
-
-- label: ":potable_water: Modin/Dask tests and examples. Python 3.7"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/tests/modin/...
-    # Dask tests and examples.
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
-
-- label: ":potable_water: Workflow & Dataset tests (Python 3.7)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/workflow/... python/ray/data/...
-
-- label: ":book: Doc tests and examples"
-  conditions:
-    ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37,-post_wheel_build doc/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-post_wheel_build doc/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-post_wheel_build doc/...

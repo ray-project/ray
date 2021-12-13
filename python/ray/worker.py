@@ -1273,9 +1273,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()
@@ -2208,14 +2205,15 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (SchedulingStrategy): Strategy about how to
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
             will either be the PlacementGroupSchedulingStrategy using parent's
             placement group if parent has one and has
             placement_group_capture_child_tasks set to true,
-            or the DefaultSchedulingStrategy;
+            or "DEFAULT";
             "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """

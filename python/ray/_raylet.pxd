@@ -5,6 +5,9 @@
 
 from cpython.pystate cimport PyThreadState_Get
 
+from libc.stdint cimport (
+    int64_t,
+)
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
@@ -132,6 +135,11 @@ cdef class CoreWorker:
                             owner_address=*,
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
+    cdef store_task_output(
+            self, serialized_object, const CObjectID &return_id, size_t
+            data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
+            &contained_id, int64_t *task_output_inlined_bytes,
+            shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
