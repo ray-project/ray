@@ -89,12 +89,13 @@ class Gen2NodeProvider(NodeProvider):
     def retry_on_except(func):
         def decorated_func(*args, **kwargs):
             name = func.__name__
-            e = None
+            ex = None
             for retry in range(RETRIES):
                 try:
                     result = func(*args, **kwargs)
                     return result
                 except Exception as e:
+                    ex = e
                     msg = f"Err in {name}, {e}, retries left {RETRIES-retry}"
                     cli_logger.error(msg)
                     logger.exception(msg)
@@ -104,7 +105,7 @@ class Gen2NodeProvider(NodeProvider):
                     time.sleep(1)
 
             # we got run out of retries, now raising
-            raise e
+            raise ex
 
         return decorated_func
 
