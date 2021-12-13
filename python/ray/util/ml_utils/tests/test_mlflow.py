@@ -55,11 +55,11 @@ class MLflowTest(unittest.TestCase):
         assert self.mlflow_util.experiment_id == "1"
 
     def test_setup_fail(self):
-        success = self.mlflow_util.setup_mlflow(
-            tracking_uri=self.tracking_uri,
-            experiment_name="new_experiment2",
-            create_experiment_if_not_exists=False)
-        assert not success
+        with self.assertRaises(ValueError):
+            self.mlflow_util.setup_mlflow(
+                tracking_uri=self.tracking_uri,
+                experiment_name="new_experiment2",
+                create_experiment_if_not_exists=False)
 
     def test_log_params(self):
         params = {"a": "a"}

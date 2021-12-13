@@ -84,7 +84,7 @@ class TrainingSingleFileLoggingCallback(
             raise ValueError("filename cannot be None or empty.")
         return logdir_path.joinpath(Path(filename))
 
-    def start_training(self, logdir: str, **info):
+    def start_training(self, logdir: str):
         super().start_training(logdir)
 
         if not self._filename:
@@ -118,7 +118,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
@@ -235,7 +235,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir, config=config, info=info)
+        super().start_training(logdir=logdir)
 
         tracking_uri = self.tracking_uri or str(self.logdir)
         registry_uri = self.registry_uri or str(self.logdir)
@@ -277,7 +277,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir)
 
         try:
             from tensorboardX import SummaryWriter
