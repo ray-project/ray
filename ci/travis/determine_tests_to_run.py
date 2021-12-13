@@ -148,6 +148,7 @@ if __name__ == "__main__":
                 RAY_CI_SGD_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_ML_UTILS_AFFECTED = 1
             elif re.match("^(python/ray/)?rllib/", changed_file):
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1

@@ -305,9 +305,7 @@ class Trainer:
             return iterator.get_final_results()
         finally:
             for callback in callbacks:
-                callback.finish_training(
-                    error=finished_with_errors,
-                    run_dir=str(self.latest_run_dir))
+                callback.finish_training(error=finished_with_errors)
 
     def run_iterator(
             self,
