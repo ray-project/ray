@@ -53,4 +53,4 @@ constexpr int kMessagePackOffset = 9;
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
 /// The version of Ray
-constexpr char kRayVersion[] = "1.9.1";
+constexpr char kRayVersion[] = "1.9.1rc0";

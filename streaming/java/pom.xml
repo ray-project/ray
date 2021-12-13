@@ -7,7 +7,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-streaming</artifactId>
-  <version>1.9.1</version>
+  <version>1.9.1rc0</version>
   <packaging>pom</packaging>
   <name>Ray Project Streaming Parent POM</name>
   <description>A streaming framework built on ray</description>
