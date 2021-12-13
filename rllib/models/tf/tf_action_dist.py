@@ -115,6 +115,9 @@ class MultiCategorical(TFActionDistribution):
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.action_space = action_space
+        if self.action_space is None:
+            self.action_space = gym.spaces.MultiDiscrete(
+                [c.inputs.shape[1] for c in self.cats])
         self.sample_op = self._build_sample_op()
         self.sampled_action_logp_op = self.logp(self.sample_op)
 
@@ -135,6 +138,8 @@ class MultiCategorical(TFActionDistribution):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = tf.reshape(
                     actions, [-1, int(np.product(self.action_space.shape))])
+            elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
+                actions.set_shape((None, len(self.cats)))
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
             [cat.logp(act) for cat, act in zip(self.cats, actions)])
@@ -511,6 +516,9 @@ class MultiActionDistribution(TFActionDistribution):
             for dist in self.flat_child_distributions:
                 if isinstance(dist, Categorical):
                     split_indices.append(1)
+                elif isinstance(dist, MultiCategorical) and \
+                        dist.action_space is not None:
+                    split_indices.append(np.prod(dist.action_space.shape))
                 else:
                     split_indices.append(tf.shape(dist.sample())[1])
             split_x = tf.split(x, split_indices, axis=1)
@@ -521,7 +529,9 @@ class MultiActionDistribution(TFActionDistribution):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, Categorical):
-                val = tf.cast(tf.squeeze(val, axis=-1), tf.int32)
+                val = tf.cast(
+                    tf.squeeze(val, axis=-1)
+                    if len(val.shape) > 1 else val, tf.int32)
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

@@ -31,11 +31,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     ASSERT_TRUE(GetParam() == "redis" || GetParam() == "memory");
     ray::gcs::RedisClientOptions redis_client_options(
         "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
-    redis_client = std::make_unique<ray::gcs::RedisClient>(redis_client_options);
-    auto status = redis_client->Connect(io_service);
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
     if (GetParam() == "redis") {
-      kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client.get());
+      kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client_options);
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(io_service);
     }
@@ -67,8 +64,8 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
 
   kv_instance->Keys("A_", [](std::vector<std::string> keys) {
-    auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
-    ASSERT_EQ(expected, keys);
+    auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
+    ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
   });
 }
 
