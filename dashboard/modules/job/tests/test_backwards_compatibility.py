@@ -22,15 +22,17 @@ def conda_env(env_name):
         del os.environ["JOB_COMPATIBILITY_TEST_TEMP_ENV"]
         subprocess.run(
             f"conda env remove -y --name {env_name}",
-            shell=True, stdout=subprocess.PIPE)
+            shell=True,
+            stdout=subprocess.PIPE)
 
 
 def _compatibility_script_path(file_name: str) -> str:
     return os.path.join(
-        os.path.dirname(__file__), "backwards_compatibility_scripts", file_name)
+        os.path.dirname(__file__), "backwards_compatibility_scripts",
+        file_name)
+
 
 class TestBackwardsCompatibility:
-
     def test_cli(self):
         """
         1) Create a new conda environment with ray version X installed
@@ -45,10 +47,14 @@ class TestBackwardsCompatibility:
         with conda_env(env_name):
             shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"
             process = subprocess.Popen(
-                shell_cmd, shell=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                shell_cmd,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT)
             while process.poll() is None:
-                print(process.stdout.readline().decode("utf-8"), end="") # This blocks until it receives a newline.
+                print(
+                    process.stdout.readline().decode("utf-8"),
+                    end="")  # This blocks until it receives a newline.
             # When the subprocess terminates there might be unconsumed output
             # that still needs to be processed.
             print(process.stdout.read())
@@ -65,6 +71,7 @@ class TestBackwardsCompatibility:
         4) Deactivate the new conda environment and back to original place
         """
         pass
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

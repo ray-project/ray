@@ -23,7 +23,7 @@ do
     env_name=${JOB_COMPATIBILITY_TEST_TEMP_ENV}
 
     # Clean up if env name is already taken from previous leaking runs
-    conda env remove --name=${env_name}
+    conda env remove --name="${env_name}"
 
     printf "\n\n\n"
     echo "========================================================================================="
