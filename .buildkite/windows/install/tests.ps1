@@ -1,9 +1,9 @@
 #test_core
-bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -core_worker_test
-bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -event_test
-bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -gcs_pub_sub_test
-bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -gcs_server_test
-bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -gcs_server_rpc_test
+bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only -- //:all -rllib/... -core_worker_test
+bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only -- //:all -rllib/... -event_test
+bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only -- //:all -rllib/... -gcs_pub_sub_test
+bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only -- //:all -rllib/... -gcs_server_test
+bazel test --config=ci --build_event_json_file bazel_log.test --build_tests_only -- //:all -rllib/... -gcs_server_rpc_test
 
 #test_python
 python python/ray/serve/tests/test_api.py
