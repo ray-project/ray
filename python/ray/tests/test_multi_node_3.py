@@ -10,7 +10,7 @@ from ray._private.test_utils import (
     wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
 
 
-def test_calling_start_ray_head(call_ray_stop_only):
+def test_calling_start_ray_head(call_ray_stop_only, tmp_path):
 
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
@@ -93,11 +93,19 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
-
-    wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
-
     blocked.poll()
     assert blocked.returncode is None
+
+    run_string_as_driver("""
+import ray
+from time import sleep
+for i in range(0, 5):
+    try:
+        ray.init(address='auto')
+        break
+    except:
+        sleep(1)
+""")
 
     kill_process_by_name("raylet", SIGKILL=True)
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
