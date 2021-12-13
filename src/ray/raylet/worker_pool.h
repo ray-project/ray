@@ -689,7 +689,126 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
 
-  /// Manage all runtime env locally
+  /// Manage all runtime env resources locally by URI reference. We add or remove URI
+  /// reference in the cases below:
+  /// For the job with an eager installed runtime env:
+  /// - Add URI reference when job started.
+  /// - Remove URI reference when job finished.
+  /// For the worker process with a valid runtime env:
+  /// - Add URI reference when worker process started.
+  /// - Remove URI reference when all the worker instance registration completed or any
+  /// worker instance registration times out.
+  /// - Add URI reference when a worker instance registered.
+  /// - Remove URI reference when a worker instance disconnected.
+  ///
+  /// An example:
+  ///
+  ///   Start a job with eager installed runtime env:
+  ///       ray.init(runtime_env=
+  ///       {
+  ///         "conda": {
+  ///           "dependencies": ["requests"]
+  ///         },
+  ///         "eager_install": True
+  ///       })
+  ///   Add URI reference and get the reference tables:
+  ///       +---------------------------------------------+
+  ///       |      id            |          URIs          |
+  ///       +--------------------+------------------------+
+  ///       | job-id-hex-A       | conda://{hash-A}       |
+  ///       +---------------------------------------------+
+  ///       +---------------------------------------------+
+  ///       |      URI           |          count         |
+  ///       +--------------------+------------------------+
+  ///       | conda://{hash-A}   |           1            |
+  ///       +---------------------------------------------+
+  ///
+  ///   Create actor with runtime env:
+  ///      @ray.remote
+  ///      class actor:
+  ///          def Foo():
+  ///              import my_module
+  ///              pass
+  ///      actor.options(runtime_env=
+  ///           {
+  ///              "conda": {
+  ///                  "dependencies": ["requests"]
+  ///              },
+  ///              "py_modules": [
+  ///                  "s3://bucket/my_module.zip"
+  ///              ]
+  ///              }).remote()
+  ///   First step when worker process started, add URI reference and get the reference
+  ///   tables:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           2            |
+  ///       | s3://bucket/my_module.zip   |           1            |
+  ///       +------------------------------------------------------+
+  ///   Second step when worker instance registers, add URI reference for worker
+  ///   instance and get the reference tables:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-setup-token-A | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           3            |
+  ///       | s3://bucket/my_module.zip   |           2            |
+  ///       +------------------------------------------------------+
+  ///   At the same time, we should remove URI reference for worker process because python
+  ///   worker only contains one worker instance:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       | worker-id-hex-A      | conda://{hash-A},s3://bucket/my_module.zip |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           2            |
+  ///       | s3://bucket/my_module.zip   |           1            |
+  ///       +------------------------------------------------------+
+  ///
+  ///   Next, when the actor is killed, remove URI reference for worker instance:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       | job-id-hex-A         | conda://{hash-A}                           |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       | conda://{hash-A}            |           1            |
+  ///       +------------------------------------------------------+
+
+  ///   Finally, when the job is finished, remove URI reference and got an empty reference
+  ///   table:
+  ///       +-------------------------------------------------------------------+
+  ///       |      id              |          URIs                              |
+  ///       +----------------------+--------------------------------------------+
+  ///       |                      |                                            |
+  ///       +-------------------------------------------------------------------+
+  ///       +------------------------------------------------------+
+  ///       |      URI                    |          count         |
+  ///       +-----------------------------+------------------------+
+  ///       |                             |                        |
+  ///       +------------------------------------------------------+
+  ///
+  ///  Now, we can delete the runtime env resources safely.
+
   RuntimeEnvManager runtime_env_manager_;
 
   /// Stats
