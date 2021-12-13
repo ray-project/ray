@@ -85,7 +85,7 @@ class PettingZooEnv(MultiAgentEnv):
         assert all(self.env.action_space(agent) == self.action_space
                    for agent in self.env.agents), \
             "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
+            "SuperSuit's pad_action_space wrapper can help (usage: " \
             "`supersuit.aec_wrappers.pad_action_space(env)`"
 
     def reset(self):
@@ -128,7 +128,7 @@ class PettingZooEnv(MultiAgentEnv):
         return self.env.render(mode)
 
     @property
-    def unwrapped(self):
+    def get_sub_environments(self):
         return self.env.unwrapped
 
 
