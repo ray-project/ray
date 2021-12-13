@@ -70,7 +70,8 @@ def test_task_level_gc(ray_start_cluster, field, spec_format, tmp_path):
 
     soft_limit_zero = False
     system_config = cluster.list_all_nodes()[0]._ray_params._system_config
-    if "num_workers_soft_limit" in system_config and system_config["num_workers_soft_limit"] == 0:
+    if "num_workers_soft_limit" in system_config and \
+            system_config["num_workers_soft_limit"] == 0:
         soft_limit_zero = True
 
     runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
