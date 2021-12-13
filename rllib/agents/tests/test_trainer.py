@@ -167,6 +167,7 @@ class TestTrainer(unittest.TestCase):
             "env": "CartPole-v0",
             "evaluation_interval": 2,
             "evaluation_duration": 2,
+            "evaluation_duration_unit": "episodes",
             "evaluation_config": {
                 "gamma": 0.98,
             },
