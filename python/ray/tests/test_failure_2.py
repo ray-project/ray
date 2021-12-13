@@ -502,7 +502,7 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
 def test_gcs_server_crash_cluster(ray_start_cluster):
     # Test the GCS server failures will crash the driver.
     cluster = ray_start_cluster
-    GCS_RECONNECTION_TIMEOUT = 10
+    GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
         _system_config={
@@ -526,7 +526,7 @@ time.sleep(60)
     # Wait long enough to start the driver.
     time.sleep(5)
     start = time.time()
-    os.kill(gcs_server_pid, signal.SIGBUS)
+    os.kill(gcs_server_pid, signal.SIGKILL)
     wait_for_condition(lambda: proc.poll() is None, timeout=30)
     # Make sure the driver was exited within the timeout instead of hanging.
     # * 2 for avoiding flakiness.
