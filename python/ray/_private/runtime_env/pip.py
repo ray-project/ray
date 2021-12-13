@@ -15,6 +15,8 @@ from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
+RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
+
 
 def _get_pip_hash(pip_list: List[str]) -> str:
     serialized_pip_spec = json.dumps(pip_list, sort_keys=True)
@@ -98,9 +100,10 @@ class PipManager:
         # we may have inadvertently installed Ray in the target_dir anyway.
         # Uninstall Ray here to make the workers use the Ray that is already
         # installed in the cluster.
-        ray_path = Path(target_dir) / "ray"
-        if ray_path.exists() and ray_path.is_dir():
-            shutil.rmtree(ray_path)
+        if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != 1:
+            ray_path = Path(target_dir) / "ray"
+            if ray_path.exists() and ray_path.is_dir():
+                shutil.rmtree(ray_path)
 
         # Insert the target directory into the PYTHONPATH.
         python_path = target_dir

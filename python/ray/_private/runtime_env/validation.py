@@ -14,11 +14,11 @@ from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
 from ray._private.runtime_env.conda import (
     _resolve_install_from_source_ray_extras, get_uri as get_conda_uri)
+from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
+
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
-
-RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
 
 
 def validate_uri(uri: str):

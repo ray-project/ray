@@ -10,7 +10,8 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP)
+    ParsedRuntimeEnv)
+from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
 from ray._private.runtime_env.plugin import (decode_plugin_uri,
                                              encode_plugin_uri)
 
