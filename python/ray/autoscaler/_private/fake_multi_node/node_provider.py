@@ -263,7 +263,7 @@ class FakeMultiNodeProvider(NodeProvider):
             self._possibly_terminated_nodes = dict()
 
             self._cleanup_interval = provider_config.get(
-                "cleanup_interval", .5)
+                "cleanup_interval", 9.5)
 
             self._docker_status = {}
 

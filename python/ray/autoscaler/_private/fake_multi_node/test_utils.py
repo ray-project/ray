@@ -106,15 +106,7 @@ class DockerCluster:
 
         if not config.get("provider", {}).get("image"):
             # No image specified, trying to parse from buildkite
-            buildkite_plugins_str = os.environ.get("BUILDKITE_PLUGINS")
-            if buildkite_plugins_str:
-                plugins = json.loads(buildkite_plugins_str)
-                for plugin in plugins:
-                    for plugin_name, data in plugin.items():
-                        if ("buildkite-plugins/docker-buildkite-plugin" in
-                                plugin_name):
-                            docker_image = data.get("image")
-                            self._docker_image = docker_image
+            self._docker_image = os.environ.get("RAY_DOCKER_IMAGE", None)
 
         with open(self._base_config_file, "rt") as f:
             cluster_config = yaml.safe_load(f)
