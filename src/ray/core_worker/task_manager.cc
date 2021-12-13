@@ -14,67 +14,10 @@
 
 #include "ray/core_worker/task_manager.h"
 
-#include "msgpack.hpp"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
-
-namespace {
-
-///
-/// Serialize the protobuf message to msg pack.
-///
-/// Ray uses Msgpack for cross-language object serialization.
-/// This method creates a msgpack serialized buffer that contains
-/// serialized protobuf message.
-///
-/// Language frontend can deseiralize this object to obtain
-/// data stored in a given protobuf. Check `serialization.py` to see
-/// how this works.
-///
-/// NOTE: The function guarantees that the returned buffer contains data.
-///
-/// \param protobuf_message The protobuf message to serialize.
-/// \return The buffer that contains serialized msgpack message.
-template <class ProtobufMessage>
-std::unique_ptr<ray::LocalMemoryBuffer> SerializePBToMsgPack(
-    const ProtobufMessage *protobuf_message) {
-  RAY_CHECK(protobuf_message != nullptr);
-  // Structure of bytes stored in object store:
-
-  // First serialize RayException by the following steps:
-  // PB's RayException
-  // --(PB Serialization)-->
-  // --(msgpack Serialization)-->
-  // msgpack_serialized_exception(MSE)
-
-  // Then add it's length to the head(for coross-language deserialization):
-  // [MSE's length(9 bytes)] [MSE]
-
-  std::string pb_serialized_exception;
-  protobuf_message->SerializeToString(&pb_serialized_exception);
-  msgpack::sbuffer msgpack_serialized_exception;
-  msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
-  packer.pack_bin(pb_serialized_exception.size());
-  packer.pack_bin_body(pb_serialized_exception.data(), pb_serialized_exception.size());
-  std::unique_ptr<ray::LocalMemoryBuffer> final_buffer =
-      std::make_unique<ray::LocalMemoryBuffer>(msgpack_serialized_exception.size() +
-                                               kMessagePackOffset);
-  // copy msgpack-serialized bytes
-  std::memcpy(final_buffer->Data() + kMessagePackOffset,
-              msgpack_serialized_exception.data(), msgpack_serialized_exception.size());
-  // copy offset
-  msgpack::sbuffer msgpack_int;
-  msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
-  std::memcpy(final_buffer->Data(), msgpack_int.data(), msgpack_int.size());
-  RAY_CHECK(final_buffer->Data() != nullptr);
-  RAY_CHECK(final_buffer->Size() != 0);
-
-  return final_buffer;
-}
-
-}  // namespace
 
 namespace ray {
 namespace core {
@@ -436,59 +379,67 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
+void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                                  const Status *status,
+                                  const rpc::RayErrorInfo *ray_error_info,
+                                  bool mark_task_object_failed) {
+  // Note that this might be the __ray_terminate__ task, so we don't log
+  // loudly with ERROR here.
+  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+                 << rpc::ErrorType_Name(error_type);
+
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to fail task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to fail task that was not pending " << task_id;
+    spec = it->second.spec;
+    submissible_tasks_.erase(it);
+    num_pending_tasks_--;
+
+    // Throttled logging of task failure errors.
+    auto debug_str = spec.DebugString();
+    if (debug_str.find("__ray_terminate__") == std::string::npos &&
+        (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
+         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+      if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
+        RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+      }
+      last_log_time_ms_ = current_time_ms();
+      if (status != nullptr) {
+        RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
+      } else {
+        RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
+      }
+    }
+  }
+
+  // The worker failed to execute the task, so it cannot be borrowing any
+  // objects.
+  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
+                               ReferenceCounter::ReferenceTableProto());
+  if (mark_task_object_failed) {
+    MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
+  }
+
+  ShutdownIfNeeded();
+}
+
 bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+  RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
   const bool will_retry = RetryTaskIfPossible(task_id);
-  const bool release_lineage = !will_retry;
-  TaskSpecification spec;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to complete task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
-        << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
-    if (!will_retry) {
-      submissible_tasks_.erase(it);
-      num_pending_tasks_--;
-    }
-  }
-
   if (!will_retry) {
-    // Throttled logging of task failure errors.
-    {
-      absl::MutexLock lock(&mu_);
-      auto debug_str = spec.DebugString();
-      if (debug_str.find("__ray_terminate__") == std::string::npos &&
-          (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-           (current_time_ms() - last_log_time_ms_) >
-               kTaskFailureLoggingFrequencyMillis)) {
-        if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
-                           << kTaskFailureLoggingFrequencyMillis << " millis.";
-        }
-        last_log_time_ms_ = current_time_ms();
-        if (status != nullptr) {
-          RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
-        } else {
-          RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
-        }
-      }
-    }
-    // The worker failed to execute the task, so it cannot be borrowing any
-    // objects.
-    RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
-                                 ReferenceCounter::ReferenceTableProto());
-    if (mark_task_object_failed) {
-      MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
-    }
+    FailPendingTask(task_id, error_type, status, ray_error_info, mark_task_object_failed);
   }
 
   ShutdownIfNeeded();
@@ -622,15 +573,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(const TaskSpecification &spec,
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (ray_error_info == nullptr) {
       RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
-      continue;
-    }
-
-    if (ray_error_info->has_actor_init_failure()) {
-      auto creation_task_exception = ray_error_info->actor_init_failure();
-      const auto final_buffer =
-          SerializePBToMsgPack<rpc::RayException>(&creation_task_exception);
-      RAY_UNUSED(in_memory_store_->Put(
-          RayObject(error_type, final_buffer->Data(), final_buffer->Size()), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type, ray_error_info), object_id));
     }
   }
 }

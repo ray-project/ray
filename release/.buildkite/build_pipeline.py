@@ -96,11 +96,13 @@ CORE_NIGHTLY_TESTS = {
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
         "datasets_preprocess_ingest",
+        "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
         "chaos_many_tasks_no_object_store",
+        "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
@@ -142,6 +144,15 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+    ],
+}
+
+CORE_REDIS_HA_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_redis_ha",
+        "many_tasks_redis_ha",
+        "many_pgs_redis_ha",
+        "many_nodes_redis_ha",
     ],
 }
 
@@ -269,6 +280,7 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
+    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS
@@ -290,7 +302,7 @@ DEFAULT_STEP_TEMPLATE = {
         "queue": "runner_queue_branch"
     },
     "plugins": [{
-        "docker#v3.8.0": {
+        "docker#v3.9.0": {
             "image": "rayproject/ray",
             "propagate-environment": True,
             "volumes": [
@@ -299,7 +311,6 @@ DEFAULT_STEP_TEMPLATE = {
             ],
         }
     }],
-    "commands": [],
     "artifact_paths": ["/tmp/ray_release_test_artifacts/**/*"],
 }
 
@@ -468,20 +479,23 @@ def create_test_step(
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
-    cmd = str(f"RAY_REPO=\"{ray_repo}\" "
-              f"RAY_BRANCH=\"{ray_branch}\" "
-              f"RAY_VERSION=\"{ray_version}\" "
-              f"RAY_WHEELS=\"{ray_wheels}\" "
-              f"RELEASE_RESULTS_DIR=/tmp/artifacts "
-              f"python release/e2e.py "
-              f"--category {ray_branch} "
-              f"--test-config {test_file} "
-              f"--test-name {test_name} "
-              f"--keep-results-dir")
+
+    cmd = (f"./release/run_e2e.sh "
+           f"--ray-repo \"{ray_repo}\" "
+           f"--ray-branch \"{ray_branch}\" "
+           f"--ray-version \"{ray_version}\" "
+           f"--ray-wheels \"{ray_wheels}\" "
+           f"--ray-test-repo \"{ray_test_repo}\" "
+           f"--ray-test-branch \"{ray_test_branch}\" ")
+
+    args = (f"--category {ray_branch} "
+            f"--test-config {test_file} "
+            f"--test-name {test_name} "
+            f"--keep-results-dir")
 
     if test_name.smoke_test:
         logging.info("This test will run as a smoke test.")
-        cmd += " --smoke-test"
+        args += " --smoke-test"
 
     step_conf = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
@@ -494,14 +508,29 @@ def create_test_step(
                 "limit": test_name.retry
             }]
         }
+    else:
+        # Default retry logic
+        # Warning: Exit codes are currently not correctly propagated to
+        # buildkite! Thus, actual retry logic is currently implemented in
+        # the run_e2e.sh script!
+        step_conf["retry"] = {
+            "automatic": [
+                {
+                    "exit_status": 7,  # Prepare timeout
+                    "limit": 2
+                },
+                {
+                    "exit_status": 9,  # Session timeout
+                    "limit": 2
+                },
+                {
+                    "exit_status": 10,  # Prepare error
+                    "limit": 2
+                }
+            ],
+        }
 
-    step_conf["commands"] += [
-        "pip install -q -r release/requirements.txt",
-        "pip install -U boto3 botocore",
-        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
-        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-        "|| true"
-    ]
+    step_conf["command"] = cmd + args
 
     step_conf["label"] = (
         f"{test_name} "

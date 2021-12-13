@@ -15,9 +15,8 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG, validate_config
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -27,6 +26,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     MultiGPUTrainOneStep
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -131,6 +131,15 @@ class DQNTrainer(SimpleQTrainer):
         return DEFAULT_CONFIG
 
     @override(SimpleQTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        super().validate_config(config)
+
+        # Update effective batch size to include n-step
+        adjusted_rollout_len = max(config["rollout_fragment_length"],
+                                   config["n_step"])
+        config["rollout_fragment_length"] = adjusted_rollout_len
+
+    @override(SimpleQTrainer)
     def get_default_policy_class(
             self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
@@ -220,16 +229,8 @@ class DQNTrainer(SimpleQTrainer):
         return StandardMetricsReporting(train_op, workers, config)
 
 
-# TODO: Deprecate this in favor of using SimpleQ as base off-policy trainer.
-# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
-# may build on top of it.
-GenericOffPolicyTrainer = build_trainer(
-    name="GenericOffPolicyTrainer",
-    # No Policy preference.
-    default_policy=None,
-    get_policy_class=None,
-    # Use SimpleQ's config + validation and DQN's exec. plan as base for
-    # all other OffPolicy algos.
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-    execution_plan=DQNTrainer.execution_plan)
+@Deprecated(
+    new="Sub-class directly from `DQNTrainer` and override its methods",
+    error=False)
+class GenericOffPolicyTrainer(DQNTrainer):
+    pass

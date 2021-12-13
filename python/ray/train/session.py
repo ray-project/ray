@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
 from typing import Optional, Dict
@@ -22,10 +23,10 @@ class TrainingResultType(Enum):
     CHECKPOINT = auto()
 
 
-class TrainingResult():
-    def __init__(self, type: TrainingResultType, data: Dict):
-        self.type = type
-        self.data = data
+@dataclass
+class TrainingResult:
+    type: TrainingResultType
+    data: Dict
 
 
 class Session:
@@ -104,7 +105,10 @@ class Session:
         return func_output
 
     def get_next(self) -> Optional[TrainingResult]:
-        """Gets next result from the queue."""
+        """Gets the next ``TrainingResult`` from the result queue.
+
+        If the result queue is empty, then this function returns ``None``.
+        """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
         result = None

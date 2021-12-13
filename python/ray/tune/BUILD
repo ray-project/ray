@@ -216,7 +216,7 @@ py_test(
 
 py_test(
     name = "test_sample",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_S"],
@@ -315,7 +315,15 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "flaky", "tests_dir_T"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tune_restore_warm_start",
+    size = "large",
+    srcs = ["tests/test_tune_restore_warm_start.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
 py_test(
