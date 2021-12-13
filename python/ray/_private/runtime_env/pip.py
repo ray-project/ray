@@ -98,7 +98,7 @@ class PipManager:
         # we may have inadvertently installed Ray in the target_dir anyway.
         # Uninstall Ray here to make the workers use the Ray that is already
         # installed in the cluster.
-        ray_path = Path(target_dir) / 'ray'
+        ray_path = Path(target_dir) / "ray"
         if ray_path.exists() and ray_path.is_dir():
             shutil.rmtree(ray_path)
 
