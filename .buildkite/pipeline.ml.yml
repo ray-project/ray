@@ -252,8 +252,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    - sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io
     - pip install docker-compose
-    - sudo service docker start
+    - sudo service docker start && sleep 2
     # Because Python version changed, we need to re-install Ray here
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
