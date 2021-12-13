@@ -1181,10 +1181,13 @@ class Trainer(Trainable):
                     self.evaluation_workers.remote_workers())
             metrics["timesteps_this_iter"] = num_ts_run
 
-        # Usually evaluation does not run for every step.
+        # Evaluation does not run for every step.
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
+
+        # Also return the results here for convenience.
+        return self.evaluation_metrics
 
     @DeveloperAPI
     @staticmethod

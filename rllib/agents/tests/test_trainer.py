@@ -219,8 +219,7 @@ class TestTrainer(unittest.TestCase):
             # set.
             config["create_env_on_driver"] = True
             trainer_w_env_on_driver = a3c.A3CTrainer(config=config)
-            trainer_w_env_on_driver.evaluate()
-            results = trainer_w_env_on_driver.evaluation_metrics
+            results = trainer_w_env_on_driver.evaluate()
             assert "evaluation" in results
             assert "episode_reward_mean" in results["evaluation"]
             trainer_w_env_on_driver.stop()
