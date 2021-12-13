@@ -147,7 +147,7 @@ def test_zero_cpu_scheduling(shutdown_only):
 def test_exponential_wait(shutdown_only):
     ray.init(num_cpus=2)
 
-    num_tasks = 4
+    num_tasks = 6
 
     @ray.remote(num_cpus=0)
     class Barrier:
@@ -177,8 +177,8 @@ def test_exponential_wait(shutdown_only):
 
     # Assert that last_wwait / second_last ~= 2, with a healthy buffer since ci
     # is noisy.
-    assert 1 < last_wait / second_last < 4
-    assert 2 < last_wait < 4
+    assert 2 * second_last < last_wait < 4 * second_last
+    assert 7 < last_wait < 10
 
 
 if __name__ == "__main__":
