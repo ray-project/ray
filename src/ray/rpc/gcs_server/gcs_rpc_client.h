@@ -58,7 +58,9 @@ class Executor {
     auto operation_callback = [this, request, callback, executor](                     \
                                   const ray::Status &status,                           \
                                   const METHOD##Reply &reply) {                        \
-      if (!status.IsGrpcError()) {                                                     \
+      if (status.IsTimedOut()) {                                                       \
+        callback(status, reply);                                                       \
+      } else if (!status.IsGrpcError()) {                                              \
         auto status =                                                                  \
             reply.status().code() == (int)StatusCode::OK                               \
                 ? Status()                                                             \
@@ -76,6 +78,19 @@ class Executor {
                                  gcs_rpc_client->grpc_client, timeout_ms));            \
     };                                                                                 \
     executor->Execute(operation);                                                      \
+  }                                                                                    \
+                                                                                       \
+  ray::Status Sync_##METHOD(const METHOD##Request &request, METHOD##Reply *reply_in,   \
+                            const int64_t timeout_ms = method_timeout_ms) {            \
+    auto promise = std::make_shared<std::promise<Status>>();                           \
+    METHOD(                                                                            \
+        request,                                                                       \
+        [promise, reply_in](const Status &status, const METHOD##Reply &reply) {        \
+          reply_in->CopyFrom(reply);                                                   \
+          promise->set_value(status);                                                  \
+        },                                                                             \
+        timeout_ms);                                                                   \
+    return promise->get_future().get();                                                \
   }
 
 /// Client used for communicating with gcs server.

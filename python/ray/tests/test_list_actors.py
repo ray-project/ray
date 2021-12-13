@@ -157,6 +157,25 @@ assert not ray.util.list_named_actors()
     assert not ray.util.list_named_actors(all_namespaces=True)
 
 
+def test_list_named_actors_timeout(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 3s
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "ActorInfoGcsService.grpc_server.ListNamedActors"
+            "=3000000:3000000")
+        ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
+
+        @ray.remote
+        class A:
+            pass
+
+        a = A.options(name="hi").remote()
+        print(a)
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.util.list_named_actors()
+
+
 if __name__ == "__main__":
     # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

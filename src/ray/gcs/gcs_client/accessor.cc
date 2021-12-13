@@ -235,7 +235,7 @@ Status ActorInfoAccessor::AsyncListNamedActors(
         } else {
           callback(status, VectorFromProtobuf(reply.named_actors_list()));
         }
-        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
+        RAY_LOG(ERROR) << "Finished getting named actor names, status = " << status;
       },
       timeout_ms);
   return Status::OK();
@@ -244,22 +244,21 @@ Status ActorInfoAccessor::AsyncListNamedActors(
 Status ActorInfoAccessor::SyncListNamedActors(
     bool all_namespaces, const std::string &ray_namespace,
     std::vector<std::pair<std::string, std::string>> &actors) {
-  auto ready_promise = std::make_shared<std::promise<Status>>(std::promise<Status>());
-  RAY_CHECK_OK(AsyncListNamedActors(
-      all_namespaces, ray_namespace,
-      [&actors, ready_promise](
-          const Status &status,
-          const boost::optional<std::vector<rpc::NamedActorInfo>> &result) {
-        if (status.ok()) {
-          RAY_CHECK(result);
-          for (const auto &actor_info : *result) {
-            actors.push_back(
-                std::make_pair(actor_info.ray_namespace(), actor_info.name()));
-          }
-        }
-        ready_promise->set_value(status);
-      }));
-  return ready_promise->get_future().get();
+  rpc::ListNamedActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
+  request.set_ray_namespace(ray_namespace);
+  rpc::ListNamedActorsReply reply;
+  auto status = client_impl_->GetGcsRpcClient().Sync_ListNamedActors(request, &reply,
+                                                                     GetGcsTimeoutMs());
+  RAY_LOG(ERROR) << status;
+  if (!status.ok()) {
+    return status;
+  }
+
+  for (const auto &actor_info : VectorFromProtobuf(reply.named_actors_list())) {
+    actors.push_back(std::make_pair(actor_info.ray_namespace(), actor_info.name()));
+  }
+  return status;
 }
 
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
