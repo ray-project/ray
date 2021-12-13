@@ -45,6 +45,7 @@ class DockerCluster:
         self._nodes_file = None
         self._partial_config = config
         self._cluster_config = None
+        self._docker_image = None
 
     @property
     def config_file(self):
@@ -103,7 +104,6 @@ class DockerCluster:
         if config:
             self._partial_config = config
 
-        docker_image = None
         if not config.get("provider", {}).get("image"):
             # No image specified, trying to parse from buildkite
             buildkite_plugins_str = os.environ.get("BUILDKITE_PLUGINS")
@@ -114,6 +114,7 @@ class DockerCluster:
                         if ("buildkite-plugins/docker-buildkite-plugin" in
                                 plugin_name):
                             docker_image = data.get("image")
+                            self._docker_image = docker_image
 
         with open(self._base_config_file, "rt") as f:
             cluster_config = yaml.safe_load(f)
@@ -122,8 +123,8 @@ class DockerCluster:
             deep_update(
                 cluster_config, self._partial_config, new_keys_allowed=True)
 
-        if docker_image:
-            cluster_config["provider"]["image"] = docker_image
+        if self._docker_image:
+            cluster_config["provider"]["image"] = self._docker_image
 
         cluster_config["provider"]["shared_volume_dir"] = self._tempdir
 
@@ -134,11 +135,17 @@ class DockerCluster:
 
         logging.info(f"Updated cluster config to: {self._cluster_config}")
 
+    def pull_image(self):
+        if self._docker_image:
+            subprocess.check_output(
+                f"docker pull {self._docker_image}", shell=True)
+
     def setup(self):
         self._tempdir = tempfile.mkdtemp()
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
         self._nodes_file = os.path.join(self._tempdir, "nodes.json")
         self.update_config()
+        self.pull_image()
 
     def teardown(self):
         shutil.rmtree(self._tempdir)
