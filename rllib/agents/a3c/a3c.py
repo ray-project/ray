@@ -44,6 +44,9 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
+
+    # Experimental: By default, switch off preprocessors for A3C.
+    "_disable_preprocessor_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable

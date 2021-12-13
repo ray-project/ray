@@ -120,6 +120,9 @@ DEFAULT_CONFIG = with_common_config({
     # The input to the callback is the learner fetches dict.
     "after_train_step": None,
 
+    # Experimental: By default, switch off preprocessors for IMPALA.
+    "_disable_preprocessor_api": True,
+
     # DEPRECATED:
     "num_data_loader_buffers": DEPRECATED_VALUE,
 })

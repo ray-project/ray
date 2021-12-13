@@ -90,6 +90,9 @@ DEFAULT_CONFIG = with_common_config({
     # Which observation filter to apply to the observation.
     "observation_filter": "NoFilter",
 
+    # Experimental: By default, switch off preprocessors for PPO.
+    "_disable_preprocessor_api": True,
+
     # Deprecated keys:
     # Share layers for value function. If you set this to True, it's important
     # to tune vf_loss_coeff.
