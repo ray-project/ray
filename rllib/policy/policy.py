@@ -909,9 +909,14 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and \
-                    isinstance(view_req.space,
-                               (gym.spaces.Dict, gym.spaces.Tuple)):
+            data_col = view_req.data_col or view_col
+            # Flattened dummy batch.
+            if (isinstance(view_req.space,
+                           (gym.spaces.Tuple, gym.spaces.Dict))) and \
+                    ((data_col == SampleBatch.OBS and
+                      not self.config["_disable_preprocessor_api"]) or
+                     (data_col == SampleBatch.ACTIONS and
+                      not self.config.get("_disable_action_flattening"))):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \

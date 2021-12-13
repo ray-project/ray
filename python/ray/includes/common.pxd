@@ -152,6 +152,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
         CDefaultSchedulingStrategy()
+    cdef cppclass CSpreadSchedulingStrategy "ray::rpc::SpreadSchedulingStrategy":  # noqa: E501
+        CSpreadSchedulingStrategy()
     cdef cppclass CPlacementGroupSchedulingStrategy "ray::rpc::PlacementGroupSchedulingStrategy":  # noqa: E501
         CPlacementGroupSchedulingStrategy()
         void set_placement_group_id(const c_string& placement_group_id)
@@ -160,6 +162,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
+        CSpreadSchedulingStrategy* mutable_spread_scheduling_strategy()
         CDefaultSchedulingStrategy* mutable_default_scheduling_strategy()
         CPlacementGroupSchedulingStrategy* mutable_placement_group_scheduling_strategy()  # noqa: E501
     cdef cppclass CAddress "ray::rpc::Address":

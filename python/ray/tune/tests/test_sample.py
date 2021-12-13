@@ -10,6 +10,8 @@ from unittest.mock import patch
 import numpy as np
 import unittest
 
+import ray
+import ray.tune.sample
 from ray import tune
 from ray.tune import Experiment
 from ray.tune.suggest.util import logger
@@ -58,7 +60,7 @@ class SearchSpaceTest(unittest.TestCase):
         }
 
     def tearDown(self):
-        pass
+        ray.shutdown()
 
     def _testTuneSampleAPI(self, configs, ignore=None, check_stats=True):
         ignore = ignore or []
@@ -161,6 +163,136 @@ class SearchSpaceTest(unittest.TestCase):
                     yield generated["config"]
 
         self._testTuneSampleAPI(config_generator())
+
+    def testReproducibility(self):
+        config = self.config.copy()
+        config.pop("func")
+
+        def config_generator(random_state):
+            if random_state is None:
+                np.random.seed(1000)
+            for _, generated in generate_variants(
+                {
+                    "config": config
+                },
+                    random_state=ray.tune.sample._BackwardsCompatibleNumpyRng(
+                        random_state)):
+                yield generated["config"]
+
+        with patch("ray.tune.sample.LEGACY_RNG", True):
+            global_seed_legacy = [
+                next(config_generator(random_state=None)) for _ in range(100)
+            ]
+            seed_legacy = [
+                next(config_generator(random_state=1000)) for _ in range(100)
+            ]
+            generator_legacy = [
+                next(
+                    config_generator(random_state=np.random.RandomState(1000)))
+                for _ in range(100)
+            ]
+            for i in range(100):
+                assertDictAlmostEqual(global_seed_legacy[0],
+                                      global_seed_legacy[i])
+                assertDictAlmostEqual(global_seed_legacy[0], seed_legacy[i])
+                assertDictAlmostEqual(global_seed_legacy[0],
+                                      generator_legacy[i])
+
+        if not ray.tune.sample.LEGACY_RNG:
+            seed_new = [
+                next(config_generator(random_state=1000)) for _ in range(100)
+            ]
+            generator_new = [
+                next(
+                    config_generator(random_state=np.random.default_rng(1000)))
+                for _ in range(100)
+            ]
+            for i in range(100):
+                assertDictAlmostEqual(seed_new[0], seed_new[i])
+                assertDictAlmostEqual(seed_new[0], generator_new[i])
+
+    def testReproducibilityBasicVariantGenerator(self):
+        config = self.config.copy()
+        config.pop("func")
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        ray.init(num_cpus=1, local_mode=True)
+
+        num_samples = 5
+        params = dict(
+            run_or_experiment=_mock_objective,
+            config=config,
+            metric="uniform",
+            mode="max",
+            num_samples=num_samples,
+        )
+        with patch("ray.tune.sample.LEGACY_RNG", True):
+            np.random.seed(1000)
+            analysis_global_seed = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1),  # global seed
+                **params)
+            np.random.seed(1000)
+            analysis_global_seed_2 = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1),  # global seed
+                **params)
+            analysis_seed = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1, random_state=1000),
+                **params)
+            analysis_seed_2 = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1, random_state=1000),
+                **params)
+            analysis_generator = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1,
+                    random_state=np.random.RandomState(1000)),
+                **params)
+            analysis_generator_2 = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1,
+                    random_state=np.random.RandomState(1000)),
+                **params)
+            for i in range(num_samples):
+                assertDictAlmostEqual(analysis_global_seed.trials[i].config,
+                                      analysis_seed.trials[i].config)
+                assertDictAlmostEqual(analysis_global_seed.trials[i].config,
+                                      analysis_generator.trials[i].config)
+                assertDictAlmostEqual(analysis_global_seed.trials[i].config,
+                                      analysis_global_seed_2.trials[i].config)
+                assertDictAlmostEqual(analysis_global_seed.trials[i].config,
+                                      analysis_seed_2.trials[i].config)
+                assertDictAlmostEqual(analysis_global_seed.trials[i].config,
+                                      analysis_generator_2.trials[i].config)
+
+        if not ray.tune.sample.LEGACY_RNG:
+            analysis_seed = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1, random_state=1000),
+                **params)
+            analysis_seed_2 = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1, random_state=1000),
+                **params)
+            analysis_generator = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1,
+                    random_state=np.random.default_rng(1000)),
+                **params)
+            analysis_generator_2 = tune.run(
+                search_alg=BasicVariantGenerator(
+                    max_concurrent=1,
+                    random_state=np.random.default_rng(1000)),
+                **params)
+            for i in range(num_samples):
+                assertDictAlmostEqual(analysis_seed.trials[i].config,
+                                      analysis_generator.trials[i].config)
+                assertDictAlmostEqual(analysis_seed.trials[i].config,
+                                      analysis_seed_2.trials[i].config)
+                assertDictAlmostEqual(analysis_seed.trials[i].config,
+                                      analysis_generator_2.trials[i].config)
 
     def testBoundedFloat(self):
         bounded = tune.sample.Float(-4.2, 8.3)

@@ -379,59 +379,67 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
+void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                                  const Status *status,
+                                  const rpc::RayErrorInfo *ray_error_info,
+                                  bool mark_task_object_failed) {
+  // Note that this might be the __ray_terminate__ task, so we don't log
+  // loudly with ERROR here.
+  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+                 << rpc::ErrorType_Name(error_type);
+
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to fail task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to fail task that was not pending " << task_id;
+    spec = it->second.spec;
+    submissible_tasks_.erase(it);
+    num_pending_tasks_--;
+
+    // Throttled logging of task failure errors.
+    auto debug_str = spec.DebugString();
+    if (debug_str.find("__ray_terminate__") == std::string::npos &&
+        (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
+         (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+      if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
+        RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+      }
+      last_log_time_ms_ = current_time_ms();
+      if (status != nullptr) {
+        RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
+      } else {
+        RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
+      }
+    }
+  }
+
+  // The worker failed to execute the task, so it cannot be borrowing any
+  // objects.
+  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
+                               ReferenceCounter::ReferenceTableProto());
+  if (mark_task_object_failed) {
+    MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
+  }
+
+  ShutdownIfNeeded();
+}
+
 bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+  RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
   const bool will_retry = RetryTaskIfPossible(task_id);
-  const bool release_lineage = !will_retry;
-  TaskSpecification spec;
-  {
-    absl::MutexLock lock(&mu_);
-    auto it = submissible_tasks_.find(task_id);
-    RAY_CHECK(it != submissible_tasks_.end())
-        << "Tried to complete task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
-        << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.spec;
-    if (!will_retry) {
-      submissible_tasks_.erase(it);
-      num_pending_tasks_--;
-    }
-  }
-
   if (!will_retry) {
-    // Throttled logging of task failure errors.
-    {
-      absl::MutexLock lock(&mu_);
-      auto debug_str = spec.DebugString();
-      if (debug_str.find("__ray_terminate__") == std::string::npos &&
-          (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-           (current_time_ms() - last_log_time_ms_) >
-               kTaskFailureLoggingFrequencyMillis)) {
-        if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
-                           << kTaskFailureLoggingFrequencyMillis << " millis.";
-        }
-        last_log_time_ms_ = current_time_ms();
-        if (status != nullptr) {
-          RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
-        } else {
-          RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
-        }
-      }
-    }
-    // The worker failed to execute the task, so it cannot be borrowing any
-    // objects.
-    RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
-                                 ReferenceCounter::ReferenceTableProto());
-    if (mark_task_object_failed) {
-      MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
-    }
+    FailPendingTask(task_id, error_type, status, ray_error_info, mark_task_object_failed);
   }
 
   ShutdownIfNeeded();

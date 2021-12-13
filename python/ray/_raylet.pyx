@@ -120,7 +120,8 @@ from ray.exceptions import (
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
-    DefaultSchedulingStrategy,
+    DEFAULT_SCHEDULING_STRATEGY,
+    SPREAD_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
@@ -1439,10 +1440,10 @@ cdef class CoreWorker:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
         assert python_scheduling_strategy is not None
-        if python_scheduling_strategy == "DEFAULT" or \
-                isinstance(python_scheduling_strategy,
-                           DefaultSchedulingStrategy):
+        if python_scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
+        elif python_scheduling_strategy == SPREAD_SCHEDULING_STRATEGY:
+            c_scheduling_strategy[0].mutable_spread_scheduling_strategy()
         elif isinstance(python_scheduling_strategy,
                         PlacementGroupSchedulingStrategy):
             c_placement_group_scheduling_strategy = \
@@ -1463,7 +1464,7 @@ cdef class CoreWorker:
                 f"Invalid scheduling_strategy value "
                 f"{python_scheduling_strategy}. "
                 f"Valid values are [\"DEFAULT\""
-                f" | DefaultSchedulingStrategy"
+                f" | \"SPREAD\""
                 f" | PlacementGroupSchedulingStrategy]")
 
     def submit_task(self,
@@ -1892,6 +1893,41 @@ cdef class CoreWorker:
                 c_owner_address,
                 serialized_object_status))
 
+    cdef store_task_output(self, serialized_object, const CObjectID &return_id,
+                           size_t data_size, shared_ptr[CBuffer] &metadata,
+                           const c_vector[CObjectID] &contained_id,
+                           int64_t *task_output_inlined_bytes,
+                           shared_ptr[CRayObject] *return_ptr):
+        """Store a task return value in plasma or as an inlined object."""
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
+                    return_id, data_size, metadata, contained_id,
+                    task_output_inlined_bytes, return_ptr))
+
+        if return_ptr.get() != NULL:
+            if return_ptr.get().HasData():
+                (<SerializedObject>serialized_object).write_to(
+                    Buffer.make(return_ptr.get().GetData()))
+            if self.is_local_mode:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().Put(
+                        CRayObject(return_ptr.get().GetData(),
+                                   return_ptr.get().GetMetadata(),
+                                   c_vector[CObjectReference]()),
+                        c_vector[CObjectID](), return_id))
+            else:
+                with nogil:
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                            return_id, return_ptr[0]))
+            return True
+        else:
+            with nogil:
+                success = (CCoreWorkerProcess.GetCoreWorker()
+                           .PinExistingReturnObject(return_id, return_ptr))
+            return success
+
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
@@ -1900,7 +1936,6 @@ cdef class CoreWorker:
             size_t data_size
             shared_ptr[CBuffer] metadata
             c_vector[CObjectID] contained_id
-            c_vector[CObjectID] return_ids_vector
             int64_t task_output_inlined_bytes
 
         if return_ids.size() == 0:
@@ -1927,30 +1962,17 @@ cdef class CoreWorker:
             contained_id = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
 
-            with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
-                        return_id, data_size, metadata, contained_id,
-                        task_output_inlined_bytes, &returns[0][i]))
-
-            if returns[0][i].get() != NULL:
-                if returns[0][i].get().HasData():
-                    (<SerializedObject>serialized_object).write_to(
-                        Buffer.make(returns[0][i].get().GetData()))
-                if self.is_local_mode:
-                    return_ids_vector.push_back(return_ids[i])
-                    check_status(
-                        CCoreWorkerProcess.GetCoreWorker().Put(
-                            CRayObject(returns[0][i].get().GetData(),
-                                       returns[0][i].get().GetMetadata(),
-                                       c_vector[CObjectReference]()),
-                            c_vector[CObjectID](), return_ids[i]))
-                    return_ids_vector.clear()
-
-            with nogil:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                        return_id, returns[0][i]))
+            if not self.store_task_output(
+                    serialized_object, return_id,
+                    data_size, metadata, contained_id,
+                    &task_output_inlined_bytes, &returns[0][i]):
+                # If the object already exists, but we fail to pin the copy, it
+                # means the existing copy might've gotten evicted. Try to
+                # create another copy.
+                self.store_task_output(
+                        serialized_object, return_id, data_size, metadata,
+                        contained_id, &task_output_inlined_bytes,
+                        &returns[0][i])
 
     cdef c_function_descriptors_to_python(
             self,

@@ -567,7 +567,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              int64_t &task_output_inlined_bytes,
+                              int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -578,6 +578,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object);
+
+  /// Pin the local copy of the return object, if one exists.
+  ///
+  /// \param[in] return_id ObjectID of the return value.
+  /// \param[out] return_object The object that was pinned.
+  /// \return success if the object still existed and was pinned. Note that
+  /// pinning is done asynchronously.
+  bool PinExistingReturnObject(const ObjectID &return_id,
+                               std::shared_ptr<RayObject> *return_object);
 
   /// Get a handle to an actor.
   ///
