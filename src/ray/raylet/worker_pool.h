@@ -407,9 +407,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
   /// \param runtime_env_info The raw runtime env info.
-  /// \return The id of the process that we started if it's positive, otherwise it means
+  /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
-  Process StartWorkerProcess(
+  std::tuple<Process, StartupToken> StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
@@ -505,12 +505,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// same with worker process PID, except starting worker process in container.
     absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
         starting_worker_processes;
-    /// A map for looking up the task by the pid of starting worker process.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task by the startup token of starting worker process.
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
+    /// A map for looking up the task with dynamic options by the startup token of
     /// starting worker process. Note that this is used for the dedicated worker
     /// processes.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo>
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
@@ -604,7 +604,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param proc The process which the worker belongs to.
+  /// \param startup_token The startup token representing the worker.
   /// \param worker A new idle worker. If the worker is empty, we could also callback
   /// to the task.
   /// \param status The pop worker status which will be forwarded to
@@ -614,8 +614,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
-      absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
-      const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+      absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
+      StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 

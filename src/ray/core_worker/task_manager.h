@@ -33,6 +33,11 @@ class TaskFinisherInterface {
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
+  virtual void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                               const Status *status = nullptr,
+                               const rpc::RayErrorInfo *ray_error_info = nullptr,
+                               bool mark_task_object_failed = true) = 0;
+
   virtual bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
@@ -147,6 +152,21 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
                               bool mark_task_object_failed = true) override;
+
+  /// A pending task failed. This will mark the task as failed.
+  /// This doesn't always mark the return object as failed
+  /// depending on mark_task_object_failed.
+  ///
+  /// \param[in] task_id ID of the pending task.
+  /// \param[in] error_type The type of the specific error.
+  /// \param[in] status Optional status message.
+  /// \param[in] ray_error_info The error information of a given error type.
+  /// \param[in] mark_task_object_failed whether or not it marks the task
+  /// return object as failed.
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                       const Status *status = nullptr,
+                       const rpc::RayErrorInfo *ray_error_info = nullptr,
+                       bool mark_task_object_failed = true) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.

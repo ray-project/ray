@@ -23,6 +23,10 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const TaskID &task_id, const rpc::PushTaskReply &reply,
                const rpc::Address &actor_addr),
               (override));
+  MOCK_METHOD(void, FailPendingTask,
+              (const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
+               const rpc::RayErrorInfo *ray_error_info, bool mark_task_object_failed),
+              (override));
   MOCK_METHOD(bool, FailOrRetryPendingTask,
               (const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
                const rpc::RayErrorInfo *ray_error_info, bool mark_task_object_failed),
