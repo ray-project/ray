@@ -1399,6 +1399,7 @@ TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
 
 TEST_F(WorkerPoolTest, RuntimeEnvUriReference) {
   valid_uris.clear();
+  // First part, test URI reference with eager install.
   auto job_id = JobID::FromInt(12345);
   std::string uri = "s3://123";
   auto runtime_env_info = ExampleRuntimeEnvInfo({uri}, true);
@@ -1426,6 +1427,28 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReference) {
   // Disconnect task worker.
   worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
   ASSERT_EQ(valid_uris.size(), 1);
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+  ASSERT_EQ(valid_uris.size(), 0);
+
+  // Second part, test URI reference without eager install.
+  auto runtime_env_info_without_eager_install = ExampleRuntimeEnvInfo({uri}, false);
+  job_config.mutable_runtime_env_info()->CopyFrom(runtime_env_info_without_eager_install);
+  // Start job without eager installed runtime env.
+  worker_pool_->HandleJobStarted(job_id, job_config);
+  ASSERT_EQ(valid_uris.size(), 0);
+  // Start actor with runtime env.
+  popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+  ASSERT_EQ(valid_uris.size(), 1);
+  // Start task with runtime env.
+  popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+  ASSERT_EQ(valid_uris.size(), 1);
+  // Disconnect actor worker.
+  worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
+  ASSERT_EQ(valid_uris.size(), 1);
+  // Disconnect task worker.
+  worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
+  ASSERT_EQ(valid_uris.size(), 0);
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
   ASSERT_EQ(valid_uris.size(), 0);
