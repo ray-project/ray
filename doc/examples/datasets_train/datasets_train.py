@@ -618,7 +618,8 @@ if __name__ == "__main__":
     os.makedirs(tbx_logdir, exist_ok=True)
     callbacks = [
         TBXLoggerCallback(logdir=tbx_logdir),
-        MLflowLoggerCallback(config, save_artifact=True)
+        MLflowLoggerCallback(
+            experiment_name="cuj-big-data-training", save_artifact=True)
     ]
 
     # Remove CPU resource so Datasets can be scheduled.
