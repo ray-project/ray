@@ -25,7 +25,7 @@ parser.add_argument(
     help="The DL framework specifier.")
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)#TODO
     args = parser.parse_args()
     if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
