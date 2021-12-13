@@ -1,6 +1,6 @@
 import logging
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
-    Union
+    Union, Set
 
 import gym
 import ray
@@ -198,14 +198,13 @@ class BaseEnv:
         return []
 
     @PublicAPI
-    def get_agent_ids(self) -> Dict[EnvID, List[AgentID]]:
-        """Return the agent ids for each sub-environment.
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Return the agent ids for the sub_environment.
 
         Returns:
-            A dict mapping from env_id to a list of agent_ids.
+            All agent ids for each the environment.
         """
-        logger.warning("get_agent_ids() has not been implemented")
-        return {}
+        return {_DUMMY_AGENT_ID}
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -234,11 +233,13 @@ class BaseEnv:
 
     @PublicAPI
     @property
-    def observation_space(self) -> gym.spaces.Dict:
+    def observation_space(self) -> gym.Space:
         """Returns the observation space for each environment.
 
         Note: samples from the observation space need to be preprocessed into a
             `MultiEnvDict` before being used by a policy.
+
+        The space will either be a gym.space directly corresponding to the
 
         Returns:
             The observation space for each environment.
@@ -326,8 +327,7 @@ class BaseEnv:
         """
         return self._space_contains(self.action_space, x)
 
-    @staticmethod
-    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+    def _space_contains(self, space: gym.Space, x: MultiEnvDict) -> bool:
         """Check if the given space contains the observations of x.
 
         Args:
@@ -339,14 +339,16 @@ class BaseEnv:
         """
         # this removes the agent_id key and inner dicts
         # in MultiEnvDicts
-        flattened_obs = {
-            env_id: list(obs.values())
-            for env_id, obs in x.items()
-        }
+        agents = set(self.get_agent_ids())
         ret = True
-        for env_id in flattened_obs:
-            for obs in flattened_obs[env_id]:
-                ret = ret and space[env_id].contains(obs)
+        for _, multi_agent_dict in x.items():
+            for agent_id, obs in multi_agent_dict:
+                if agent_id != _DUMMY_AGENT_ID:
+                    if agent_id not in agents:
+                        return False
+                    if not space[agent_id].contains(obs):
+                        return False
+
         return ret
 
 

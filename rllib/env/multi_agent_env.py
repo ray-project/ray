@@ -1,5 +1,5 @@
 import gym
-from typing import Callable, Dict, List, Tuple, Type, Optional, Union
+from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -19,6 +19,15 @@ class MultiAgentEnv(gym.Env):
     are not to be confused with RLlib Trainers, which are also sometimes
     referred to as "agents" or "RL agents".
     """
+
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Returns a list of agent ids in the environment.
+
+        Returns:
+            List of agent ids.
+        """
+        return {}
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -355,18 +364,13 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
-        space = {
-            _id: env.observation_space
-            for _id, env in enumerate(self.envs)
-        }
-        return gym.spaces.Dict(space)
+        self.envs[0].observation_space
 
     @property
     @override(BaseEnv)
     @PublicAPI
     def action_space(self) -> gym.Space:
-        space = {_id: env.action_space for _id, env in enumerate(self.envs)}
-        return gym.spaces.Dict(space)
+        return self.envs[0].action_space
 
 
 class _MultiAgentEnvState:
