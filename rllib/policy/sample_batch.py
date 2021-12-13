@@ -1096,6 +1096,11 @@ class MultiAgentBatch:
         return self.count
 
     @PublicAPI
+    def __len__(self) -> int:
+        """Same as `self.env_steps()`."""
+        return self.count
+
+    @PublicAPI
     def agent_steps(self) -> int:
         """The number of agent steps (there are >= 1 agent steps per env step).
 
