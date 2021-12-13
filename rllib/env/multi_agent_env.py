@@ -1,5 +1,4 @@
 import gym
-import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
@@ -32,6 +31,15 @@ class MultiAgentEnv(gym.Env):
         # do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
         self._spaces_in_preferred_format = None
+
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Returns a list of agent ids in the environment.
+
+        Returns:
+            List of agent ids.
+        """
+        return {}
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -531,24 +539,6 @@ class MultiAgentEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self.envs[0].action_space
-
-    @override(BaseEnv)
-    def observation_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(
-            self.envs[0].observation_space_contains(val) for val in x.values())
-
-    @override(BaseEnv)
-    def action_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(
-            self.envs[0].action_space_contains(val) for val in x.values())
-
-    @override(BaseEnv)
-    def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].observation_space_sample(agent_ids)
-
-    @override(BaseEnv)
-    def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].action_space_sample(agent_ids)
 
 
 class _MultiAgentEnvState:

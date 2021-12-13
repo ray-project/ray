@@ -234,10 +234,12 @@ class BaseEnv:
     @PublicAPI
     @property
     def observation_space(self) -> gym.Space:
-        """Returns the observation space for each agent.
+        """Returns the observation space for each environment.
 
         Note: samples from the observation space need to be preprocessed into a
             `MultiEnvDict` before being used by a policy.
+
+        The space will either be a gym.space directly corresponding to the
 
         Returns:
             The observation space for each environment.
@@ -337,14 +339,19 @@ class BaseEnv:
         Returns:
             True if the observations of x are contained in space.
         """
+        # this removes the agent_id key and inner dicts
+        # in MultiEnvDicts
         agents = set(self.get_agent_ids())
-        for multi_agent_dict in x.values():
+        ret = True
+        for _, multi_agent_dict in x.items():
             for agent_id, obs in multi_agent_dict:
-                if (agent_id not in agents) or (
-                        not space[agent_id].contains(obs)):
-                    return False
+                if agent_id != _DUMMY_AGENT_ID:
+                    if agent_id not in agents:
+                        return False
+                    if not space[agent_id].contains(obs):
+                        return False
 
-        return True
+        return ret
 
 
 # Fixed agent identifier when there is only the single agent in the env
