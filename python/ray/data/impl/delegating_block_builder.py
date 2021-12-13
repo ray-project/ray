@@ -5,8 +5,6 @@ from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
 
-import pyarrow
-
 
 class DelegatingBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -16,6 +14,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
 
         if self._builder is None:
             if isinstance(item, dict) or isinstance(item, ArrowRow):
+                import pyarrow
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
