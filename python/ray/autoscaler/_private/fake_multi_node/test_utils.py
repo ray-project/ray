@@ -131,7 +131,7 @@ class DockerCluster:
         if self._docker_image:
             try:
                 images_str = subprocess.check_output(
-                    f"docker images inspect {self._docker_image}", shell=True)
+                    f"docker image inspect {self._docker_image}", shell=True)
                 images = json.loads(images_str)
             except Exception as e:
                 logger.error(
