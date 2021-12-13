@@ -742,15 +742,13 @@ setuptools.setup(
     setup_requires=["cython >= 0.29.26", "wheel"],
     extras_require=setup_spec.extras,
     ext_modules=[
-        setuptools.Extension(
-            'ray.cloudpickle.generator._core',
-            ['cloudpickle/generator/_core.c'],
-            extra_compile_args=[
-                '-Wall',
-                '-Wextra',
-                '-Wno-missing-field-initializers',
-            ]
-        ),
+        setuptools.Extension('ray.cloudpickle.generator._core',
+                             ['cloudpickle/generator/_core.c'],
+                             extra_compile_args=[
+                                 '-Wall',
+                                 '-Wextra',
+                                 '-Wno-missing-field-initializers',
+                             ]),
     ],
     entry_points={
         "console_scripts": [

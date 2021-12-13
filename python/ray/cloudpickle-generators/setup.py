@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 from setuptools import setup, Extension
 
-
 with open('README.rst') as f:
     long_description = f.read()
 
 setup(
     name='cloudpickle-generators',
     version='0.1.0',
-    description=(
-        'cloudpickle support for generators,'
-        ' including partially consumed generators.'
-    ),
+    description=('cloudpickle support for generators,'
+                 ' including partially consumed generators.'),
     author='Joe Jevnik',
     author_email='joejev@gmail.com',
     packages=['cloudpickle_generators'],
@@ -38,14 +35,12 @@ setup(
     ],
     url='https://github.com/llllllllll/cloudpickle-generators',
     ext_modules=[
-        Extension(
-            'cloudpickle_generators._core',
-            ['cloudpickle_generators/_core.c'],
-            extra_compile_args=[
-                '-Wall',
-                '-Wextra',
-                '-Wno-missing-field-initializers',
-            ]
-        ),
+        Extension('cloudpickle_generators._core',
+                  ['cloudpickle_generators/_core.c'],
+                  extra_compile_args=[
+                      '-Wall',
+                      '-Wextra',
+                      '-Wno-missing-field-initializers',
+                  ]),
     ],
 )

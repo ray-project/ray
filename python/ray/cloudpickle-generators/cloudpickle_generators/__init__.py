@@ -65,8 +65,7 @@ def _fill_generator_impl(frame, lasti, f_locals, frame_data):
     locals_ = [f_locals.get(var, unset_value) for var in code.co_varnames]
     locals_.extend(
         _make_cell(f_locals, var)
-        for var in chain(code.co_cellvars, code.co_freevars)
-    )
+        for var in chain(code.co_cellvars, code.co_freevars))
     restore_frame(frame, lasti, locals_, *frame_data)
 
 
@@ -86,10 +85,9 @@ def _create_skeleton_generator(gen_func):
     """
     code = gen_func.__code__
     kwonly_names = code.co_varnames[code.co_argcount:code.co_kwonlyargcount]
-    gen = gen_func(
-        *(None for _ in range(code.co_argcount)),
-        **{key: None for key in kwonly_names}
-    )
+    gen = gen_func(*(None for _ in range(code.co_argcount)),
+                   **{key: None
+                      for key in kwonly_names})
 
     try:
         # manually update the qualname to fix a bug in Python 3.6 where the
@@ -175,7 +173,7 @@ def _save_generator_impl(self, frame, gen, filler):
         frame.f_globals,
         gen.__name__,
         (),
-        (_empty_cell(),) * len(f_code.co_freevars),
+        (_empty_cell(), ) * len(f_code.co_freevars),
     )
     try:
         gen_func.__qualname__ = gen.__qualname__
@@ -195,7 +193,7 @@ def _save_generator_impl(self, frame, gen, filler):
     write(pickle.MARK)
 
     save(_create_skeleton_generator)
-    save((gen_func,))
+    save((gen_func, ))
     write(pickle.REDUCE)
     self.memoize(gen)
 
@@ -211,7 +209,7 @@ def _save_generator_impl(self, frame, gen, filler):
     write(pickle.REDUCE)
 
 
-def register(CloudPickler):
+def register_pypickler(CloudPickler):
     """Register the cloudpickle extension.
     """
     CloudPickler.dispatch[GeneratorType] = _save_generator
@@ -219,7 +217,7 @@ def register(CloudPickler):
     CloudPickler.dispatch[AsyncGeneratorType] = _save_async_generator
 
 
-def unregister(CloudPickler):
+def unregister_pypickler(CloudPickler):
     """Unregister the cloudpickle extension.
     """
     if CloudPickler.dispatch.get(GeneratorType) is _save_generator:
@@ -233,3 +231,71 @@ def unregister(CloudPickler):
     if (CloudPickler.dispatch.get(AsyncGeneratorType) is
             _save_async_generator):
         del CloudPickler.dispatch[AsyncGeneratorType]
+
+
+def _rehydrate_generator(gen_func, lasti, f_locals, frame_data):
+    gen = _create_skeleton_generator(gen_func)
+    _fill_generator_impl(gen.gi_frame, lasti, f_locals, frame_data)
+    return gen
+
+
+def _rehydrate_coroutine(gen_func, lasti, f_locals, frame_data):
+    coro = _create_skeleton_generator(gen_func)
+    _fill_generator_impl(coro.cr_frame, lasti, f_locals, frame_data)
+    return coro
+
+
+def _rehydrate_async_generator(gen_func, lasti, f_locals, frame_data):
+    asyncgen = _create_skeleton_generator(gen_func)
+    _fill_generator_impl(asyncgen.ag_frame, lasti, f_locals, frame_data)
+    return asyncgen
+
+
+def _reduce_generator(gen):
+    if gen.gi_running:
+        raise ValueError('cannot save running generator')
+
+    frame = gen.gi_frame
+    if frame is None:
+        # frame is None when the generator is fully consumed; take a fast path
+        return _restore_spent_generator, (gen.__name__,
+                                          getattr(gen, '__qualname__', None))
+    return _rehydrate_generator, _reduce_generator_impl(frame, gen)
+
+
+def _reduce_coroutine(coro):
+    frame = coro.cr_frame
+    if frame is None:
+        # frame is None when the generator is fully consumed; take a fast path
+        return _restore_spent_generator, (coro.__name__,
+                                          getattr(coro, '__qualname__', None))
+    return _rehydrate_coroutine, _reduce_generator_impl(frame, coro)
+
+
+def _reduce_async_generator(asyncgen):
+    frame = asyncgen.ag_frame
+    if frame is None:
+        # frame is None when the generator is fully consumed; take a fast path
+        return _restore_spent_generator, (asyncgen.__name__,
+                                          getattr(asyncgen, '__qualname__',
+                                                  None))
+    return _rehydrate_async_generator, _reduce_generator_impl(frame, asyncgen)
+
+
+def _reduce_generator_impl(frame, gen):
+    f_code = frame.f_code
+
+    # Create a copy of generator function without the closure to serve as a box
+    # to serialize the code, globals, name, and closure. Cloudpickle already
+    # handles things like closures and complicated globals so just rely on
+    # cloudpickle to serialize this function.
+    gen_func = FunctionType(
+        f_code,
+        frame.f_globals,
+        gen.__name__,
+        (),
+        (_empty_cell(), ) * len(f_code.co_freevars),
+    )
+    gen_func.__qualname__ = gen.__qualname__
+
+    return gen_func, frame.f_lasti, frame.f_locals, private_frame_data(frame)

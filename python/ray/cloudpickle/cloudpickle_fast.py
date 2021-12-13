@@ -546,6 +546,11 @@ class CloudPickler(Pickler):
     _dispatch_table[type(OrderedDict().values())] = _odict_values_reduce
     _dispatch_table[type(OrderedDict().items())] = _odict_items_reduce
 
+    # import pdb; pdb.set_trace()
+    import cloudpickle_generators
+    _dispatch_table[types.GeneratorType] = cloudpickle_generators._reduce_generator
+    _dispatch_table[types.CoroutineType] = cloudpickle_generators._reduce_coroutine
+    _dispatch_table[types.AsyncGeneratorType] = cloudpickle_generators._reduce_async_generator
 
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
     # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
@@ -660,6 +665,9 @@ class CloudPickler(Pickler):
             # their global namespace at unpickling time.
             self.globals_ref = {}
             self.proto = int(protocol)
+
+
+
 
         def reducer_override(self, obj):
             """Type-agnostic reducing callback for function and classes.
@@ -830,3 +838,6 @@ class CloudPickler(Pickler):
             self.save_reduce(*rv, obj=obj)
 
         dispatch[types.FunctionType] = save_function
+
+        # import cloudpickle_generators
+        # cloudpickle_generators.register_pypickler()
