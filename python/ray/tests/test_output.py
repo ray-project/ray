@@ -436,6 +436,9 @@ run_experiments(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test currently fails with minimal install.")
 def test_empty_line_thread_safety_bug(ray_start_cluster):
     """Make sure when new threads are used within __init__,
     the empty line is not printed.
