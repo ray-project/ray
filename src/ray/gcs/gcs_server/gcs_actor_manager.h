@@ -282,6 +282,24 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// change.
   void SchedulePendingActors();
 
+  /// Destroy an actor that has gone out of scope. This cleans up all local
+  /// state associated with the actor and marks the actor as dead. For owned
+  /// actors, this should be called when all actor handles have gone out of
+  /// scope or the owner has died.
+  /// NOTE: This method can be called multiple times in out-of-order and should be
+  /// idempotent.
+  ///
+  /// \param[in] actor_id The actor id to destroy.
+  /// \param[in] death_cause The reason why actor is destroyed.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
+
+  /// Kill the specified actor.
+  ///
+  /// \param actor_id ID of the actor to kill.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+
   /// Handle a node death. This will restart all actors associated with the
   /// specified node id, including actors which are scheduled or have been
   /// created on this node. Actors whose owners have died (possibly due to this
@@ -375,17 +393,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// called for detached actors.
   void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
 
-  /// Destroy an actor that has gone out of scope. This cleans up all local
-  /// state associated with the actor and marks the actor as dead. For owned
-  /// actors, this should be called when all actor handles have gone out of
-  /// scope or the owner has died.
-  /// NOTE: This method can be called multiple times in out-of-order and should be
-  /// idempotent.
-  ///
-  /// \param[in] actor_id The actor id to destroy.
-  /// \param[in] death_cause The reason why actor is destroyed.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
-
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
   GetUnresolvedActorsByOwnerNode(const NodeID &node_id) const;
@@ -414,13 +421,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor The actor to be removed.
   void RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor);
-
-  /// Kill the specified actor.
-  ///
-  /// \param actor_id ID of the actor to kill.
-  /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Notify CoreWorker to kill the specified actor.
   ///
