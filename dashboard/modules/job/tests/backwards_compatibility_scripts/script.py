@@ -3,6 +3,7 @@ import requests
 
 ray.init()
 
+
 @ray.remote
 class Counter:
     def __init__(self):
@@ -13,6 +14,7 @@ class Counter:
 
     def get_counter(self):
         return self.counter
+
 
 counter = Counter.remote()
 
