@@ -1002,7 +1002,7 @@ class Trainer(Trainable):
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
                         self.evaluate(
-                            duration_fn = functools.partial(
+                            duration_fn=functools.partial(
                                 auto_duration_fn, unit, self.config[
                                     "evaluation_num_workers"], self.config[
                                         "evaluation_config"]))
@@ -1014,8 +1014,8 @@ class Trainer(Trainable):
             else:
                 self.evaluate()
 
-        if (evaluate_this_iter or
-            self.config["always_attach_evaluation_results"]):
+        if (evaluate_this_iter
+                or self.config["always_attach_evaluation_results"]):
             # Attach latest available evaluation results to train results.
             assert isinstance(self.evaluation_metrics, dict), \
                 "Trainer.evaluate() needs to return a dict."
