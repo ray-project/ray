@@ -256,7 +256,12 @@
     - python ./ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type BUILDKITE --build-base --only-build-worker-container
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
-      python/ray/tune/... --test_env=RAY_DOCKER_IMAGE="rayproject/ray-worker-container:nightly-py37-cpu"
+      python/ray/tune/...
+      --test_env=RAY_DOCKER_IMAGE="rayproject/ray-worker-container:nightly-py37-cpu"
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
 
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
