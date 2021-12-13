@@ -373,12 +373,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_num_episodes_for_smoothing": 100,
-
     # Minimum time interval to run one `train()` call for:
     # If - after one `step_attempt()`, this time limit has not been reached,
     # will perform n more `step_attempt()` calls until this minimum time has
     # been consumed. Set to None or 0 for no minimum time.
-    "min_time_per_reporting": None,
+    "min_time_s_per_reporting": None,
     # Minimum train/sample timesteps to optimize for per `train()` call.
     # This value does not affect learning, only the length of train iterations.
     # If - after one `step_attempt()`, the timestep counts (sampling or
@@ -566,8 +565,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     "metrics_smoothing_episodes": DEPRECATED_VALUE,
     # Use `min_[env|train]_timesteps_per_reporting` instead.
     "timesteps_per_iteration": 0,
-    # Use `metrics_smoothing_num_episodes` instead.
-    "metrics_smoothing_episodes": DEPRECATED_VALUE,
+    # Use `min_time_s_per_reporting` instead.
+    "min_iter_time_s": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -997,7 +996,7 @@ class Trainer(Trainable):
                     trained = self._counters[NUM_ENV_STEPS_TRAINED] - \
                         env_steps_trained
 
-                min_t = self.config["min_time_per_reporting"]
+                min_t = self.config["min_time_s_per_reporting"]
                 min_sample_ts = self.config[
                     "min_sample_timesteps_per_reporting"]
                 min_train_ts = self.config["min_train_timesteps_per_reporting"]
@@ -1027,16 +1026,16 @@ class Trainer(Trainable):
                     self._episodes_to_be_collected,
                     timeout_seconds=self.config["collect_metrics_timeout"])
                 orig_episodes = list(episodes)
-                missing = self.config["metrics_smoothing_num_episodes"] - len(
-                    episodes)
+                missing = self.config["metrics_num_episodes_for_smoothing"] -\
+                    len(episodes)
                 if missing > 0:
                     episodes = self._episode_history[-missing:] + episodes
                     assert len(episodes) <= \
-                           self.config["metrics_smoothing_num_episodes"]
+                           self.config["metrics_num_episodes_for_smoothing"]
                 self._episode_history.extend(orig_episodes)
                 self._episode_history = \
                     self._episode_history[
-                        -self.config["metrics_smoothing_num_episodes"]:]
+                        -self.config["metrics_num_episodes_for_smoothing"]:]
                 result["sampler_results"] = summarize_episodes(
                     episodes, orig_episodes)
                 # TODO: Don't dump sampler results into top-level.
@@ -2312,19 +2311,19 @@ class Trainer(Trainable):
         if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="metrics_smoothing_episodes",
-                new="metrics_smoothing_num_episodes",
+                new="metrics_num_episodes_for_smoothing",
                 error=False,
             )
-            config["metrics_smoothing_num_episodes"] = \
+            config["metrics_num_episodes_for_smoothing"] = \
                 config["metrics_smoothing_episodes"]
         if config["min_iter_time_s"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
             # deprecation_warning(
             #     old="min_iter_time_s",
-            #     new="min_time_per_reporting",
+            #     new="min_time_s_per_reporting",
             #     error=False,
             # )
-            config["min_time_per_reporting"] = \
+            config["min_time_s_per_reporting"] = \
                 config["min_iter_time_s"]
         if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
