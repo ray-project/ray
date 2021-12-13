@@ -135,7 +135,7 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": "string"
+                            "type": ["string", "null"]
                           }
                         },
                         "required": [
@@ -190,13 +190,13 @@
                       "type": "string"
                     },
                     "rayJobId": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "status": {
                       "type": "string"
                     },
                     "version": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     }
                   },
                   "required": [
