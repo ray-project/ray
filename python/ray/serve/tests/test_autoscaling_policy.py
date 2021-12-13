@@ -507,6 +507,140 @@ def test_e2e_intermediate_downscaling(serve_instance):
     assert get_deployment_start_time(controller, A) == start_time
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skip(reason="Currently failing with undefined behavior")
+def test_e2e_update_autoscaling_deployment(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
+        max_concurrent_queries=1000,
+        version="v1")
+    class A:
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    A.deploy()
+
+    controller = serve_instance._controller
+    start_time = get_deployment_start_time(controller, A)
+
+    assert get_num_running_replicas(controller, A) == 1
+
+    handle = A.get_handle()
+    [handle.remote() for _ in range(400)]
+
+    print("\nscale to 10\n")
+
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 10)
+    assert get_num_running_replicas(controller, A) < 20
+
+    [handle.remote() for _ in range(458)]
+    import time
+    time.sleep(3)
+
+    print("\nredeploy A\n")
+    A.options(_autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 2,
+            "max_replicas": 20,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        })
+    A.deploy()
+
+    print("\nscale to 20\n")
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
+
+    signal.send.remote()
+
+    # As the queue is drained, we should scale back down.
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 2)
+    assert get_num_running_replicas(controller, A) > 1
+
+    # Make sure start time did not change for the deployment
+    assert get_deployment_start_time(controller, A) == start_time
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skip(reason="Currently failing with undefined behavior")
+def test_e2e_raise_min_replicas(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
+        max_concurrent_queries=1000,
+        version="v1")
+    class A:
+        def __call__(self):
+            ray.get(signal.wait.remote())
+
+    A.deploy()
+
+    controller = serve_instance._controller
+    start_time = get_deployment_start_time(controller, A)
+
+    handle = A.get_handle()
+    [handle.remote() for _ in range(1)]
+
+    print("\nstay at 1\n")
+
+    import time
+    time.sleep(3)
+
+    assert get_num_running_replicas(controller, A) == 1
+    
+    print("\nredeploy A\n")
+    A.options(_autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": 2,
+            "max_replicas": 10,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        },
+        # We will send over a lot of queries. This will make sure replicas are
+        # killed quickly during cleanup.
+        _graceful_shutdown_timeout_s=1,
+        max_concurrent_queries=1000,
+        version="v2")
+    A.deploy()
+
+    print("\nscale to 2\n")
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
+    assert get_num_running_replicas(controller, A) == 2
+
+    signal.send.remote()
+
+    # As the queue is drained, we should scale back down.
+    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 2)
+    assert get_num_running_replicas(controller, A) > 1
+
+    # Make sure start time did not change for the deployment
+    assert get_deployment_start_time(controller, A) == start_time
+
+
 if __name__ == "__main__":
     import sys
     import pytest
