@@ -45,7 +45,7 @@ class TestBackwardsCompatibility:
         # of the outcome
         env_name = f"jobs-backwards-compatibility-{uuid.uuid4().hex}"
         with conda_env(env_name):
-            shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"
+            shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"  # noqa: E501
             process = subprocess.Popen(
                 shell_cmd,
                 shell=True,
@@ -57,20 +57,10 @@ class TestBackwardsCompatibility:
                     end="")  # This blocks until it receives a newline.
             # When the subprocess terminates there might be unconsumed output
             # that still needs to be processed.
-            print(process.stdout.read())
+            print(process.stdout.read().decode("utf-8"), end="")
             process.wait()
 
             assert process.returncode == 0
-
-    def test_sdk(self):
-        """
-        1) Create a new conda environment with ray version X installed
-            inherits same env as current conda envionment except ray version
-        2) Start head node and dashboard with ray version X
-        3) Use current commit's sdk code to sample job submission flow
-        4) Deactivate the new conda environment and back to original place
-        """
-        pass
 
 
 if __name__ == "__main__":

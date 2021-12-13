@@ -27,7 +27,7 @@ do
 
     printf "\n\n\n"
     echo "========================================================================================="
-    printf "Creating new conda environment with python ${PYTHON_VERSION} for ray ${RAY_VERSION} \n"
+    printf "Creating new conda environment with python %s for ray %s \n" "${PYTHON_VERSION}" "${RAY_VERSION}"
     echo "========================================================================================="
     printf "\n\n\n"
 
@@ -40,9 +40,11 @@ do
     printf "\n\n\n"
     echo "========================================================="
     printf "Installed ray job server version: "
-    echo $(python -c "import ray; print(ray.__version__)")
+    SERVER_RAY_VERSION=$(python -c "import ray; print(ray.__version__)")
+    printf "%s \n" "${SERVER_RAY_VERSION}"
     echo "========================================================="
     printf "\n\n\n"
+    ray stop --force
     ray start --head
 
     conda deactivate
@@ -51,7 +53,7 @@ do
     CLIENT_RAY_COMMIT=$(python -c "import ray; print(ray.__commit__)")
     printf "\n\n\n"
     echo "========================================================================================="
-    printf "Using Ray ${CLIENT_RAY_VERSION} on ${CLIENT_RAY_COMMIT} as job client \n"
+    printf "Using Ray %s on %s as job client \n" "${CLIENT_RAY_VERSION}" "${CLIENT_RAY_COMMIT}"
     echo "========================================================================================="
     printf "\n\n\n"
 
@@ -65,17 +67,17 @@ do
 
     JOB_ID=$(python -c "import uuid; print(uuid.uuid4().hex)")
 
-    if ! ray job submit --job-id=${JOB_ID} echo hello; then
+    if ! ray job submit --job-id="${JOB_ID}" --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"; then
         cleanup
         exit 1
     fi
 
-    if ! ray job status ${JOB_ID}; then
+    if ! ray job status "${JOB_ID}"; then
         cleanup
         exit 1
     fi
 
-    if ! ray job logs ${JOB_ID}; then
+    if ! ray job logs "${JOB_ID}"; then
         cleanup
         exit 1
     fi
