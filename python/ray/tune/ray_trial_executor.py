@@ -404,7 +404,7 @@ class RayTrialExecutor(TrialExecutor):
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
 
-        if self._find_item(self._running, trial):
+        if self._find_future(trial):
             logging.debug(
                 "Trial {} already has a queued future. Skipping this "
                 "`train` call. This may occur if a trial has "
@@ -440,8 +440,6 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
-        trial_item = self._find_item(self._running, trial)
-        assert len(trial_item) < 2, trial_item
 
     def _start_trial(self, trial) -> bool:
         """Starts trial and restores last result if trial was paused.
@@ -575,12 +573,12 @@ class RayTrialExecutor(TrialExecutor):
             # have been lost. TODO(ujvl): is this the right thing to do?
             return False
 
-    def _find_item(self, dictionary, item):
-        out = [rid for rid, t in dictionary.items() if t is item]
+    def _find_future(self, item):
+        out = [rid for rid, t in self._running.items() if t is item]
         assert len(
             out
         ) <= 1, "Expecting one future for any given trial at any given time."
-        return out
+        return out[0] if len(out) > 0 else None
 
     def stop_trial(self,
                    trial: Trial,
@@ -590,9 +588,8 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
-            out = self._find_item(self._running, trial)
-            for result_id in out:
-                self._running.pop(result_id)
+            future = self._find_future(trial)
+            self._running.pop(future)
 
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
@@ -710,7 +707,7 @@ class RayTrialExecutor(TrialExecutor):
         Returns:
             Result of the most recent trial training run.
         """
-        trial_future = self._find_item(self._running, trial)
+        trial_future = self._find_future(trial)
         if not trial_future:
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
