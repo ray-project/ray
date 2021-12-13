@@ -10,7 +10,7 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, ALLOW_RAY_IN_PIP_ENV_VAR)
+    ParsedRuntimeEnv, RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP)
 from ray._private.runtime_env.plugin import (decode_plugin_uri,
                                              encode_plugin_uri)
 
@@ -210,7 +210,7 @@ class TestValidatePip:
         assert result == ["pkg1", "pkg2"]
 
     def test_remove_ray_env_var(self, monkeypatch, capsys):
-        monkeypatch.setenv(ALLOW_RAY_IN_PIP_ENV_VAR, "1")
+        monkeypatch.setenv(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP, "1")
         result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
         assert result == ["pkg1", "ray", "pkg2"]
 

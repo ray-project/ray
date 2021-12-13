@@ -18,7 +18,7 @@ from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
 
-ALLOW_RAY_IN_PIP_ENV_VAR = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
+RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP = "RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP"
 
 
 def validate_uri(uri: str):
@@ -118,7 +118,7 @@ def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
             libraries = requirement.extras  # e.g. ("serve", "tune")
             if libraries == ():
                 # Ray alone was specified (e.g. "ray" or "ray>1.4"). Remove it.
-                if os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) != "1":
+                if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != "1":
                     logger.warning(
                         "Ray was specified in the `pip` field of the "
                         f"`runtime_env`: '{specifier}'. This may cause version"
@@ -126,7 +126,7 @@ def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
                         "deleted from the `pip` field, and the Ray version "
                         "already installed on the cluster will be used.  To "
                         "disable this behavior, set the environment variable "
-                        f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
+                        f"{RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP} to 1.")
                 else:
                     result.append(specifier)
             else:
@@ -152,11 +152,9 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
     dependencies (e.g. "uvicorn", "requests").
 
-    Raises:
-        ValueError: If the base Ray package (e.g. "ray>1.4" or "ray") is
-            specified in the input. Specifying a Ray library (e.g.
-            "ray[serve]", "ray[tune, rllib]") is okay and will not raise an
-            error.
+    If the base Ray package (e.g. "ray>1.4" or "ray") is specified in the
+    input, it will be removed, unless the environment variable
+    RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP is set to 1.
     """
     assert pip is not None
 
