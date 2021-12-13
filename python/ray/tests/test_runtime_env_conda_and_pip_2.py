@@ -3,12 +3,8 @@ from typing import Dict
 import pytest
 import sys
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition, chdir
-
-import yaml
-import tempfile
-from pathlib import Path
-
+from ray._private.test_utils import (wait_for_condition,
+                                     generate_runtime_env_dict)
 import ray
 
 if not os.environ.get("CI"):
@@ -64,6 +60,7 @@ def test_install_failure_logging(start_cluster, specify_env_in_init, field,
 
     wait_for_condition(
         lambda: bad_packages["task"] in capsys.readouterr().out, timeout=30)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
