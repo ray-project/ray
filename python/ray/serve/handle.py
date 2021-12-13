@@ -3,11 +3,10 @@ import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Union, Coroutine
 import threading
-from enum import Enum
 
 from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
-from ray.serve.utils import get_random_letters
+from ray.serve.utils import get_random_letters, DEFAULT
 from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
@@ -33,12 +32,6 @@ class HandleOptions:
     shard_key: Optional[str] = None
     http_method: str = "GET"
     http_headers: Dict[str, str] = field(default_factory=dict)
-
-
-# Use a global singleton enum to emulate default options. We cannot use None
-# for those option because None is a valid new value.
-class DEFAULT(Enum):
-    VALUE = 1
 
 
 class RayServeHandle:

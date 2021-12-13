@@ -213,8 +213,7 @@ class MAMLTrainer(Trainer):
         # Metric Collector
         metric_collect = CollectMetrics(
             workers,
-            metrics_smoothing_num_episodes=config[
-                "metrics_smoothing_num_episodes"],
+            min_history=config["metrics_num_episodes_for_smoothing"],
             timeout_seconds=config["collect_metrics_timeout"])
 
         # Iterator for Inner Adaptation Data gathering (from pre->post

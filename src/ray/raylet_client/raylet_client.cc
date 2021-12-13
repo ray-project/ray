@@ -185,14 +185,6 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
-}
-
 Status raylet::RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }

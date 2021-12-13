@@ -372,7 +372,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
-    "metrics_smoothing_num_episodes": 100,
+    "metrics_num_episodes_for_smoothing": 100,
 
     # Minimum time interval to run one `train()` call for:
     # If - after one `step_attempt()`, this time limit has not been reached,
@@ -536,6 +536,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # observations will arrive in model as they are returned by the env.
     # In the future, the default for this will be True.
     "_disable_preprocessor_api": False,
+    # Experimental flag.
+    # If True, RLlib will no longer flatten the policy-computed actions into
+    # a single tensor (for storage in SampleCollectors/output files/etc..),
+    # but leave (possibly nested) actions as-is. Disabling flattening affects:
+    # - SampleCollectors: Have to store possibly nested action structs.
+    # - Models that have the previous action(s) as part of their input.
+    # - Algorithms reading from offline files (incl. action information).
+    "_disable_action_flattening": False,
+    # Experimental flag.
     # If True, the distributed execution API will not be used. Instead,
     # a Trainer's execution plan will be called as-is for each training
     # iteration.
@@ -553,13 +562,12 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
-    # Use `min_time_per_reporting` instead.
-    "min_iter_time_s": 0,
+    # Use `metrics_num_episodes_for_smoothing` instead.
+    "metrics_smoothing_episodes": DEPRECATED_VALUE,
     # Use `min_[env|train]_timesteps_per_reporting` instead.
     "timesteps_per_iteration": 0,
     # Use `metrics_smoothing_num_episodes` instead.
     "metrics_smoothing_episodes": DEPRECATED_VALUE,
-
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -1903,7 +1911,7 @@ class Trainer(Trainable):
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
-            min_history=self.config["metrics_smoothing_num_episodes"],
+            min_history=self.config["metrics_num_episodes_for_smoothing"],
             selected_workers=selected_workers)
 
     @override(Trainable)
@@ -2327,6 +2335,16 @@ class Trainer(Trainable):
             # )
             config["min_sample_timesteps_per_reporting"] = \
                 config["timesteps_per_iteration"]
+
+        # Metrics settings.
+        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="metrics_smoothing_episodes",
+                new="metrics_num_episodes_for_smoothing",
+                error=False,
+            )
+            config["metrics_num_episodes_for_smoothing"] = \
+                config["metrics_smoothing_episodes"]
 
         # Evaluation settings.
 

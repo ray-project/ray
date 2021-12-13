@@ -181,7 +181,7 @@
                       "type": "integer"
                     },
                     "httpRoute": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "name": {
                       "type": "string"
