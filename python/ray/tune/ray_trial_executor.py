@@ -404,13 +404,9 @@ class RayTrialExecutor(TrialExecutor):
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
 
-        if self._find_item(self._running, trial):
-            logging.debug(
-                "Trial {} already has a queued future. Skipping this "
-                "`train` call. This may occur if a trial has "
-                "been unpaused within a scheduler callback.".format(
-                    str(trial)))
-            return
+        assert not self._find_item(self._running, trial), (
+            f"Trial {trial} should not have an outstanding future when "
+            f"`train` is called.")
 
         assert trial.status == Trial.RUNNING, trial.status
         buffer_time_s = max(
@@ -440,8 +436,6 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
-        trial_item = self._find_item(self._running, trial)
-        assert len(trial_item) < 2, trial_item
 
     def _start_trial(self, trial) -> bool:
         """Starts trial and restores last result if trial was paused.
