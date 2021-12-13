@@ -63,8 +63,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
-      int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
-      const JobID &job_id,
+      WorkerType worker_type, int64_t lease_timeout_ms,
+      std::shared_ptr<ActorCreatorInterface> actor_creator, const JobID &job_id,
       uint32_t max_tasks_in_flight_per_worker =
           ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
@@ -78,6 +78,7 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
+        worker_type_(worker_type),
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
@@ -242,6 +243,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// The local raylet ID. Used to make sure that we use the local lease client
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const NodeID local_raylet_id_;
+
+  /// The type of this core worker process.
+  const WorkerType worker_type_;
 
   /// Interface for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
