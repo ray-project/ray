@@ -212,6 +212,7 @@ cql-halfcheetahbulletenv-v0:
         evaluation_interval: 3
         evaluation_config:
             input: sampler
+        always_attach_evaluation_results: True
 
 ddpg-hopperbulletenv-v0:
     env: HopperBulletEnv-v0

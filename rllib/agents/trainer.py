@@ -321,6 +321,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The Trainer guarantees all eval workers have the latest policy state
     # before this function is called.
     "custom_eval_function": None,
+    # Make sure the latest available evaluation results are always attached to
+    # a step result dict.
+    # This may be useful if Tune or some other meta controller needs access
+    # to evaluation metrics all the time.
+    "always_attach_evaluation_results": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -996,12 +1001,11 @@ class Trainer(Trainable):
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
-
-                        self.evaluate(duration_fn=functools.partial(
-                            auto_duration_fn,
-                            unit,
-                            self.config["evaluation_num_workers"],
-                            self.config["evaluation_config"]))
+                        self.evaluate(
+                            duration_fn = functools.partial(
+                                auto_duration_fn, unit, self.config[
+                                    "evaluation_num_workers"], self.config[
+                                        "evaluation_config"]))
                     else:
                         self.evaluate()
                     # Collect the training results from the future.
@@ -1010,10 +1014,12 @@ class Trainer(Trainable):
             else:
                 self.evaluate()
 
-        # Attach latest available evaluation results to train results.
-        assert isinstance(self.evaluation_metrics, dict), \
-            "Trainer.evaluate() needs to return a dict."
-        step_results.update(self.evaluation_metrics)
+        if (evaluate_this_iter or
+            self.config["always_attach_evaluation_results"]):
+            # Attach latest available evaluation results to train results.
+            assert isinstance(self.evaluation_metrics, dict), \
+                "Trainer.evaluate() needs to return a dict."
+            step_results.update(self.evaluation_metrics)
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config["env_task_fn"] is not None:
