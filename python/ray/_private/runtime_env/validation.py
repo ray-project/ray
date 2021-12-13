@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
 from pkg_resources import Requirement
+from collections import OrderedDict
 import yaml
 
 import ray
@@ -108,6 +109,37 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
+def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
+    result = []
+    for specifier in pip_list:
+        requirement = Requirement.parse(specifier)
+        package_name = requirement.name
+        if package_name == "ray":
+            libraries = requirement.extras  # e.g. ("serve", "tune")
+            if libraries == ():
+                # Ray alone was specified (e.g. "ray" or "ray>1.4"). Remove it.
+                if os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) != "1":
+                    logger.warning(
+                        "Ray was specified in the `pip` field of the "
+                        f"`runtime_env`: '{specifier}'. This may cause version"
+                        " compatibility issues, so it has been automatically "
+                        "deleted from the `pip` field, and the Ray version "
+                        "already installed on the cluster will be used.  To "
+                        "disable this behavior, set the environment variable "
+                        f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
+                else:
+                    result.append(specifier)
+            else:
+                # Replace the library with its dependencies.
+                extras = _resolve_install_from_source_ray_extras()
+                for library in libraries:
+                    result += extras[library]
+        else:
+            # Pass through all non-Ray packages unmodified.
+            result.append(specifier)
+    return result
+
+
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
@@ -145,33 +177,10 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
         raise TypeError("runtime_env['pip'] must be of type str or "
                         f"List[str], got {type(pip)}")
 
-    result = []
-    extra_pip_dependencies = []
-    for specifier in pip_list:
-        requirement = Requirement.parse(specifier)
-        package_name = requirement.name
-        if package_name == "ray":
-            libraries = requirement.extras  # e.g. ("serve", "tune")
-            # TODO(architkulkarni): add unit test for test env var
-            if libraries == (
-            ) and os.environ.get(ALLOW_RAY_IN_PIP_ENV_VAR) != "1":
-                raise ValueError(
-                    "Ray was specified in the `pip` field of the "
-                    f"`runtime_env`: '{specifier}'. This may cause Ray "
-                    "version compatibility issues. When using the `pip` "
-                    "field of `runtime_env`, it is recommended to "
-                    "preinstall Ray on all nodes in the cluster and to "
-                    "not include Ray in the `pip` field. To disable this "
-                    "error, set the environment variable "
-                    f"{ALLOW_RAY_IN_PIP_ENV_VAR} to 1.")
-            extras = _resolve_install_from_source_ray_extras()
-            for library in libraries:
-                extra_pip_dependencies += extras[library]
-        else:
-            result.append(specifier)
-    # `pip install` may error with duplicate dependencies, so eliminate
-    # duplicates here.
-    result = list(set(result + extra_pip_dependencies))
+    result = _rewrite_pip_list_ray_libraries(pip_list)
+
+    # Eliminate duplicates to prevent `pip install` from erroring.
+    result = list(OrderedDict.fromkeys(result))
 
     if len(result) == 0:
         result = None
