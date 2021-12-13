@@ -1,11 +1,12 @@
 import os
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sampler import SamplerInput
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
 @PublicAPI
@@ -21,7 +22,7 @@ class IOContext:
                  log_dir: Optional[str] = None,
                  config: Optional[TrainerConfigDict] = None,
                  worker_index: int = 0,
-                 worker: Optional[Any] = None):
+                 worker: Optional["RolloutWorker"] = None):
         """Initializes a IOContext object.
 
         Args:
@@ -30,7 +31,7 @@ class IOContext:
             worker_index (int): When there are multiple workers created, this
                 uniquely identifies the current worker. 0 for the local
                 worker, >0 for any of the remote workers.
-            worker (RolloutWorker): The RolloutWorker object reference.
+            worker: The RolloutWorker object reference.
         """
         self.log_dir = log_dir or os.getcwd()
         self.config = config or {}

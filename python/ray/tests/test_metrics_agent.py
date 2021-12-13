@@ -81,7 +81,12 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True
+        })
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -141,7 +146,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
