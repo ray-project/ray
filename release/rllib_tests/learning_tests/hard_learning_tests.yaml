@@ -1,4 +1,3 @@
-
 a2c-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: A2C
@@ -163,7 +162,7 @@ appo-pongnoframeskip-v4:
 #        evaluation_config:
 #            input: sampler
 
- cql-halfcheetahbulletenv-v0:
+cql-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: CQL
     pass_criteria:
