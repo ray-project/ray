@@ -8,6 +8,12 @@ frozenlake-appo-vtrace:
         # Works for both torch and tf.
         framework: tf
 
+        #TDO
+        model:
+            post_fcnet_hiddens: []
+            fcnet_hiddens: [256, 256]
+        #END: TODO
+
         # Sparse reward environment (short horizon).
         env_config:
             desc:

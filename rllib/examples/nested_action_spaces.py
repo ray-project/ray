@@ -65,6 +65,13 @@ if __name__ == "__main__":
                 "c": Discrete(4)
             }),
         },
+        # By default, our complex input net model will only concatenate:
+        "model": {
+            # Just flatten/one-hot all inputs and concatenate.
+            "fcnet_hiddens": [],
+            # Then push concatenated inputs through the "post" FC stack.
+            "post_fcnet_hiddens": [256, 256],
+        },
         "entropy_coeff": 0.00005,  # We don't want high entropy in this Env.
         "gamma": 0.0,  # No history in Env (bandit problem).
         "lr": 0.0005,
@@ -73,7 +80,7 @@ if __name__ == "__main__":
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 4,
         "num_workers": 0,
-        "vf_loss_coeff": 0.01,
+        "vf_loss_coeff": 0.005,
         "framework": args.framework,
     }
 
@@ -83,7 +90,7 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

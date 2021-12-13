@@ -152,12 +152,14 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 out_size=num_outputs,
                 activation_fn=None,
                 initializer=torch_normc_initializer(0.01))
-            # Create the value branch model.
-            self.value_layer = SlimFC(
-                in_size=self.post_fc_stack.num_outputs,
-                out_size=1,
-                activation_fn=None,
-                initializer=torch_normc_initializer(0.01))
+            # Create the value branch model, if necessary.
+            if len(self.flattened_input_space) > 1 or \
+                    self.model_config["vf_share_layers"] is True:
+                self.value_layer = SlimFC(
+                    in_size=self.post_fc_stack.num_outputs,
+                    out_size=1,
+                    activation_fn=None,
+                    initializer=torch_normc_initializer(0.01))
         else:
             self.num_outputs = concat_size
 

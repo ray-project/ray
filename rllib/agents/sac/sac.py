@@ -50,8 +50,8 @@ DEFAULT_CONFIG = with_common_config({
     "Q_model": {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
-        "post_fcnet_hiddens": [],
-        "post_fcnet_activation": None,
+        "post_fcnet_hiddens": [256, 256],
+        "post_fcnet_activation": "relu",
         "custom_model": None,  # Use this to define custom Q-model(s).
         "custom_model_config": {},
     },
@@ -61,8 +61,8 @@ DEFAULT_CONFIG = with_common_config({
     "policy_model": {
         "fcnet_hiddens": [256, 256],
         "fcnet_activation": "relu",
-        "post_fcnet_hiddens": [],
-        "post_fcnet_activation": None,
+        "post_fcnet_hiddens": [256, 256],
+        "post_fcnet_activation": "relu",
         "custom_model": None,  # Use this to define a custom policy model.
         "custom_model_config": {},
     },
