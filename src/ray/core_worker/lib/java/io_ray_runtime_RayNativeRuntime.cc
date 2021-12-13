@@ -185,7 +185,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
                 result_id, data_size, metadata, contained_object_ids,
-                task_output_inlined_bytes, result_ptr));
+                &task_output_inlined_bytes, result_ptr));
 
             // A nullptr is returned if the object already exists.
             auto result = *result_ptr;
