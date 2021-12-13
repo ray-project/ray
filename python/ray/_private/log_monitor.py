@@ -289,7 +289,6 @@ class LogMonitor:
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
-                    o = file_info.file_handle.tell()
                     next_line = file_info.file_handle.readline()
                     # Replace any characters not in UTF-8 with
                     # a replacement character, see
@@ -297,8 +296,6 @@ class LogMonitor:
                     next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
-                    if next_line == "\n":
-                        continue
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
 
