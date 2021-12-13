@@ -177,7 +177,7 @@ def test_exponential_wait(shutdown_only):
 
     # Assert that last_wwait / second_last ~= 2, with a healthy buffer since ci
     # is noisy.
-    assert 2 * second_last < last_wait < 4 * second_last
+    assert second_last < last_wait < 4 * second_last
     assert 7 < last_wait
 
 
