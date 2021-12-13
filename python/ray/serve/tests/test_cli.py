@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from ray import serve
-from ray.tests.test_runtime_env_working_dir import tmp_working_dir  # noqa: F401, E501
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 
 
 @pytest.fixture

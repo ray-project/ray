@@ -1,10 +1,12 @@
 import logging
 from typing import Callable, Dict, List, Optional, Tuple
 
+import gym
+
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID, MultiAgentDict
+from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,8 @@ class RemoteBaseEnv(BaseEnv):
     This provides dynamic batching of inference as observations are returned
     from the remote simulator actors. Both single and multi-agent child envs
     are supported, and envs can be stepped synchronously or asynchronously.
+
+    NOTE: This class implicitly assumes that the remote envs are gym.Env's
 
     You shouldn't need to instantiate this class directly. It's automatically
     inserted when you use the `remote_worker_envs=True` option in your
@@ -61,6 +65,8 @@ class RemoteBaseEnv(BaseEnv):
         # List of ray actor handles (each handle points to one @ray.remote
         # sub-environment).
         self.actors: Optional[List[ray.actor.ActorHandle]] = None
+        self._observation_space = None
+        self._action_space = None
         # Dict mapping object refs (return values of @ray.remote calls),
         # whose actual values we are waiting for (via ray.wait in
         # `self.poll()`) to their corresponding actor handles (the actors
@@ -97,6 +103,10 @@ class RemoteBaseEnv(BaseEnv):
                 self.actors = [
                     make_remote_env(i) for i in range(self.num_envs)
                 ]
+                self._observation_space = ray.get(
+                    self.actors[0].observation_space.remote())
+                self._action_space = ray.get(
+                    self.actors[0].action_space.remote())
 
         # Lazy initialization. Call `reset()` on all @ray.remote
         # sub-environment actors at the beginning.
@@ -184,7 +194,7 @@ class RemoteBaseEnv(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         actor = self.actors[env_id]
         obj_ref = actor.reset.remote()
         self.pending[obj_ref] = actor
@@ -199,8 +209,22 @@ class RemoteBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
+        if as_dict:
+            return {env_id: actor for env_id, actor in enumerate(self.actors)}
         return self.actors
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space(self) -> gym.spaces.Dict:
+        return self._observation_space
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space(self) -> gym.Space:
+        return self._action_space
 
 
 @ray.remote(num_cpus=0)
@@ -220,6 +244,14 @@ class _RemoteMultiAgentEnv:
 
     def step(self, action_dict):
         return self.env.step(action_dict)
+
+    # defining these 2 functions that way this information can be queried
+    # with a call to ray.get()
+    def observation_space(self):
+        return self.env.observation_space
+
+    def action_space(self):
+        return self.env.action_space
 
 
 @ray.remote(num_cpus=0)
@@ -243,3 +275,11 @@ class _RemoteSingleAgentEnv:
         } for x in [obs, rew, done, info]]
         done["__all__"] = done[_DUMMY_AGENT_ID]
         return obs, rew, done, info
+
+    # defining these 2 functions that way this information can be queried
+    # with a call to ray.get()
+    def observation_space(self):
+        return self.env.observation_space
+
+    def action_space(self):
+        return self.env.action_space

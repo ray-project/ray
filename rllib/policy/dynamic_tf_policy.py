@@ -17,6 +17,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
@@ -205,6 +206,7 @@ class DynamicTFPolicy(TFPolicy):
                 get_placeholder(
                     space=vr.space,
                     time_axis=not isinstance(vr.shift, int),
+                    name=k,
                 ) for k, vr in self.model.view_requirements.items()
                 if k.startswith("state_in_")
             ]
@@ -230,18 +232,23 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
-            action_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_action_ph = {}
-            if SampleBatch.PREV_ACTIONS not in self.view_requirements:
-                prev_action_ph = {
-                    SampleBatch.PREV_ACTIONS: ModelCatalog.
-                    get_action_placeholder(action_space, "prev_action")
-                }
-            self._input_dict, self._dummy_batch = \
-                self._get_input_dict_and_dummy_batch(
-                    self.view_requirements,
-                    dict({SampleBatch.ACTIONS: action_ph},
-                         **prev_action_ph))
+            if not self.config.get("_disable_action_flattening"):
+                action_ph = ModelCatalog.get_action_placeholder(action_space)
+                prev_action_ph = {}
+                if SampleBatch.PREV_ACTIONS not in self.view_requirements:
+                    prev_action_ph = {
+                        SampleBatch.PREV_ACTIONS: ModelCatalog.
+                        get_action_placeholder(action_space, "prev_action")
+                    }
+                self._input_dict, self._dummy_batch = \
+                    self._get_input_dict_and_dummy_batch(
+                        self.view_requirements,
+                        dict({SampleBatch.ACTIONS: action_ph},
+                             **prev_action_ph))
+            else:
+                self._input_dict, self._dummy_batch = \
+                    self._get_input_dict_and_dummy_batch(
+                        self.view_requirements, {})
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
@@ -257,6 +264,7 @@ class DynamicTFPolicy(TFPolicy):
         sampled_action = None
         sampled_action_logp = None
         dist_inputs = None
+        extra_action_fetches = {}
         self._state_out = None
         if not self._is_tower:
             # Create the Exploration object to use for this Policy.
@@ -319,12 +327,11 @@ class DynamicTFPolicy(TFPolicy):
                 else:
                     if isinstance(self.model, tf.keras.Model):
                         dist_inputs, self._state_out, \
-                            self._extra_action_fetches = \
+                            extra_action_fetches = \
                             self.model(self._input_dict)
                     else:
                         dist_inputs, self._state_out = self.model(
-                            self._input_dict, self._state_inputs,
-                            self._seq_lens)
+                            self._input_dict)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
@@ -335,6 +342,14 @@ class DynamicTFPolicy(TFPolicy):
                         timestep=timestep,
                         explore=explore)
 
+        if dist_inputs is not None:
+            extra_action_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+
+        if sampled_action_logp is not None:
+            extra_action_fetches[SampleBatch.ACTION_LOGP] = sampled_action_logp
+            extra_action_fetches[SampleBatch.ACTION_PROB] = \
+                tf.exp(tf.cast(sampled_action_logp, tf.float32))
+
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session(
             config=tf1.ConfigProto(**self.config["tf_session_args"]))
@@ -342,6 +357,13 @@ class DynamicTFPolicy(TFPolicy):
         batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
+
+        prev_action_input = self._input_dict[SampleBatch.PREV_ACTIONS] if \
+            SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys \
+            else None
+        prev_reward_input = self._input_dict[SampleBatch.PREV_REWARDS] if \
+            SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys \
+            else None
 
         super().__init__(
             observation_space=obs_space,
@@ -359,8 +381,8 @@ class DynamicTFPolicy(TFPolicy):
             model=self.model,
             state_inputs=self._state_inputs,
             state_outputs=self._state_out,
-            prev_action_input=self._input_dict.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_input=self._input_dict.get(SampleBatch.PREV_REWARDS),
+            prev_action_input=prev_action_input,
+            prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
@@ -370,6 +392,10 @@ class DynamicTFPolicy(TFPolicy):
         # Phase 2 init.
         if before_loss_init is not None:
             before_loss_init(self, obs_space, action_space, config)
+        if hasattr(self, "_extra_action_fetches"):
+            self._extra_action_fetches.update(extra_action_fetches)
+        else:
+            self._extra_action_fetches = extra_action_fetches
 
         # Loss initialization and model/postprocessing test calls.
         if not self._is_tower:
@@ -554,7 +580,7 @@ class DynamicTFPolicy(TFPolicy):
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
-            # This is a tower, input placeholders already exist.
+            # This is a tower: Input placeholders already exist.
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
             # All others.
@@ -563,9 +589,18 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
-                    flatten = view_col not in [
-                        SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
-                              not self.config["_disable_preprocessor_api"]
+                    # Do not flatten actions if action flattening disabled.
+                    if self.config.get("_disable_action_flattening") and \
+                            view_col in [SampleBatch.ACTIONS,
+                                         SampleBatch.PREV_ACTIONS]:
+                        flatten = False
+                    # Do not flatten observations if no preprocessor API used.
+                    elif view_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS] \
+                            and self.config["_disable_preprocessor_api"]:
+                        flatten = False
+                    # Flatten everything else.
+                    else:
+                        flatten = True
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,
                         name=view_col,
@@ -592,19 +627,31 @@ class DynamicTFPolicy(TFPolicy):
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
 
-        logger.info("Testing `compute_actions` w/ dummy batch.")
-        actions, state_outs, extra_fetches = \
-            self.compute_actions_from_input_dict(
-                self._dummy_batch, explore=False, timestep=0)
-        for key, value in extra_fetches.items():
-            self._dummy_batch[key] = value
+        # Fields that have not been accessed are not needed for action
+        # computations -> Tag them as `used_for_compute_actions=False`.
+        for key, view_req in self.view_requirements.items():
+            if not key.startswith("state_in_") and \
+                    key not in self._input_dict.accessed_keys:
+                view_req.used_for_compute_actions = False
+        for key, value in self._extra_action_fetches.items():
+            self._dummy_batch[key] = get_dummy_batch_for_space(
+                gym.spaces.Box(
+                    -1.0,
+                    1.0,
+                    shape=value.shape.as_list()[1:],
+                    dtype=value.dtype.name),
+                batch_size=len(self._dummy_batch),
+            )
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
                             "view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                        -1.0,
+                        1.0,
+                        shape=value.shape[1:],
+                        dtype=value.dtype.name),
                     used_for_compute_actions=False,
                 )
         dummy_batch = self._dummy_batch
@@ -679,7 +726,8 @@ class DynamicTFPolicy(TFPolicy):
                         key not in [
                             SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                            SampleBatch.REWARDS, SampleBatch.INFOS]:
+                            SampleBatch.REWARDS, SampleBatch.INFOS,
+                            SampleBatch.OBS_EMBEDS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:

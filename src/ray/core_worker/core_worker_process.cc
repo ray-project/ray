@@ -21,16 +21,25 @@ namespace ray {
 namespace core {
 namespace {
 
-/// The global instance of `CoreWorkerProcess`.
-std::unique_ptr<CoreWorkerProcess> core_worker_process;
-}  // namespace
+std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 
-thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
+}  // namespace
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcess(options));
+  core_worker_process.reset(new CoreWorkerProcessImpl(options));
+
+#ifndef _WIN32
+  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
+  // constructor. We assume that spdlog has been initialized before this line. When the
+  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
+  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
+  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
+  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
+  // `CoreWorkerProcess` destructor.
+  RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
+#endif
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -38,19 +47,40 @@ void CoreWorkerProcess::Shutdown() {
   if (!core_worker_process) {
     return;
   }
-  RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::DRIVER)
-      << "The `Shutdown` interface is for driver only.";
-  auto global_worker = core_worker_process->GetGlobalWorker();
-  RAY_CHECK(global_worker);
-  global_worker->Disconnect();
-  global_worker->Shutdown();
-  core_worker_process->RemoveWorker(global_worker);
+  core_worker_process->ShutdownDriver();
   core_worker_process.reset();
 }
 
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
 
-CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
+void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
+
+CoreWorker &CoreWorkerProcess::GetCoreWorker() {
+  EnsureInitialized(/*quick_exit*/ true);
+  return core_worker_process->GetCoreWorkerForCurrentThread();
+}
+
+void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
+  EnsureInitialized(/*quick_exit*/ false);
+  core_worker_process->SetThreadLocalWorkerById(worker_id);
+}
+
+void CoreWorkerProcess::RunTaskExecutionLoop() {
+  EnsureInitialized(/*quick_exit*/ false);
+  core_worker_process->RunWorkerTaskExecutionLoop();
+  core_worker_process.reset();
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
+  if (!core_worker_process) {
+    return nullptr;
+  }
+  return core_worker_process->GetWorker(worker_id);
+}
+
+thread_local std::weak_ptr<CoreWorker> CoreWorkerProcessImpl::thread_local_core_worker_;
+
+CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
@@ -117,21 +147,10 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
                  std::unordered_map<std::string, std::string>(), options_.log_dir,
                  RayConfig::instance().event_level());
   }
-
-#ifndef _WIN32
-  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
-  // constructor. We assume that spdlog has been initialized before this line. When the
-  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
-  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
-  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
-  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
-  // `CoreWorkerProcess` destructor.
-  RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
-#endif
 }
 
-CoreWorkerProcess::~CoreWorkerProcess() {
-  RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
+CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
+  RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   stats::Shutdown();
@@ -156,12 +175,10 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   }
 }
 
-void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
-
-void CoreWorkerProcess::InitializeSystemConfig() {
+void CoreWorkerProcessImpl::InitializeSystemConfig() {
   // We have to create a short-time thread here because the RPC request to get the system
   // config from Raylet is asynchronous, and we need to synchronously initialize the
-  // system config in the constructor of `CoreWorkerProcess`.
+  // system config in the constructor of `CoreWorkerProcessImpl`.
   std::promise<std::string> promise;
   std::thread thread([&] {
     instrumented_io_context io_service;
@@ -192,7 +209,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            if (status.IsGrpcUnavailable()) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status;
@@ -220,7 +237,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
   RayConfig::instance().initialize(promise.get_future().get());
 }
 
-bool CoreWorkerProcess::ShouldCreateGlobalWorkerOnConstruction() const {
+bool CoreWorkerProcessImpl::ShouldCreateGlobalWorkerOnConstruction() const {
   // We need to create the worker instance here if:
   // 1. This is a driver process. In this case, the driver is ready to use right after
   // the CoreWorkerProcess::Initialize.
@@ -232,23 +249,98 @@ bool CoreWorkerProcess::ShouldCreateGlobalWorkerOnConstruction() const {
                                        options_.language == Language::PYTHON);
 }
 
-std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
-  if (!core_worker_process) {
-    return nullptr;
-  }
-  absl::ReaderMutexLock workers_lock(&core_worker_process->mutex_);
-  auto it = core_worker_process->workers_.find(worker_id);
-  if (it != core_worker_process->workers_.end()) {
+std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetWorker(
+    const WorkerID &worker_id) const {
+  absl::ReaderMutexLock lock(&mutex_);
+  auto it = workers_.find(worker_id);
+  if (it != workers_.end()) {
     return it->second;
   }
   return nullptr;
 }
 
-CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized(/*quick_exit*/ true);
-  if (core_worker_process->options_.num_workers == 1) {
-    auto global_worker = core_worker_process->GetGlobalWorker();
-    if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
+std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetGlobalWorker() {
+  absl::ReaderMutexLock lock(&mutex_);
+  return global_worker_;
+}
+
+std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateWorker() {
+  auto worker = std::make_shared<CoreWorker>(
+      options_,
+      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
+  RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
+  absl::WriterMutexLock lock(&mutex_);
+  if (options_.num_workers == 1) {
+    global_worker_ = worker;
+  }
+  thread_local_core_worker_ = worker;
+
+  workers_.emplace(worker->GetWorkerID(), worker);
+  RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
+  return worker;
+}
+
+void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
+  worker->WaitForShutdown();
+  absl::WriterMutexLock lock(&mutex_);
+  if (global_worker_) {
+    RAY_CHECK(global_worker_ == worker);
+  } else {
+    RAY_CHECK(thread_local_core_worker_.lock() == worker);
+  }
+  thread_local_core_worker_.reset();
+  {
+    workers_.erase(worker->GetWorkerID());
+    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
+  }
+  if (global_worker_ == worker) {
+    global_worker_ = nullptr;
+  }
+}
+
+void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
+  if (options_.num_workers == 1) {
+    // Run the task loop in the current thread only if the number of workers is 1.
+    auto worker = GetGlobalWorker();
+    if (!worker) {
+      worker = CreateWorker();
+    }
+    worker->RunTaskExecutionLoop();
+    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
+    RemoveWorker(worker);
+  } else {
+    std::vector<std::thread> worker_threads;
+    for (int i = 0; i < options_.num_workers; i++) {
+      worker_threads.emplace_back([this, i] {
+        SetThreadName("worker.task" + std::to_string(i));
+        auto worker = CreateWorker();
+        worker->RunTaskExecutionLoop();
+        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
+                      << std::to_string(i) << ". Removing a worker.";
+        RemoveWorker(worker);
+      });
+    }
+    for (auto &thread : worker_threads) {
+      thread.join();
+    }
+  }
+}
+
+void CoreWorkerProcessImpl::ShutdownDriver() {
+  RAY_CHECK(options_.worker_type == WorkerType::DRIVER)
+      << "The `Shutdown` interface is for driver only.";
+  auto global_worker = GetGlobalWorker();
+  RAY_CHECK(global_worker);
+  global_worker->Disconnect();
+  global_worker->Shutdown();
+  RemoveWorker(global_worker);
+}
+
+CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
+  if (options_.num_workers == 1) {
+    auto global_worker = GetGlobalWorker();
+    if (ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
       // This could only happen when the worker has already been shutdown.
       // In this case, we should exit without crashing.
       // TODO (scv119): A better solution could be returning error code
@@ -261,100 +353,20 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
     return *global_worker;
   }
-  auto ptr = current_core_worker_.lock();
+  auto ptr = thread_local_core_worker_.lock();
   RAY_CHECK(ptr != nullptr)
       << "The current thread is not bound with a core worker instance.";
   return *ptr;
 }
 
-void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized(/*quick_exit*/ false);
-  if (core_worker_process->options_.num_workers == 1) {
-    auto global_worker = core_worker_process->GetGlobalWorker();
-    RAY_CHECK(global_worker) << "Global worker must not be NULL.";
-    RAY_CHECK(global_worker->GetWorkerID() == worker_id);
+void CoreWorkerProcessImpl::SetThreadLocalWorkerById(const WorkerID &worker_id) {
+  if (options_.num_workers == 1) {
+    RAY_CHECK(GetGlobalWorker()->GetWorkerID() == worker_id);
     return;
   }
-  current_core_worker_ = core_worker_process->GetWorker(worker_id);
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
-    const WorkerID &worker_id) const {
-  absl::ReaderMutexLock lock(&mutex_);
-  auto it = workers_.find(worker_id);
-  RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
-  return it->second;
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
-  absl::ReaderMutexLock lock(&mutex_);
-  return global_worker_;
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  auto worker = std::make_shared<CoreWorker>(
-      options_,
-      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
-  RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
-  absl::WriterMutexLock lock(&mutex_);
-  if (options_.num_workers == 1) {
-    global_worker_ = worker;
-  }
-  current_core_worker_ = worker;
-
-  workers_.emplace(worker->GetWorkerID(), worker);
-  RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
-  return worker;
-}
-
-void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->WaitForShutdown();
-  absl::WriterMutexLock lock(&mutex_);
-  if (global_worker_) {
-    RAY_CHECK(global_worker_ == worker);
-  } else {
-    RAY_CHECK(current_core_worker_.lock() == worker);
-  }
-  current_core_worker_.reset();
-  {
-    workers_.erase(worker->GetWorkerID());
-    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
-  }
-  if (global_worker_ == worker) {
-    global_worker_ = nullptr;
-  }
-}
-
-void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized(/*quick_exit*/ false);
-  RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
-  if (core_worker_process->options_.num_workers == 1) {
-    // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = core_worker_process->GetGlobalWorker();
-    if (!worker) {
-      worker = core_worker_process->CreateWorker();
-    }
-    worker->RunTaskExecutionLoop();
-    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
-    core_worker_process->RemoveWorker(worker);
-  } else {
-    std::vector<std::thread> worker_threads;
-    for (int i = 0; i < core_worker_process->options_.num_workers; i++) {
-      worker_threads.emplace_back([i] {
-        SetThreadName("worker.task" + std::to_string(i));
-        auto worker = core_worker_process->CreateWorker();
-        worker->RunTaskExecutionLoop();
-        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
-                      << std::to_string(i) << ". Removing a worker.";
-        core_worker_process->RemoveWorker(worker);
-      });
-    }
-    for (auto &thread : worker_threads) {
-      thread.join();
-    }
-  }
-
-  core_worker_process.reset();
+  auto worker = GetWorker(worker_id);
+  RAY_CHECK(worker) << "Worker " << worker_id << " not found.";
+  thread_local_core_worker_ = GetWorker(worker_id);
 }
 
 }  // namespace core
