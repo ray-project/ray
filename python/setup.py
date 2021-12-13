@@ -507,6 +507,13 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
+    subprocess.check_call(
+        [
+            sys.executable, "-m", "pip", "install", "-U", ".",
+        ],
+        cwd=os.path.join(ROOT_DIR, "ray/cloudpickle-generators"),
+        env=dict(os.environ, CC="gcc"))
+
     bazel_flags = ["--verbose_failures"]
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
@@ -734,6 +741,17 @@ setuptools.setup(
     install_requires=setup_spec.install_requires,
     setup_requires=["cython >= 0.29.26", "wheel"],
     extras_require=setup_spec.extras,
+    ext_modules=[
+        setuptools.Extension(
+            'ray.cloudpickle.generator._core',
+            ['cloudpickle/generator/_core.c'],
+            extra_compile_args=[
+                '-Wall',
+                '-Wextra',
+                '-Wno-missing-field-initializers',
+            ]
+        ),
+    ],
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
