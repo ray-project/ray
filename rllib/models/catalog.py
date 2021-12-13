@@ -806,6 +806,9 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
+        orig_space = input_space if not hasattr(
+            input_space, "original_space") else input_space.original_space
+
         # `input_space` is 3D Box -> VisionNet.
         if isinstance(input_space, Box) and len(input_space.shape) == 3:
             if framework == "jax":
@@ -815,7 +818,10 @@ class ModelCatalog:
                 return Keras_VisionNet
             return VisionNet
         # `input_space` is 1D Box -> FCNet.
-        elif isinstance(input_space, Box) and len(input_space.shape) == 1:
+        elif isinstance(input_space, Box) and len(input_space.shape) == 1 and \
+                (not isinstance(orig_space, (Dict, Tuple)) or not any(
+                    isinstance(s, Box) and len(s.shape) >= 2
+                    for s in tree.flatten(orig_space.spaces))):
             # Keras native requested AND no auto-rnn-wrapping.
             if model_config.get("_use_default_native_models") and Keras_FCNet:
                 return Keras_FCNet
