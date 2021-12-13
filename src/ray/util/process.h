@@ -111,20 +111,3 @@ bool IsParentProcessAlive();
 bool IsProcessAlive(pid_t pid);
 
 }  // namespace ray
-
-// We only define operators required by the standard library (==, hash):
-// -   Valid process objects must be distinguished by their IDs.
-// - Invalid process objects must be distinguished by their addresses.
-namespace std {
-
-template <>
-struct equal_to<ray::Process> {
-  bool operator()(const ray::Process &x, const ray::Process &y) const;
-};
-
-template <>
-struct hash<ray::Process> {
-  size_t operator()(const ray::Process &value) const;
-};
-
-}  // namespace std

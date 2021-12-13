@@ -606,27 +606,3 @@ bool IsProcessAlive(pid_t pid) {
 }
 
 }  // namespace ray
-
-namespace std {
-
-bool equal_to<ray::Process>::operator()(const ray::Process &x,
-                                        const ray::Process &y) const {
-  using namespace ray;
-  return !x.IsNull()
-             ? !y.IsNull()
-                   ? x.IsValid()
-                         ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                     : y.IsValid() ? false
-                                   : equal_to<void const *>()(x.Get(), y.Get())
-                   : false
-             : y.IsNull();
-}
-
-size_t hash<ray::Process>::operator()(const ray::Process &value) const {
-  using namespace ray;
-  return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
-                                           : hash<void const *>()(value.Get())
-                         : size_t();
-}
-
-}  // namespace std

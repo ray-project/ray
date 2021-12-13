@@ -130,20 +130,20 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
 }
 
 WorkerPool::~WorkerPool() {
-  std::unordered_set<Process> procs_to_kill;
+  absl::flat_hash_map<StartupToken, Process> procs_to_kill;
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
     for (const auto &worker : entry.second.registered_workers) {
-      procs_to_kill.insert(worker->GetProcess());
+      procs_to_kill.emplace(worker->GetStartupToken(), worker->GetProcess());
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.insert(starting_worker.second.proc);
+      procs_to_kill.emplace(starting_worker.first, starting_worker.second.proc);
     }
   }
-  for (Process proc : procs_to_kill) {
-    proc.Kill();
+  for (auto& entry : procs_to_kill) {
+    entry.second.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }
 }
