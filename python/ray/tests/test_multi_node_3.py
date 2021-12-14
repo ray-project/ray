@@ -10,7 +10,7 @@ from ray._private.test_utils import (
     kill_process_by_name, Semaphore)
 
 
-def test_calling_start_ray_head(call_ray_stop_only, tmp_path):
+def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
