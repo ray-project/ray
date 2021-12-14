@@ -2,8 +2,6 @@ from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import cython
 
-import pyarrow as pa
-
 DEF MEMCOPY_THREADS = 6
 
 # This is the default alignment value for len(buffer) < 2048.
@@ -519,6 +517,11 @@ cdef class RawSerializedObject(SerializedObject):
                                  MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+
+try:
+    import pyarrow as pa
+except Exception:
+    pa = None
 
 cdef class ArrowSerializedObject(SerializedObject):
     cdef:
