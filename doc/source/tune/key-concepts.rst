@@ -63,6 +63,32 @@ To use Tune, you will need to wrap this function in a lightweight :ref:`trainabl
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
+Hyperparameters
+---------------
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network, how many layers, what kind
+of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
+
 tune.run and Trials
 -------------------
 
@@ -119,7 +145,7 @@ See more documentation: :ref:`tune-run-ref`.
 Search spaces
 -------------
 
-To optimize your hyperparameters, you have to define a *search space*.
+To optimize your *hyperparameters*, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
 how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).

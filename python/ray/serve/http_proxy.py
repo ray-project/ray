@@ -111,14 +111,8 @@ class LongestPrefixRouter:
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
-            # Default case where the user did not specify a route prefix.
-            if info.route is None:
-                route = f"/{endpoint}"
-            else:
-                route = info.route
-
-            routes.append(route)
-            route_info[route] = endpoint
+            routes.append(info.route)
+            route_info[info.route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -208,7 +202,7 @@ class HTTPProxy:
                        endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
-            route = info.route if info.route is not None else f"/{endpoint}"
+            route = info.route
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)

@@ -645,7 +645,7 @@ py_test(
 py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/pg/tests/test_pg.py"]
 )
 
