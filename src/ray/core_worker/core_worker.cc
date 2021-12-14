@@ -368,8 +368,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
-      RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
-      worker_context_.GetCurrentJobID(),
+      GetWorkerType(), RayConfig::instance().worker_lease_timeout_milliseconds(),
+      actor_creator_, worker_context_.GetCurrentJobID(),
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
@@ -918,13 +918,18 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                               /* owner_address = */ rpc_address_, data,
                                               created_by_worker);
     }
-    if (!status.ok() || !data) {
+    if (!status.ok()) {
       if (owned_by_us) {
         reference_counter_->RemoveOwnedObject(*object_id);
       } else {
         RemoveLocalReference(*object_id);
       }
       return status;
+    } else if (*data == nullptr) {
+      // Object already exists in plasma. Store the in-memory value so that the
+      // client will check the plasma store.
+      RAY_CHECK(
+          memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
   }
   return Status::OK();
@@ -1996,7 +2001,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
-                                        int64_t &task_output_inlined_bytes,
+                                        int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
@@ -2017,10 +2022,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     if (options_.is_local_mode ||
         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
-         (task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
+         (*task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
           RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
-      task_output_inlined_bytes += static_cast<int64_t>(data_size);
+      *task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
                                        &data_buffer,
@@ -2184,14 +2189,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object) {
+  RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
-  if (!return_object) {
-    return status;
-  }
+  RAY_CHECK(return_object);
+  RAY_CHECK(!options_.is_local_mode);
   std::unique_ptr<rpc::Address> caller_address =
-      options_.is_local_mode ? nullptr
-                             : std::make_unique<rpc::Address>(
-                                   worker_context_.GetCurrentTask()->CallerAddress());
+      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
     if (!status.ok()) {
@@ -2200,6 +2203,56 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
     }
   }
   return status;
+}
+
+bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
+                                         std::shared_ptr<RayObject> *return_object) {
+  // TODO(swang): If there is already an existing copy of this object, then it
+  // might not have the same value as the new copy. It would be better to evict
+  // the existing copy here.
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  bool got_exception;
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
+
+  // Temporarily set the return object's owner's address. This is needed to retrieve the
+  // value from plasma.
+  reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
+
+  auto status = plasma_store_provider_->Get({return_id}, 0, worker_context_, &result_map,
+                                            &got_exception);
+  // Remove the temporary ref.
+  RemoveLocalReference(return_id);
+
+  if (result_map.count(return_id)) {
+    *return_object = std::move(result_map[return_id]);
+    RAY_LOG(DEBUG) << "Pinning existing return object " << return_id
+                   << " owned by worker "
+                   << WorkerID::FromBinary(owner_address.worker_id());
+    // Keep the object in scope until it's been pinned.
+    std::shared_ptr<RayObject> pinned_return_object = *return_object;
+    // Asynchronously ask the raylet to pin the object. Note that this can fail
+    // if the raylet fails. We expect the owner of the object to handle that
+    // case (e.g., by detecting the raylet failure and storing an error).
+    local_raylet_client_->PinObjectIDs(
+        owner_address, {return_id},
+        [return_id, pinned_return_object](const Status &status,
+                                          const rpc::PinObjectIDsReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
+                          << return_id
+                          << ". This object may get evicted while there are still "
+                             "references to it.";
+          }
+        });
+    return true;
+  } else {
+    // Failed to get the existing copy of the return object. It must have been
+    // evicted before we could pin it.
+    // TODO(swang): We should allow the owner to retry this task instead of
+    // immediately returning an error to the application.
+    return false;
+  }
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(

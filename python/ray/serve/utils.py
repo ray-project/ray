@@ -19,8 +19,15 @@ from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
+from enum import Enum
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+
+
+# Use a global singleton enum to emulate default options. We cannot use None
+# for those option because None is a valid new value.
+class DEFAULT(Enum):
+    VALUE = 1
 
 
 def parse_request_item(request_item):
