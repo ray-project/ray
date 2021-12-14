@@ -93,8 +93,22 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
+
+
     blocked.poll()
     assert blocked.returncode is None
+    # Make sure ray cluster is up
+    run_string_as_driver("""
+import ray
+from time import sleep
+for i in range(0, 5):
+    try:
+        ray.init(address='auto')
+        break
+    except:
+        sleep(1)
+""")
+
     # Make sure ray cluster is up
     run_string_as_driver("""
 import ray

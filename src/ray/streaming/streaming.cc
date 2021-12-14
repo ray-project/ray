@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/streaming/streaming.h"
+
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
@@ -44,8 +45,12 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
       std::move(buffer), meta, std::vector<rpc::ObjectReference>(), true)));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  return CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
-                                                            options);
+  auto result = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      peer_actor_id, function, args, options);
+  if (!result.has_value()) {
+    RAY_CHECK(false) << "Back pressure should not be enabled.";
+  }
+  return result.value();
 }
 }  // namespace streaming
 }  // namespace ray

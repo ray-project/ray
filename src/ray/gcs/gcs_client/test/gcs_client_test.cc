@@ -32,7 +32,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
-  "ping_gcs_rpc_server_max_retries": 60,
+  "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_grpc_based_pubsub": $0
