@@ -467,7 +467,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
-          ray_debugger_external, log_style, log_color, verbose):
+          ray_debugger_external):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
