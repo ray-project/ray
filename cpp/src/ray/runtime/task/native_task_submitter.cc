@@ -46,10 +46,13 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskOptions options{};
   options.name = call_options.name;
   options.resources = call_options.resources;
-  std::vector<rpc::ObjectReference> return_refs;
+  std::optional<std::vector<rpc::ObjectReference>> return_refs;
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     return_refs = core_worker.SubmitActorTask(
         invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
+    if (!return_refs.has_value()) {
+      return ObjectID::Nil();
+    }
   } else {
     BundleID bundle_id = GetBundleID(call_options);
     rpc::SchedulingStrategy scheduling_strategy;
@@ -67,7 +70,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          options, 1, false, scheduling_strategy, "");
   }
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs) {
+  for (const auto &ref : return_refs.value()) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   return return_ids[0];

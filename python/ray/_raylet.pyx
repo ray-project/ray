@@ -102,6 +102,10 @@ from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
+from ray.includes.optional cimport (
+    optional
+)
+
 import ray
 from ray.exceptions import (
     RayActorError,
@@ -112,6 +116,7 @@ from ray.exceptions import (
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
+    PendingCallsLimitExceeded,
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
@@ -1522,6 +1527,7 @@ cdef class CoreWorker:
                      c_string extension_data,
                      c_string serialized_runtime_env,
                      concurrency_groups_dict,
+                     int32_t max_pending_calls,
                      scheduling_strategy,
                      ):
         cdef:
@@ -1561,7 +1567,8 @@ cdef class CoreWorker:
                         c_concurrency_groups,
                         # execute out of order for
                         # async or threaded actors.
-                        is_asyncio or max_concurrency > 1),
+                        is_asyncio or max_concurrency > 1,
+                        max_pending_calls),
                     extension_data,
                     &c_actor_id))
 
@@ -1642,7 +1649,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[CObjectReference] return_refs
+            optional[c_vector[CObjectReference]] return_refs
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -1659,8 +1666,25 @@ cdef class CoreWorker:
                 c_actor_id,
                 ray_function,
                 args_vector, CTaskOptions(name, num_returns, c_resources))
-
-            return VectorToObjectRefs(return_refs)
+            if return_refs.has_value():
+                return VectorToObjectRefs(return_refs.value())
+            else:
+                actor = self.get_actor_handle(actor_id)
+                actor_handle = (CCoreWorkerProcess.GetCoreWorker()
+                                .GetActorHandle(c_actor_id))
+                raise PendingCallsLimitExceeded("The task {} could not be "
+                                                "submitted to {} because more "
+                                                "than {} tasks are queued on "
+                                                "the actor. This limit "
+                                                "can be adjusted with the "
+                                                "`max_pending_calls` actor "
+                                                "option.".format(
+                                                    function_descriptor
+                                                    .function_name,
+                                                    repr(actor),
+                                                    (dereference(actor_handle)
+                                                        .MaxPendingCalls())
+                                                ))
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
