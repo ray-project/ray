@@ -23,6 +23,24 @@ def to_label_selector(tags):
         label_selector += "{}={}".format(k, v)
     return label_selector
 
+def status_tag(pod: Dict[str, Any]):
+    if "containerStatuses" not in pod["status"]:
+        return "pending"
+    
+    state = pod["status"]["containerStatuses"][0]["state"]
+
+    logger.info("status_tag: state = {}".format(state))
+
+    if "pending" in state:
+        return "pending"
+    if "running" in state:
+        return "up-to-date"
+    if "waiting" in state:
+        return "waiting"
+    if "terminated" in state:
+        return "update-failed"
+    raise ValueError("Unexpected container state.")
+
 
 class KuberayNodeProvider(NodeProvider):  # type: ignore
     def __init__(
@@ -64,57 +82,30 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         Returns a mapping from created node ids to node metadata.
         """
 
-        # requests.get("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
+        url = "https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
+        # TODO: Put in proper scale here
+        data = requests.patch(url, '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]', headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
 
-        # headers = {"Authorization": "Bearer " + open("/var/run/secrets/kubernetes.io/serviceaccount/token").read()}
-
-        # requests.get("https://kubernetes.default:443/api/v1/namespaces/default/pods/", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
-
-        # scale up
-        # requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]', headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
-
-        # requests.get("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
-
-        # scale down
-
-        # requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster
-        # ...: -complete", '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete"
-        # ...: : ["raycluster-complete-worker-small-group-jjvz4"]}}]', headers={**headers, "Content-type": "application/json
-        # ...: -patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
-
-        # get ip
-
-        # requests.get("https://kubernetes.default:443/api/v1/namespaces/default/pods/raycluster-complete-worker-small-group-2mbv6", headers=headers, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()["podIp"]
-
-        ## requests.patch("https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/raycluster-complete", '[{"op": "add", "path": "/spec/workerGroupSpecs/0/scaleStrategy/workersToDelete", "value": "raycluster-complete-worker-small-group-jjvz4"}]', headers={**headers, "Content-type": "application/json-patch+json"}, verify="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt").json()
-
-        # c = kubernetes.client.ApiClient()
-        # api_instance = kubernetes.client.CustomObjectsApi(c)
-        # api_response = api_instance.get_namespaced_custom_object("ray.io", "v1alpha1", "default", "rayclusters", "raycluster-complete")
-
-        # api_instance.patch_namespaced_custom_object("ray.io", "v1alpha1", "default", "rayclusters", "raycluster-complete", {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 2})
-
-
-        # core_api()
-
-        return {}
+        return data
 
     def internal_ip(self, node_id: str) -> str:
         url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
         data = requests.get(url, headers=self.headers, verify=self.verify).json()
-        return data["podIP"]
+        return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
-        """Returns the tags of the given node (string dict) from the tag cache.
-        Falls back to direct RPC if necessary.
-        """
-        with self.cache_lock:
-            tags = self.tag_cache.get(node_id, None)
-            if tags is None:
-                logger.warning(f"Tags of node {node_id} not found in the cache.")
-                tags = self._node_tags_rpc(node_id)
-                self.tag_cache[node_id] = tags
-            return tags
+        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
+        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        tags = data["metadata"]["labels"]
+        result = tags.copy()
+        result["ray-node-status"] = status_tag(data)
+        if result["ray.io/node-type"] == "head":
+            result["ray-node-type"] = "head"
+            result["ray-user-node-type"] = "ray.head.default"
+        else:
+            result["ray-node-type"] = "worker"
+            result["ray-user-node-type"] = "ray.worker.default"
+        return result
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
@@ -133,7 +124,5 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Terminates a set of nodes.
         Returns map of deleted node ids to node metadata.
         """
-        request = kuberay_pb2.TerminateNodesRequest(node_ids=node_ids)
-        response = self._node_provider_stub.TerminateNodes(request)
-        node_to_meta = _node_meta_response_to_dict(response)
-        return node_to_meta
+        # TODO Implement node termination
+        return {}
