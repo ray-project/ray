@@ -537,8 +537,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Remove the actor from the unresolved actor map.
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor =
-      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+  const auto &actor_namespace = iter->second->GetRayNamespace();
+  auto actor = std::make_shared<GcsActor>(
+      request.task_spec(),
+      actor_namespace.empty() ? get_ray_namespace_(job_id) : actor_namespace);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
