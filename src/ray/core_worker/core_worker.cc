@@ -354,7 +354,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
                                              *task_manager_, *actor_creator_,
-                                             on_excess_queueing));
+                                             on_excess_queueing, io_service_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -1606,6 +1606,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries, actor_name, ray_namespace,
+      actor_creation_options.max_pending_calls,
       actor_creation_options.execute_out_of_order);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
@@ -1764,9 +1765,17 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status_future.get();
 }
 
-std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
+std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
+  absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  /// Check whether backpressure may happen at the very beginning of submitting a task.
+  if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
+    RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
+                   << ". " << direct_actor_submitter_->DebugString(actor_id);
+    return std::nullopt;
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
@@ -1805,17 +1814,18 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
+    /// NOTE: The lock should be released in local mode. The user code may
+    /// submit another task when executing the current task locally, which
+    /// cause deadlock. The code call chain is:
+    /// SubmitActorTask -> python user code -> actor.xx.remote() -> SubmitActorTask
+    lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    io_service_.post(
-        [this, task_spec]() {
-          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
-        },
-        "CoreWorker.SubmitActorTask");
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return returned_refs;
+  return {std::move(returned_refs)};
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,

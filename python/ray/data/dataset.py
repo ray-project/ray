@@ -44,7 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -402,8 +402,11 @@ class Dataset(Generic[T]):
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
-            builder = (ArrowBlockBuilder()
-                       if self._is_arrow_dataset() else SimpleBlockBuilder())
+            dataset_format = self._dataset_format()
+            if dataset_format == "arrow":
+                builder = ArrowBlockBuilder()
+            else:
+                builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
                 input_files=None, exec_stats=BlockExecStats.TODO)
@@ -922,13 +925,13 @@ class Dataset(Generic[T]):
                 "When giving a list for `on`, it must be nonempty.")
 
         try:
-            is_arrow = self._is_arrow_dataset()
+            dataset_format = self._dataset_format()
         except ValueError:
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if is_arrow:
-            # This should be cached from the ._is_arrow_dataset() check, so we
+        if dataset_format == "arrow":
+            # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
             assert schema is not None
@@ -938,7 +941,7 @@ class Dataset(Generic[T]):
                 return on
 
             if on is None:
-                # If a null `on` is given for an Arrow Dataset, coerce it to
+                # If a null `on` is given for a table Dataset, coerce it to
                 # all columns sans any that we want to skip.
                 if skip_cols is None:
                     skip_cols = []
@@ -964,8 +967,9 @@ class Dataset(Generic[T]):
                     "instead of a simple Dataset.")
         return on
 
-    def _is_arrow_dataset(self) -> bool:
-        """Determine if Dataset is an Arrow dataset.
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -973,16 +977,18 @@ class Dataset(Generic[T]):
         try:
             import pyarrow as pa
         except ModuleNotFoundError:
-            return False
+            return "simple"
         else:
             # We need schema to properly validate, so synchronously
             # fetch it if necessary.
             schema = self.schema(fetch_if_missing=True)
             if schema is None:
                 raise ValueError(
-                    "Dataset is empty or cleared, can't determine whether "
-                    "it's an Arrow dataset")
-            return isinstance(schema, pa.Schema)
+                    "Dataset is empty or cleared, can't determine the format"
+                    " of the dataset")
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+            return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -2171,10 +2177,10 @@ class Dataset(Generic[T]):
                 "The dataset has more than the given limit of {} records. "
                 "Use ds.limit(N).to_pandas().".format(limit))
         blocks = self.get_internal_block_refs()
-        output = DelegatingArrowBlockBuilder()
+        output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        return output.build().to_pandas()
+        return BlockAccessor.for_block(output.build()).to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -2233,7 +2239,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self._blocks.get_blocks()
 
-        if self._is_arrow_dataset():
+        if self._dataset_format() == "arrow":
             # Zero-copy path.
             return blocks
 
