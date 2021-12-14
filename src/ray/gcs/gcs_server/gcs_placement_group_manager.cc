@@ -866,12 +866,12 @@ std::string GcsPlacementGroupManager::DebugString() const {
 }
 
 void GcsPlacementGroupManager::RecordMetrics() const {
-  ray::stats::STATS_gcs_num_placement_group.Record(pending_placement_groups_.size(),
-                                                   "Pending");
-  ray::stats::STATS_gcs_num_placement_group.Record(registered_placement_groups_.size(),
-                                                   "Registered");
-  ray::stats::STATS_gcs_num_placement_group.Record(infeasible_placement_groups_.size(),
-                                                   "Infeasible");
+  ray::stats::STATS_gcs_placement_group_count.Record(pending_placement_groups_.size(),
+                                                     "Pending");
+  ray::stats::STATS_gcs_placement_group_count.Record(registered_placement_groups_.size(),
+                                                     "Registered");
+  ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
+                                                     "Infeasible");
 }
 
 }  // namespace gcs

@@ -51,9 +51,9 @@ DECLARE_stats(gcs_new_resource_creation_latency_ms);
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
 DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
-DECLARE_stats(gcs_num_placement_group);
+DECLARE_stats(gcs_placement_group_count);
 
-DECLARE_stats(gcs_num_actors);
+DECLARE_stats(gcs_actors_count);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.

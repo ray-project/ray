@@ -68,13 +68,13 @@ DEFINE_stats(gcs_placement_group_creation_latency_ms,
 DEFINE_stats(gcs_placement_group_scheduling_latency_ms,
              "scheduling latency of placement groups", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
-DEFINE_stats(gcs_num_placement_group,
+DEFINE_stats(gcs_placement_group_count,
              "Number of placement groups broken down by state in {Registered, Pending, "
              "Infeasible}",
              ("State"), (), ray::stats::GAUGE);
 
 /// GCS Actor Manager
-DEFINE_stats(gcs_num_actors,
+DEFINE_stats(gcs_actors_count,
              "Number of actors per state {Created, Destroyed, Unresolved, Pending}",
              ("State"), (), ray::stats::GAUGE);
 }  // namespace stats
