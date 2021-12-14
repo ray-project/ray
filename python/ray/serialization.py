@@ -361,7 +361,8 @@ class SerializationContext:
             # check if arrow is installed and if so use Arrow IPC format
             # to serialize it so that this object can also be read by Java.
             import pyarrow as pa
-            if isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
+            if isinstance(value, pa.Table) or isinstance(
+                    value, pa.RecordBatch):
                 return ArrowSerializedObject(value)
         except Exception:
             pass

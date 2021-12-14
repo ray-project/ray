@@ -348,7 +348,7 @@ cdef class Pickle5Writer:
         with nogil:
             if self._total_bytes < 0:
                 raise ValueError("Must call 'get_total_bytes()' first "
-                                "to get the actual size")
+                                 "to get the actual size")
             # Write inband data & protobuf size for deserialization.
             (<int64_t*>ptr)[0] = len(inband)
             (<int64_t*>ptr)[1] = protobuf_size
@@ -360,7 +360,8 @@ cdef class Pickle5Writer:
             self.python_object.SerializeWithCachedSizesToArray(ptr)
             ptr += protobuf_size
             if self._curr_buffer_addr <= 0:
-                # End of serialization. Writing more stuff will corrupt the memory.
+                # End of serialization.
+                # Writing more stuff will corrupt the memory.
                 return
             # aligned to 64 bytes
             ptr = aligned_address(ptr, kMajorBufferAlign)
@@ -370,9 +371,9 @@ cdef class Pickle5Writer:
                 if (memcopy_threads > 1 and
                         buffer_len > kMemcopyDefaultThreshold):
                     parallel_memcopy(ptr + buffer_addr,
-                                    <const uint8_t*> self.buffers[i].buf,
-                                    buffer_len,
-                                    kMemcopyDefaultBlocksize, memcopy_threads)
+                                     <const uint8_t*> self.buffers[i].buf,
+                                     buffer_len,
+                                     kMemcopyDefaultBlocksize, memcopy_threads)
                 else:
                     memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
 
@@ -482,7 +483,7 @@ cdef class MessagePackSerializedObject(SerializedObject):
             # Write msgpack data first.
             memcpy(ptr, self.msgpack_header_ptr, self._msgpack_header_bytes)
             memcpy(ptr + kMessagePackOffset,
-                self.msgpack_data_ptr, self._msgpack_data_bytes)
+                   self.msgpack_data_ptr, self._msgpack_data_bytes)
 
         if self.nest_serialized_object is not None:
             self.nest_serialized_object.write_to(
@@ -513,9 +514,9 @@ cdef class RawSerializedObject(SerializedObject):
             if (MEMCOPY_THREADS > 1 and
                     self._total_bytes > kMemcopyDefaultThreshold):
                 parallel_memcopy(&buffer[0],
-                                self.value_ptr,
-                                self._total_bytes, kMemcopyDefaultBlocksize,
-                                MEMCOPY_THREADS)
+                                 self.value_ptr,
+                                 self._total_bytes, kMemcopyDefaultBlocksize,
+                                 MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 

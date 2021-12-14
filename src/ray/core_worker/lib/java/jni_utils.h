@@ -572,7 +572,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   }
   auto metadata_ptr = rayObject->GetMetadata();
   auto metadata_str = std::string(reinterpret_cast<const char *>(metadata_ptr->Data()),
-                      metadata_ptr->Size());
+                                  metadata_ptr->Size());
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   jobject java_obj;
   if (metadata_str.rfind(OBJECT_METADATA_TYPE_ARROW) == 0) {

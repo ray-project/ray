@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.ipc.ArrowStreamReader;
@@ -87,7 +86,10 @@ public class ObjectSerializer {
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
-        try (ArrowStreamReader reader = new ArrowStreamReader(new ByteBufferBackedInputStream(nativeRayObject.buffer), new RootAllocator(Long.MAX_VALUE))) {
+        try (ArrowStreamReader reader =
+            new ArrowStreamReader(
+                new ByteBufferBackedInputStream(nativeRayObject.buffer),
+                new RootAllocator(Long.MAX_VALUE))) {
           reader.loadNextBatch();
           return reader.getVectorSchemaRoot();
         } catch (Exception e) {
@@ -169,7 +171,8 @@ public class ObjectSerializer {
         writer.writeBatch();
         writer.end();
         writer.close();
-        NativeRayObject result = new NativeRayObject(sink.toByteArray(), OBJECT_METADATA_TYPE_ARROW);
+        NativeRayObject result =
+            new NativeRayObject(sink.toByteArray(), OBJECT_METADATA_TYPE_ARROW);
         sink.close();
         return result;
       } catch (Exception e) {
