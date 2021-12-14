@@ -13,6 +13,8 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 
 def assert_no_system_failure(p, timeout):
@@ -92,6 +94,9 @@ def test_chaos_task_retry(set_kill_interval):
     # assert_no_system_failure(p, 10)
 
 
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="The cluster does not register nodes at GCS resource manager.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval", [(True, None), (True, 20), (False, None),
