@@ -13,7 +13,6 @@ import logging
 import msgpack
 import os
 import pickle
-import pyarrow as pa
 import setproctitle
 import sys
 import threading
