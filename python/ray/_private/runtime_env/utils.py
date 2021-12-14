@@ -135,6 +135,7 @@ class RuntimeEnv:
         if uris.working_dir_uri \
            or uris.py_modules_uris \
            or uris.conda_uri \
+           or uris.pip_uri \
            or uris.plugin_uris:
             return True
         return False
@@ -147,6 +148,9 @@ class RuntimeEnv:
 
     def conda_uri(self) -> str:
         return self._proto_runtime_env.uris.conda_uri
+
+    def pip_uri(self) -> str:
+        return self._proto_runtime_env.uris.pip_uri
 
     def plugin_uris(self) -> List[str]:
         return list(self._proto_runtime_env.uris.plugin_uris)
@@ -216,8 +220,8 @@ class RuntimeEnv:
             self._proto_runtime_env.py_container_runtime_env.run_options)
 
     @classmethod
-    def from_dict(cls, runtime_env_dict: Dict[str, Any],
-                  conda_get_uri_fn) -> "RuntimeEnv":
+    def from_dict(cls, runtime_env_dict: Dict[str, Any], conda_get_uri_fn,
+                  pip_get_uri_fn) -> "RuntimeEnv":
         proto_runtime_env = ProtoRuntimeEnv()
         proto_runtime_env.py_modules.extend(
             runtime_env_dict.get("py_modules", []))
@@ -228,10 +232,14 @@ class RuntimeEnv:
         if "py_modules" in runtime_env_dict:
             for uri in runtime_env_dict["py_modules"]:
                 proto_runtime_env.uris.py_modules_uris.append(uri)
-        if "conda" or "pip" in runtime_env_dict:
+        if "conda" in runtime_env_dict:
             uri = conda_get_uri_fn(runtime_env_dict)
             if uri is not None:
                 proto_runtime_env.uris.conda_uri = uri
+        if "pip" in runtime_env_dict:
+            uri = pip_get_uri_fn(runtime_env_dict)
+            if uri is not None:
+                proto_runtime_env.uris.pip_uri = uri
         env_vars = runtime_env_dict.get("env_vars", {})
         proto_runtime_env.env_vars.update(env_vars.items())
         if "_ray_release" in runtime_env_dict:
