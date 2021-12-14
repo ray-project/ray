@@ -443,10 +443,22 @@ class PlacementGroupManager:
             ready, _ = ray.wait(list(self._staging_futures.keys()), timeout=0)
 
             for ready_fut in ready:
-                ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
+                self.handle_pg_ready(ready_fut)
 
-                self._staging[ready_pgf].remove(ready_pg)
-                self._ready[ready_pgf].add(ready_pg)
+    def get_staged_pg_futures(self):
+        """Return staged pg futures to wait on.
+
+        Used for Tune Loop V2.
+        """
+        return self._staging_futures
+
+    def handle_pg_ready(self, ready_fut):
+        """Handle pg ready future and update pg manager internal data
+        structure.
+        """
+        ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
+        self._staging[ready_pgf].remove(ready_pg)
+        self._ready[ready_pgf].add(ready_pg)
 
     def get_full_actor_cls(self, trial: "Trial",
                            actor_cls: ActorClass) -> Optional[ActorClass]:
@@ -713,6 +725,7 @@ class PlacementGroupManager:
         for pg, pgf in self._cached_pgs.items():
             current_counts[pgf] += 1
 
+        diff = {}
         # Compare current with expected
         for pgf, expected in pgf_expected.items():
             # Add staging and ready pgs

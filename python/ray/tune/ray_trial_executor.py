@@ -15,6 +15,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
 )
 
 import ray
@@ -168,6 +169,12 @@ def noop_logger_creator(config, logdir):
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
+    # Type of different futures of concern.
+    PG_READY = "PG_READY"
+    TRAINING_RESULT = "TRAINING_RESULT"
+    SAVING_RESULT = "SAVING_RESULT"
+    RESTORING_RESULT = "RESTORING_RESULT"
+
     def __init__(self,
                  reuse_actors: bool = False,
                  result_buffer_length: Optional[int] = None,
@@ -224,6 +231,11 @@ class RayTrialExecutor(TrialExecutor):
         if ray.is_initialized():
             self._update_avail_resources()
 
+        self._is_v2_enabled = os.getenv("TUNE_LOOP_V2_ENABLED", False)
+        # V2 data structures. This largely to replace `self._running`.
+        # future <-> (future event_type, trial)
+        self._trial_futures = {}
+
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return self._pg_manager.in_staging_grace_period()
@@ -262,7 +274,9 @@ class RayTrialExecutor(TrialExecutor):
             self._staged_trials.add(trial)
             self._just_staged_trials.add(trial)
 
-        self._pg_manager.update_status()
+        if not self._is_v2_enabled:
+            # for V2 path, we want to consolidate all pg manager update to happen in single wait.
+            self._pg_manager.update_status()
 
     def get_staged_trial(self):
         """Get a trial whose placement group was successfully staged.
@@ -279,6 +293,85 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
+    def _setup_remote_runner2(self, trial):
+        """Equivalent of _setup_remote_runner for Tune loop V2."""
+        assert self._is_v2_enabled
+        trial.init_logdir()
+        # We checkpoint metadata here to try mitigating logdir duplication
+        self._trials_to_cache.add(trial)
+        logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
+
+        if len(self._cached_actor_pg) > 0:
+            assert self._reuse_actors
+            pg, existing_runner = self._cached_actor_pg.popleft()
+            logger.debug(f"Trial {trial}: Reusing cached runner "
+                         f"{existing_runner}")
+
+            trial.set_runner(existing_runner)
+            if pg:
+                self._pg_manager.assign_cached_pg(pg, trial)
+
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag,
+                                    logger_creator):
+                raise AbortTrialExecution(
+                    "Trainable runner reuse requires reset_config() to be "
+                    "implemented and return True.")
+            return existing_runner
+
+        trainable_cls = trial.get_trainable_cls()
+        if not trainable_cls:
+            raise AbortTrialExecution(
+                f"Invalid trainable: {trial.trainable_name}. If you passed "
+                f"a string, make sure the trainable was registered before.")
+        _actor_cls = _class_cache.get(trainable_cls)
+
+        assert self._pg_manager.has_ready(trial)
+
+        full_actor_class = self._pg_manager.get_full_actor_cls(
+            trial, _actor_cls)
+        # Clear the Trial's location (to be updated later on result)
+        # since we don't know where the remote runner is placed.
+        trial.set_location(Location())
+        logger.debug("Trial %s: Setting up new remote runner.", trial)
+        # Logging for trials is handled centrally by TrialRunner, so
+        # configure the remote runner to use a noop-logger.
+        trial_config = copy.deepcopy(trial.config)
+        trial_config[TRIAL_INFO] = TrialInfo(trial)
+
+        stdout_file, stderr_file = trial.log_to_file
+        trial_config[STDOUT_FILE] = stdout_file
+        trial_config[STDERR_FILE] = stderr_file
+        kwargs = {
+            "config": trial_config,
+            "logger_creator": logger_creator,
+        }
+        if trial.uses_cloud_checkpointing:
+            # We keep these kwargs separate for backwards compatibility
+            # with trainables that don't provide these keyword arguments
+            kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
+            kwargs["sync_function_tpl"] = trial.sync_function_tpl
+
+            # Throw a meaningful error if trainable does not use the
+            # new API
+            sig = inspect.signature(trial.get_trainable_cls())
+            try:
+                sig.bind_partial(**kwargs)
+            except Exception as e:
+                raise RuntimeError(
+                    "Your trainable class does not accept a "
+                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "in its constructor, but you've passed a "
+                    "`upload_dir` to your SyncConfig. Without accepting "
+                    "these parameters and passing them to the base trainable "
+                    "constructor in the init call, cloud checkpointing is "
+                    "effectively disabled. To resolve this issue, add the "
+                    "parameters to your trainable class constructor or "
+                    "disable cloud checkpointing by setting `upload_dir=None`."
+                ) from e
+
+        with self._change_working_directory(trial):
+            return full_actor_class.remote(**kwargs)
+
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -286,7 +379,7 @@ class RayTrialExecutor(TrialExecutor):
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
         if self._reuse_actors and len(self._cached_actor_pg) > 0:
-            existing_runner, pg = self._cached_actor_pg.popleft()
+            pg, existing_runner = self._cached_actor_pg.popleft()
             logger.debug(f"Trial {trial}: Reusing cached runner "
                          f"{existing_runner}")
 
@@ -302,7 +395,7 @@ class RayTrialExecutor(TrialExecutor):
             return existing_runner
 
         if len(self._cached_actor_pg) > 0:
-            existing_runner, pg = self._cached_actor_pg.popleft()
+            pg, existing_runner = self._cached_actor_pg.popleft()
 
             logger.debug(
                 f"Cannot reuse cached runner {existing_runner} for new trial")
@@ -440,6 +533,8 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
+        self._trial_futures[remote] = (RayTrialExecutor.TRAINING_RESULT, trial)
+
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
@@ -455,14 +550,17 @@ class RayTrialExecutor(TrialExecutor):
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         self.set_status(trial, Trial.PENDING)
-        runner = self._setup_remote_runner(trial)
-        if not runner:
-            return False
+        if self._is_v2_enabled:
+            runner = self._setup_remote_runner2(trial)
+            assert runner
+        else:
+            runner = self._setup_remote_runner(trial)
+            if not runner:
+                return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
         self.restore(trial)
         self.set_status(trial, Trial.RUNNING)
-
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
 
@@ -512,7 +610,7 @@ class RayTrialExecutor(TrialExecutor):
                     pg = self._pg_manager.cache_trial_pg(trial)
                     if pg:
                         # True if a placement group was replaced
-                        self._cached_actor_pg.append((trial.runner, pg))
+                        self._cached_actor_pg.append((pg, trial.runner))
                         should_destroy_actor = False
                     else:
                         # False if no placement group was replaced. This should
@@ -780,9 +878,14 @@ class RayTrialExecutor(TrialExecutor):
             boolean
 
         """
-        return trial in self._staged_trials or self._pg_manager.can_stage(
+        result = trial in self._staged_trials or self._pg_manager.can_stage(
         ) or self._pg_manager.has_ready(
-            trial, update=True)
+            trial, update=(not self._is_v2_enabled))
+        if result:
+            return True
+        if self._cached_actor_pg:
+            return any(trial.placement_group_factory == pgf
+                       for pgf in self._pg_manager._cached_pgs.values())
 
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
@@ -857,10 +960,12 @@ class RayTrialExecutor(TrialExecutor):
                 checkpoint = Checkpoint(storage, value, result)
                 trial.on_checkpoint(checkpoint)
             else:
-                value = trial.runner.save.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                save_future = trial.runner.save.remote()
+                checkpoint = Checkpoint(storage, save_future, result)
                 trial.saving_to = checkpoint
-                self._running[value] = trial
+                self._running[save_future] = trial
+                self._trial_futures[save_future] = (
+                    RayTrialExecutor.SAVING_RESULT, trial)
         return checkpoint
 
     def restore(self, trial) -> None:
@@ -906,6 +1011,8 @@ class RayTrialExecutor(TrialExecutor):
                     "storage-based restoration")
 
             self._running[remote] = trial
+            self._trial_futures[remote] = (RayTrialExecutor.RESTORING_RESULT,
+                                           trial)
             trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
@@ -948,6 +1055,56 @@ class RayTrialExecutor(TrialExecutor):
                 os.chdir(old_dir)
         else:
             yield
+
+    def get_next_event(self) -> Tuple[str, Dict]:
+        """Waits on all ray.get() wait events and only returns when one of
+        them is ready to be processed.
+
+        The event type is one of the following:
+        RayTrialExecutor.PG_READY
+        RayTrialExecutor.TRAINING_RESULT
+        RayTrialExecutor.SAVING_RESULT
+        RayTrialExecutor.RESTORING_RESULT
+
+        Returns both the event type as well as metadata that can be supplied
+        as kwargs into the handling functions of these events.
+
+        Used for Tune loop V2.
+        """
+        assert self._is_v2_enabled
+        if len(self._cached_actor_pg) > 0 or any(
+                len(pgs) > 0 for pgs in self._pg_manager._ready.values()):
+            return RayTrialExecutor.PG_READY, {}
+        staged_pg_futures = self._pg_manager.get_staged_pg_futures()
+        all_futures = list(
+            list(self._trial_futures.keys()) + list(staged_pg_futures.keys()))
+        random.shuffle(all_futures)
+        # blocking
+        ready_futures, _ = ray.wait(all_futures, timeout=DEFAULT_GET_TIMEOUT)
+        if not ready_futures:
+            return
+        ready_future = ready_futures[0]
+        if ready_future in staged_pg_futures:
+            self._pg_manager.handle_pg_ready(ready_future)
+            return RayTrialExecutor.PG_READY, {}
+        else:
+            event_type, trial = self._trial_futures.pop(ready_future)
+            # Make sure that V1 self._running is also consistent.
+            self._running.pop(ready_future)
+            result = ray.get(ready_future)
+            return event_type, {"trial": trial, "result": result}
+
+    def reconcile(self, trials):
+        """Reconciliation that accounts for both pgs and `self._cached_actor_pg.`"""
+        # At this point, we should clear out `self._cached_actor_pg` first.
+        while self._cached_actor_pg:
+            pg, existing_runner = self._cached_actor_pg.popleft()
+            self._pg_manager.return_or_clean_cached_pg(pg)
+
+            # TODO: Add this back! with self._change_working_directory(trial):
+            self._trial_cleanup.add(None, actor=existing_runner)
+
+        self._pg_manager.reconcile_placement_groups(trials)
 
 
 def _to_gb(n_bytes):

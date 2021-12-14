@@ -604,7 +604,10 @@ def run(
     tune_start = time.time()
     progress_reporter.set_start_time(tune_start)
     while not runner.is_finished() and not state[signal.SIGINT]:
-        runner.step()
+        if os.getenv("TUNE_LOOP_V2_ENABLED", False):
+            runner.step2()
+        else:
+            runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
     tune_taken = time.time() - tune_start
