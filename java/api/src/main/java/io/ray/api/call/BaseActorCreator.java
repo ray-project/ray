@@ -2,6 +2,7 @@ package io.ray.api.call;
 
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.options.ActorLifetime;
 import java.util.Map;
 
 /**
@@ -21,6 +22,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    */
   public T setName(String name) {
     builder.setName(name);
+    return self();
+  }
+
+  public T setLifetime(ActorLifetime lifetime) {
+    builder.setLifetime(lifetime);
     return self();
   }
 
