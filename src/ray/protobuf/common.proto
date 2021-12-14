@@ -60,12 +60,16 @@ message PlacementGroupSchedulingStrategy {
 
 message DefaultSchedulingStrategy {}
 
+message SpreadSchedulingStrategy {}
+
 message SchedulingStrategy {
   oneof scheduling_strategy {
     // Default hybrid scheduling strategy.
     DefaultSchedulingStrategy default_scheduling_strategy = 1;
     // Placement group based scheduling strategy.
     PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    // Best effort spread scheduling strategy.
+    SpreadSchedulingStrategy spread_scheduling_strategy = 3;
   }
 }
 
@@ -170,6 +174,8 @@ enum ErrorType {
   // get thrown if an object appears to be created, but the requestor is not
   // able to fetch it after the configured timeout.
   OBJECT_FETCH_TIMED_OUT = 14;
+  // Indicates that a task failed because the local raylet died.
+  LOCAL_RAYLET_DIED = 15;
 }
 
 /// The information per ray error type.

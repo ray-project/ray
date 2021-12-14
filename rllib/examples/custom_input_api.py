@@ -98,7 +98,7 @@ if __name__ == "__main__":
         "train_batch_size": 2000,
         "learning_starts": 0,
         "bc_iters": 100,
-        "metrics_smoothing_episodes": 5,
+        "metrics_num_episodes_for_smoothing": 5,
         "evaluation_interval": 1,
         "evaluation_num_workers": 2,
         "evaluation_duration": 10,
