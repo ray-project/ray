@@ -49,7 +49,7 @@ def test_raydp_spark_to_pandas(spark_on_ray_small):
                                      ["one", "two"])
     ds = ray.data.from_spark(spark_df)
     df = ds.to_pandas()
-    assert df['one'].mean() == 2.0
+    assert df["one"].mean() == 2.0
 
 if __name__ == "__main__":
     import sys
