@@ -1330,8 +1330,6 @@ std::string GcsActorManager::DebugString() const {
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
          << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
          << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
-
-  // Collect metrics
   return stream.str();
 }
 
