@@ -58,9 +58,15 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   gcs_redis_failure_detector_->Start();
 
   // Init gcs table storage.
+  RAY_LOG(INFO) << "GCS Storage is set to " << RayConfig::instance().gcs_storage();
+  RAY_LOG(INFO) << "gRPC based pubsub is"
+                << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
+                << "enabled";
   if (RayConfig::instance().gcs_storage() == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
   } else if (RayConfig::instance().gcs_storage() == "memory") {
+    RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
+        << " grpc pubsub has to be enabled when using storage other than redis";
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
   } else {
     RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
