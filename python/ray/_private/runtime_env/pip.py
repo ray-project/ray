@@ -96,10 +96,16 @@ class PipManager:
         _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
 
         # Despite Ray being removed from the input pip list during validation,
-        # other listed packages may include Ray as a dependency and therefore
-        # we may have inadvertently installed Ray in the target_dir anyway.
-        # Uninstall Ray here to make the workers use the Ray that is already
+        # other packages in the pip list (for example, xgboost_ray) may
+        # themselves include Ray as a dependency.  In this case, we will have
+        # inadvertently installed the latest Ray version in the target_dir,
+        # which may cause Ray version mismatch issues. Uninstall it here, if it
+        # exists, to make the workers use the Ray that is already
         # installed in the cluster.
+        #
+        # In the case where the user explicitly wants to include Ray in their
+        # pip list (and signals this by setting the environment variable below)
+        # then we don't want this deletion logic, so we skip it.
         if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != 1:
             ray_path = Path(target_dir) / "ray"
             if ray_path.exists() and ray_path.is_dir():
