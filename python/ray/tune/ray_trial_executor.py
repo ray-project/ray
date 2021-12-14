@@ -285,7 +285,8 @@ class RayTrialExecutor(TrialExecutor):
         self._trials_to_cache.add(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if self._reuse_actors and len(self._cached_actor_pg) > 0:
+        if len(self._cached_actor_pg) > 0:
+            assert self._reuse_actors
             existing_runner, pg = self._cached_actor_pg.popleft()
             logger.debug(f"Trial {trial}: Reusing cached runner "
                          f"{existing_runner}")
@@ -300,18 +301,6 @@ class RayTrialExecutor(TrialExecutor):
                     "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True.")
             return existing_runner
-
-        if len(self._cached_actor_pg) > 0:
-            existing_runner, pg = self._cached_actor_pg.popleft()
-
-            logger.debug(
-                f"Cannot reuse cached runner {existing_runner} for new trial")
-
-            if pg:
-                self._pg_manager.return_or_clean_cached_pg(pg)
-
-            with self._change_working_directory(trial):
-                self._trial_cleanup.add(trial, actor=existing_runner)
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
