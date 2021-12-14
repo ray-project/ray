@@ -402,7 +402,7 @@ def debug(address):
     "--dashboard-agent-grpc-port",
     type=int,
     hidden=True,
-    default=0,
+    default=None,
     help="the port for dashboard agents to listen for grpc on.")
 @click.option(
     "--block",
