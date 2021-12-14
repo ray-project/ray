@@ -36,11 +36,6 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
                const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
                int64_t timeout_ms),
               (override));
-  MOCK_METHOD(Status, SyncListNamedActors,
-              (bool all_namespaces, const std::string &ray_namespace,
-               std::vector<std::pair<std::string, std::string>> &actors,
-               int64_t timeout_ms),
-              (override));
   MOCK_METHOD(Status, AsyncRegisterActor,
               (const TaskSpecification &task_spec, const StatusCallback &callback,
                int64_t timeout_ms),

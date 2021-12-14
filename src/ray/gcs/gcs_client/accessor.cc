@@ -204,19 +204,16 @@ Status ActorInfoAccessor::AsyncGetByName(
 Status ActorInfoAccessor::SyncGetByName(const std::string &name,
                                         const std::string &ray_namespace,
                                         rpc::ActorTableData &actor_table_data) {
-  auto ready_promise = std::make_shared<std::promise<Status>>(std::promise<Status>());
-  RAY_CHECK_OK(AsyncGetByName(
-      name, ray_namespace,
-      [ready_promise, &actor_table_data](
-          Status status, const boost::optional<rpc::ActorTableData> &result) {
-        if (status.ok() && result) {
-          // TODO(sang): Remove additional copy.
-          actor_table_data = *result;
-        }
-        ready_promise->set_value(status);
-      },
-      /*timeout_ms*/ GetGcsTimeoutMs()));
-  return ready_promise->get_future().get();
+  rpc::GetNamedActorInfoRequest request;
+  rpc::GetNamedActorInfoReply reply;
+  request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
+  auto status = client_impl_->GetGcsRpcClient().SYNC_GetNamedActorInfo(
+      request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
+  if (status.ok() && reply.has_actor_table_data()) {
+    actor_table_data = reply.actor_table_data();
+  }
+  return status;
 }
 
 Status ActorInfoAccessor::AsyncListNamedActors(
@@ -248,9 +245,8 @@ Status ActorInfoAccessor::SyncListNamedActors(
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
   rpc::ListNamedActorsReply reply;
-  auto status = client_impl_->GetGcsRpcClient().Sync_ListNamedActors(request, &reply,
+  auto status = client_impl_->GetGcsRpcClient().SYNC_ListNamedActors(request, &reply,
                                                                      GetGcsTimeoutMs());
-  RAY_LOG(ERROR) << status;
   if (!status.ok()) {
     return status;
   }
@@ -281,12 +277,13 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
 }
 
 Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_spec) {
-  auto promise = std::make_shared<std::promise<Status>>();
-  RAY_UNUSED(AsyncRegisterActor(
-      task_spec, [promise](const Status &status) { promise->set_value(status); },
-      GetGcsTimeoutMs()));
-  auto future = promise->get_future();
-  return future.get();
+  RAY_CHECK(task_spec.IsActorCreationTask());
+  rpc::RegisterActorRequest request;
+  rpc::RegisterActorReply reply;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  auto status = client_impl_->GetGcsRpcClient().SYNC_RegisterActor(request, &reply,
+                                                                   GetGcsTimeoutMs());
+  return status;
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id, bool force_kill,

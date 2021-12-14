@@ -1953,11 +1953,11 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
               "probably because the GCS server is dead or under high load .";
-    return std::make_pair(actors, Status::TimedOut(stream.str()));
+    return std::make_pair(std::move(actors), Status::TimedOut(stream.str()));
   } else if (!status.ok()) {
-    return std::make_pair(actors, status);
+    return std::make_pair(std::move(actors), status);
   } else {
-    return std::make_pair(actors, status);
+    return std::make_pair(std::move(actors), status);
   }
 }
 

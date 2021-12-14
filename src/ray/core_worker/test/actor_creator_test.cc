@@ -47,7 +47,7 @@ TEST_F(ActorCreatorTest, IsRegister) {
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(task_spec, ::testing::_))
+              AsyncRegisterActor(task_spec, ::testing::_, ::testing::_))
       .WillOnce(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(task_spec, nullptr).ok());
@@ -61,7 +61,7 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
   auto task_spec = GetTaskSpec(actor_id);
   std::function<void(Status)> cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(::testing::_, ::testing::_))
+              AsyncRegisterActor(::testing::_, ::testing::_, ::testing::_))
       .WillRepeatedly(
           ::testing::DoAll(::testing::SaveArg<1>(&cb), ::testing::Return(Status::OK())));
   int cnt = 0;
