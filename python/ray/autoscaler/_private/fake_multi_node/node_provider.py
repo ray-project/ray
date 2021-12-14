@@ -379,11 +379,16 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def _container_name(self, node_id):
         node_status = self._docker_status.get(node_id, {})
-        if node_status:
-            return node_status["Name"]
+        timeout = time.monotonic() + 60
+        while not node_status:
+            if time.monotonic() > timeout:
+                raise RuntimeError(
+                    f"Container for {node_id} never became available.")
+            time.sleep(1)
+            self._update_docker_status()
+            node_status = self._docker_status.get(node_id, {})
 
-        # Default schema (on Mac)
-        return f"{self._project_name}_{node_id}_1"
+        return node_status["Name"]
 
     def get_command_runner(self,
                            log_prefix: str,
