@@ -83,13 +83,6 @@ struct Mocker {
     return request;
   }
 
-  static rpc::KillActorViaGcsRequest GenKillActorViaGcsRequest(const ActorID &actor_id) {
-    rpc::KillActorViaGcsRequest request;
-    request.set_actor_id(actor_id.Binary());
-    request.set_no_restart(true);
-    return request;
-  }
-
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {

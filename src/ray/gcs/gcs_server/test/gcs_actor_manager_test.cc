@@ -980,7 +980,7 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
   auto job_id_1 = JobID::FromInt(1);
   auto request_1 =
       Mocker::GenRegisterActorRequest(job_id_1, 0, true, actor_name, ray_namespace);
-  ActorID actor_id_1 =
+  auto actor_id_1 =
       ActorID::FromBinary(request_1.task_spec().actor_creation_task_spec().actor_id());
   {
     Status status = gcs_actor_manager_->RegisterActor(
@@ -990,12 +990,10 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
               actor_id_1.Binary());
   }
 
-  auto kill_request = Mocker::GenKillActorViaGcsRequest(actor_id_1);
   {
-    ray::rpc::ActorDeathCause death_cause;
-    death_cause.mutable_killed_by_app_context()->set_error_message(
-        "The actor is dead because it was killed by `ray.kill`.");
-    gcs_actor_manager_->DestroyActor(actor_id_1, death_cause);
+    auto owner_address = request_1.task_spec().caller_address();
+    auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+    gcs_actor_manager_->OnNodeDead(node_id);
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               ActorID::Nil().Binary());
   }
@@ -1006,7 +1004,7 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
         Mocker::GenRegisterActorRequest(job_id_2, 0, true, actor_name, ray_namespace);
     auto actor_id_2 =
         ActorID::FromBinary(request_2.task_spec().actor_creation_task_spec().actor_id());
-    Status status = gcs_actor_manager_->RegisterActor(
+    auto status = gcs_actor_manager_->RegisterActor(
         request_2, [](const std::shared_ptr<gcs::GcsActor> &actor) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
