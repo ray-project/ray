@@ -371,6 +371,12 @@ def debug(address):
     default=0,
     help="the port for dashboard agents to listen for http on.")
 @click.option(
+    "--dashboard-agent-grpc-port",
+    type=int,
+    hidden=True,
+    default=None,
+    help="the port for dashboard agents to listen for grpc on.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -456,11 +462,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port,
-          dashboard_agent_listen_port, block, plasma_directory,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          system_config, enable_object_reconstruction, metrics_export_port,
-          no_monitor, tracing_startup_hook, ray_debugger_external):
+          dashboard_agent_listen_port, dashboard_agent_grpc_port, block,
+          plasma_directory, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir, system_config, enable_object_reconstruction,
+          metrics_export_port, no_monitor, tracing_startup_hook,
+          ray_debugger_external, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -513,6 +520,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
+        metrics_agent_port=dashboard_agent_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
