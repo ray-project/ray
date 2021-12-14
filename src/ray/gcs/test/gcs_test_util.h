@@ -53,7 +53,7 @@ struct Mocker {
     return builder.Build();
   }
 
-  static rpc::CreateActorRequest  GenCreateActorRequest(
+  static rpc::CreateActorRequest GenCreateActorRequest(
       const JobID &job_id, int max_restarts = 0, bool detached = false,
       const std::string &name = "", const std::string &ray_namespace = "") {
     rpc::Address owner_address;
