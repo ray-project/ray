@@ -51,91 +51,59 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
              ("Method"), (), ray::stats::COUNT);
 
 /// Object Manager.
-DEFINE_stats(num_chunks_received, "Number object chunks received.", ("Type"), (),
-             ray::stats::GAUGE);
+DEFINE_stats(object_manager_chunks_received_count,
+             "Number object chunks received broken per type {Total, FailedTotal, "
+             "FailedCancelled, FailedPlasmaFull}.",
+             ("Type"), (), ray::stats::GAUGE);
 
 /// Pull Manager
-DEFINE_stats(num_bytes_available, "The total number of bytes available to pull objects.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_bytes_being_pulled,
-             "The total number of bytes we are currently pulling.", (), (),
+DEFINE_stats(pull_manager_bytes_usage,
+             "The total number of bytes usage per type {Available, BeingPulled, Pinned}",
+             ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(pull_manager_requested_bundles,
+             "Number of requested bundles per type {Get, Wait, TaskArgs}.", ("Type"), (),
              ray::stats::GAUGE);
-DEFINE_stats(num_bytes_being_pulled_pinned,
-             "The total number of bytes for pinned objects.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_get_reqs, "Number of queued get requests.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_wait_reqs, "Number of queued wait requests.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_task_arg_reqs, "Number of queued task argument requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pull_req_queued, "Number of queued pull requests for objects.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_active_pulls, "Number of active pull requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_active_pulls_pinned, "Number of pinned objects by active pull requests.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_active_bundles, "Number of active bundle being pulled.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_retries_total, "Total number of pull retry in this node.", (), (),
+DEFINE_stats(pull_manager_requests,
+             "Number of pull requests per type {Queued, Active, Pinned, ActiveBundles}.",
+             ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(pull_manager_retries_count, "Number of cumulative pull retries.", (), (),
              ray::stats::GAUGE);
 
 /// Push Manager
-DEFINE_stats(num_pushes_in_flight, "Number of object push requests in flight.", (), (),
+DEFINE_stats(push_manager_push_count,
+             "Number of object push requests per type {InFlight}.", ("Type"), (),
              ray::stats::GAUGE);
-DEFINE_stats(num_chunks_in_flight, "Number of object chunks transfer in flight.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_chunks_remainig, "Number of object chunks transfer remaining.", (), (),
-             ray::stats::GAUGE);
+DEFINE_stats(push_manager_chunks_count,
+             "Number of object chunks transfer per type {InFlight, Remaining}.", ("Type"),
+             (), ray::stats::GAUGE);
 
 /// Scheduler
-DEFINE_stats(num_waiting_for_resource,
-             "Number of tasks waiting for resources to be available.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waiting_for_plasma_memory,
-             "Number of tasks waiting for additional object store memory.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waiting_for_remote_node_resources,
-             "Number of tasks waiting for available resources from remote nodes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_job_config_not_exist,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to missing job config.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_registration_timeout,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to worker registration timeout.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_process_rate_limit,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to rate limiting.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_tasks_waiting_for_workers,
-             "Number of tasks that are waiting for a worker process to be available.", (),
-             (), ray::stats::GAUGE);
-DEFINE_stats(num_cancelled_tasks, "Number of cancelled tasks.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waitng_tasks,
-             "Number of tasks that are waiting for dependencies to be available locally.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_executing_tasks, "Number of tasks that are executing.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pinned_task_args,
-             "Number of task arguments that are pinned because they are used by tasks.",
-             (), (), ray::stats::GAUGE);
+DEFINE_stats(scheduler_tasks_count,
+             "Number of tasks waiting for scheduling per state {Cancelled, Executing, "
+             "Waiting, Dispatched, Received}.",
+             ("State"), (), ray::stats::GAUGE);
+DEFINE_stats(
+    scheduler_pending_tasks_count,
+    "Number of tasks waiting for scheduling per reason {Infeasible, WaitingForResources, "
+    "WaitingForPlasmaMemory, WaitingForRemoteResources, WaitingForWorkers}.",
+    ("Reason"), (), ray::stats::GAUGE);
+DEFINE_stats(
+    scheduler_failed_worker_startup_count,
+    "Number of tasks that fail to be scheduled because workers were not "
+    "available. Labels per reason {JobConfigMissing, RegistrationTimedOut, RateLimited}",
+    ("Reason"), (), ray::stats::GAUGE);
 
 /// Local Object Manager
-DEFINE_stats(num_pinned_objects, "Number of locally pinned objects.", (), (),
+DEFINE_stats(spill_manager_objects_count,
+             "Number of local objects per state {Pinned, PendingRestore, PendingSpill}.",
+             ("State"), (), ray::stats::GAUGE);
+DEFINE_stats(spill_manager_objects_bytes, "Byte size of local objects per state.",
+             ("State"), (), ray::stats::GAUGE);
+DEFINE_stats(spill_manager_cumulative_request_count,
+             "Number of {spill, restore} requests.", ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(spill_manager_throughput_mb,
+             "The throughput of {spill, restore} requests in MB.", ("Type"), (),
              ray::stats::GAUGE);
-DEFINE_stats(pinned_objects_size_bytes, "Mumber of pinned object size in bytes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_pending_restore, "Number of pending restore requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_pending_spill, "Number of pending spill requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(pending_spill_bytes, "Pending spill request in bytes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(cumulative_spill_requests, "Cumulative number of spill requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(cumulative_restore_requests, "Cumulative number of restore requests.", (),
-             (), ray::stats::GAUGE);
 
 ///
 /// Plasma Store Metrics

@@ -46,53 +46,36 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// Object Manager.
-DECLARE_stats(num_chunks_received);
+DECLARE_stats(object_manager_chunks_received_count);
 
 /// Pull Manager
-DECLARE_stats(num_bytes_available);
-DECLARE_stats(num_bytes_being_pulled);
-DECLARE_stats(num_bytes_being_pulled_pinned);
-DECLARE_stats(num_get_reqs);
-DECLARE_stats(num_wait_reqs);
-DECLARE_stats(num_task_arg_reqs);
-DECLARE_stats(num_pull_req_queued);
-DECLARE_stats(num_active_pulls);
-DECLARE_stats(num_active_pulls_pinned);
-DECLARE_stats(num_active_bundles);
-DECLARE_stats(num_retries_total);
+DECLARE_stats(pull_manager_bytes_usage);
+DECLARE_stats(pull_manager_requested_bundles);
+DECLARE_stats(pull_manager_requests);
+DECLARE_stats(pull_manager_retries_count);
 
 /// Push Manager
-DECLARE_stats(num_pushes_in_flight);
-DECLARE_stats(num_chunks_in_flight);
-DECLARE_stats(num_chunks_remainig);
+DECLARE_stats(push_manager_push_count);
+DECLARE_stats(push_manager_chunks_count);
 
 /// Scheduler
-DECLARE_stats(num_waiting_for_resource);
-DECLARE_stats(num_waiting_for_plasma_memory);
-DECLARE_stats(num_waiting_for_remote_node_resources);
-DECLARE_stats(num_worker_not_started_by_job_config_not_exist);
-DECLARE_stats(num_worker_not_started_by_registration_timeout);
-DECLARE_stats(num_worker_not_started_by_process_rate_limit);
-DECLARE_stats(num_tasks_waiting_for_workers);
-DECLARE_stats(num_cancelled_tasks);
-DECLARE_stats(num_waitng_tasks);
-DECLARE_stats(num_executing_tasks);
-DECLARE_stats(num_pinned_task_args);
+DECLARE_stats(scheduler_failed_worker_startup_count);
+DECLARE_stats(scheduler_tasks_count);
+DECLARE_stats(scheduler_pending_tasks_count);
 
 /// Local Object Manager
-DECLARE_stats(num_pinned_objects);
-DECLARE_stats(pinned_objects_size_bytes);
-DECLARE_stats(num_objects_pending_restore);
-DECLARE_stats(num_objects_pending_spill);
-DECLARE_stats(pending_spill_bytes);
-DECLARE_stats(cumulative_spill_requests);
-DECLARE_stats(cumulative_restore_requests);
+DECLARE_stats(spill_manager_objects_count);
+DECLARE_stats(spill_manager_objects_bytes);
+DECLARE_stats(spill_manager_cumulative_request_count);
+DECLARE_stats(spill_manager_throughput_mb);
 
 ///
 /// Plasma Store Metrics
 ///
 
 /// Object Lifecycle Manager.
+/// TODO(sang): Instead of by state/type, use 2 labels instead. This requires some
+/// refactoring.
 DECLARE_stats(plasma_num_local_objects_by_state);
 DECLARE_stats(plasma_num_local_bytes_by_state);
 DECLARE_stats(plasma_num_local_objects_by_type);
@@ -207,34 +190,14 @@ static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");
 
-/// Scheduler
-static Sum NumReceivedTasks(
-    "internal_num_received_tasks",
-    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
-
-static Sum NumDispatchedTasks(
-    "internal_num_dispatched_tasks",
-    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
-
 static Sum NumSpilledTasks("internal_num_spilled_tasks",
                            "The cumulative number of lease requeusts that this raylet "
                            "has spilled to other raylets.",
                            "tasks");
 
-static Gauge NumInfeasibleTasks(
-    "internal_num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",
     "The number of unique scheduling classes that are infeasible.", "tasks");
-
-/// Local Object Manager (Spilling)
-static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
-                                 "Bandwidth of object spilling.", "MB");
-
-static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
-                                  "Bandwidth of object restoration.", "MB");
 
 ///
 /// GCS Server Metrics

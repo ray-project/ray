@@ -743,17 +743,22 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
 
 void PullManager::RecordMetrics() const {
   absl::MutexLock lock(&active_objects_mu_);
-  ray::stats::STATS_num_bytes_available.Record(num_bytes_available_);
-  ray::stats::STATS_num_bytes_being_pulled.Record(num_bytes_being_pulled_);
-  ray::stats::STATS_num_bytes_being_pulled_pinned.Record(pinned_objects_size_);
-  ray::stats::STATS_num_get_reqs.Record(get_request_bundles_.size());
-  ray::stats::STATS_num_wait_reqs.Record(wait_request_bundles_.size());
-  ray::stats::STATS_num_task_arg_reqs.Record(task_argument_bundles_.size());
-  ray::stats::STATS_num_pull_req_queued.Record(object_pull_requests_.size());
-  ray::stats::STATS_num_active_pulls.Record(active_object_pull_requests_.size());
-  ray::stats::STATS_num_active_pulls_pinned.Record(pinned_objects_.size());
-  ray::stats::STATS_num_active_bundles.Record(num_active_bundles_);
-  ray::stats::STATS_num_retries_total.Record(num_retries_total_);
+  ray::stats::STATS_pull_manager_bytes_usage.Record(num_bytes_available_, "Available");
+  ray::stats::STATS_pull_manager_bytes_usage.Record(num_bytes_being_pulled_,
+                                                    "BeingPulled");
+  ray::stats::STATS_pull_manager_bytes_usage.Record(pinned_objects_size_, "Pinned");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(get_request_bundles_.size(),
+                                                          "Get");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(wait_request_bundles_.size(),
+                                                          "Wait");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(task_argument_bundles_.size(),
+                                                          "TaskArgs");
+  ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
+  ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
+                                                 "Active");
+  ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
+  ray::stats::STATS_pull_manager_requests.Record(num_active_bundles_, "ActiveBundles");
+  ray::stats::STATS_pull_manager_retries_count.Record(num_retries_total_);
 }
 
 std::string PullManager::DebugString() const {

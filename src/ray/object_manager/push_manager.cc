@@ -76,9 +76,9 @@ void PushManager::ScheduleRemainingPushes() {
 }
 
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_num_pushes_in_flight.Record(NumPushesInFlight());
-  ray::stats::STATS_num_chunks_in_flight.Record(NumChunksInFlight());
-  ray::stats::STATS_num_chunks_remainig.Record(NumChunksRemaining());
+  ray::stats::STATS_push_manager_push_count.Record(NumPushesInFlight(), "InFlight");
+  ray::stats::STATS_push_manager_chunks_count.Record(NumChunksInFlight(), "InFlight");
+  ray::stats::STATS_push_manager_chunks_count.Record(NumChunksRemaining(), "Remaining");
 }
 
 std::string PushManager::DebugString() const {
