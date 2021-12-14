@@ -455,6 +455,25 @@ class ProgressReporterTest(unittest.TestCase):
         best1 = best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
 
+    def testBestTrialStr(self):
+        """Assert that custom nested parameter columns are printed correctly"""
+        config = {
+            "nested": {
+                "conf": "nested_value"
+            },
+            "toplevel": "toplevel_value"
+        }
+
+        trial = Trial("", config=config, stub=True)
+        trial.last_result = {"metric": 1, "config": config}
+
+        result = best_trial_str(trial, "metric")
+        self.assertIn("nested_value", result)
+
+        result = best_trial_str(
+            trial, "metric", parameter_columns=["nested/conf"])
+        self.assertIn("nested_value", result)
+
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
         # (time of the first Ray commit)

@@ -787,7 +787,7 @@ def best_trial_str(
     parameter_columns = parameter_columns or list(config.keys())
     if isinstance(parameter_columns, Mapping):
         parameter_columns = parameter_columns.keys()
-    params = {p: config.get(p) for p in parameter_columns}
+    params = {p: unflattened_lookup(p, config) for p in parameter_columns}
     return f"Current best trial: {trial.trial_id} with {metric}={val} and " \
            f"parameters={params}"
 
