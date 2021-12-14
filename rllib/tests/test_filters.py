@@ -42,7 +42,7 @@ class RunningStatTest(unittest.TestCase):
             assert np.allclose(rs.std, rs1.std)
 
 
-class MSFTest(unittest.TestCase):
+class MeanStdFilterTest(unittest.TestCase):
     def testBasic(self):
         for shape in [(), (3, ), (3, 4, 4)]:
             filt = MeanStdFilter(shape)

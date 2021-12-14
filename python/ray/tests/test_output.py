@@ -8,7 +8,8 @@ import os
 
 import ray
 
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import (run_string_as_driver_nonblocking,
+                                     run_string_as_driver)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -432,6 +433,68 @@ run_experiments(
     assert len(err_str) > 0
     assert "StackTrace Information" not in err_str
     print(err_str)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test currently fails with minimal install.")
+@pytest.mark.parametrize("execution_number", range(3))
+def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
+    """Make sure when new threads are used within __init__,
+    the empty line is not printed.
+    Related: https://github.com/ray-project/ray/pull/20987
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=24)
+
+    actor_repr = "TESTER"
+
+    script = f"""
+import time
+import os
+import threading
+import torch
+
+from filelock import FileLock
+
+import ray
+
+class Repro:
+    pass
+
+def do_lock():
+    path = f"/tmp/lock"
+    lock = FileLock(path, timeout=4)
+    lock.acquire()
+
+@ray.remote
+class Train:
+    def __init__(self, config: Repro):
+        # print("b")
+        def warmup():
+
+            do_lock()
+            torch.empty(0, device="cpu")
+            for _ in range(300000000):
+                pass
+
+        threading.Thread(target=warmup, daemon=True).start()
+
+    def ready(self):
+        pass
+
+    def __repr__(self):
+        return "{actor_repr}"
+
+ray.init("auto")
+actors = [Train.remote(config=None) for i in range(24)]
+for a in actors:
+    ray.get(a.ready.remote())
+time.sleep(5)
+    """
+    out = run_string_as_driver(script)
+    assert actor_repr not in out
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ Duration = float
 
 @dataclass
 class EndpointInfo:
-    route: Optional[str] = None
+    route: str
 
 
 class DeploymentInfo:

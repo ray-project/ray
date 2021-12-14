@@ -145,7 +145,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
   gcs_address.set_port(current_gcs_server_address_.second);
-  /// TODO: refactor pubsub::Subscriber to avoid this.
+  /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
   gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
 
   std::unique_ptr<pubsub::Subscriber> subscriber;
@@ -286,8 +286,11 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
 
 void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
-  int index = 0;
-  for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+  auto timeout_s =
+      absl::Seconds(RayConfig::instance().gcs_rpc_server_reconnect_timeout_s());
+  auto start = absl::Now();
+  auto reconnected = false;
+  while (absl::Now() - start < timeout_s) {
     if (disconnected_) {
       return;
     }
@@ -317,14 +320,15 @@ void GcsClient::ReconnectGcsServer() {
           RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
                         << address.second;
         }
+        reconnected = true;
         break;
       }
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds()));
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));
   }
 
-  if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+  if (reconnected) {
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
