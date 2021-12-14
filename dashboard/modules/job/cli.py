@@ -170,10 +170,17 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     cli_logger.newline()
     sdk_version = client.get_version()
     # sdk version 0 does not have log streaming
-    if not no_wait and int(sdk_version) > 0:
-        cli_logger.print("Tailing logs until the job exits "
-                         "(disable with --no-wait):")
-        asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+    if not no_wait:
+        if int(sdk_version) > 0:
+            cli_logger.print("Tailing logs until the job exits "
+                             "(disable with --no-wait):")
+            asyncio.get_event_loop().run_until_complete(
+                _tail_logs(client, job_id))
+        else:
+            cli_logger.warning(
+                "Tailing logs is not enabled for job sdk client version "
+                f"{sdk_version}. Please upgrade your ray to latest version "
+                "for this feature.")
 
 
 @job_cli_group.command("status", help="Get the status of a running job.")
@@ -266,7 +273,14 @@ def job_logs(address: Optional[str], job_id: str, follow: bool):
     client = _get_sdk_client(address)
     sdk_version = client.get_version()
     # sdk version 0 did not have log streaming
-    if follow and int(sdk_version) > 0:
-        asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+    if follow:
+        if int(sdk_version) > 0:
+            asyncio.get_event_loop().run_until_complete(
+                _tail_logs(client, job_id))
+        else:
+            cli_logger.warning(
+                "Tailing logs is not enabled for job sdk client version "
+                f"{sdk_version}. Please upgrade your ray to latest version "
+                "for this feature.")
     else:
         print(client.get_job_logs(job_id), end="")

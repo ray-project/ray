@@ -48,6 +48,8 @@ class JobLogStorageClient:
     Disk storage for stdout / stderr of driver script logs.
     """
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
+    # Number of last N lines to put in job message upon failure.
+    NUM_LOG_LINES_ON_ERROR = 10
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -58,6 +60,18 @@ class JobLogStorageClient:
 
     def tail_logs(self, job_id: str) -> Iterator[str]:
         return file_tail_iterator(self.get_log_file_path(job_id))
+
+    def get_last_n_log_lines(self,
+                             job_id: str,
+                             num_log_lines=NUM_LOG_LINES_ON_ERROR) -> str:
+        log_tail_iter = self.tail_logs(job_id)
+        log_tail_deque = deque(maxlen=num_log_lines)
+        for line in log_tail_iter:
+            if line is None:
+                break
+            else:
+                log_tail_deque.append(line)
+        return "".join(log_tail_deque)
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -80,8 +94,6 @@ class JobSupervisor:
     """
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
-    # Number of last N lines to put in job message upon failure.
-    NUM_LOG_LINES_ON_ERROR = 10
 
     def __init__(self, job_id: str, entrypoint: str,
                  user_metadata: Dict[str, str]):
@@ -223,14 +235,8 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
-                    log_tail_iter = self._log_client.tail_logs(self._job_id)
-                    log_tail_deque = deque(maxlen=self.NUM_LOG_LINES_ON_ERROR)
-                    for line in log_tail_iter:
-                        if line is None:
-                            break
-                        else:
-                            log_tail_deque.append(line)
-                    log_tail = "".join(log_tail_deque)
+                    log_tail = self._log_client.get_last_n_log_lines(
+                        self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = ("Job failed due to an application error, "
                                    "last available logs:\n" + log_tail)
