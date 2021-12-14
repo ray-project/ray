@@ -12,6 +12,7 @@ import os
 from pettingzoo.classic import rps_v2
 import random
 
+import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
@@ -173,6 +174,8 @@ def run_with_custom_entropy_loss(args, stop):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init()
 
     stop = {
         "training_iteration": args.stop_iters,

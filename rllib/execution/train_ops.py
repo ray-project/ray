@@ -33,22 +33,21 @@ def train_one_step(trainer, train_batch) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
-    policies = list(local_worker.policy_map.keys())
+    policies = local_worker.policies_to_train
     num_sgd_iter = config.get("sgd_num_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size",
                                     config["train_batch_size"])
 
-    _check_sample_batch_type(train_batch)
     learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]
     with learn_timer:
         # Subsample minibatches (size=`sgd_minibatch_size`) from the
         # train batch and loop through train batch `num_sgd_iter` times.
         if num_sgd_iter > 1 or sgd_minibatch_size > 0:
             info = do_minibatch_sgd(
-                train_batch, {
-                    pid: local_worker.get_policy(pid)
-                    for pid in policies or local_worker.policies_to_train
-                }, local_worker, num_sgd_iter, sgd_minibatch_size, [])
+                train_batch,
+                {pid: local_worker.get_policy(pid)
+                 for pid in policies}, local_worker, num_sgd_iter,
+                sgd_minibatch_size, [])
         # Single update step using train batch.
         else:
             info = local_worker.learn_on_batch(train_batch)
@@ -61,8 +60,7 @@ def train_one_step(trainer, train_batch) -> Dict:
     # workers.
     if workers.remote_workers():
         with trainer._timers[WORKER_UPDATE_TIMER]:
-            weights = ray.put(workers.local_worker().get_weights(
-                policies or local_worker.policies_to_train))
+            weights = ray.put(workers.local_worker().get_weights(policies))
             for e in workers.remote_workers():
                 e.set_weights.remote(weights)
     return info
