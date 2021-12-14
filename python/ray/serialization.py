@@ -20,8 +20,6 @@ from ray._raylet import (split_buffer, unpack_pickle5_buffers, Pickle5Writer,
                          ArrowSerializedObject)
 from ray import serialization_addons
 
-import pyarrow as pa
-
 logger = logging.getLogger(__name__)
 
 
@@ -359,7 +357,13 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        elif isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
-            return ArrowSerializedObject(value)
-        else:
-            return self._serialize_to_msgpack(value)
+        try:
+            # check if arrow is installed and if so use Arrow IPC format
+            # to serialize it so that this object can also be read by Java.
+            import pyarrow as pa
+            if isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
+                return ArrowSerializedObject(value)
+        except Exception:
+            pass
+
+        return self._serialize_to_msgpack(value)
