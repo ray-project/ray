@@ -46,21 +46,14 @@ class TestBackwardsCompatibility:
         env_name = f"jobs-backwards-compatibility-{uuid.uuid4().hex}"
         with conda_env(env_name):
             shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"  # noqa: E501
-            process = subprocess.Popen(
-                shell_cmd,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT)
-            while process.poll() is None:
-                print(
-                    process.stdout.readline().decode("utf-8"),
-                    end="")  # This blocks until it receives a newline.
-            # When the subprocess terminates there might be unconsumed output
-            # that still needs to be processed.
-            print(process.stdout.read().decode("utf-8"), end="")
-            process.wait()
 
-            assert process.returncode == 0
+            try:
+                subprocess.check_output(
+                    shell_cmd, shell=True, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                logger.error(str(e))
+                logger.error(e.stdout.decode())
+                raise e
 
 
 if __name__ == "__main__":
