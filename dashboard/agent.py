@@ -400,15 +400,17 @@ if __name__ == "__main__":
             # Push an error to all drivers, so that users can know the
             # impact of the issue.
             gcs_publisher = None
-            redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password)
             if args.gcs_address:
                 gcs_publisher = GcsPublisher(args.gcs_address)
-                redis_client = None
             elif gcs_pubsub_enabled():
+                redis_client = ray._private.services.create_redis_client(
+                    args.redis_address, password=args.redis_password)
                 gcs_publisher = GcsPublisher(
                     address=get_gcs_address_from_redis(redis_client))
                 redis_client = None
+            else:
+                redis_client = ray._private.services.create_redis_client(
+                    args.redis_address, password=args.redis_password)
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (
