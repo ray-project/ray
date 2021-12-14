@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 from datetime import datetime
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Callable
 from typing import Optional, Dict
@@ -22,10 +23,10 @@ class TrainingResultType(Enum):
     CHECKPOINT = auto()
 
 
-class TrainingResult():
-    def __init__(self, type: TrainingResultType, data: Dict):
-        self.type = type
-        self.data = data
+@dataclass
+class TrainingResult:
+    type: TrainingResultType
+    data: Dict
 
 
 class Session:

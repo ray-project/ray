@@ -98,9 +98,11 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(
+            observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -921,6 +923,7 @@ class Policy(metaclass=ABCMeta):
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
+            # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:
