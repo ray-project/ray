@@ -83,6 +83,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  void createGcsClient() {
+    throw new UnsupportedOperationException("Ray doesn't have gcs client in local mode.");
+  }
+
+  @Override
   public Object getAsyncContext() {
     return new AsyncContext(((LocalModeWorkerContext) workerContext).getCurrentTask());
   }

@@ -54,7 +54,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  protected GcsClient gcsClient;
+  GcsClient gcsClient;
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
@@ -217,19 +217,19 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
-    return gcsClient.getPlacementGroupInfo(id);
+    return getGcsClient().getPlacementGroupInfo(id);
   }
 
   @Override
   public PlacementGroup getPlacementGroup(String name, String namespace) {
     return namespace == null
-        ? gcsClient.getPlacementGroupInfo(name, runtimeContext.getNamespace())
-        : gcsClient.getPlacementGroupInfo(name, namespace);
+        ? getGcsClient().getPlacementGroupInfo(name, runtimeContext.getNamespace())
+        : getGcsClient().getPlacementGroupInfo(name, namespace);
   }
 
   @Override
   public List<PlacementGroup> getAllPlacementGroups() {
-    return gcsClient.getAllPlacementGroupInfo();
+    return getGcsClient().getAllPlacementGroupInfo();
   }
 
   @Override
@@ -398,8 +398,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public GcsClient getGcsClient() {
+    createGcsClient();
     return gcsClient;
   }
+
+  abstract void createGcsClient();
 
   @Override
   public void setIsContextSet(boolean isContextSet) {
