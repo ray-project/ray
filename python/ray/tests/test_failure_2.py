@@ -387,7 +387,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
     }
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
@@ -526,8 +526,9 @@ time.sleep(60)
     # Wait long enough to start the driver.
     time.sleep(5)
     start = time.time()
+    print(gcs_server_pid)
     os.kill(gcs_server_pid, signal.SIGKILL)
-    wait_for_condition(lambda: proc.poll() is None, timeout=30)
+    wait_for_condition(lambda: proc.poll() is None, timeout=10)
     # Make sure the driver was exited within the timeout instead of hanging.
     # * 2 for avoiding flakiness.
     assert time.time() - start < GCS_RECONNECTION_TIMEOUT * 2
