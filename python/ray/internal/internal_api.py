@@ -33,7 +33,6 @@ def memory_summary(address=None,
         address = services.find_redis_address_or_die()
 
     state = GlobalState()
-
     state._initialize_global_state(
         GcsClientOptions.from_redis_address(address, redis_password))
     if stats_only:

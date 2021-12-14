@@ -94,7 +94,6 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
 
-
     blocked.poll()
     assert blocked.returncode is None
     # Make sure ray cluster is up
