@@ -30,6 +30,7 @@ int NUM_WORKERS_PER_PROCESS_JAVA = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
+int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 std::string BAD_RUNTIME_ENV = "bad runtime env";
 
@@ -259,7 +260,9 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   // Create workers for processes and push them to worker pool.
-  void PushWorkers() {
+  // \param[in] timeout_worker_number Don't register some workers to simulate worker
+  // registration timeout.
+  void PushWorkers(int timeout_worker_number = 0) {
     auto processes = GetProcesses();
     for (auto it = processes.begin(); it != processes.end(); ++it) {
       auto pushed_it = pushedProcesses_.find(it->first);
@@ -287,7 +290,10 @@ class WorkerPoolMock : public WorkerPool {
         // TODO(SongGuyang): support C++ language workers.
         int num_workers =
             (is_java && !has_dynamic_options) ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
-        for (int i = 0; i < num_workers; i++) {
+        RAY_CHECK(timeout_worker_number <= num_workers)
+            << "The timeout worker number cannot exceed the total number of workers";
+        auto register_workers = num_workers - timeout_worker_number;
+        for (int i = 0; i < register_workers; i++) {
           auto worker = CreateWorker(
               it->first, is_java ? Language::JAVA : Language::PYTHON, JOB_ID,
               rpc::WorkerType::WORKER, runtime_env_hash,
@@ -309,9 +315,10 @@ class WorkerPoolMock : public WorkerPool {
   // worker synchronously.
   // \param[in] push_workers If true, tries to push the workers from the started
   // processes.
-  std::shared_ptr<WorkerInterface> PopWorkerSync(
-      const TaskSpecification &task_spec, bool push_workers = true,
-      PopWorkerStatus *worker_status = nullptr) {
+  std::shared_ptr<WorkerInterface> PopWorkerSync(const TaskSpecification &task_spec,
+                                                 bool push_workers = true,
+                                                 PopWorkerStatus *worker_status = nullptr,
+                                                 int timeout_worker_number = 0) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
     this->PopWorker(task_spec,
@@ -326,7 +333,7 @@ class WorkerPoolMock : public WorkerPool {
                       return true;
                     });
     if (push_workers) {
-      PushWorkers();
+      PushWorkers(timeout_worker_number);
     }
     promise.get_future().get();
     return popped_worker;
@@ -353,7 +360,9 @@ class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() {
     RayConfig::instance().initialize(
-        R"({"worker_register_timeout_seconds": 3, "object_spilling_config": "dummy", "max_io_workers": )" +
+        R"({"worker_register_timeout_seconds": )" +
+        std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
+        R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
@@ -1411,13 +1420,13 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReference) {
   // Start actor with runtime env.
   auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
   const auto actor_creation_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, actor_creation_id,
                       {"XXX=YYY"}, TaskID::FromRandom(JobID::Nil()), runtime_env_info);
   auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
   ASSERT_EQ(valid_uris.size(), 1);
   // Start task with runtime env.
   const auto normal_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
                       {"XXX=YYY"}, TaskID::FromRandom(JobID::Nil()), runtime_env_info);
   auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
   ASSERT_EQ(valid_uris.size(), 1);
@@ -1449,6 +1458,62 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReference) {
   // Disconnect task worker.
   worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
   ASSERT_EQ(valid_uris.size(), 0);
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+  ASSERT_EQ(valid_uris.size(), 0);
+}
+
+TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
+  valid_uris.clear();
+  auto job_id = JOB_ID;
+  std::string uri = "s3://567";
+  auto runtime_env_info = ExampleRuntimeEnvInfo({uri}, false);
+  rpc::JobConfig job_config;
+  job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
+  job_config.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
+  // Start job without eager installed runtime env.
+  worker_pool_->HandleJobStarted(job_id, job_config);
+  ASSERT_EQ(valid_uris.size(), 0);
+
+  // First part, test normal case with all worker registered.
+  // Start actors with runtime env. The Java actors will trigger a multi-worker process.
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
+    auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), i + 1);
+    const auto actor_creation_task_spec =
+        ExampleTaskSpec(ActorID::Nil(), Language::JAVA, job_id, actor_creation_id, {},
+                        TaskID::FromRandom(JobID::Nil()), runtime_env_info);
+    auto popped_actor_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
+    ASSERT_NE(popped_actor_worker, nullptr);
+    workers.push_back(popped_actor_worker);
+    ASSERT_EQ(valid_uris.size(), 1);
+  }
+  // Make sure only one worker process has been started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  // Disconnect all actor workers.
+  for (auto &worker : workers) {
+    worker_pool_->DisconnectWorker(worker, rpc::WorkerExitType::IDLE_EXIT);
+  }
+  ASSERT_EQ(valid_uris.size(), 0);
+
+  // Second part, test corner case with some worker registration timeout.
+  // Start one actor with runtime env. The Java actor will trigger a multi-worker process.
+  auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+  const auto actor_creation_task_spec =
+      ExampleTaskSpec(ActorID::Nil(), Language::JAVA, job_id, actor_creation_id, {},
+                      TaskID::FromRandom(JobID::Nil()), runtime_env_info);
+  PopWorkerStatus status;
+  // Only one worker registration. All the other worker registration times out.
+  auto popped_actor_worker = worker_pool_->PopWorkerSync(
+      actor_creation_task_spec, true, &status, NUM_WORKERS_PER_PROCESS_JAVA - 1);
+  ASSERT_EQ(valid_uris.size(), 1);
+  // Disconnect actor worker.
+  worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
+  ASSERT_EQ(valid_uris.size(), 1);
+  // Sleep for a while to wait worker registration timeout.
+  sleep(WORKER_REGISTER_TIMEOUT_SECONDS + 1);
+  ASSERT_EQ(valid_uris.size(), 0);
+
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
   ASSERT_EQ(valid_uris.size(), 0);
