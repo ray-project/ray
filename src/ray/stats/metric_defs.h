@@ -69,22 +69,6 @@ DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_cumulative_request_count);
 DECLARE_stats(spill_manager_throughput_mb);
 
-///
-/// Plasma Store Metrics
-///
-
-/// Object Lifecycle Manager.
-/// TODO(sang): Instead of by state/type, use 2 labels instead. This requires some
-/// refactoring.
-DECLARE_stats(plasma_num_local_objects_by_state);
-DECLARE_stats(plasma_num_local_bytes_by_state);
-DECLARE_stats(plasma_num_local_objects_by_type);
-DECLARE_stats(plasma_num_local_bytes_by_type);
-
-/// Plasma Store
-DECLARE_stats(num_pending_creation_requests);
-DECLARE_stats(num_pending_creation_bytes);
-
 /// GCS Resource Manager
 DECLARE_stats(new_resource_creation_latency_ms);
 

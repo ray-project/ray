@@ -105,31 +105,6 @@ DEFINE_stats(spill_manager_throughput_mb,
              "The throughput of {spill, restore} requests in MB.", ("Type"), (),
              ray::stats::GAUGE);
 
-///
-/// Plasma Store Metrics
-///
-
-/// Object Lifecycle Manager.
-DEFINE_stats(plasma_num_local_objects_by_state,
-             "The number of objects per state. E.g., Spillable, In use, Evictable.",
-             ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(plasma_num_local_bytes_by_state, "The number of objects per state in bytes.",
-             ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(
-    plasma_num_local_objects_by_type,
-    "The number of objects per type. E.g., Primary copy, Transferred, ErrorObject.",
-    ("CreationType"), (), ray::stats::GAUGE);
-DEFINE_stats(plasma_num_local_bytes_by_type, "The number of objects per type in bytes.",
-             ("CreationType"), (), ray::stats::GAUGE);
-
-/// Plasma Store
-DEFINE_stats(num_pending_creation_requests,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pending_creation_bytes,
-             "The number of pending object creation requests in bytes.", (), (),
-             ray::stats::GAUGE);
-
 /// GCS Resource Manager
 DEFINE_stats(new_resource_creation_latency_ms,
              "Time to persist newly created resources to Redis.", (),
