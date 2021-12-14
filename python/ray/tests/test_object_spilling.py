@@ -43,9 +43,9 @@ def is_dir_empty(temp_folder,
 
 def assert_no_thrashing(address):
     state = ray.state.GlobalState()
-    state._initialize_global_state(GcsClientOptions.from_redis_address(
-        address,
-        ray.ray_constants.REDIS_DEFAULT_PASSWORD))
+    state._initialize_global_state(
+        GcsClientOptions.from_redis_address(
+            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
     consumed_bytes = 0
