@@ -265,7 +265,8 @@ class ServeController:
             if SERVE_ROOT_URL_ENV_KEY in os.environ:
                 return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
-                return f"http://{http_config.host}:{http_config.port}"
+                return (f"http://{http_config.host}:{http_config.port}"
+                        f"{http_config.root_path}")
         return http_config.root_url
 
     async def shutdown(self) -> List[GoalId]:
@@ -331,6 +332,10 @@ class ServeController:
         goal_id, updating = self.deployment_state_manager.deploy(
             name, deployment_info)
         if route_prefix is not None:
+            # construct complete url
+            root_path = self.get_http_config().root_path
+            route_prefix = root_path + route_prefix
+
             endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
         return goal_id, updating

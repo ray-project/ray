@@ -237,7 +237,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         self.request_counter.inc(tags={"route": scope["path"]})
 
-        if scope["path"] == "/-/routes":
+        if scope["path"] == scope["root_path"] + "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
@@ -261,6 +261,7 @@ class HTTPProxyActor:
     def __init__(self,
                  host: str,
                  port: int,
+                 root_path: str,
                  controller_name: str,
                  controller_namespace: str,
                  http_middlewares: Optional[List[
@@ -270,6 +271,7 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
+        self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
@@ -329,6 +331,7 @@ Please make sure your http-host and http-port are specified correctly.""")
             self.wrapped_app,
             host=self.host,
             port=self.port,
+            root_path=self.root_path,
             lifespan="off",
             access_log=False)
         server = uvicorn.Server(config=config)

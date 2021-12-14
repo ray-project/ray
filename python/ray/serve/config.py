@@ -257,6 +257,7 @@ class HTTPOptions(pydantic.BaseModel):
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
     root_url: str = ""
+    root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
 
