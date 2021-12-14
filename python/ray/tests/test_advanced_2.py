@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 memoryGB = psutil.virtual_memory().available / 1024 / 1024 / 1024
 
+
 @pytest.mark.skipif(memoryGB < 8, reason="takes too long on weak machines")
 def test_resource_constraints(shutdown_only):
     num_workers = 20
