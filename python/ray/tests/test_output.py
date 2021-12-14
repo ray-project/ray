@@ -439,7 +439,8 @@ run_experiments(
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test currently fails with minimal install.")
-def test_empty_line_thread_safety_bug(ray_start_cluster):
+@pytest.mark.parametrize("execution_number", range(3))
+def test_empty_line_thread_safety_bug(execution_number, ray_start_cluster):
     """Make sure when new threads are used within __init__,
     the empty line is not printed.
     Related: https://github.com/ray-project/ray/pull/20987
