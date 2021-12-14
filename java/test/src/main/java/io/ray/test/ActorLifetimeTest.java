@@ -1,4 +1,5 @@
 package io.ray.test;
+
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.options.ActorLifetime;
@@ -38,7 +39,7 @@ public class ActorLifetimeTest {
       System.setProperty("ray.job.namespace", "test2");
       Ray.init();
       ActorHandle<MyActor> myActor =
-        Ray.actor(MyActor::new).setLifetime(ActorLifetime.DETACHED).setName("my_actor").remote();
+          Ray.actor(MyActor::new).setLifetime(ActorLifetime.DETACHED).setName("my_actor").remote();
       myActor.task(MyActor::echo, "hello").remote().get();
       Ray.shutdown();
     }

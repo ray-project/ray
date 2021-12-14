@@ -2,8 +2,8 @@ package io.ray.api.call;
 
 import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
-import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.options.ActorLifetime;
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
 
 /**
