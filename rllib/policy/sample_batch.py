@@ -375,17 +375,10 @@ class SampleBatch(dict):
         # meaningless).
         permutation = np.random.permutation(self.count)
 
-        def _permutate_in_place(path, value):
-            curr = self
-            for i, p in enumerate(path):
-                if i == len(path) - 1:
-                    curr[p] = value[permutation]
-                # Translate into list (tuples are immutable).
-                if isinstance(curr[p], tuple):
-                    curr[p] = list(curr[p])
-                curr = curr[p]
-
-        tree.map_structure_with_path(_permutate_in_place, self)
+        self_as_dict = {k: v for k, v in self.items()}
+        shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        for k, v in shuffled.items():
+            self[k] = v
 
         return self
 

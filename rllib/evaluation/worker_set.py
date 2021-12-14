@@ -160,8 +160,8 @@ class WorkerSet:
             weights = ray.put((from_worker
                                or self.local_worker()).get_weights(policies))
             # Sync to all remote workers in this WorkerSet.
-            for e in self.remote_workers():
-                e.set_weights.remote(weights)
+            for to_worker in self.remote_workers():
+                to_worker.set_weights.remote(weights)
 
             # If from_worker is provided, also sync to this WorkerSet's local
             # worker.
