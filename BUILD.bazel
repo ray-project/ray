@@ -2321,7 +2321,6 @@ filegroup(
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
-        "//src/ray/protobuf:kuberay_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

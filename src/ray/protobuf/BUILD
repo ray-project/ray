@@ -182,17 +182,6 @@ python_grpc_compile(
     deps = [":job_agent_proto"],
 )
 
-# Kuberay node provider interface.
-proto_library(
-    name = "kuberay_proto",
-    srcs = ["kuberay.proto"],
-)
-
-python_grpc_compile(
-    name = "kuberay_py_proto",
-    deps = ["kuberay_proto"],
-)
-
 # Agent manager gRPC lib.
 proto_library(
     name = "agent_manager_proto",
