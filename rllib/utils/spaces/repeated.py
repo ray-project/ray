@@ -28,8 +28,7 @@ class Repeated(gym.Space):
         ]
 
     def contains(self, x):
-        return (isinstance(x, (list,np.ndarray))
-                and len(x) <= self.max_len
+        return (isinstance(x, (list, np.ndarray)) and len(x) <= self.max_len
                 and all(self.child_space.contains(c) for c in x))
 
     def __repr__(self):
