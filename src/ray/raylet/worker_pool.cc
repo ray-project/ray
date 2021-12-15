@@ -25,9 +25,12 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(worker_register_time_ms, "end to end latency of register a worker process.",
+             (), ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace {
 
@@ -179,7 +182,7 @@ void WorkerPool::update_worker_startup_token_counter() {
   worker_startup_token_counter_ += 1;
 }
 
-Process WorkerPool::StartWorkerProcess(
+std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
     const int runtime_env_hash, const std::string &serialized_runtime_env_context,
@@ -193,7 +196,7 @@ Process WorkerPool::StartWorkerProcess(
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       *status = PopWorkerStatus::JobConfigMissing;
       process_failed_job_config_missing_++;
-      return Process();
+      return {Process(), (StartupToken)-1};
     }
     job_config = &it->second;
   }
@@ -216,7 +219,7 @@ Process WorkerPool::StartWorkerProcess(
                    << " pending registration";
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
     process_failed_rate_limited_++;
-    return Process();
+    return {Process(), (StartupToken)-1};
   }
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
@@ -417,13 +420,15 @@ Process WorkerPool::StartWorkerProcess(
                                worker_type);
   state.starting_worker_processes.emplace(
       worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
+                                start});
+  StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
   }
-  return proc;
+  return {proc, worker_startup_token};
 }
 
 void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
@@ -434,26 +439,37 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       *io_service_, boost::posix_time::seconds(
                         RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc, proc_startup_token, worker_type,
-                     this](const boost::system::error_code e) {
+  timer->async_wait([timer, language, proc = proc, proc_startup_token, worker_type,
+                     this](const boost::system::error_code e) mutable {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
     // Since this process times out to start, remove it from starting_worker_processes
     // to avoid the zombie worker.
     auto it = state.starting_worker_processes.find(proc_startup_token);
     if (it != state.starting_worker_processes.end()) {
-      RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                    << ") have not registered to raylet within timeout.";
+      RAY_LOG(ERROR)
+          << "Some workers of the worker process(" << proc.GetId()
+          << ") have not registered within the timeout. "
+          << (proc.IsAlive()
+                  ? "The process is still alive, probably it's hanging during start."
+                  : "The process is dead, probably it crashed during start.");
+
+      if (proc.IsAlive()) {
+        proc.Kill();
+      }
+
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       process_failed_pending_registration_++;
       bool found;
       bool used;
       TaskID task_id;
-      InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks, proc,
-                                        nullptr, status, &found, &used, &task_id);
+      InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
+                                        proc_startup_token, nullptr, status, &found,
+                                        &used, &task_id);
       if (!found) {
-        InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks, proc, nullptr,
-                                          status, &found, &used, &task_id);
+        InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
+                                          proc_startup_token, nullptr, status, &found,
+                                          &used, &task_id);
       }
       state.starting_worker_processes.erase(it);
       if (IsIOWorkerType(worker_type)) {
@@ -588,7 +604,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
+  auto it = state.starting_worker_processes.find(worker_startup_token);
+  if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING)
         << "Received a register request from an unknown worker shim process: "
         << worker_shim_pid;
@@ -609,8 +626,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
+  STATS_worker_register_time_ms.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", port: " << port
+                 << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
@@ -803,12 +825,13 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::InvokePopWorkerCallbackForProcess(
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
-    const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
+        &starting_workers_to_tasks,
+    StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
   *worker_used = false;
-  auto it = starting_workers_to_tasks.find(proc);
+  auto it = starting_workers_to_tasks.find(startup_token);
   if (it != starting_workers_to_tasks.end()) {
     *found = true;
     *task_id = it->second.task_id;
@@ -828,8 +851,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   bool used;
   TaskID task_id;
   InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
-                                    worker->GetShimProcess(), worker, PopWorkerStatus::OK,
-                                    &found, &used, &task_id);
+                                    worker->GetStartupToken(), worker,
+                                    PopWorkerStatus::OK, &found, &used, &task_id);
   if (found) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
@@ -841,8 +864,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 
   InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
-                                    worker->GetShimProcess(), worker, PopWorkerStatus::OK,
-                                    &found, &used, &task_id);
+                                    worker->GetStartupToken(), worker,
+                                    PopWorkerStatus::OK, &found, &used, &task_id);
   // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
     // Put the worker to the idle pool.
@@ -1021,7 +1044,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                      const std::string &serialized_runtime_env_context,
                                      const PopWorkerCallback &callback) -> Process {
     PopWorkerStatus status = PopWorkerStatus::OK;
-    Process proc = StartWorkerProcess(
+    auto [proc, startup_token] = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
         dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env_context,
         allocated_instances_serialized_json);
@@ -1030,9 +1053,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       WarnAboutSize();
       auto task_info = TaskWaitingForWorkerInfo{task_spec.TaskId(), callback};
       if (dedicated) {
-        state.starting_dedicated_workers_to_tasks[proc] = std::move(task_info);
+        state.starting_dedicated_workers_to_tasks[startup_token] = std::move(task_info);
       } else {
-        state.starting_workers_to_tasks[proc] = std::move(task_info);
+        state.starting_workers_to_tasks[startup_token] = std::move(task_info);
       }
     } else {
       // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
@@ -1356,7 +1379,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
     }
     for (; expected_workers_num > 0; expected_workers_num--) {
       PopWorkerStatus status;
-      Process proc =
+      auto [proc, startup_token] =
           StartWorkerProcess(ray::Language::PYTHON, worker_type, JobID::Nil(), &status);
       if (!proc.IsValid()) {
         // We may hit the maximum worker start up concurrency limit. Stop.

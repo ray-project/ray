@@ -15,6 +15,7 @@
 #include "ray/object_manager/pull_manager.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -738,6 +739,10 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   }
 
   return bytes_needed_calculated;
+}
+
+void PullManager::RecordMetrics() const {
+  // TODO(sang): Add metrics.
 }
 
 std::string PullManager::DebugString() const {

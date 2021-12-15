@@ -119,9 +119,6 @@ class SimpleQTrainer(Trainer):
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings.
-
-        Rewrites rollout_fragment_length to take into account n_step
-        truncation.
         """
         super().validate_config(config)
 
@@ -136,11 +133,6 @@ class SimpleQTrainer(Trainer):
                 raise ValueError(
                     "ParameterNoise Exploration and `noisy` network cannot be"
                     " used at the same time!")
-
-        # Update effective batch size to include n-step
-        adjusted_batch_size = max(config["rollout_fragment_length"],
-                                  config.get("n_step", 1))
-        config["rollout_fragment_length"] = adjusted_batch_size
 
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":

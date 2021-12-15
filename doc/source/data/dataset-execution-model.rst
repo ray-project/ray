@@ -19,7 +19,7 @@ In the common case, each read task produces a single output block. Read tasks ma
 
 .. note::
 
-  Block splitting is currently off by default. See the block size tuning section below on how to enable block splitting.
+  Block splitting is currently off by default. See the block size tuning section below on how to enable block splitting (beta).
 
 Deferred Read Task Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,7 +109,7 @@ The number of read tasks can also be increased by increasing the ``parallelism``
 Tuning Max Block Size
 ~~~~~~~~~~~~~~~~~~~~~
 
-Block splitting is off by default. To enable block splitting, run ``ray.data.context.DatasetContext.get_current().block_splitting_enabled = True``.
+Block splitting is off by default. To enable block splitting (beta), run ``ray.data.context.DatasetContext.get_current().block_splitting_enabled = True``.
 
 Once enabled, the max target block size can be adjusted via the Dataset context API. For example, to configure a max target block size of 8GiB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 8192 * 1024 * 1024`` prior to creating the Dataset. Lower block sizes reduce the max amount of object store and Python heap memory required during execution. However, having too many blocks may introduce task scheduling overheads.
 

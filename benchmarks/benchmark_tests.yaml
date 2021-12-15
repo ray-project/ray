@@ -124,3 +124,83 @@
     timeout: 3600 # 1hr
     prepare: python distributed/wait_cluster.py --num-nodes=250
     script: python distributed/test_many_tasks.py --num-tasks=1000
+
+- name: many_tasks_redis_ha
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Yi Cheng"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_tasks.py --num-tasks=10000
+
+  app_env_vars:
+    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_storage: "memory"
+
+  stable: false
+
+- name: many_actors_redis_ha
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Yi Cheng"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_actors.py
+
+  app_env_vars:
+    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_storage: "memory"
+
+  stable: false
+
+- name: many_nodes_redis_ha
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Yi Cheng"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: many_nodes.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=250
+    script: python distributed/test_many_tasks.py --num-tasks=1000
+
+  app_env_vars:
+    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_storage: "memory"
+
+  stable: false
+
+- name: many_pgs_redis_ha
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Yi Cheng"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_pgs.py
+
+  app_env_vars:
+    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_storage: "memory"
+
+  stable: false

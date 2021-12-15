@@ -196,6 +196,14 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
+class LocalRayletDiedError(RayError):
+    """Indicates that the task's local raylet died."""
+
+    def __str__(self):
+        return ("The task's local raylet died. "
+                "Check raylet.out for more information.")
+
+
 class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
@@ -462,6 +470,15 @@ class ActorPlacementGroupRemoved(RayError):
                 "has been removed.")
 
 
+class PendingCallsLimitExceeded(RayError):
+    """Raised when the pending actor calls exceeds `max_pending_calls` option.
+
+    This exception could happen probably because the caller calls the callee
+    too frequently.
+    """
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -481,4 +498,6 @@ RAY_EXCEPTION_TYPES = [
     RuntimeEnvSetupError,
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,
+    PendingCallsLimitExceeded,
+    LocalRayletDiedError,
 ]

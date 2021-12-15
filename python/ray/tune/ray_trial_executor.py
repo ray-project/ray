@@ -460,7 +460,7 @@ class RayTrialExecutor(TrialExecutor):
             return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
-        self.restore(trial, trial.checkpoint)
+        self.restore(trial)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
@@ -863,23 +863,18 @@ class RayTrialExecutor(TrialExecutor):
                 self._running[value] = trial
         return checkpoint
 
-    def restore(self, trial, checkpoint=None, block=False) -> None:
+    def restore(self, trial) -> None:
         """Restores training state from a given model checkpoint.
 
         Args:
             trial (Trial): The trial to be restored.
-            checkpoint (Checkpoint): The checkpoint to restore from. If None,
-                the most recent PERSISTENT checkpoint is used. Defaults to
-                None.
-            block (bool): Whether or not to block on restore before returning.
 
         Raises:
             RuntimeError: This error is raised if no runner is found.
             AbortTrialExecution: This error is raised if the trial is
                 ineligible for restoration, given the Tune input arguments.
         """
-        if checkpoint is None or checkpoint.value is None:
-            checkpoint = trial.checkpoint
+        checkpoint = trial.checkpoint
         if checkpoint.value is None:
             return
         if trial.runner is None:
@@ -910,11 +905,8 @@ class RayTrialExecutor(TrialExecutor):
                     "restoration. Pass in an `upload_dir` for remote "
                     "storage-based restoration")
 
-            if block:
-                ray.get(remote)
-            else:
-                self._running[remote] = trial
-                trial.restoring_from = checkpoint
+            self._running[remote] = trial
+            trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
         """Exports model of this trial based on trial.export_formats.

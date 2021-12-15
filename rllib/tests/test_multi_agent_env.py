@@ -133,8 +133,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                     1: 0
                 }
             }))
-        self.assertEqual(env.try_reset(0), {0: 0, 1: 0})
-        self.assertEqual(env.try_reset(1), {0: 0, 1: 0})
+        self.assertEqual(env.try_reset(0), {0: {0: 0, 1: 0}})
+        self.assertEqual(env.try_reset(1), {1: {0: 0, 1: 0}})
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})

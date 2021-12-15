@@ -327,8 +327,11 @@ class Monitor:
                 status["autoscaler_report"] = asdict(self.autoscaler.summary())
 
                 for msg in self.event_summarizer.summary():
-                    logger.info("{}{}".format(
-                        ray_constants.LOG_PREFIX_EVENT_SUMMARY, msg))
+                    # Need to prefix each line of the message for the lines to
+                    # get pushed to the driver logs.
+                    for line in msg.split("\n"):
+                        logger.info("{}{}".format(
+                            ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
                 self.event_summarizer.clear()
 
             as_json = json.dumps(status)
