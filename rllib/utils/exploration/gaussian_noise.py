@@ -21,9 +21,10 @@ torch, _ = try_import_torch()
 class GaussianNoise(Exploration):
     """An exploration that adds white noise to continuous actions.
 
-    If explore=True, returns actions plus scale (<-annealed over time) x
-        Gaussian noise. Also, some completely random period is possible at the
-        beginning.
+    If explore=True, returns actions plus scale (annealed over time) x
+    Gaussian noise. Also, some completely random period is possible at the
+    beginning.
+
     If explore=False, returns the deterministic action.
     """
 
@@ -39,7 +40,7 @@ class GaussianNoise(Exploration):
                  scale_timesteps: int = 10000,
                  scale_schedule: Optional[Schedule] = None,
                  **kwargs):
-        """Initializes a GaussianNoise Exploration object.
+        """Initializes a GaussianNoise instance.
 
         Args:
             random_timesteps: The number of timesteps for which to act
@@ -53,7 +54,7 @@ class GaussianNoise(Exploration):
                 the noise with.
             scale_timesteps: The timesteps over which to linearly anneal
                 the scaling factor (after(!) having used random actions for
-                `random_timesteps` steps.
+                `random_timesteps` steps).
             scale_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
