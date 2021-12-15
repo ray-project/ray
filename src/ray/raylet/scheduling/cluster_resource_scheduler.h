@@ -184,7 +184,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ContainResource(const std::string &resource_name);
+  bool ResourcesExist(const std::string &resource_name);
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };

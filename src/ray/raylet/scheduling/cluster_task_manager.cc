@@ -170,20 +170,18 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     not_detached_with_owner_failed = true;
   }
 
-  // Check whether the placement group was removed or not.
-  if (task.GetTaskSpecification().PlacementGroupBundleId().first !=
-      PlacementGroupID::Nil()) {
-    const auto &required_resource =
+  const auto &required_resource =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-    for (auto &entry : required_resource) {
-      if (!cluster_resource_scheduler_->ContainResource(entry.first)) {
-        RAY_LOG(DEBUG) << "The placement group: "
-                       << task.GetTaskSpecification().PlacementGroupBundleId().first
-                       << " was removed when poping workers for task: " << task_id
-                       << ", will cancel the task.";
-        CancelTask(task_id, rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED);
-        canceled = true;
-      }
+  for (auto &entry : required_resource) {
+    if (!cluster_resource_scheduler_->ResourcesExist(entry.first)) {
+      RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
+      PlacementGroupID::Nil());
+      RAY_LOG(DEBUG) << "The placement group: "
+                      << task.GetTaskSpecification().PlacementGroupBundleId().first
+                      << " was removed when poping workers for task: " << task_id
+                      << ", will cancel the task.";
+      CancelTask(task_id, rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED);
+      canceled = true;
     }
   }
 

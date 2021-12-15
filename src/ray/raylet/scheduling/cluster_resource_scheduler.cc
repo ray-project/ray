@@ -522,7 +522,14 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   }
 }
 
-bool ClusterResourceScheduler::ContainResource(const std::string &resource_name) {
+bool ClusterResourceScheduler::ResourcesExist(const std::string &resource_name) {
+  auto it = nodes_.find(local_node_id_);
+  if (it == nodes_.end()) {
+    RAY_LOG(WARNING) << "Can't find local node:[" << local_node_id_
+                     << "] when check local resource exists or not.";
+    return false;
+  }
+
   int idx = -1;
   if (resource_name == ray::kCPU_ResourceLabel) {
     idx = (int)CPU;
