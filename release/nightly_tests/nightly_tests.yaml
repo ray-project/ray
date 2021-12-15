@@ -366,7 +366,6 @@
     timeout: 3600
     prepare: python wait_cluster.py 2 600
     script: python placement_group_tests/long_running_performance_test.py --num-stages 2000
-  stable: false
 
 - name: placement_group_performance_test
   cluster:
