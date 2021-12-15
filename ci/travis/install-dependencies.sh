@@ -226,9 +226,9 @@ install_upgrade_pip() {
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
-      "${python}" -W ignore -m pip config -q --user set global.no-color True
-      "${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      "${python}" -W ignore -m pip config -q --user set global.quiet True
+      # "${python}" -W ignore -m pip config -q --user set global.no-color True
+      # "${python}" -W ignore -m pip config -q --user set global.progress_bar off
+      # "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
 
     "${python}" -m ensurepip
@@ -321,11 +321,12 @@ install_dependencies() {
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
     local status="0";
-    local errmsg="";
-    for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
-      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
-    done
+    # local errmsg="";
+    CC=gcc pip install -v -r "${WORKSPACE_DIR}"/python/requirements.txt
+    # for _ in {1..3}; do
+    #   # errmsg=$() && break;
+    #   # status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+    # done
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
