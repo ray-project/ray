@@ -1,9 +1,11 @@
 import copy
 import gym
+from gym.spaces import Box, Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
 import platform
 import os
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -225,8 +227,7 @@ class RolloutWorker(ParallelIteratorWorker):
             seed: int = None,
             extra_python_environs: Optional[dict] = None,
             fake_sampler: bool = False,
-            spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
-                                                  gym.spaces.Space]]] = None,
+            spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
             policy=None,
             monitor_path=None,
     ):
@@ -609,11 +610,15 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"env {self.env} is not a subclass of BaseEnv, "
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!")
 
-        self.filters: Dict[PolicyID, Filter] = {
-            policy_id: get_filter(self.observation_filter,
-                                  policy.observation_space.shape)
-            for (policy_id, policy) in self.policy_map.items()
-        }
+        self.filters: Dict[PolicyID, Filter] = {}
+        for (policy_id, policy) in self.policy_map.items():
+            filter_shape = tree.map_structure(
+                lambda s: (None if isinstance(  # noqa
+                    s, (Discrete, MultiDiscrete)) else np.array(s.shape)),
+                policy.observation_space_struct)
+            self.filters[policy_id] = get_filter(self.observation_filter,
+                                                 filter_shape)
+
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
 
@@ -1078,8 +1083,8 @@ class RolloutWorker(ParallelIteratorWorker):
             *,
             policy_id: PolicyID,
             policy_cls: Type[Policy],
-            observation_space: Optional[gym.spaces.Space] = None,
-            action_space: Optional[gym.spaces.Space] = None,
+            observation_space: Optional[Space] = None,
+            action_space: Optional[Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
                                                  PolicyID]] = None,
@@ -1586,8 +1591,7 @@ class RolloutWorker(ParallelIteratorWorker):
 def _determine_spaces_for_multi_agent_dict(
         multi_agent_dict: MultiAgentPolicyConfigDict,
         env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
-                                              gym.spaces.Space]]] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
@@ -1685,11 +1689,10 @@ def _validate_env(env: EnvType, env_context: EnvContext = None):
         # Get a dummy observation by resetting the env.
         dummy_obs = env.reset()
         # Convert lists to np.ndarrays.
-        if type(dummy_obs) is list and isinstance(env.observation_space,
-                                                  gym.spaces.Box):
+        if type(dummy_obs) is list and isinstance(env.observation_space, Box):
             dummy_obs = np.array(dummy_obs)
         # Ignore float32/float64 diffs.
-        if isinstance(env.observation_space, gym.spaces.Box) and \
+        if isinstance(env.observation_space, Box) and \
                 env.observation_space.dtype != dummy_obs.dtype:
             dummy_obs = dummy_obs.astype(env.observation_space.dtype)
         # Check, if observation is ok (part of the observation space). If not,

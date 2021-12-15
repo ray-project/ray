@@ -3,11 +3,13 @@ import importlib
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 try:
+    import aiohttp
     import requests
 except ImportError:
+    aiohttp = None
     requests = None
 
 from ray._private.runtime_env.packaging import (
@@ -231,6 +233,13 @@ class JobSubmissionClient:
                     working_dir, excludes=runtime_env.get("excludes", None))
                 runtime_env["working_dir"] = package_uri
 
+    def get_version(self) -> str:
+        r = self._do_request("GET", "/api/version")
+        if r.status_code == 200:
+            return r.json().get("version")
+        else:
+            self._raise_error(r)
+
     def submit_job(
             self,
             *,
@@ -291,3 +300,18 @@ class JobSubmissionClient:
             return JobLogsResponse(**r.json()).logs
         else:
             self._raise_error(r)
+
+    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+            ws = await session.ws_connect(
+                f"{self._address}/api/jobs/{job_id}/logs/tail")
+
+            while True:
+                msg = await ws.receive()
+
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    yield msg.data
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    break
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    pass

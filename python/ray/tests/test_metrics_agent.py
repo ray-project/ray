@@ -48,18 +48,16 @@ _METRICS = [
     # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_pending_actors",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
-    "ray_placement_group_creation_latency_ms_sum",
-    "ray_placement_group_scheduling_latency_ms_sum",
-    "ray_pending_placement_group",
-    "ray_registered_placement_group",
-    "ray_infeasible_placement_group",
-    "ray_new_resource_creation_latency_ms_sum",
+    "ray_gcs_placement_group_creation_latency_ms_sum",
+    "ray_gcs_placement_group_scheduling_latency_ms_sum",
+    "ray_gcs_placement_group_count",
+    "ray_gcs_new_resource_creation_latency_ms_sum",
+    "ray_gcs_actors_count",
 ]
 
 # This list of metrics should be kept in sync with

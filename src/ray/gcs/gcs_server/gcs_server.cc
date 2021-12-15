@@ -58,9 +58,15 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   gcs_redis_failure_detector_->Start();
 
   // Init gcs table storage.
+  RAY_LOG(INFO) << "GCS Storage is set to " << RayConfig::instance().gcs_storage();
+  RAY_LOG(INFO) << "gRPC based pubsub is"
+                << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
+                << "enabled";
   if (RayConfig::instance().gcs_storage() == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
   } else if (RayConfig::instance().gcs_storage() == "memory") {
+    RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
+        << " grpc pubsub has to be enabled when using storage other than redis";
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
   } else {
     RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
@@ -185,7 +191,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
-  CollectStats();
+  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -555,11 +561,11 @@ void GcsServer::InstallEventListeners() {
   }
 }
 
-void GcsServer::CollectStats() {
-  gcs_actor_manager_->CollectStats();
-  gcs_placement_group_manager_->CollectStats();
+void GcsServer::RecordMetrics() const {
+  gcs_actor_manager_->RecordMetrics();
+  gcs_placement_group_manager_->RecordMetrics();
   execute_after(
-      main_service_, [this] { CollectStats(); },
+      main_service_, [this] { RecordMetrics(); },
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
