@@ -73,7 +73,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
 
     std::unordered_map<std::string, double> required_resources;
     auto actor_creating_task_spec = Mocker::GenActorCreationTask(
-        job_id, /*max_restarts=*/1, /*detached=*/true, /*name=*/"", owner_address,
+        job_id, /*max_restarts=*/1, /*detached=*/true, /*name=*/"", "", owner_address,
         required_resources, required_placement_resources);
     return std::make_shared<gcs::GcsActor>(actor_creating_task_spec.GetMessage(),
                                            /*ray_namespace=*/"");

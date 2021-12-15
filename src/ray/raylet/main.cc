@@ -32,6 +32,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
+DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,

@@ -156,8 +156,10 @@ class FunctionActorManager:
                 if self._worker.gcs_client.internal_kv_put(
                         holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                     break
-        # TODO(yic) Use gcs pubsub
-        self._worker.redis_client.lpush("Exports", "a")
+        if self._worker.gcs_pubsub_enabled:
+            self._worker.gcs_publisher.publish_function_key(key)
+        else:
+            self._worker.redis_client.lpush("Exports", "a")
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.

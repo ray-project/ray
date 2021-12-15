@@ -96,7 +96,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
-      if (rayConfig.getJobId() == JobId.NIL) {
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(gcsClient.nextJobId());
       }
       int numWorkersPerProcess =

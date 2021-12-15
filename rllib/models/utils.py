@@ -98,6 +98,11 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
+    # Test image (10x10).
+    filters_10x10 = [
+        [16, [5, 5], 2],
+        [32, [5, 5], 2],
+    ]
     if len(shape) in [2, 3] and (shape[:2] == [480, 640]
                                  or shape[1:] == [480, 640]):
         return filters_480x640
@@ -110,6 +115,9 @@ def get_filter_config(shape):
     elif len(shape) in [2, 3] and (shape[:2] == [42, 42]
                                    or shape[1:] == [42, 42]):
         return filters_42x42
+    elif len(shape) in [2, 3] and (shape[:2] == [10, 10]
+                                   or shape[1:] == [10, 10]):
+        return filters_10x10
     else:
         raise ValueError(
             "No default configuration for obs shape {}".format(shape) +

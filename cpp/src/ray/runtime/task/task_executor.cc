@@ -198,7 +198,7 @@ Status TaskExecutor::ExecuteTask(
     int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
-        task_output_inlined_bytes, result_ptr));
+        &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {

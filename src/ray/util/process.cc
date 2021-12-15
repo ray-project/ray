@@ -462,6 +462,13 @@ int Process::Wait() const {
   return status;
 }
 
+bool Process::IsAlive() const {
+  if (p_) {
+    return IsProcessAlive(p_->GetId());
+  }
+  return false;
+}
+
 void Process::Kill() {
   if (p_) {
     pid_t pid = p_->GetId();
@@ -569,11 +576,26 @@ pid_t GetParentPID() {
 pid_t GetParentPID() { return getppid(); }
 #endif  // #ifdef _WIN32
 
+pid_t GetPID() {
+#ifdef _WIN32
+  return GetCurrentProcessId();
+#else
+  return getpid();
+#endif
+}
+
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
 #ifdef _WIN32
-  RAY_LOG(FATAL) << "IsProcessAlive not implement on windows";
+  if (HANDLE handle =
+          OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, static_cast<DWORD>(pid))) {
+    DWORD exit_code;
+    if (GetExitCodeProcess(handle, &exit_code) && exit_code == STILL_ACTIVE) {
+      return true;
+    }
+    CloseHandle(handle);
+  }
   return false;
 #else
   if (kill(pid, 0) == -1 && errno == ESRCH) {
@@ -594,8 +616,8 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                         : y.IsValid() ? false
-                                       : equal_to<void const *>()(x.Get(), y.Get())
+                     : y.IsValid() ? false
+                                   : equal_to<void const *>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }

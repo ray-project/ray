@@ -1,12 +1,9 @@
 package io.ray.serve.poll;
 
-import com.google.gson.Gson;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class KeyTypeTest {
-
-  private static final Gson GSON = new Gson();
 
   @Test
   public void hashTest() {
@@ -33,12 +30,31 @@ public class KeyTypeTest {
   }
 
   @Test
-  public void jsonTest() {
+  public void toStringTest() {
     KeyType k1 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k1");
-    String json = GSON.toJson(k1);
+    Assert.assertEquals(k1.toString(), "(LongPollNamespace.ROUTE_TABLE, k1)");
 
-    KeyType k2 = GSON.fromJson(json, KeyType.class);
-    Assert.assertEquals(k1, k2);
-    Assert.assertEquals(k1.hashCode(), k2.hashCode());
+    KeyType k2 = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
+    Assert.assertEquals(k2.toString(), "LongPollNamespace.ROUTE_TABLE");
+  }
+
+  @Test
+  public void parseFromTest() {
+    String key1 = "(LongPollNamespace.ROUTE_TABLE, k1)";
+    KeyType k1 = KeyType.parseFrom(key1);
+    Assert.assertEquals(k1.getLongPollNamespace(), LongPollNamespace.ROUTE_TABLE);
+    Assert.assertEquals(k1.getKey(), "k1");
+
+    String key2 = "LongPollNamespace.ROUTE_TABLE";
+    KeyType k2 = KeyType.parseFrom(key2);
+    Assert.assertEquals(k2.getLongPollNamespace(), LongPollNamespace.ROUTE_TABLE);
+    Assert.assertNull(k2.getKey());
+
+    String key3 = "LongPollNamespace.unknown";
+    try {
+      KeyType.parseFrom(key3);
+      Assert.assertTrue(false, "Expect exception here!");
+    } catch (Exception e) {
+    }
   }
 }

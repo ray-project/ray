@@ -11,6 +11,7 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
     ParsedRuntimeEnv)
+from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
 from ray._private.runtime_env.plugin import (decode_plugin_uri,
                                              encode_plugin_uri)
 
@@ -204,6 +205,23 @@ class TestValidatePip:
     def test_validate_pip_valid_list(self):
         result = parse_and_validate_pip(PIP_LIST)
         assert result == PIP_LIST
+
+    def test_remove_ray(self):
+        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
+        assert result == ["pkg1", "pkg2"]
+
+    def test_remove_ray_env_var(self, monkeypatch):
+        monkeypatch.setenv(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP, "1")
+        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
+        assert result == ["pkg1", "ray", "pkg2"]
+
+    def test_replace_ray_libraries_with_dependencies(self):
+        result = parse_and_validate_pip(["pkg1", "ray[serve, tune]", "pkg2"])
+        assert "pkg1" in result
+        assert "pkg2" in result
+        assert "uvicorn" in result  # from ray[serve]
+        assert "pandas" in result  # from ray[tune]
+        assert not any(["ray" in specifier for specifier in result])
 
 
 class TestValidateEnvVars:

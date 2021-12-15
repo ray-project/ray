@@ -160,12 +160,12 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            # Do not flatten infos, state_out_ and actions.
+            # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
-            # timestep. Actions - on the other hand - are already flattened
-            # in the sampler.
-            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS
-                     ] or k.startswith("state_out_"):
+            # timestep.
+            if k == SampleBatch.INFOS or k.startswith("state_out_") or \
+                    (k == SampleBatch.ACTIONS and
+                     not self.policy.config.get("_disable_action_flattening")):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -373,8 +373,9 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS
-                       ] or col.startswith("state_out_"):
+            if col == SampleBatch.INFOS or col.startswith("state_out_") or (
+                    col == SampleBatch.ACTIONS and
+                    not self.policy.config.get("_disable_action_flattening")):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]
@@ -557,13 +558,12 @@ class SimpleListCollector(SampleCollector):
         agent_key = (episode.episode_id, agent_id)
         self.agent_key_to_policy_id[agent_key] = policy_id
         policy = self.policy_map[policy_id]
-        view_reqs = policy.model.view_requirements if \
-            getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
-        self.agent_collectors[agent_key] = _AgentCollector(view_reqs, policy)
+        self.agent_collectors[agent_key] = _AgentCollector(
+            policy.view_requirements, policy)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
@@ -621,6 +621,7 @@ class SimpleListCollector(SampleCollector):
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
+        batch_size = len(keys)
 
         buffers = {}
         for k in keys:
@@ -702,7 +703,10 @@ class SimpleListCollector(SampleCollector):
 
         self._reset_inference_calls(policy_id)
 
-        return SampleBatch(input_dict)
+        return SampleBatch(
+            input_dict,
+            seq_lens=np.ones(batch_size, dtype=np.int32)
+            if "state_in_0" in input_dict else None)
 
     @override(SampleCollector)
     def postprocess_episode(
