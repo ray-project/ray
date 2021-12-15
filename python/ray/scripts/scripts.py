@@ -469,9 +469,21 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           metrics_export_port, no_monitor, tracing_startup_hook,
           ray_debugger_external):
     """Start Ray processes manually on the local machine."""
-    if gcs_server_port and not head:
-        raise ValueError(
-            "gcs_server_port can be only assigned when you specify --head.")
+
+    # Validate head-only flags.
+    if not head:
+        head_only_flags = {"--port": port, "--gcs-server-port": gcs_server_port,
+                           "--redis-shard-ports": redis_shard_ports,
+                           "--include-dashboard": include_dashboard}
+        for flag, val in head_only_flags.items():
+            if val is None:
+                continue
+            cli_logger.abort("`{}` should only be specified when starting head "
+                             "node with `{}`.",
+                             cf.bold(flag), cf.bold("--head"))
+            raise ValueError(
+                f"{flag} should only be specified when starting head node with "
+                "`--head`.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -600,12 +612,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            redis_addresses = services.find_redis_address(default_address)
-            if len(redis_addresses) > 0:
+            redis_addresses = services.find_redis_address()
+            if default_address in redis_addresses:
                 raise ConnectionError(
-                    f"Ray is already running at {default_address}. "
-                    f"Please specify a different port using the `--port`"
-                    f" command to `ray start`.")
+                    f"Ray is trying to start at {default_address}, "
+                    f"but is already running at {redis_addresses}. "
+                    "Please specify a different port using the `--port`"
+                    " command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
@@ -675,31 +688,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         if address is not None:
             (redis_address, redis_address_ip,
              redis_address_port) = services.validate_redis_address(address)
-        if not (port is None):
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--port"), cf.bold("--head"))
 
-            raise Exception("If --head is not passed in, --port is not "
-                            "allowed.")
-        if redis_shard_ports is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
-
-            raise Exception("If --head is not passed in, --redis-shard-ports "
-                            "is not allowed.")
         if redis_address is None:
             cli_logger.abort("`{}` is required unless starting with `{}`.",
                              cf.bold("--address"), cf.bold("--head"))
-
             raise Exception("If --head is not passed in, --address must "
                             "be provided.")
-        if include_dashboard:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-dashboard"), cf.bold("--head"))
-
-            raise ValueError(
-                "If --head is not passed in, the --include-dashboard"
-                "flag is not relevant.")
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.

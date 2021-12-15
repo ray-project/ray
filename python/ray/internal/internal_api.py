@@ -26,10 +26,8 @@ def memory_summary(address=None,
                    stats_only=False,
                    num_entries=None):
     from ray.dashboard.memory_utils import memory_summary
-    if not address:
+    if not address or address == "auto":
         address = services.get_ray_address_to_use_or_die()
-    if address == "auto":
-        address = services.find_redis_address_or_die()
 
     state = GlobalState()
     state._initialize_global_state(address, redis_password)
@@ -97,10 +95,9 @@ def node_stats(node_manager_address=None,
     )
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    node_stats = stub.GetNodeStats(
-        node_manager_pb2.GetNodeStatsRequest(
-            include_memory_info=include_memory_info),
-        timeout=30.0)
+    node_stats = stub.GetNodeStats(node_manager_pb2.GetNodeStatsRequest(
+        include_memory_info=include_memory_info),
+                                   timeout=30.0)
     return node_stats
 
 

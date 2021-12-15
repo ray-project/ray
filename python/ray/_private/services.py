@@ -177,7 +177,7 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
     return port
 
 
-def find_redis_address(address=None):
+def find_redis_address():
     """
     Attempts to find all valid Ray redis addresses on this node.
 
@@ -254,8 +254,6 @@ def find_redis_address(address=None):
                         # TODO(ekl): Find a robust solution for locating Redis.
                         if arg.startswith("--redis-address="):
                             proc_addr = arg.split("=")[1]
-                            if address is not None and address != proc_addr:
-                                continue
                             redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
@@ -264,19 +262,11 @@ def find_redis_address(address=None):
     return redis_addresses
 
 
-def get_ray_address_to_use_or_die():
+def _find_redis_address_or_die():
+    """Find one Redis address unambiguously, or raise an error.
+
+    Callers outside of this module should use get_ray_address_to_use_or_die()
     """
-    Attempts to find an address for an existing Ray cluster if it is not
-    already specified as an environment variable.
-    Returns:
-        A string to pass into `ray.init(address=...)`
-    """
-    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-                          find_redis_address_or_die())
-
-
-def find_redis_address_or_die():
-
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -288,6 +278,129 @@ def find_redis_address_or_die():
             "Could not find any running Ray instance. "
             "Please specify the one to connect to by setting `address`.")
     return redis_addresses.pop()
+
+
+def find_gcs_address():
+    """
+    Attempts to find all valid Ray GCS address on this node.
+
+    Returns:
+        Set of detected Redis instances.
+    """
+    # Currently, this extracts the deprecated --redis-address from the command
+    # that launched the raylet running on this node, if any. Anyone looking to
+    # edit this function should be warned that these commands look like, for
+    # example:
+    # /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
+    # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
+    # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
+    # --min_worker_port=10000 --max_worker_port=19999
+    # --node_manager_port=58578 --redis_port=6379
+    # --maximum_startup_concurrency=8
+    # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
+    # --config_list=plasma_store_as_thread,True
+    # --python_worker_command=/usr/bin/python
+    #     /usr/local/lib/python3.8/dist-packages/ray/workers/default_worker.py
+    #     --redis-address=123.456.78.910:6379
+    #     --node-ip-address=123.456.78.910 --node-manager-port=58578
+    #     --object-store-name=... --raylet-name=...
+    #     --temp-dir=/tmp/ray
+    #     --metrics-agent-port=41856 --redis-password=[MASKED]
+    #     --java_worker_command= --cpp_worker_command=
+    #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
+    #     --metrics-agent-port=41856 --metrics_export_port=64229
+    #     --agent_command=/usr/bin/python
+    #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
+    #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
+    #         --dashboard-agent-port=41856 --node-manager-port=58578
+    #         --object-store-name=... --raylet-name=... --temp-dir=/tmp/ray
+    #         --log-dir=/tmp/ray/session_2020-11-08_14-29-07_199128_278000/logs
+    #         --redis-password=[MASKED] --object_store_memory=5037192806
+    #         --plasma_directory=/tmp
+    # Longer arguments are elided with ... but all arguments from this instance
+    # are included, to provide a sense of what is in these.
+    # Indeed, we had to pull --redis-address to the front of each call to make
+    # this readable.
+    # As you can see, this is very long and complex, which is why we can't
+    # simply extract all the the arguments using regular expressions and
+    # present a dict as if we never lost track of these arguments, for
+    # example. Picking out --redis-address below looks like it might grab the
+    # wrong thing, but double-checking that we're finding the correct process
+    # by checking that the contents look like we expect would probably be prone
+    # to choking in unexpected ways.
+    # Notice that --redis-address appears twice. This is not a copy-paste
+    # error; this is the reason why the for loop below attempts to pick out
+    # every appearance of --redis-address.
+
+    # The --redis-address here is what is now called the --address, but it
+    # appears in the default_worker.py and agent.py calls as --redis-address.
+    pids = psutil.pids()
+    gcs_addresses = set()
+    for pid in pids:
+        try:
+            proc = psutil.Process(pid)
+            # HACK: Workaround for UNIX idiosyncrasy
+            # Normally, cmdline() is supposed to return the argument list.
+            # But it in some cases (such as when setproctitle is called),
+            # an arbitrary string resembling a command-line is stored in
+            # the first argument.
+            # Explanation: https://unix.stackexchange.com/a/432681
+            # More info: https://github.com/giampaolo/psutil/issues/1179
+            cmdline = proc.cmdline()
+            # NOTE(kfstorm): To support Windows, we can't use
+            # `os.path.basename(cmdline[0]) == "raylet"` here.
+            if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
+                for arglist in cmdline:
+                    # Given we're merely seeking --redis-address, we just split
+                    # every argument on spaces for now.
+                    for arg in arglist.split(" "):
+                        # TODO(ekl): Find a robust solution for locating Redis.
+                        if arg.startswith("--gcs-address="):
+                            proc_addr = arg.split("=")[1]
+                            gcs_addresses.add(proc_addr)
+        except psutil.AccessDenied:
+            pass
+        except psutil.NoSuchProcess:
+            pass
+    return gcs_addresses
+
+
+def _find_gcs_address_or_die():
+    """Find one GCS address unambiguously, or raise an error.
+
+    Callers outside of this module should use get_ray_address_to_use_or_die()
+    """
+    gcs_addresses = find_gcs_address()
+    if len(gcs_addresses) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {gcs_addresses}. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable."
+        )
+        sys.exit(1)
+    elif not gcs_addresses:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable.")
+    return gcs_addresses.pop()
+
+
+def bootstrap_with_gcs() -> bool:
+    """Returns whether bootstrapping should be done with GCS."""
+    return os.environ.get("RAY_bootstrap_with_gcs") not in \
+           [None, "0", "false"]
+
+
+def get_ray_address_to_use_or_die():
+    """
+    Attempts to find an address for an existing Ray cluster if it is not
+    already specified as an environment variable.
+    Returns:
+        A string to pass into `ray.init(address=...)`
+    """
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          _find_gcs_address_or_die() if bootstrap_with_gcs() else _find_redis_address_or_die())
 
 
 def wait_for_node(redis_address,
@@ -373,7 +486,7 @@ def validate_redis_address(address):
     """
 
     if address == "auto":
-        address = find_redis_address_or_die()
+        address = _find_redis_address_or_die()
     redis_address = address_to_ip(address)
 
     redis_address_parts = redis_address.split(":")
