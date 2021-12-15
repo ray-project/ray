@@ -72,6 +72,7 @@ class DashboardAgent(object):
         self.redis_password = redis_password
 
         # If gcs address is used, we'll not use redis in dashboard
+        # TODO(iycheng): Remove after redis is removed
         self.gcs_address = gcs_address
         if self.gcs_address is not None:
             self.redis_address = None
