@@ -1,3 +1,4 @@
+import json
 import logging
 import requests
 import threading
@@ -81,10 +82,17 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Creates a number of nodes within the namespace.
         Returns a mapping from created node ids to node metadata.
         """
-
+        # Get the current number of replicas
         url = "https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
-        # TODO: Put in proper scale here
-        data = requests.patch(url, '[{"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 3}]', headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
+        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        old_replicas = data["spec"]["workerGroupSpecs"][0]["replicas"]
+        # Compute the new number of replicas
+        new_replicas = old_replicas + count
+        # Update the number of replicas
+        path = "/spec/workerGroupSpecs/0/replicas"
+        # TODO: Add retry loop if test and set fails
+        command = [{"op": "test", "path": path, "value": old_replicas}, {"op": "replace", "path": path, "value": new_replicas}]
+        data = requests.patch(url, json.dumps(command), headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
 
         return data
 
