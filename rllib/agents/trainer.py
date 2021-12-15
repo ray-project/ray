@@ -549,10 +549,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # - Algorithms reading from offline files (incl. action information).
     "_disable_action_flattening": False,
     # Experimental flag.
-    # If True, the distributed execution API will not be used. Instead,
-    # a Trainer's execution plan will be called as-is for each training
-    # iteration.
-    "_disable_distributed_execution_api": False,
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
@@ -830,7 +830,7 @@ class Trainer(Trainable):
                 num_workers=self.config["num_workers"])
 
             # Function defining one single training iteration's behavior.
-            if self.config["_disable_distributed_execution_api"]:
+            if self.config["_disable_execution_plan_api"]:
                 # Ensure remote workers are initially in sync with the
                 # local worker.
                 self.workers.sync_weights()
@@ -989,7 +989,7 @@ class Trainer(Trainable):
                 raise e
 
             # Stopping criteria.
-            if self.config["_disable_distributed_execution_api"]:
+            if self.config["_disable_execution_plan_api"]:
                 if self._by_agent_steps:
                     sampled = self._counters[NUM_AGENT_STEPS_SAMPLED] - \
                         agent_steps_sampled
@@ -1020,7 +1020,7 @@ class Trainer(Trainable):
             self._sync_filters_if_needed(self.workers)
 
             # Collect worker metrics.
-            if self.config["_disable_distributed_execution_api"]:
+            if self.config["_disable_execution_plan_api"]:
                 info = result.copy()
                 result["info"] = {LEARNER_INFO: info}
 
@@ -1382,7 +1382,7 @@ class Trainer(Trainable):
             train_results = train_one_step(self, train_batch)
         else:
             raise NotImplementedError(
-                "`_disable_distributed_execution_api=True` only supported for "
+                "`_disable_execution_plan_api=True` only supported for "
                 "SimpleOptimizer so far!")
 
         return train_results
@@ -2060,7 +2060,7 @@ class Trainer(Trainable):
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
-        if self.config["_disable_distributed_execution_api"]:
+        if self.config["_disable_execution_plan_api"]:
             results = self.training_iteration()
         else:
             results = next(self.train_exec_impl)
@@ -2461,7 +2461,7 @@ class Trainer(Trainable):
 
         logger.warning("Recreating execution plan after failure.")
         workers.reset(healthy_workers)
-        if not self.config.get("_disable_distributed_execution_api") and \
+        if not self.config.get("_disable_execution_plan_api") and \
                 callable(self.execution_plan):
             logger.warning("Recreating execution plan after failure")
             self.train_exec_impl = self.execution_plan(
