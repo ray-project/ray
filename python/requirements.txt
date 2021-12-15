@@ -40,7 +40,7 @@ pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn>=0.15.0
 dataclasses; python_version < '3.7'
 starlette>=0.14.2
 
@@ -53,7 +53,7 @@ azure-mgmt-compute~=23.1.0
 azure-mgmt-network~=19.0.0
 azure-mgmt-resource~=20.0.0
 msrestazure~=0.6.4
-boto3
+boto3>=1.19.0
 cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
