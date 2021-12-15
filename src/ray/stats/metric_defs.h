@@ -70,14 +70,14 @@ DECLARE_stats(spill_manager_cumulative_request_count);
 DECLARE_stats(spill_manager_throughput_mb);
 
 /// GCS Resource Manager
-DECLARE_stats(new_resource_creation_latency_ms);
+DECLARE_stats(gcs_new_resource_creation_latency_ms);
 
 /// Placement Group
-DECLARE_stats(placement_group_creation_latency_ms);
-DECLARE_stats(placement_group_scheduling_latency_ms);
-DECLARE_stats(pending_placement_group);
-DECLARE_stats(registered_placement_group);
-DECLARE_stats(infeasible_placement_group);
+DECLARE_stats(gcs_placement_group_creation_latency_ms);
+DECLARE_stats(gcs_placement_group_scheduling_latency_ms);
+DECLARE_stats(gcs_placement_group_count);
+
+DECLARE_stats(gcs_actors_count);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.
@@ -198,10 +198,6 @@ static Count UnintentionalWorkerFailures(
 static Count NodeFailureTotal(
     "node_failure_total", "Number of node failures that have happened in the cluster.",
     "");
-
-/// Actors
-static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
-                           "actors");
 
 /// Resources
 static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",

@@ -43,7 +43,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_pending_actors",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
@@ -73,6 +72,11 @@ _METRICS = [
     "ray_spill_manager_objects_bytes",
     "ray_spill_manager_cumulative_request_count",
     # "ray_spill_manager_throughput_mb",
+    "ray_gcs_placement_group_creation_latency_ms_sum",
+    "ray_gcs_placement_group_scheduling_latency_ms_sum",
+    "ray_gcs_placement_group_count",
+    "ray_gcs_new_resource_creation_latency_ms_sum",
+    "ray_gcs_actors_count",
 ]
 
 # This list of metrics should be kept in sync with
