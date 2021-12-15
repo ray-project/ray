@@ -63,6 +63,15 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     ASSERT_TRUE(local_node_resource == node_resources);
   }
 
+  // TODO(@clay4444): Remove this once we did the batch rpc request refactor!
+  std::vector<std::shared_ptr<const BundleSpecification>> ConvertSingleSpecToVectorPtrs(
+      BundleSpecification bundle_spec) {
+    std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+    bundle_specs.push_back(
+        std::make_shared<const BundleSpecification>(std::move(bundle_spec)));
+    return bundle_specs;
+  }
+
   bool update_called_ = false;
   bool delete_called_ = false;
 };
@@ -76,7 +85,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   /// 4. check remaining resources is correct.
   CheckAvailableResoueceEmpty("CPU");
 }
@@ -93,7 +103,8 @@ TEST_F(NewPlacementGroupResourceManagerTest,
   init_unit_resource.insert({"CPU", 1.0});
   InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare bundle resource.
-  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
@@ -105,7 +116,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   ASSERT_TRUE(update_called_);
@@ -136,7 +148,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   /// 2. init local available resource.
   InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   ASSERT_FALSE(update_called_);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   ASSERT_TRUE(update_called_);
@@ -164,8 +177,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   init_unit_resource.insert({"CPU", 2.0});
   InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare and commit two bundle resource.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(first_bundle_spec));
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(second_bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(first_bundle_spec)));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(second_bundle_spec)));
   ASSERT_FALSE(update_called_);
   ASSERT_FALSE(delete_called_);
   new_placement_group_resource_manager_->CommitBundle(first_bundle_spec);
@@ -236,7 +251,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle resource 10 times.
   for (int i = 0; i < 10; i++) {
-    new_placement_group_resource_manager_->PrepareBundle(bundle_spec);
+    new_placement_group_resource_manager_->PrepareBundles(
+        ConvertSingleSpecToVectorPtrs(bundle_spec));
   }
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
@@ -262,9 +278,11 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       std::make_pair("CPU", 3.0)};
   InitLocalAvailableResource(available_resource);
   /// 3. prepare bundle -> commit bundle -> prepare bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {
       {"CPU_group_" + group_id.Hex(), 1.0},
@@ -283,14 +301,16 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 5. prepare bundle -> commit bundle -> commit bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   // 6. check remaining resources is correct.
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 7. prepare bundle -> return bundle -> commit bundle.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec)));
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   // 8. check remaining resources is correct.
@@ -305,7 +325,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   auto group_id = PlacementGroupID::FromRandom();
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundlesSpecification(group_id, unit_resource, 4);
+  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
   // 2. init local available resource with 3 CPUs.
   absl::flat_hash_map<std::string, double> available_resource = {
       std::make_pair("CPU", 3.0)};

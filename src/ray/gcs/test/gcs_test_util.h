@@ -83,7 +83,7 @@ struct Mocker {
     return request;
   }
 
-  static std::vector<std::shared_ptr<const BundleSpecification>> GenBundlesSpecification(
+  static std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
       const PlacementGroupID &placement_group_id,
       absl::flat_hash_map<std::string, double> &unit_resource, int bundles_size = 1) {
     std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
@@ -102,7 +102,7 @@ struct Mocker {
     return bundle_specs;
   }
 
-  // TODO(@clay4444): Remove this once we die the batch rpc request refactor.
+  // TODO(@clay4444): Remove this once we did the batch rpc request refactor.
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {
