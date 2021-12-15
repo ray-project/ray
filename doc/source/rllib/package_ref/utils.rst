@@ -3,7 +3,7 @@
 RLlib Utilities
 ===============
 
-The RLlib `utils/` directory contains useful tools and utilities for RL and deep-learning:
+The RLlib ``utils/`` directory contains useful tools and utilities for RL and deep-learning:
 
 .. toctree::
    :maxdepth: 1

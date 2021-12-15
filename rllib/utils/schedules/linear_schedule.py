@@ -7,7 +7,7 @@ class LinearSchedule(PolynomialSchedule):
     Uses `PolynomialSchedule` with power=1.0.
 
 
-    The forumla is:
+    The formula is:
     value = `final_p` + (`initial_p` - `final_p`) * (1 - `t`/t_max)
     """
 

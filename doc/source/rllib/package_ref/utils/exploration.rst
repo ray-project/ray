@@ -41,6 +41,14 @@ All built-in Exploration classes
     :special-members: __init__
     :members:
 
+.. autoclass:: ray.rllib.utils.exploration.random_encoder.RE3
+    :special-members: __init__
+    :members:
+
+.. autoclass:: ray.rllib.utils.exploration.curiosity.Curiosity
+    :special-members: __init__
+    :members:
+
 .. autoclass:: ray.rllib.utils.exploration.parameter_noise.ParameterNoise
     :special-members: __init__
     :members:

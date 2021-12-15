@@ -42,19 +42,19 @@ class GaussianNoise(Exploration):
         """Initializes a GaussianNoise Exploration object.
 
         Args:
-            random_timesteps (int): The number of timesteps for which to act
+            random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
-            stddev (float): The stddev (sigma) to use for the
+            stddev: The stddev (sigma) to use for the
                 Gaussian noise to be added to the actions.
-            initial_scale (float): The initial scaling weight to multiply
+            initial_scale: The initial scaling weight to multiply
                 the noise with.
-            final_scale (float): The final scaling weight to multiply
+            final_scale: The final scaling weight to multiply
                 the noise with.
-            scale_timesteps (int): The timesteps over which to linearly anneal
+            scale_timesteps: The timesteps over which to linearly anneal
                 the scaling factor (after(!) having used random actions for
                 `random_timesteps` steps.
-            scale_schedule (Optional[Schedule]): An optional Schedule object
+            scale_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
         assert framework is not None
