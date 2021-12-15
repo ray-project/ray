@@ -16,3 +16,5 @@ cartpole-pg-fake-gpus:
         # Fake 2 GPUs.
         num_gpus: 2
         _fake_gpus: true
+        # Do use exec-plan API (so that multi-GPU works).
+        _disable_execution_plan_api: False
