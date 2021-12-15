@@ -553,8 +553,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
-                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+              RAY_UNUSED(task_finisher_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -607,13 +607,28 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-            RAY_LOG(WARNING)
-                << "The worker failed to receive a response from the local "
-                   "raylet because the raylet is crashed. Terminating the worker.";
-            QuickExit();
+          if (status.IsGrpcUnavailable()) {
+            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
+                             << "raylet because the raylet is unavailable (crashed). "
+                             << "Error: " << status;
+            if (worker_type_ == WorkerType::WORKER) {
+              // Exit the worker so that caller can retry somewhere else.
+              RAY_LOG(WARNING) << "Terminating the worker due to local raylet death";
+              QuickExit();
+            }
+            RAY_CHECK(worker_type_ == WorkerType::DRIVER);
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED, &status));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
           } else {
-            RAY_LOG(INFO)
+            RAY_LOG(WARNING)
                 << "The worker failed to receive a response from the local raylet, but "
                    "raylet is still alive. Try again on a local node. Error: "
                 << status;
@@ -685,7 +700,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
-            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);

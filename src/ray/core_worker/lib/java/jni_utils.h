@@ -104,6 +104,9 @@ extern jmethodID java_system_gc;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// PendingCallsLimitExceededException class
+extern jclass java_ray_pending_calls_limit_exceeded_exception_class;
+
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
@@ -184,6 +187,8 @@ extern jfieldID java_actor_creation_options_group;
 extern jfieldID java_actor_creation_options_bundle_index;
 /// concurrencyGroups field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_concurrency_groups;
+/// maxPendingCalls field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_max_pending_calls;
 
 /// ConcurrencyGroupImpl class
 extern jclass java_concurrency_group_impl_class;
