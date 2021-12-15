@@ -1,4 +1,9 @@
 
+from starlette.requests import Request
+
+
+import ray
+from ray import serve
 from ray.serve import pipeline
 from ray.serve.pipeline import ExecutionMode
 
@@ -8,24 +13,24 @@ class Preprocess:
   def __init__(self, constant: float):
     self.constant = constant
 
-  def __call__(self, req: float) -> float:
-    return self.constant * req
+  def __call__(self, req: str) -> str:
+    return f"Preprocess({self.constant} * {req})"
 
 @pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class ModelA:
   def __init__(self, weight: float):
     self.weight = weight
 
-  def __call__(self, req: float) -> float:
-    return self.weight * req
+  def __call__(self, req: str) -> str:
+    return f"ModelA({self.weight} * {req})"
 
 @pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class ModelB:
   def __init__(self, weight: float):
     self.weight = weight
 
-  def __call__(self, req: float) -> float:
-    return self.weight * req
+  def __call__(self, req: str) -> str:
+    return f"ModelB({self.weight} * {req})"
 
 @pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class Ensemble:
@@ -33,8 +38,8 @@ class Ensemble:
     self.a_weight = a_weight
     self.b_weight = b_weight
 
-  def __call__(self, a_output: float, b_output: float) -> float:
-    return self.a_weight * a_output + self.b_weight * b_output
+  def __call__(self, a_output: str, b_output: str) -> str:
+    return f"Ensemble({self.a_weight} * {a_output} + {self.b_weight} * {b_output})"
 
 # Step 2: Construct pipeline DAG such that it's locally executable.
 def build_dag():
@@ -53,14 +58,17 @@ def build_dag():
   print(dag.call(1))
   print(f"DAG output node: {dag._output_node}")
 
-# Step 3: Deploy this pipeline using a Driver class as deployment.
-# @serve.deployment(route_prefix="/whatever")
-# class Driver:
-#     def __init__(self):
-#         self._dag = build_dag() # Deploy actors from the driver.
+  return dag
 
-#     async def __call__(self):
-#         return await self._dag.call_async(...)
+# Step 3: Deploy this pipeline using a Driver class as deployment.
+@serve.deployment(route_prefix="/hello")
+class Driver:
+    def __init__(self):
+        self._dag = build_dag()
+
+    def __call__(self, req: Request):
+        input = str(req.query_params["input"])
+        return self._dag.call(input)
 
 # Step 4: Enable deployment on arbitrary node, support re-size.
 # @serve.deployment(route_prefix="/whatever")
@@ -75,8 +83,13 @@ def build_dag():
 
 # Step 6: Support upgrade-in-tandem with dependencies.
 
+# Step 7: Test with async call
+
 def main():
-  build_dag()
+  # build_dag()
+  ray.init(address="auto")
+  serve.start(detached=True)
+  Driver.deploy()
 
 if __name__ == "__main__":
   main()
