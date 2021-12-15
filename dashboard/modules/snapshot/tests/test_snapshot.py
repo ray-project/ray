@@ -162,7 +162,7 @@ my_func_deleted.delete()
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == "serve"
-    assert entry_deleted["httpRoute"] == "/my_func_deleted"
+    assert entry_deleted["httpRoute"] is None
     assert entry_deleted["className"] == "my_func_deleted"
     assert entry_deleted["status"] == "DELETED"
     assert entry["rayJobId"] is not None
