@@ -256,10 +256,14 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
   absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> refs_to_remove;
   for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
-      RemoveLocalReferenceInternal(ref.first, nullptr);
+      refs_to_remove.push_back(ref.first);
     }
+  }
+  for (const auto &object_id_to_remove : refs_to_remove) {
+    RemoveLocalReferenceInternal(object_id_to_remove, nullptr);
   }
 }
 

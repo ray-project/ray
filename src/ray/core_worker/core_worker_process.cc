@@ -209,7 +209,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            if (status.IsGrpcUnavailable()) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status;

@@ -117,7 +117,7 @@ class DataPreprocessor:
             self.fruits = list(fruit_means.keys())
 
         fruit_one_hots = {
-            fruit: collections.defaultdict(int, fruit=1)
+            fruit: collections.defaultdict(int, **{fruit: 1})
             for fruit in self.fruits
         }
 
@@ -454,6 +454,11 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Use dummy trainer to debug dataset performance")
+    parser.add_argument(
+        "--num-epochs",
+        default=2,
+        type=int,
+        help="The number of epochs to use for training")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -462,6 +467,7 @@ if __name__ == "__main__":
     use_gpu = args.use_gpu
     use_s3 = args.use_s3
     large_dataset = args.large_dataset
+    num_epochs = args.num_epochs
 
     if large_dataset:
         assert use_s3, "--large-dataset requires --use-s3 to be set."
@@ -485,6 +491,7 @@ if __name__ == "__main__":
     # exists.
     mlflow.set_experiment("cuj-big-data-training")
 
+    dir_path = os.path.dirname(os.path.realpath(__file__))
     if use_s3:
         # Check if s3 data is populated.
         BUCKET_NAME = "cuj-big-data"
@@ -504,8 +511,6 @@ if __name__ == "__main__":
         inference_path = "s3://cuj-big-data/inference/"
         inference_output_path = "s3://cuj-big-data/output/"
     else:
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-
         data_path = os.path.join(dir_path, "data")
         inference_path = os.path.join(dir_path, "inference")
         inference_output_path = "/tmp"
@@ -532,7 +537,6 @@ if __name__ == "__main__":
     # remove label column and internal Arrow column.
     num_features = num_columns - 2
 
-    NUM_EPOCHS = 2
     BATCH_SIZE = 512
     NUM_HIDDEN = 50  # 200
     NUM_LAYERS = 3  # 15
@@ -541,7 +545,7 @@ if __name__ == "__main__":
 
     if args.debug:
         num_gpus = 1 if use_gpu else 0
-        shards = train_dataset.repeat(NUM_EPOCHS) \
+        shards = train_dataset.repeat(num_epochs) \
             .random_shuffle_each_window(_spread_resource_prefix="node:") \
             .split(num_workers)
         del train_dataset
@@ -555,6 +559,8 @@ if __name__ == "__main__":
         e2e_end_time = timeit.default_timer()
         total_time = e2e_end_time - e2e_start_time
         print(f"Job finished in {total_time} seconds.")
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+            f.write(json.dumps({"time": total_time, "success": 1}))
         exit()
 
     # Random global shuffle
@@ -569,7 +575,7 @@ if __name__ == "__main__":
 
     config = {
         "use_gpu": use_gpu,
-        "num_epochs": NUM_EPOCHS,
+        "num_epochs": num_epochs,
         "batch_size": BATCH_SIZE,
         "num_hidden": NUM_HIDDEN,
         "num_layers": NUM_LAYERS,
@@ -583,7 +589,12 @@ if __name__ == "__main__":
     # reported by ``train.report()`` will be logged to these 2 places.
     # TODO: TBXLoggerCallback should create nonexistent logdir
     #       and should also create 1 directory per file.
-    callbacks = [TBXLoggerCallback(logdir="/tmp"), MLflowCallback(config)]
+    tbx_runs_dir = os.path.join(dir_path, "runs")
+    os.makedirs(tbx_runs_dir, exist_ok=True)
+    callbacks = [
+        TBXLoggerCallback(logdir=tbx_runs_dir),
+        MLflowCallback(config)
+    ]
 
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None

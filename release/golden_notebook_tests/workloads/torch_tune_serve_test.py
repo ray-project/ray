@@ -210,7 +210,7 @@ if __name__ == "__main__":
     analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint = analysis.best_checkpoint
+    best_checkpoint = analysis.best_checkpoint.local_path
     model_id = get_remote_model(best_checkpoint)
 
     print("Setting up Serve.")

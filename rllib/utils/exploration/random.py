@@ -31,8 +31,8 @@ class Random(Exploration):
         """Initialize a Random Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            framework (Optional[str]): One of None, "tf", "tfe", "torch".
+            action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "tfe", "torch".
         """
         super().__init__(
             action_space=action_space,

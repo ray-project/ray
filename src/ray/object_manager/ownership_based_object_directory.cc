@@ -14,7 +14,7 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 

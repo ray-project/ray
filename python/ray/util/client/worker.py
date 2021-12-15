@@ -716,7 +716,8 @@ class Worker:
                 "object_store_memory": md.object_store_memory,
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
-                "runtime_env": md.runtime_env
+                "runtime_env": md.runtime_env,
+                "scheduling_strategy": md.scheduling_strategy,
             })
         return key
 
@@ -736,6 +737,7 @@ class Worker:
                 "num_returns": func._num_returns,
                 "memory": func._memory,
                 "runtime_env": func._runtime_env,
+                "scheduling_strategy": func._scheduling_strategy,
             })
         return key
 

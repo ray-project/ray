@@ -260,7 +260,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
-  void RecordMetrics() override;
+  /// Record the internal metrics.
+  void RecordMetrics() const override;
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
@@ -327,6 +328,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::string GetBestSchedulableNode(const internal::Work &work,
                                      bool requires_object_store_memory,
                                      bool force_spillback, bool *is_infeasible);
+
+  /// Recompute the debug stats.
+  /// It is needed because updating the debug state is expensive for cluster_task_manager.
+  /// TODO(sang): Update the internal states value dynamically instead of iterating the
+  /// data structure.
+  void RecomputeDebugStats() const;
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
@@ -452,10 +459,39 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const int64_t sched_cls_cap_max_ms_;
 
-  /// Metrics collected since the last report.
-  uint64_t metric_tasks_queued_;
-  uint64_t metric_tasks_dispatched_;
-  uint64_t metric_tasks_spilled_;
+  struct InternalStats {
+    /// Number of tasks that are spilled to other
+    /// nodes because it cannot be scheduled locally.
+    int64_t metric_tasks_spilled = 0;
+    /// Number of tasks that are waiting for
+    /// resources to be available locally.
+    int64_t num_waiting_for_resource = 0;
+    /// Number of tasks that are waiting for available memory
+    /// from the plasma store.
+    int64_t num_waiting_for_plasma_memory = 0;
+    /// Number of tasks that are waiting for nodes with available resources.
+    int64_t num_waiting_for_remote_node_resources = 0;
+    /// Number of workers that couldn't be started because the job config wasn't local.
+    int64_t num_worker_not_started_by_job_config_not_exist = 0;
+    /// Number of workers that couldn't be started because the worker registration timed
+    /// out.
+    int64_t num_worker_not_started_by_registration_timeout = 0;
+    /// Number of workers that couldn't be started becasue it hits the worker startup rate
+    /// limit.
+    int64_t num_worker_not_started_by_process_rate_limit = 0;
+    /// Number of tasks that are waiting for worker processes to start.
+    int64_t num_tasks_waiting_for_workers = 0;
+    /// Number of cancelled tasks.
+    int64_t num_cancelled_tasks = 0;
+    /// Number of infeasible tasks.
+    int64_t num_infeasible_tasks = 0;
+    /// Number of tasks to schedule.
+    int64_t num_tasks_to_schedule = 0;
+    /// Number of tasks to dispatch.
+    int64_t num_tasks_to_dispatch = 0;
+  };
+
+  mutable InternalStats internal_stats_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
