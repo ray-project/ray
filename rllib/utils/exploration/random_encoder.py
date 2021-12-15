@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.tf_ops import get_placeholder
+from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -25,8 +25,8 @@ class MovingMeanStd:
         """Initialize object.
 
         Args:
-            epsilon (float): Initial count.
-            shape (List[int]): Shape of the trackables mean and std.
+            epsilon: Initial count.
+            shape: Shape of the trackables mean and std.
         """
         if not shape:
             shape = []
@@ -38,7 +38,7 @@ class MovingMeanStd:
         """Normalize input batch using moving mean and std.
 
         Args:
-            inputs (np.ndarray): Input batch to normalize.
+            inputs: Input batch to normalize.
 
         Returns:
             Logarithmic scaled normalized output.
@@ -54,9 +54,9 @@ class MovingMeanStd:
         """Update moving mean, std and count.
 
         Args:
-            batch_mean (float): Input batch mean.
-            batch_var (float): Input batch variance.
-            batch_count (float): Number of cases in the batch.
+            batch_mean: Input batch mean.
+            batch_var: Input batch variance.
+            batch_count: Number of cases in the batch.
         """
         delta = batch_mean - self.mean
         tot_count = self.count + batch_count
@@ -85,10 +85,10 @@ def update_beta(beta_schedule: str, beta: float, rho: float,
     """Update beta based on schedule and training step.
 
     Args:
-        beta_schedule (str): Schedule for beta update.
-        beta (float): Initial beta.
-        rho (float): Schedule decay parameter.
-        step (int): Current training iteration.
+        beta_schedule: Schedule for beta update.
+        beta: Initial beta.
+        rho: Schedule decay parameter.
+        step: Current training iteration.
 
     Returns:
         Updated beta as per input schedule.
@@ -103,10 +103,10 @@ def compute_states_entropy(obs_embeds: np.ndarray, embed_dim: int,
     """Compute states entropy using K nearest neighbour method.
 
     Args:
-        obs_embeds (np.ndarray): Observation latent representation using
+        obs_embeds: Observation latent representation using
             encoder model.
-        embed_dim (int): Embedding vector dimension.
-        k_nn (int): Number of nearest neighbour for K-NN estimation.
+        embed_dim: Embedding vector dimension.
+        k_nn: Number of nearest neighbour for K-NN estimation.
 
     Returns:
         Computed states entropy.
@@ -152,30 +152,29 @@ class RE3(Exploration):
         """Initialize RE3.
 
         Args:
-            action_space (Space): The action space in which to explore.
-            framework (str): Supports "tf", this implementation does not
+            action_space: The action space in which to explore.
+            framework: Supports "tf", this implementation does not
                 support torch.
-            model (ModelV2): The policy's model.
-            embeds_dim (int): The dimensionality of the observation embedding
+            model: The policy's model.
+            embeds_dim: The dimensionality of the observation embedding
                 vectors in latent space.
-            encoder_net_config (Optional[ModelConfigDict]): Optional model
+            encoder_net_config: Optional model
                 configuration for the encoder network, producing embedding
                 vectors from observations. This can be used to configure
                 fcnet- or conv_net setups to properly process any
                 observation space.
-            beta (float): Hyperparameter to choose between exploration and
+            beta: Hyperparameter to choose between exploration and
                 exploitation.
-            beta_schedule (str): Schedule to use for beta decay, one of
+            beta_schedule: Schedule to use for beta decay, one of
                 "constant" or "linear_decay".
-            rho (float): Beta decay factor, used for on-policy algorithm.
-            k_nn (int): Number of neighbours to set for K-NN entropy
+            rho: Beta decay factor, used for on-policy algorithm.
+            k_nn: Number of neighbours to set for K-NN entropy
                 estimation.
-            random_timesteps (int): The number of timesteps to act completely
+            random_timesteps: The number of timesteps to act completely
                 randomly (see [1]).
-            sub_exploration (Optional[FromConfigSpec]): The config dict for
-                the underlying Exploration to use (e.g. epsilon-greedy for
-                DQN). If None, uses the FromSpecDict provided in the Policy's
-                default config.
+            sub_exploration: The config dict for the underlying Exploration
+                to use (e.g. epsilon-greedy for DQN). If None, uses the
+                FromSpecDict provided in the Policy's default config.
 
         Raises:
             ValueError: If the input framework is Torch.

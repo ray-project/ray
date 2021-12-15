@@ -1723,6 +1723,7 @@ Status CoreWorker::CreatePlacementGroup(
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
   }
+
   return status_future.get();
 }
 
@@ -1744,6 +1745,7 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
   }
+
   return status_future.get();
 }
 
@@ -1762,6 +1764,7 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
            << " creation.";
     return Status::TimedOut(stream.str());
   }
+
   return status_future.get();
 }
 
@@ -1957,33 +1960,19 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
-  std::shared_ptr<std::promise<void>> ready_promise =
-      std::make_shared<std::promise<void>>(std::promise<void>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncListNamedActors(
-      all_namespaces, ray_namespace,
-      [&actors, ready_promise](const std::vector<rpc::NamedActorInfo> &result) {
-        for (const auto &actor_info : result) {
-          actors.push_back(std::make_pair(actor_info.ray_namespace(), actor_info.name()));
-        }
-        ready_promise->set_value();
-      }));
-
-  // Block until the RPC completes. Set a timeout to avoid hangs if the
-  // GCS service crashes.
-  Status status;
-  if (ready_promise->get_future().wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
               "probably because the GCS server is dead or under high load .";
-    return std::make_pair(actors, Status::TimedOut(stream.str()));
+    return std::make_pair(std::move(actors), Status::TimedOut(stream.str()));
+  } else if (!status.ok()) {
+    return std::make_pair(std::move(actors), status);
   } else {
-    status = Status::OK();
+    return std::make_pair(std::move(actors), status);
   }
-
-  return std::make_pair(actors, status);
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status>
