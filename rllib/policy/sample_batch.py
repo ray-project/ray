@@ -377,8 +377,7 @@ class SampleBatch(dict):
 
         self_as_dict = {k: v for k, v in self.items()}
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
-        for k, v in shuffled.items():
-            self[k] = v
+        self.update(shuffled)
 
         return self
 

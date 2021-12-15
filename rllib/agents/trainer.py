@@ -1097,8 +1097,6 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
 
-        use_exec_api = not self.config["_disable_distributed_execution_api"]
-
         def auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done):
             # Training is done and we already ran at least one
             # evaluation -> Nothing left to run.
@@ -1126,18 +1124,12 @@ class Trainer(Trainable):
 
         # No evaluation necessary, just run the next training iteration.
         if not evaluate_this_iter:
-            if use_exec_api:
-                step_results = next(self.train_exec_impl)
-            else:
-                step_results = self.training_iteration()
+            step_results = self._exec_plan_or_training_iteration_fn()
         # We have to evaluate in this training iteration.
         else:
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
-                if use_exec_api:
-                    step_results = next(self.train_exec_impl)
-                else:
-                    step_results = self.training_iteration()
+                step_results = self._exec_plan_or_training_iteration_fn()
 
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
@@ -1145,9 +1137,7 @@ class Trainer(Trainable):
             if self.config["evaluation_parallel_to_training"]:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     train_future = executor.submit(
-                        lambda: (next(self.train_exec_impl) if
-                                 use_exec_api else
-                                 self.training_iteration()))
+                        lambda: self._exec_plan_or_training_iteration_fn())
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
@@ -2058,6 +2048,13 @@ class Trainer(Trainable):
         logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
+
+    def _exec_plan_or_training_iteration_fn(self):
+        if self.config["_disable_distributed_execution_api"]:
+            results = self.training_iteration()
+        else:
+            results = next(self.train_exec_impl)
+        return results
 
     @classmethod
     @override(Trainable)
