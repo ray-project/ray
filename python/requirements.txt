@@ -47,31 +47,31 @@ aiorwlock
 
 # Requirements for running tests
 pyarrow==4.0.1
-blist; platform_system != "Windows"
-azure-common
-azure-mgmt-resource
-msrestazure
-boto3
+blist~=1.3.6; platform_system != "Windows"
+azure-common~=1.1.27
+azure-mgmt-resource~=20.0.0
+msrestazure~=0.6.4
+boto3~=1.20.23
 cython >= 0.29.15
-dataclasses; python_version < '3.7'
-feather-format
-google-api-python-client
-google-cloud-storage
-gym-minigrid
-kubernetes
-lxml
-moto
-mypy
-networkx
-numba
+dataclasses~=0.8; python_version < '3.7'
+feather-format~=0.4.1 
+google-api-python-client~=2.33.0 
+google-cloud-storage~=1.43.0 
+gym-minigrid~=1.0.2 
+kubernetes~=20.13.0 
+lxml~=4.6.5 
+moto~=2.2.18
+mypy~=0.910 
+networkx~=2.5.1 
+numba~=0.51.2 
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
-openpyxl
+openpyxl~=3.0.9 
 opentelemetry-api==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-pexpect
-Pillow; platform_system != "Windows"
+pexpect~=4.8.0 
+Pillow~=8.4.0; platform_system != "Windows"
 pygments
 pyspark==3.1.2
 pytest==5.4.3
@@ -85,8 +85,8 @@ tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd
-starlette
-fastapi
+starlette~=0.16.0
+fastapi~=0.70.1
 smart_open[s3]
 tqdm
 async-exit-stack
