@@ -88,11 +88,10 @@ class EpsilonGreedy(Exploration):
             return self._get_torch_exploration_action(action_distribution,
                                                       explore, timestep)
 
-    def _get_tf_exploration_action_op(self,
-                                      action_distribution: ActionDistribution,
-                                      explore: Union[bool, TensorType],
-                                      timestep: Union[int, TensorType]
-                                      ) -> "tf.Tensor":
+    def _get_tf_exploration_action_op(
+            self, action_distribution: ActionDistribution,
+            explore: Union[bool, TensorType],
+            timestep: Union[int, TensorType]) -> "tf.Tensor":
         """TF method to produce the tf op for an epsilon exploration action.
 
         Args:
