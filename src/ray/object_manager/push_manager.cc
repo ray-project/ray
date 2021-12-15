@@ -76,7 +76,7 @@ void PushManager::ScheduleRemainingPushes() {
 }
 
 void PushManager::RecordMetrics() const {
-  ray::stats::STATS_push_manager_push_count.Record(NumPushesInFlight(), "InFlight");
+  ray::stats::STATS_push_manager_in_flight_push_count.Record(NumPushesInFlight());
   ray::stats::STATS_push_manager_chunks_count.Record(NumChunksInFlight(), "InFlight");
   ray::stats::STATS_push_manager_chunks_count.Record(NumChunksRemaining(), "Remaining");
 }

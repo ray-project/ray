@@ -757,7 +757,7 @@ void PullManager::RecordMetrics() const {
   ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
                                                  "Active");
   ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_pull_manager_requests.Record(num_active_bundles_, "ActiveBundles");
+  ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_count.Record(num_retries_total_);
 }
 

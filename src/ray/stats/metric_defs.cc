@@ -64,17 +64,17 @@ DEFINE_stats(
 DEFINE_stats(pull_manager_requested_bundles,
              "Number of requested bundles broken per type {Get, Wait, TaskArgs}.",
              ("Type"), (), ray::stats::GAUGE);
-DEFINE_stats(
-    pull_manager_requests,
-    "Number of pull requests broken per type {Queued, Active, Pinned, ActiveBundles}.",
-    ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(pull_manager_requests,
+             "Number of pull requests broken per type {Queued, Active, Pinned}.",
+             ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(pull_manager_active_bundles, "Number of active bundle requests", (), (),
+             ray::stats::GAUGE);
 DEFINE_stats(pull_manager_retries_count, "Number of cumulative pull retries.", (), (),
              ray::stats::GAUGE);
 
 /// Push Manager
-DEFINE_stats(push_manager_push_count,
-             "Number of object push requests broken per type {InFlight}.", ("Type"), (),
-             ray::stats::GAUGE);
+DEFINE_stats(push_manager_in_flight_push_count,
+             "Number of in flight object push requests.", (), (), ray::stats::GAUGE);
 DEFINE_stats(push_manager_chunks_count,
              "Number of object chunks transfer broken per type {InFlight, Remaining}.",
              ("Type"), (), ray::stats::GAUGE);

@@ -52,10 +52,11 @@ DECLARE_stats(object_manager_chunks_received_count);
 DECLARE_stats(pull_manager_bytes_usage);
 DECLARE_stats(pull_manager_requested_bundles);
 DECLARE_stats(pull_manager_requests);
+DECLARE_stats(pull_manager_active_bundles);
 DECLARE_stats(pull_manager_retries_count);
 
 /// Push Manager
-DECLARE_stats(push_manager_push_count);
+DECLARE_stats(push_manager_in_flight_push_count);
 DECLARE_stats(push_manager_chunks_count);
 
 /// Scheduler
