@@ -22,7 +22,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -61,7 +61,7 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     # The dataset is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)
-    builder = DelegatingArrowBlockBuilder()
+    builder = DelegatingBlockBuilder()
     for sample in samples:
         builder.add_block(sample)
     samples = builder.build()

@@ -331,5 +331,34 @@ def test_parse_cluster_info(address: str):
             parse_cluster_info(address, False)
 
 
+@pytest.mark.asyncio
+async def test_tail_job_logs(job_sdk_client):
+    client = job_sdk_client
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.1)
+"""
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as f:
+            f.write(driver_script)
+
+        job_id = client.submit_job(
+            entrypoint="python test_script.py",
+            runtime_env={"working_dir": tmp_dir})
+
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            for line in lines.strip().split("\n"):
+                assert line.split(" ") == ["Hello", str(i)]
+                i += 1
+
+        wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

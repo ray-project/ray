@@ -40,6 +40,7 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
+    PIP = "pip", "For pip environments installed locally on each node."
     HTTPS = "https", ("Remote https path, "
                       "assumes everything packed in one zip file.")
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
