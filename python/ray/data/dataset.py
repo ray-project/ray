@@ -1930,12 +1930,15 @@ class Dataset(Generic[T]):
 
         For the features tensor (N is the ``batch_size`` used by the
         DataLoader,  and n, m, k are the number of features per tensor):
+
         * If ``feature_columns`` is a ``List[str]``, the features will be
         a tensor of shape (N, n), with columns corresponding to =
         ``feature_columns``
+
         * If ``feature_columns`` is a ``List[List[str]]``, the features will be
         a list of tensors of shape [(N, m),...,(N, k)], with columns of each
         tensor corresponding to the elements of ``feature_columns``
+
         * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
         will be a dict of key-tensor pairs of shape
         {key1: (N, m),..., keyN: (N, k)}, with columns of each
