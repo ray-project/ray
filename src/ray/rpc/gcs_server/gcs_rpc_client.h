@@ -59,7 +59,7 @@ class Executor {
 ///     rpc_client_.CreateActor(request, callback, timeout_ms = -1);
 ///
 ///     # Synchronous RPC. The function will return once the RPC is replied.
-///     rpc_client_.SYNC_CreateActor(request, *reply, timeout_ms = -1);
+///     rpc_client_.SyncCreateActor(request, *reply, timeout_ms = -1);
 ///
 /// Retry protocol:
 ///   Currently, Ray assumes the GCS server is HA.
@@ -76,7 +76,7 @@ class Executor {
 /// (the lower priority timeout is overwritten by the higher priority timeout).
 /// \param SPECS The cpp method spec. For example, override.
 ///
-/// Currently, SYNC_METHOD has an additional copy.
+/// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
 #define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, method_timeout_ms,    \
                                    SPECS)                                              \
@@ -89,6 +89,7 @@ class Executor {
                                   const METHOD##Reply &reply) {                        \
       if (status.IsTimedOut()) {                                                       \
         callback(status, reply);                                                       \
+        delete executor;                                                               \
       } else if (!status.IsGrpcError()) {                                              \
         auto status =                                                                  \
             reply.status().code() == (int)StatusCode::OK                               \
@@ -109,8 +110,8 @@ class Executor {
     executor->Execute(operation);                                                      \
   }                                                                                    \
                                                                                        \
-  ray::Status SYNC_##METHOD(const METHOD##Request &request, METHOD##Reply *reply_in,   \
-                            const int64_t timeout_ms = method_timeout_ms) {            \
+  ray::Status Sync##METHOD(const METHOD##Request &request, METHOD##Reply *reply_in,    \
+                           const int64_t timeout_ms = method_timeout_ms) {             \
     std::promise<Status> promise;                                                      \
     METHOD(                                                                            \
         request,                                                                       \

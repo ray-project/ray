@@ -20,8 +20,8 @@
 
 namespace {
 inline int64_t GetGcsTimeoutMs() {
-  return absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()) /
-         absl::Milliseconds(1);
+  return absl::ToInt64Milliseconds(
+      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
 }
 }  // namespace
 
@@ -208,7 +208,7 @@ Status ActorInfoAccessor::SyncGetByName(const std::string &name,
   rpc::GetNamedActorInfoReply reply;
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
-  auto status = client_impl_->GetGcsRpcClient().SYNC_GetNamedActorInfo(
+  auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
       request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
   if (status.ok() && reply.has_actor_table_data()) {
     actor_table_data = reply.actor_table_data();
@@ -232,7 +232,7 @@ Status ActorInfoAccessor::AsyncListNamedActors(
         } else {
           callback(status, VectorFromProtobuf(reply.named_actors_list()));
         }
-        RAY_LOG(ERROR) << "Finished getting named actor names, status = " << status;
+        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       },
       timeout_ms);
   return Status::OK();
@@ -245,8 +245,8 @@ Status ActorInfoAccessor::SyncListNamedActors(
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
   rpc::ListNamedActorsReply reply;
-  auto status = client_impl_->GetGcsRpcClient().SYNC_ListNamedActors(request, &reply,
-                                                                     GetGcsTimeoutMs());
+  auto status = client_impl_->GetGcsRpcClient().SyncListNamedActors(request, &reply,
+                                                                    GetGcsTimeoutMs());
   if (!status.ok()) {
     return status;
   }
@@ -281,8 +281,8 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   rpc::RegisterActorRequest request;
   rpc::RegisterActorReply reply;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  auto status = client_impl_->GetGcsRpcClient().SYNC_RegisterActor(request, &reply,
-                                                                   GetGcsTimeoutMs());
+  auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(request, &reply,
+                                                                  GetGcsTimeoutMs());
   return status;
 }
 
