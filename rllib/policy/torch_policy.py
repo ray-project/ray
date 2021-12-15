@@ -1070,7 +1070,8 @@ class TorchPolicy(Policy):
                 import traceback
                 with lock:
                     results[shard_idx] = (ValueError(
-                        e.args[0] + "\n traceback" + traceback.format_exc() + "\n" +
+                        e.args[0] + "\n traceback" + traceback.format_exc() +
+                        "\n" +
                         "In tower {} on device {}".format(shard_idx, device)),
                                           e)
 
