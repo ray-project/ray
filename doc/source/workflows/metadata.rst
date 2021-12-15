@@ -41,7 +41,7 @@ providing the step name:
     assert "end_time" in workflow_metadata["stats"]
 
 User-defined metadata
-----------------------------
+---------------------
 Custom metadata can be added to a workflow or a workflow step by the user,
 this is useful when you want to attach some extra information to the
 workflow or workflow step.
