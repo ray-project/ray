@@ -17,10 +17,8 @@ from ray._private.test_utils import (run_string_as_driver_nonblocking,
 
 logger = logging.getLogger(__name__)
 
-memoryGB = psutil.virtual_memory().available / 1024 / 1024 / 1024
 
-
-@pytest.mark.skipif(memoryGB < 8, reason="takes too long on weak machines")
+@pytest.mark.skipif(sys.platform == "win32", reason="OOM on Windows")
 def test_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
@@ -97,7 +95,7 @@ def test_resource_constraints(shutdown_only):
     assert duration > 1
 
 
-@pytest.mark.skipif(memoryGB < 8, reason="takes too long on weak machines")
+@pytest.mark.skipif(sys.platform == "win32", reason="OOM on Windows")
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=10)
