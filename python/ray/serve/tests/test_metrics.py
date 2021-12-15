@@ -20,7 +20,9 @@ def test_serve_metrics(serve_instance):
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
+    handle = f.get_handle()
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
+    ray.get([handle.remote(url) for _ in range(10)])
 
     def verify_metrics(do_assert=False):
         try:
@@ -31,11 +33,11 @@ def test_serve_metrics(serve_instance):
 
         expected_metrics = [
             # counter
-            "num_router_requests_total",
-            "num_http_requests_total",
-            "deployment_queued_queries_total",
-            "deployment_request_counter_requests_total",
-            "deployment_worker_starts_restarts_total",
+            "serve_num_router_requests",
+            "serve_num_http_requests",
+            "serve_deployment_queued_queries",
+            "serve_deployment_request_counter",
+            "serve_deployment_replica_starts",
             # histogram
             "deployment_processing_latency_ms_bucket",
             "deployment_processing_latency_ms_count",
@@ -43,9 +45,7 @@ def test_serve_metrics(serve_instance):
             # gauge
             "replica_processing_queries",
             # handle
-            "serve_handle_request_counter",
-            # ReplicaSet
-            "deployment_queued_queries"
+            "serve_handle_request_counter"
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -60,7 +60,7 @@ def test_serve_metrics(serve_instance):
     try:
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
-        verify_metrics()
+        verify_metrics(do_assert=True)
 
 
 def test_deployment_logger(serve_instance):
