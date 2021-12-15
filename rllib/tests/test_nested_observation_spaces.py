@@ -9,7 +9,7 @@ import ray
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import convert_to_base_env
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -165,7 +165,7 @@ class TorchSpyModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
         self.fc = FullyConnectedNetwork(
-            obs_space.original_space.spaces["sensors"].spaces["position"],
+            obs_space.original_space["sensors"].spaces["position"],
             action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
@@ -234,7 +234,7 @@ class DictSpyModel(TFModelV2):
         super().__init__(obs_space, action_space, None, model_config, name)
         # Will only feed in sensors->pos.
         input_ = tf.keras.layers.Input(
-            shape=self.obs_space.original_space["sensors"]["position"].shape)
+            shape=self.obs_space["sensors"]["position"].shape)
 
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
@@ -274,8 +274,7 @@ class TupleSpyModel(TFModelV2):
                  name):
         super().__init__(obs_space, action_space, None, model_config, name)
         # Will only feed in 0th index of observation Tuple space.
-        input_ = tf.keras.layers.Input(
-            shape=self.obs_space.original_space[0].shape)
+        input_ = tf.keras.layers.Input(shape=self.obs_space[0].shape)
 
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
@@ -306,7 +305,7 @@ class TupleSpyModel(TFModelV2):
         return output, []
 
 
-class NestedSpacesTest(unittest.TestCase):
+class NestedObservationSpacesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init(num_cpus=5)
@@ -368,8 +367,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = one_hot(
-                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -400,7 +398,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -413,28 +411,28 @@ class NestedSpacesTest(unittest.TestCase):
 
     def test_nested_dict_vector(self):
         self.do_test_nested_dict(
-            lambda _: VectorEnv.wrap(lambda i: NestedDictEnv()))
+            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv()))
 
     def test_nested_dict_serving(self):
         self.do_test_nested_dict(lambda _: SimpleServing(NestedDictEnv()))
 
     def test_nested_dict_async(self):
         self.do_test_nested_dict(
-            lambda _: BaseEnv.to_base_env(NestedDictEnv()))
+            lambda _: convert_to_base_env(NestedDictEnv()))
 
     def test_nested_tuple_gym(self):
         self.do_test_nested_tuple(lambda _: NestedTupleEnv())
 
     def test_nested_tuple_vector(self):
         self.do_test_nested_tuple(
-            lambda _: VectorEnv.wrap(lambda i: NestedTupleEnv()))
+            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv()))
 
     def test_nested_tuple_serving(self):
         self.do_test_nested_tuple(lambda _: SimpleServing(NestedTupleEnv()))
 
     def test_nested_tuple_async(self):
         self.do_test_nested_tuple(
-            lambda _: BaseEnv.to_base_env(NestedTupleEnv()))
+            lambda _: convert_to_base_env(NestedTupleEnv()))
 
     def test_multi_agent_complex_spaces(self):
         ModelCatalog.register_custom_model("dict_spy", DictSpyModel)
@@ -473,8 +471,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = one_hot(
-                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -485,7 +482,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)

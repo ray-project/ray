@@ -85,7 +85,7 @@ def create_torch_iterator(split, batch_size, rank=None):
 
 def create_dataset(filenames, repeat_times):
     pipeline = ray.data.read_parquet(list(filenames))\
-        .repeat(times=repeat_times).random_shuffle()
+        .repeat(times=repeat_times).random_shuffle_each_window()
     return pipeline
 
 

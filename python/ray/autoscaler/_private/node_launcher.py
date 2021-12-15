@@ -1,7 +1,9 @@
 from typing import Any, Optional, Dict
 import copy
 import logging
+import operator
 import threading
+import traceback
 import time
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
@@ -21,6 +23,7 @@ class NodeLauncher(threading.Thread):
                  provider,
                  queue,
                  pending,
+                 event_summarizer,
                  prom_metrics=None,
                  node_types=None,
                  index=None,
@@ -32,14 +35,13 @@ class NodeLauncher(threading.Thread):
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
+        self.event_summarizer = event_summarizer
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config: Dict[str, Any], count: int,
                      node_type: Optional[str]):
         if self.node_types:
             assert node_type, node_type
-        worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
-        before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
 
         # The `worker_nodes` field is deprecated in favor of per-node-type
         # node_configs. We allow it for backwards-compatibility.
@@ -47,6 +49,8 @@ class NodeLauncher(threading.Thread):
         if node_type:
             launch_config.update(
                 config["available_node_types"][node_type]["node_config"])
+        resources = copy.deepcopy(
+            config["available_node_types"][node_type]["resources"])
         launch_hash = hash_launch_conf(launch_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config.get("worker_nodes", {}))
@@ -64,7 +68,8 @@ class NodeLauncher(threading.Thread):
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node(node_config, node_tags, count)
+        self.provider.create_node_with_resources(node_config, node_tags, count,
+                                                 resources)
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
@@ -73,9 +78,6 @@ class NodeLauncher(threading.Thread):
             # second create time 4 times.
             self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
-        after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        if set(after).issubset(before):
-            self.log("No new nodes reported after node creation.")
 
     def run(self):
         while True:
@@ -86,6 +88,18 @@ class NodeLauncher(threading.Thread):
             except Exception:
                 self.prom_metrics.node_launch_exceptions.inc()
                 self.prom_metrics.failed_create_nodes.inc(count)
+                self.event_summarizer.add(
+                    "Failed to launch {} nodes of type " + node_type + ".",
+                    quantity=count,
+                    aggregate=operator.add)
+                # Log traceback from failed node creation only once per minute
+                # to avoid spamming driver logs with tracebacks.
+                self.event_summarizer.add_once_per_interval(
+                    message="Node creation failed. See the traceback below."
+                    " See autoscaler logs for further details.\n"
+                    f"{traceback.format_exc()}",
+                    key="Failed to create node.",
+                    interval_s=60)
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)

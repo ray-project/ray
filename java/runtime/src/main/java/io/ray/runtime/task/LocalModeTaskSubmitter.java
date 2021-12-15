@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -296,7 +295,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
         ActorCreationTaskSpec.newBuilder()
             .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .setMaxConcurrency(options.maxConcurrency);
+            .setMaxConcurrency(options.maxConcurrency)
+            .setMaxPendingCalls(options.maxPendingCalls);
     appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
@@ -308,13 +308,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
-      String fullName =
-          options.global
-              ? options.name
-              : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
       Preconditions.checkArgument(
-          !namedActors.containsKey(fullName), String.format("Actor of name %s exists", fullName));
-      namedActors.put(fullName, actorHandle);
+          !namedActors.containsKey(options.name),
+          String.format("Actor of name %s exists", options.name));
+      namedActors.put(options.name, actorHandle);
     }
     return actorHandle;
   }
@@ -381,10 +378,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return actorHandles.get(actorId).copy();
   }
 
-  public Optional<BaseActorHandle> getActor(String name, boolean global) {
-    String fullName =
-        global ? name : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-    ActorHandle actorHandle = namedActors.get(fullName);
+  public Optional<BaseActorHandle> getActor(String name) {
+    ActorHandle actorHandle = namedActors.get(name);
     if (null == actorHandle) {
       return Optional.empty();
     }

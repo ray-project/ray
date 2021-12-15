@@ -17,6 +17,8 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
+import "src/ray/protobuf/runtime_env_common.proto";
+
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
@@ -45,6 +47,30 @@ enum TaskType {
   ACTOR_TASK = 2;
   // Driver task.
   DRIVER_TASK = 3;
+}
+
+message PlacementGroupSchedulingStrategy {
+  // Placement group that is associated with this task.
+  bytes placement_group_id = 1;
+  // Placement group bundle that is associated with this task.
+  int64 placement_group_bundle_index = 2;
+  // Whether or not this task should capture parent's placement group automatically.
+  bool placement_group_capture_child_tasks = 3;
+}
+
+message DefaultSchedulingStrategy {}
+
+message SpreadSchedulingStrategy {}
+
+message SchedulingStrategy {
+  oneof scheduling_strategy {
+    // Default hybrid scheduling strategy.
+    DefaultSchedulingStrategy default_scheduling_strategy = 1;
+    // Placement group based scheduling strategy.
+    PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    // Best effort spread scheduling strategy.
+    SpreadSchedulingStrategy spread_scheduling_strategy = 3;
+  }
 }
 
 // Address of a worker or node manager.
@@ -109,12 +135,10 @@ enum ErrorType {
   // Indicates that a task failed because the actor died unexpectedly before
   // finishing it.
   ACTOR_DIED = 1;
-  // This object was lost from distributed memory to a node failure or system
-  // error. We use this error when lineage reconstruction is enabled, but the
-  // object cannot be reconstructed but the lineage is not available..
-  // TODO(swang): We may want to break down this error type further, e.g.,
-  // object's lineage was evicted or object depended on an actor task that
-  // can't be reconstructed.
+  // This object was lost from distributed memory due to a node failure or
+  // system error. We use this error when lineage reconstruction is enabled,
+  // but this object is not reconstructable (created by actor, ray.put, or a
+  // borowed ObjectRef).
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
@@ -140,6 +164,25 @@ enum ErrorType {
   OBJECT_DELETED = 10;
   // Indicates there is some error when resolving the dependence
   DEPENDENCY_RESOLUTION_FAILED = 11;
+  // The object is reconstructable but we have already exceeded its maximum
+  // number of task retries.
+  OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED = 12;
+  // The object is reconstructable, but its lineage was evicted due to memory
+  // pressure.
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
+  // We use this error for object fetches that have timed out. This error will
+  // get thrown if an object appears to be created, but the requestor is not
+  // able to fetch it after the configured timeout.
+  OBJECT_FETCH_TIMED_OUT = 14;
+  // Indicates that a task failed because the local raylet died.
+  LOCAL_RAYLET_DIED = 15;
+}
+
+/// The information per ray error type.
+message RayErrorInfo {
+  oneof error {
+    RayException actor_init_failure = 1;
+  }
 }
 
 /// The task exception encapsulates all information about task
@@ -151,15 +194,6 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
-}
-
-/// The runtime environment describes all the runtime packages needed to
-/// run some task or actor.
-message RuntimeEnv {
-  /// The serialized runtime env passed from the user.
-  string serialized_runtime_env = 1;
-  /// URIs used in this runtime env. These will be used for reference counting.
-  repeated string uris = 2;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -204,12 +238,6 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 17;
-  // Placement group that is associated with this task.
-  bytes placement_group_id = 18;
-  // Placement group bundle that is associated with this task.
-  int64 placement_group_bundle_index = 19;
-  // Whether or not this task should capture parent's placement group automatically.
-  bool placement_group_capture_child_tasks = 20;
   // Whether or not to skip the execution of this task. When it's true,
   // the receiver will not execute the task. This field is used by async actors
   // to guarantee task submission order after restart.
@@ -218,11 +246,16 @@ message TaskSpec {
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
   // Runtime environment for this task.
-  RuntimeEnv runtime_env = 23;
+  RuntimeEnvInfo runtime_env_info = 23;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.
   bool retry_exceptions = 25;
+  // The depth of the task. The driver has depth 0, anything it calls has depth
+  // 1, etc.
+  int64 depth = 26;
+  // Strategy about how to schedule this task.
+  SchedulingStrategy scheduling_strategy = 27;
 }
 
 message Bundle {
@@ -338,6 +371,10 @@ message ActorCreationTaskSpec {
   bytes serialized_actor_handle = 12;
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
+  // Whether to enable out of order execution.
+  bool execute_out_of_order = 14;
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 15;
 }
 
 // Task spec of an actor task.
@@ -357,9 +394,9 @@ message ActorTaskSpec {
 // `TaskSpec` is determined at submission time.
 message TaskExecutionSpec {
   // The last time this task was received for scheduling.
-  double last_timestamp = 2;
+  double last_timestamp = 1;
   // The number of times this task was spilled back by raylets.
-  uint64 num_forwards = 3;
+  uint64 num_forwards = 2;
 }
 
 // Represents a task, including task spec, and task execution spec.
@@ -514,6 +551,8 @@ enum WorkerExitType {
   CREATION_TASK_ERROR = 4;
   // Worker killed by raylet if it has been idle for too long.
   IDLE_EXIT = 5;
+  // Worker killed because its node is dead.
+  NODE_DIED = 6;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

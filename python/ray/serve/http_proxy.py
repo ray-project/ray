@@ -45,7 +45,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
         del scope["endpoint"]
 
     # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the backend replica to avoid unnecessary
+    # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
     # Perform a pickle here to improve latency. Stdlib pickle for simple
@@ -59,19 +59,29 @@ async def _send_request_to_handle(handle, scope, receive, send):
         try:
             result = await object_ref
             break
+        except RayTaskError as error:
+            error_message = "Task Error. Traceback: {}.".format(error)
+            await Response(
+                error_message, status_code=500).send(scope, receive, send)
+            return
         except RayActorError:
             logger.warning("Request failed due to replica failure. There are "
                            f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                            "remaining.")
             await asyncio.sleep(backoff_time_s)
-            backoff_time_s *= 2
+            # Be careful about the expotential backoff scaling here.
+            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+            # initial backoff time, while 2x scaling means 512x the initial.
+            backoff_time_s *= 1.5
             retries += 1
-
-    if isinstance(result, RayTaskError):
-        error_message = "Task Error. Traceback: {}.".format(result)
+    else:
+        error_message = ("Task failed with "
+                         f"{MAX_REPLICA_FAILURE_RETRIES} retries.")
         await Response(
             error_message, status_code=500).send(scope, receive, send)
-    elif isinstance(result, starlette.responses.Response):
+        return
+
+    if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
     else:
         await Response(result).send(scope, receive, send)
@@ -101,14 +111,8 @@ class LongestPrefixRouter:
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
-            # Default case where the user did not specify a route prefix.
-            if info.route is None:
-                route = f"/{endpoint}"
-            else:
-                route = info.route
-
-            routes.append(route)
-            route_info[route] = endpoint
+            routes.append(info.route)
+            route_info[info.route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -198,7 +202,7 @@ class HTTPProxy:
                        endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
-            route = info.route if info.route is not None else f"/{endpoint}"
+            route = info.route
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)

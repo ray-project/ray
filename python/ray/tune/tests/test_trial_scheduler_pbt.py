@@ -5,10 +5,13 @@ import random
 import unittest
 import sys
 import time
+from unittest.mock import MagicMock
 
 import ray
 from ray import tune
 from ray.tune import Trainable
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
@@ -86,8 +89,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_freq=1,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            trial_executor=CustomExecutor(reuse_actors=False),
         )
 
 
@@ -172,7 +174,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -192,8 +193,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                                                    "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
+                # Different sleep times so that asynch test runs do not
+                # randomly succeed. If well performing trials finish later,
+                # then bad performing trials will already have continued
+                # to train, which is exactly what we want to test when
+                # comparing sync vs. async.
+                time.sleep(a / 20)
                 # Score gets better every iteration.
-                time.sleep(1)
                 tune.report(mean_accuracy=iter + a, a=a)
 
         self.MockTrainingFuncSync = MockTrainingFuncSync
@@ -203,7 +209,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def synchSetup(self, synch, param=None):
         if param is None:
-            param = [10, 20, 30]
+            param = [10, 20, 40]
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -237,14 +243,14 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         self.assertTrue(
             any(
                 analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 33))
+                ["mean_accuracy"] != 43))
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
                 analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                    "mean_accuracy"] == 43))
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
@@ -410,6 +416,80 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
             stop={"training_iteration": 3})
+
+    def testBurnInPeriod(self):
+        runner = TrialRunner(trial_executor=MagicMock())
+
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="error",
+            mode="min",
+            perturbation_interval=5,
+            burn_in_period=50,
+            log_config=True,
+            synch=True)
+
+        class MockTrial(Trial):
+            @property
+            def checkpoint(self):
+                return Checkpoint(Checkpoint.MEMORY, "None", {})
+
+            @property
+            def status(self):
+                return Trial.PAUSED
+
+            @status.setter
+            def status(self, status):
+                pass
+
+        trial1 = MockTrial("PPO", config=dict(num=1))
+        trial2 = MockTrial("PPO", config=dict(num=2))
+        trial3 = MockTrial("PPO", config=dict(num=3))
+        trial4 = MockTrial("PPO", config=dict(num=4))
+
+        runner.add_trial(trial1)
+        runner.add_trial(trial2)
+        runner.add_trial(trial3)
+        runner.add_trial(trial4)
+
+        scheduler.on_trial_add(runner, trial1)
+        scheduler.on_trial_add(runner, trial2)
+        scheduler.on_trial_add(runner, trial3)
+        scheduler.on_trial_add(runner, trial4)
+
+        # Add initial results.
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=1, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=1, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=1, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=1, error=100))
+
+        # Add more results. Without burn-in, this would now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=30, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=30, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=30, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=30, error=100))
+
+        self.assertEqual(trial4.config["num"], 4)
+
+        # Add more results. Since this is after burn-in, it should now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=50, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=50, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=50, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=50, error=100))
+
+        self.assertEqual(trial4.config["num"], 3)
 
 
 if __name__ == "__main__":

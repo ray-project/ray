@@ -4,7 +4,6 @@ import platform
 from pprint import pformat
 import sys
 import os
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,7 +14,7 @@ from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
 from ray._private.test_utils import (wait_for_condition, SignalActor,
-                                     fetch_prometheus)
+                                     fetch_prometheus, get_log_batch)
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -29,10 +28,6 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -53,13 +48,16 @@ _METRICS = [
     # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_pending_actors",
-    "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
+    "ray_gcs_placement_group_creation_latency_ms_sum",
+    "ray_gcs_placement_group_scheduling_latency_ms_sum",
+    "ray_gcs_placement_group_count",
+    "ray_gcs_new_resource_creation_latency_ms_sum",
+    "ray_gcs_actors_count",
 ]
 
 # This list of metrics should be kept in sync with
@@ -73,7 +71,8 @@ _AUTOSCALER_METRICS = [
     "autoscaler_worker_update_time", "autoscaler_updating_nodes",
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
-    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries"
+    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
+    "autoscaler_drain_node_exceptions", "autoscaler_update_time"
 ]
 
 
@@ -82,7 +81,12 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True
+        })
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -103,6 +107,12 @@ def _setup_cluster_for_test(ray_start_cluster):
         counter.inc()
         counter.inc(2)
         ray.get(worker_should_exit.wait.remote())
+
+    # Generate some metrics for the placement group.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    ray.get(pg.ready())
+    print(ray.util.placement_group_table())
+    ray.util.remove_placement_group(pg)
 
     @ray.remote
     class A:
@@ -136,7 +146,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
@@ -379,18 +389,12 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     ray.get(override.remote())
 
     # Check the stderr from the worker.
-    start = time.time()
-    while True:
-        if (time.time() - start) > 5:
-            break
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
+    def matcher(log_batch):
+        return any("Attempt to register measure" in line
+                   for line in log_batch["lines"])
 
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        for line in log_lines:
-            assert "Attempt to register measure" not in line
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) == 0, match
 
 
 def test_custom_metrics_validation(ray_start_regular_shared):

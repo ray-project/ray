@@ -2,6 +2,15 @@
 Core API: Deployments
 =====================
 
+This section should help you:
+
+- create, query, update and configure deployments
+- configure resources of your deployments
+- specify different Python dependencies across different deployment using Runtime Environments
+
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 .. contents::
 
 Creating a Deployment
@@ -35,7 +44,14 @@ Deployments can be exposed in two ways: over HTTP or in Python via the :ref:`ser
 By default, HTTP requests will be forwarded to the ``__call__`` method of the class (or the function) and a ``Starlette Request`` object will be the sole argument.
 You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See :ref:`serve-fastapi-http` for details.
 
-We can also list all available deployments and dynamically get a reference to them:
+To serve multiple deployments defined by the same class, use the ``name`` option:
+
+.. code-block:: python
+
+  MyFirstDeployment.options(name="hello_service").deploy("Hello!")
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+
+You can also list all available deployments and dynamically get references to them:
 
 .. code-block:: python
 
@@ -63,7 +79,7 @@ Here's an example:
     def __call__(self, request):
         return "Hello world!"
 
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
+After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 .. code-block:: python
@@ -71,7 +87,7 @@ We can query the model to verify that it's working.
   import requests
   print(requests.get("http://127.0.0.1:8000/api").text)
 
-We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 .. code-block:: python
 
@@ -147,6 +163,47 @@ To scale out a deployment to many processes, simply configure the number of repl
 
   # Scale back down to 1 replica.
   func.options(num_replicas=1).deploy()
+
+Autoscaling
+^^^^^^^^^^^
+
+Serve also has experimental support for a demand-based replica autoscaler.
+It reacts to traffic spikes via observing queue sizes and making scaling decisions.
+To configure it, you can set the ``_autoscaling`` field in deployment options.
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through `Github Issues <https://github.com/ray-project/ray/issues>`_ or our `discussion forum <https://discuss.ray.io/>`_!
+
+.. code-block:: python
+
+  @serve.deployment(
+      _autoscaling_config={
+          "min_replicas": 1,
+          "max_replicas": 5,
+          "target_num_ongoing_requests_per_replica": 10,
+      },
+      version="v1")
+  def func(_):
+      time.sleep(1)
+      return ""
+  
+  func.deploy() # The func deployment will now autoscale based on requests demand.
+
+The ``min_replicas`` and ``max_replicas`` fields configure the range of replicas which the
+Serve autoscaler chooses from.  Deployments will start with ``min_replicas`` initially.
+
+The ``target_num_ongoing_requests_per_replica`` configuration specifies how aggressively the
+autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
+of requests being processed and waiting in the queue. For example, if your processing time is ``10ms``
+and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replica so
+the last requests can finish within the latency constraint. We recommend you benchmark your application
+code and set this number based on end to end latency objective.
+
+.. note::
+  The ``version`` field is required for autoscaling. We are actively working on removing
+  this limitation.
+
 
 .. _`serve-cpus-gpus`:
 
@@ -231,7 +288,7 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
@@ -265,4 +322,4 @@ using runtime environments.
 
 Example:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/delayed_import.py

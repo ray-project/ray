@@ -11,7 +11,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.torch_ops import atanh
 from ray.rllib.utils.typing import TensorType, List, Union, \
     Tuple, ModelConfigDict
 
@@ -300,7 +299,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         # Stabilize input to atanh.
         save_normed_values = torch.clamp(normed_values, -1.0 + SMALL_NUMBER,
                                          1.0 - SMALL_NUMBER)
-        unsquashed = atanh(save_normed_values)
+        unsquashed = torch.atanh(save_normed_values)
         return unsquashed
 
     @staticmethod
@@ -444,6 +443,9 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             for dist in self.flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
+                elif isinstance(dist, TorchMultiCategorical) and \
+                        dist.action_space is not None:
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
                     split_indices.append(dist.sample().size()[1])
             split_x = list(torch.split(x, split_indices, dim=1))
@@ -454,7 +456,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, TorchCategorical):
-                val = torch.squeeze(val, dim=-1).int()
+                val = (torch.squeeze(val, dim=-1)
+                       if len(val.shape) > 1 else val).int()
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

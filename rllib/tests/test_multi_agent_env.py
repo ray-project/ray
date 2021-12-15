@@ -7,7 +7,7 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
@@ -15,7 +15,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     RoundRobinMultiAgent
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -69,13 +69,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(done["__all__"], True)
 
     def test_no_reset_until_poll(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 1)
-        self.assertFalse(env.get_unwrapped()[0].resetted)
+        env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 1)
+        self.assertFalse(env.get_sub_environments()[0].resetted)
         env.poll()
-        self.assertTrue(env.get_unwrapped()[0].resetted)
+        self.assertTrue(env.get_sub_environments()[0].resetted)
 
     def test_vectorize_basic(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 2)
+        env = MultiAgentEnvWrapper(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
@@ -133,8 +133,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                     1: 0
                 }
             }))
-        self.assertEqual(env.try_reset(0), {0: 0, 1: 0})
-        self.assertEqual(env.try_reset(1), {0: 0, 1: 0})
+        self.assertEqual(env.try_reset(0), {0: {0: 0, 1: 0}})
+        self.assertEqual(env.try_reset(1), {1: {0: 0, 1: 0}})
         env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
@@ -154,7 +154,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             })
 
     def test_vectorize_round_robin(self):
-        env = _MultiAgentEnvToBaseEnv(lambda v: RoundRobinMultiAgent(2), [], 2)
+        env = MultiAgentEnvWrapper(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
         self.assertEqual(rew, {0: {}, 1: {}})
@@ -334,9 +334,9 @@ class TestMultiAgentEnv(unittest.TestCase):
                     # Pretend we did a model-based rollout and want to return
                     # the extra trajectory.
                     env_id = episodes[0].env_id
-                    fake_eps = MultiAgentEpisode(
-                        episodes[0].policy_map, episodes[0].policy_mapping_fn,
-                        lambda: None, lambda x: None, env_id)
+                    fake_eps = Episode(episodes[0].policy_map,
+                                       episodes[0].policy_mapping_fn,
+                                       lambda: None, lambda x: None, env_id)
                     builder = get_global_worker().sampler.sample_collector
                     agent_id = "extra_0"
                     policy_id = "p1"  # use p1 so we can easily check it

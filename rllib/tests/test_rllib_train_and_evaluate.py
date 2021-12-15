@@ -194,7 +194,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/rollout.py --run={} "
+            "python {}/evaluate.py --run={} "
             "--steps=400 "
             "--out=\"{}/rollouts_n_steps.pkl\" --no-render \"{}\"".format(
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
@@ -222,7 +222,7 @@ class TestEvaluate1(unittest.TestCase):
         evaluate_test("A3C")
 
     def test_ddpg(self):
-        evaluate_test("DDPG", env="Pendulum-v0")
+        evaluate_test("DDPG", env="Pendulum-v1")
 
 
 class TestEvaluate2(unittest.TestCase):
@@ -243,7 +243,7 @@ class TestEvaluate3(unittest.TestCase):
 
 class TestEvaluate4(unittest.TestCase):
     def test_sac(self):
-        evaluate_test("SAC", env="Pendulum-v0")
+        evaluate_test("SAC", env="Pendulum-v1")
 
 
 class TestTrainAndEvaluate(unittest.TestCase):

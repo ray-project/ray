@@ -132,9 +132,9 @@ The node manager and object manager run as separate processes with their own por
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
 - ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10002.
-- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 19999.
 
-Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 1,000 workers on each node, irrespective of number of CPUs.
+Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 10,000 workers on each node, irrespective of number of CPUs.
 
 In general, it is recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it is useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
 
@@ -234,6 +234,28 @@ to localhost when the ray is started using ``ray.init``.
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
 
+TLS Authentication
+------------------
+
+Ray can be configured to use TLS on it's gRPC channels.
+This means that connecting to the Ray client on the head node will
+require an appropriate set of credentials and also that data exchanged between
+various processes (client, head, workers) will be encrypted.
+
+Enabling TLS will cause a performance hit due to the extra overhead of mutual
+authentication and encryption.
+Testing has shown that this overhead is large for small workloads and becomes
+relatively smaller for large workloads.
+The exact overhead will depend on the nature of your workload.
+
+TLS is enabled by setting environment variables.
+
+- ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
+- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file` which is presented to other endpoints so as to achieve mutual authentication.
+- ``RAY_TLS_SERVER_KEY``: Location of a `private key file` which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
+- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file` which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
+
+
 Java Applications
 -----------------
 
@@ -302,5 +324,11 @@ The list of available driver options:
   - Type: ``String``
   - Default: empty string.
   - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
+
+- ``ray.job.namespace``
+
+  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces cannot access each other. If it's not specified, a randomized value will be used instead.
+  - Type: ``String``
+  - Default: A random UUID string value.
 
 .. _`Apache Arrow`: https://arrow.apache.org/

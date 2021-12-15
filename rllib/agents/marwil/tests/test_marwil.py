@@ -43,7 +43,7 @@ class TestMARWIL(unittest.TestCase):
         config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
-        config["evaluation_num_episodes"] = 5
+        config["evaluation_duration"] = 5
         config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
@@ -86,7 +86,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         To generate this data, first run:
-        $ ./train.py --run=PPO --env=Pendulum-v0 \
+        $ ./train.py --run=PPO --env=Pendulum-v1 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
@@ -100,7 +100,7 @@ class TestMARWIL(unittest.TestCase):
         config["num_workers"] = 1
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
-        config["evaluation_num_episodes"] = 5
+        config["evaluation_duration"] = 5
         config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
@@ -111,7 +111,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v0")
+            trainer = marwil.MARWILTrainer(config=config, env="Pendulum-v1")
             for i in range(num_iterations):
                 print(trainer.train())
             trainer.stop()
@@ -149,7 +149,7 @@ class TestMARWIL(unittest.TestCase):
                 cummulative_rewards = torch.tensor(cummulative_rewards)
             if fw != "tf":
                 batch = policy._lazy_tensor_dict(batch)
-            model_out, _ = model.from_batch(batch)
+            model_out, _ = model(batch)
             vf_estimates = model.value_function()
             if fw == "tf":
                 model_out, vf_estimates = \

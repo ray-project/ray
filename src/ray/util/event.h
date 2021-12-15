@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
+
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
 #include <cmath>
@@ -22,16 +24,14 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+
+#include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
-
-#include "nlohmann/json.hpp"
-
-#include <gtest/gtest_prod.h>
 
 using json = nlohmann::json;
 
@@ -102,7 +102,7 @@ class EventManager final {
 
   // We added `const json &custom_fields` here because we need to support typed custom
   // fields.
-  // TODO(guyang.sgy): Remove the protobuf `rpc::Event` and use an internal struct
+  // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
   void Publish(const rpc::Event &event, const json &custom_fields);
 

@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
@@ -5,15 +6,19 @@ from typing import Dict, Optional, TYPE_CHECKING
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.exploration.random_encoder import MovingMeanStd, \
+    compute_states_entropy, update_beta
 from ray.rllib.utils.typing import AgentID, PolicyID
 
 # Import psutil after ray so the packaged version is used.
 import psutil
 
 if TYPE_CHECKING:
+    from ray.rllib.agents.trainer import Trainer
     from ray.rllib.evaluation import RolloutWorker
 
 
@@ -35,28 +40,22 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self,
-                         *,
-                         worker: "RolloutWorker",
-                         base_env: BaseEnv,
-                         policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode,
-                         env_index: Optional[int] = None,
+    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                         policies: Dict[PolicyID, Policy], episode: Episode,
                          **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
-            policies (dict): Mapping of policy id to policy objects. In single
+            worker: Reference to the current rollout worker.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default" policy.
-            episode (MultiAgentEpisode): Episode object which contains episode
+            episode: Episode object which contains the episode's
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -72,24 +71,22 @@ class DefaultCallbacks:
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: MultiAgentEpisode,
-                        env_index: Optional[int] = None,
+                        episode: Episode,
                         **kwargs) -> None:
         """Runs on each episode step.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
-            policies (Optional[Dict[PolicyID, Policy]]): Mapping of policy id
-                to policy objects. In single agent mode there will only be a
-                single "default_policy".
-            episode (MultiAgentEpisode): Episode object which contains episode
+            worker: Reference to the current rollout worker.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy objects.
+                In single agent mode there will only be a single
+                "default_policy".
+            episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -99,29 +96,23 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self,
-                       *,
-                       worker: "RolloutWorker",
-                       base_env: BaseEnv,
-                       policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode,
-                       env_index: Optional[int] = None,
+    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy], episode: Episode,
                        **kwargs) -> None:
         """Runs when an episode is done.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            base_env (BaseEnv): BaseEnv running the episode. The underlying
-                env object can be gotten by calling base_env.get_unwrapped().
-            policies (Dict[PolicyID, Policy]): Mapping of policy id to policy
+            worker: Reference to the current rollout worker.
+            base_env: BaseEnv running the episode. The underlying
+                sub environment objects can be retrieved by calling
+                `base_env.get_sub_environments()`.
+            policies: Mapping of policy id to policy
                 objects. In single agent mode there will only be a single
                 "default_policy".
-            episode (MultiAgentEpisode): Episode object which contains episode
+            episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (EnvID): Obsoleted: The ID of the environment, which the
-                episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
 
@@ -133,7 +124,7 @@ class DefaultCallbacks:
             })
 
     def on_postprocess_trajectory(
-            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            self, *, worker: "RolloutWorker", episode: Episode,
             agent_id: AgentID, policy_id: PolicyID,
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
             original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
@@ -144,16 +135,16 @@ class DefaultCallbacks:
         settings.
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            episode (MultiAgentEpisode): Episode object.
-            agent_id (str): Id of the current agent.
-            policy_id (str): Id of the current policy for the agent.
-            policies (dict): Mapping of policy id to policy objects. In single
+            worker: Reference to the current rollout worker.
+            episode: Episode object.
+            agent_id: Id of the current agent.
+            policy_id: Id of the current policy for the agent.
+            policies: Mapping of policy id to policy objects. In single
                 agent mode there will only be a single "default_policy".
-            postprocessed_batch (SampleBatch): The postprocessed sample batch
+            postprocessed_batch: The postprocessed sample batch
                 for this agent. You can mutate this object to apply your own
                 trajectory postprocessing.
-            original_batches (dict): Mapping of agents to their unpostprocessed
+            original_batches: Mapping of agents to their unpostprocessed
                 trajectory data. You should not mutate this object.
             kwargs: Forward compatibility placeholder.
         """
@@ -172,8 +163,8 @@ class DefaultCallbacks:
         """Called at the end of RolloutWorker.sample().
 
         Args:
-            worker (RolloutWorker): Reference to the current rollout worker.
-            samples (SampleBatch): Batch to be returned. You can mutate this
+            worker: Reference to the current rollout worker.
+            samples: Batch to be returned. You can mutate this
                 object to modify the samples generated.
             kwargs: Forward compatibility placeholder.
         """
@@ -191,22 +182,29 @@ class DefaultCallbacks:
         Note: This is called before 0-padding via
         `pad_batch_to_sequences_of_same_size`.
 
+        Also note, SampleBatch.INFOS column will not be available on
+        train_batch within this callback if framework is tf1, due to
+        the fact that tf1 static graph would mistake it as part of the
+        input dict if present.
+        It is available though, for tf2 and torch frameworks.
+
         Args:
-            policy (Policy): Reference to the current Policy object.
-            train_batch (SampleBatch): SampleBatch to be trained on. You can
+            policy: Reference to the current Policy object.
+            train_batch: SampleBatch to be trained on. You can
                 mutate this object to modify the samples generated.
-            result (dict): A results dict to add custom metrics to.
+            result: A results dict to add custom metrics to.
             kwargs: Forward compatibility placeholder.
         """
 
         pass
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(self, *, trainer: "Trainer", result: dict,
+                        **kwargs) -> None:
         """Called at the end of Trainable.train().
 
         Args:
-            trainer (Trainer): Current trainer instance.
-            result (dict): Dict of results returned from trainer.train() call.
+            trainer: Current trainer instance.
+            result: Dict of results returned from trainer.train() call.
                 You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
@@ -250,7 +248,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
                        worker: "RolloutWorker",
                        base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode,
+                       episode: Episode,
                        env_index: Optional[int] = None,
                        **kwargs) -> None:
         snapshot = tracemalloc.take_snapshot()
@@ -308,7 +306,7 @@ class MultiCallbacks(DefaultCallbacks):
                          worker: "RolloutWorker",
                          base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode,
+                         episode: Episode,
                          env_index: Optional[int] = None,
                          **kwargs) -> None:
         for callback in self._callback_list:
@@ -325,7 +323,7 @@ class MultiCallbacks(DefaultCallbacks):
                         worker: "RolloutWorker",
                         base_env: BaseEnv,
                         policies: Optional[Dict[PolicyID, Policy]] = None,
-                        episode: MultiAgentEpisode,
+                        episode: Episode,
                         env_index: Optional[int] = None,
                         **kwargs) -> None:
         for callback in self._callback_list:
@@ -342,7 +340,7 @@ class MultiCallbacks(DefaultCallbacks):
                        worker: "RolloutWorker",
                        base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode,
+                       episode: Episode,
                        env_index: Optional[int] = None,
                        **kwargs) -> None:
         for callback in self._callback_list:
@@ -355,7 +353,7 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs)
 
     def on_postprocess_trajectory(
-            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            self, *, worker: "RolloutWorker", episode: Episode,
             agent_id: AgentID, policy_id: PolicyID,
             policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
             original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
@@ -387,3 +385,59 @@ class MultiCallbacks(DefaultCallbacks):
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_train_result(trainer=trainer, result=result, **kwargs)
+
+
+# This Callback is used by the RE3 exploration strategy.
+# See rllib/examples/re3_exploration.py for details.
+class RE3UpdateCallbacks(DefaultCallbacks):
+    """Update input callbacks to mutate batch with states entropy rewards."""
+
+    _step = 0
+
+    def __init__(self,
+                 *args,
+                 embeds_dim: int = 128,
+                 k_nn: int = 50,
+                 beta: float = 0.1,
+                 rho: float = 0.0001,
+                 beta_schedule: str = "constant",
+                 **kwargs):
+        self.embeds_dim = embeds_dim
+        self.k_nn = k_nn
+        self.beta = beta
+        self.rho = rho
+        self.beta_schedule = beta_schedule
+        self._rms = MovingMeanStd()
+        super().__init__(*args, **kwargs)
+
+    def on_learn_on_batch(
+            self,
+            *,
+            policy: Policy,
+            train_batch: SampleBatch,
+            result: dict,
+            **kwargs,
+    ):
+        super().on_learn_on_batch(
+            policy=policy, train_batch=train_batch, result=result, **kwargs)
+        states_entropy = compute_states_entropy(
+            train_batch[SampleBatch.OBS_EMBEDS], self.embeds_dim, self.k_nn)
+        states_entropy = update_beta(
+            self.beta_schedule, self.beta, self.rho,
+            RE3UpdateCallbacks._step) * np.reshape(
+                self._rms(states_entropy),
+                train_batch[SampleBatch.OBS_EMBEDS].shape[:-1],
+            )
+        train_batch[SampleBatch.REWARDS] = (
+            train_batch[SampleBatch.REWARDS] + states_entropy)
+        if Postprocessing.ADVANTAGES in train_batch:
+            train_batch[Postprocessing.ADVANTAGES] = (
+                train_batch[Postprocessing.ADVANTAGES] + states_entropy)
+            train_batch[Postprocessing.VALUE_TARGETS] = (
+                train_batch[Postprocessing.VALUE_TARGETS] + states_entropy)
+
+    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        # TODO(gjoliver): Remove explicit _step tracking and pass
+        # trainer._iteration as a parameter to on_learn_on_batch() call.
+        RE3UpdateCallbacks._step = result["training_iteration"]
+        super().on_train_result(trainer=trainer, result=result, **kwargs)

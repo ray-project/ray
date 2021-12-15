@@ -5,6 +5,9 @@
 
 from cpython.pystate cimport PyThreadState_Get
 
+from libc.stdint cimport (
+    int64_t,
+)
 from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
@@ -17,6 +20,8 @@ from ray.includes.common cimport (
     CBuffer,
     CRayObject,
     CAddress,
+    CConcurrencyGroup,
+    CSchedulingStrategy,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -114,8 +119,13 @@ cdef class CoreWorker:
         object async_event_loop
         object plasma_event_handler
         object job_config
-        object current_runtime_env_dict
+        object current_runtime_env
         c_bool is_local_mode
+
+        object cgname_to_eventloop_dict
+        object eventloop_for_default_cg
+        object thread_for_default_cg
+        object fd_to_cgname_dict
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,
@@ -125,11 +135,23 @@ cdef class CoreWorker:
                             owner_address=*,
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
+    cdef store_task_output(
+            self, serialized_object, const CObjectID &return_id, size_t
+            data_size, shared_ptr[CBuffer] &metadata, const c_vector[CObjectID]
+            &contained_id, int64_t *task_output_inlined_bytes,
+            shared_ptr[CRayObject] *return_ptr)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
+    cdef c_function_descriptors_to_python(
+        self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
+    cdef initialize_eventloops_for_actor_concurrency_group(
+        self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
+    cdef python_scheduling_strategy_to_c(
+        self, python_scheduling_strategy,
+        CSchedulingStrategy *c_scheduling_strategy)
 
 cdef class FunctionDescriptor:
     cdef:

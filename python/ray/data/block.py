@@ -7,17 +7,63 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
+    from ray.data.aggregate import AggregateFn
+    from ray.data.grouped_dataset import GroupKeyT
 
+import ray
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
+U = TypeVar("U")
+KeyType = TypeVar("KeyType")
+AggType = TypeVar("AggType")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", bytes]
+
+# A list of block references pending computation by a single task. For example,
+# this may be the output of a task reading a file.
+BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
+
+# The metadata that describes the output of a BlockPartition. This has the
+# same type as the metadata that describes each block in the partition.
+BlockPartitionMetadata = "BlockMetadata"
+
+# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
+# by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, BlockPartition]
+
+
+@DeveloperAPI
+class BlockExecStats:
+    """Execution stats for this block.
+
+    Attributes:
+        wall_time_s: The wall-clock time it took to compute this block.
+        cpu_time_s: The CPU time it took to compute this block.
+        node_id: A unique id for the node that computed this block.
+    """
+
+    # Placeholder for block ops not yet instrumented.
+    TODO = None
+
+    # TODO(ekl) add a builder to fill these out in a simpler way.
+    def __init__(self):
+        self.wall_time_s: Optional[float] = None
+        self.cpu_time_s: Optional[float] = None
+        self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+
+    def __repr__(self):
+        return repr({
+            "wall_time_s": self.wall_time_s,
+            "cpu_time_s": self.cpu_time_s,
+            "node_id": self.node_id
+        })
 
 
 @DeveloperAPI
@@ -30,17 +76,19 @@ class BlockMetadata:
         schema: The pyarrow schema or types of the block elements, or None.
         input_files: The list of file paths used to generate this block, or
             the empty list if indeterminate.
+        exec_stats: Execution stats for this block.
     """
 
     def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
                  schema: Union[type, "pyarrow.lib.Schema"],
-                 input_files: List[str]):
+                 input_files: List[str], exec_stats: Optional[BlockExecStats]):
         if input_files is None:
             input_files = []
         self.num_rows: Optional[int] = num_rows
         self.size_bytes: Optional[int] = size_bytes
         self.schema: Optional[Any] = schema
         self.input_files: List[str] = input_files
+        self.exec_stats: Optional[BlockExecStats] = exec_stats
 
 
 @DeveloperAPI
@@ -51,7 +99,7 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
@@ -105,13 +153,15 @@ class BlockAccessor(Generic[T]):
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def get_metadata(self, input_files: List[str]) -> BlockMetadata:
+    def get_metadata(self, input_files: List[str],
+                     exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
             schema=self.schema(),
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=exec_stats)
 
     def zip(self, other: "Block[T]") -> "Block[T]":
         """Zip this block with another block of the same type and size."""
@@ -152,9 +202,20 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
+    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
+        """Combine rows with the same key into an accumulator."""
+        raise NotImplementedError
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List["Block[T]"], key: Any,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError
+
+    @staticmethod
+    def aggregate_combined_blocks(
+            blocks: List[Block], key: "GroupKeyT",
+            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
+        """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

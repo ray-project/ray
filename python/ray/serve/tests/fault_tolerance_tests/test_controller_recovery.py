@@ -34,17 +34,16 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         response = request_with_retries(
             "/recover_start_from_replica_actor_names/", timeout=30)
         assert response.text == "hii"
-    # Assert 2 replicas are running in deployment backend after partially
+    # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
-    backend_dict = ray.get(
-        serve_instance._controller._all_replica_handles.remote())
-    assert len(backend_dict["recover_start_from_replica_actor_names"]) == 2
+    deployment_dict = ray.get(
+        serve_instance._controller._all_running_replicas.remote())
+    assert len(deployment_dict["recover_start_from_replica_actor_names"]) == 2
 
     replica_version_hash = None
-    for _, actor_handle in backend_dict[
-            "recover_start_from_replica_actor_names"].items():
-        ref = actor_handle.get_version.remote()
-        version = ray.get(ref)
+    for replica in deployment_dict["recover_start_from_replica_actor_names"]:
+        ref = replica.actor_handle.get_metadata.remote()
+        _, version = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -85,8 +84,8 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Ensure recovered replica version has are the same
     for replica_name in recovered_all_replica_names:
         actor_handle = ray.get_actor(replica_name)
-        ref = actor_handle.get_version.remote()
-        version = ray.get(ref)
+        ref = actor_handle.get_metadata.remote()
+        _, version = ray.get(ref)
         assert replica_version_hash == hash(version), (
             "Replica version hash should be the same after "
             "recover from actor names")

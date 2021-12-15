@@ -15,6 +15,8 @@ import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
@@ -57,7 +59,7 @@ def recursive_asdict(o):
     return o
 
 
-def jsonify_asdict(o):
+def jsonify_asdict(o) -> str:
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
@@ -143,13 +145,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             self._cpu_counts = (psutil.cpu_count(),
                                 psutil.cpu_count(logical=False))
 
-        self._ip = ray.util.get_node_ip_address()
+        self._ip = dashboard_agent.ip
         self._redis_address, _ = dashboard_agent.redis_address
         self._is_head_node = (self._ip == self._redis_address)
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
-        self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
+        self._metrics_agent = MetricsAgent(
+            "127.0.0.1" if self._ip == "127.0.0.1" else "",
+            dashboard_agent.metrics_export_port)
         self._key = f"{reporter_consts.REPORTER_PREFIX}" \
                     f"{self._dashboard_agent.node_id}"
 
@@ -240,19 +244,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_disk_usage():
-        dirs = [
-            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray._private.utils.get_user_temp_dir(),
-        ]
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                x: psutil._common.sdiskusage(
+                "/": psutil._common.sdiskusage(
                     total=1, used=0, free=1, percent=0.0)
-                for x in dirs
             }
-        else:
-            return {x: psutil.disk_usage(x) for x in dirs}
+        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        tmp = ray._private.utils.get_user_temp_dir()
+        return {
+            "/": psutil.disk_usage(root),
+            tmp: psutil.disk_usage(tmp),
+        }
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
@@ -525,19 +528,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         ])
         return records_reported
 
-    async def _perform_iteration(self, aioredis_client):
+    async def _perform_iteration(self, publish):
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
-                formatted_status_string = await aioredis_client.hget(
-                    DEBUG_AUTOSCALING_STATUS, "value")
-                formatted_status = json.loads(formatted_status_string.decode(
+                formatted_status_string = internal_kv._internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS)
+                cluster_stats = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
 
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, formatted_status)
+                records_reported = self._record_stats(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_reported)
-                await aioredis_client.publish(self._key, jsonify_asdict(stats))
+                await publish(self._key, jsonify_asdict(stats))
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -545,8 +548,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
+        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
         aioredis_client = await aioredis.create_redis_pool(
             address=self._dashboard_agent.redis_address,
             password=self._dashboard_agent.redis_password)
-        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        await self._perform_iteration(aioredis_client)
+        if gcs_pubsub_enabled():
+            gcs_addr = await aioredis_client.get("GcsServerAddress")
+            publisher = GcsAioPublisher(address=gcs_addr.decode())
+
+            async def publish(key: str, data: str):
+                await publisher.publish_resource_usage(key, data)
+        else:
+
+            async def publish(key: str, data: str):
+                await aioredis_client.publish(key, data)
+
+        await self._perform_iteration(publish)

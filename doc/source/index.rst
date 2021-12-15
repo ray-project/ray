@@ -121,7 +121,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      pip install ray[cpp]
+      pip install "ray[cpp]"
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
     | - The project template comes with a simple example application. You can try this example out in 2 ways:
@@ -181,6 +181,7 @@ Blog and Press
 Talks (Videos)
 --------------
 
+ - `Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Datasets | PyData 2021 <https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000>`_ `(slides) <https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing>`_
  - `Programming at any Scale with Ray | SF Python Meetup Sept 2019 <https://www.youtube.com/watch?v=LfpHyIXBhlE>`_
  - `Ray for Reinforcement Learning | Data Council 2019 <https://www.youtube.com/watch?v=Ayc0ca150HI>`_
  - `Scaling Interactive Pandas Workflows with Modin <https://www.youtube.com/watch?v=-HjLd_3ahCw>`_
@@ -235,6 +236,7 @@ Papers
 
    walkthrough.rst
    using-ray.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
@@ -265,6 +267,7 @@ Papers
    serve/http-servehandle.rst
    serve/deployment.rst
    serve/ml-models.rst
+   serve/pipeline.rst
    serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
@@ -277,9 +280,12 @@ Papers
    :caption: Ray Data
 
    data/dataset.rst
-   data/dataset-tensor-support.rst
    data/dataset-pipeline.rst
+   data/dataset-ml-preprocessing.rst
+   data/dataset-execution-model.rst
+   data/dataset-tensor-support.rst
    data/package-ref.rst
+   data/examples/big_data_ingestion
    data/dask-on-ray.rst
    data/mars-on-ray.rst
    data/modin/index.rst
@@ -294,7 +300,9 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/events.rst
    workflows/comparison.rst
+   workflows/advanced.rst
    workflows/package-ref.rst
 
 .. toctree::
@@ -315,8 +323,9 @@ Papers
    :maxdepth: -1
    :caption: Ray RLlib
 
-   rllib.rst
+   rllib/index.rst
    rllib-toc.rst
+   rllib/core-concepts.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst
@@ -325,20 +334,20 @@ Papers
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-package-ref.rst
+   rllib/package_ref/index.rst
    rllib-dev.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray SGD
+   :caption: Ray Train
 
-   raysgd/v2/raysgd.rst
-   raysgd/v2/user_guide.rst
-   raysgd/v2/examples.rst
-   raysgd/v2/architecture.rst
-   raysgd/v2/api.rst
-   raysgd/v2/migration-guide.rst
+   train/train.rst
+   train/user_guide.rst
+   train/examples.rst
+   train/architecture.rst
+   train/api.rst
+   train/migration-guide.rst
    RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::
@@ -366,10 +375,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Contributing
+   :caption: Contributor Guide
 
    getting-involved.rst
    development.rst
+   fake-autoscaler.rst
    whitepaper.rst
    debugging.rst
    profiling.rst

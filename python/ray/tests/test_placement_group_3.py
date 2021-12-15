@@ -14,20 +14,22 @@ import ray._private.gcs_utils as gcs_utils
 from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
     generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, is_placement_group_removed)
+    run_string_as_driver, wait_for_condition, is_placement_group_removed,
+    convert_actor_state)
 from ray.exceptions import RaySystemError
-from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup, placement_group,
-                                      remove_placement_group)
+from ray.util.placement_group import (placement_group, remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import ray.experimental.internal_kv as internal_kv
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
     redis_client = ray._private.services.create_redis_client(address, "")
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    internal_kv._initialize_internal_kv(gcs_client)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
         "demand": debug_status(
             status, error).split("Demands:")[1].strip("\n").strip(" "),
@@ -39,7 +41,7 @@ def get_ray_status_output(address):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -64,7 +66,7 @@ def test_create_placement_group_during_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
@@ -170,7 +172,8 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 
@@ -405,45 +408,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert len(gpu_ids_res) == 2
 
 
-def test_placement_group_client_option_serialization():
-    """Tests conversion of placement group to json-serializable dict and back.
-
-    Tests conversion
-    placement_group -> dict -> placement_group and
-    dict -> placement_group -> dict
-    with and without non-null bundle cache.
-    """
-
-    # Tests conversion from dict to placement group and back.
-    def dict_to_pg_to_dict(pg_dict_in):
-        pg = PlacementGroup.from_dict(pg_dict_in)
-        pg_dict_out = pg.to_dict()
-        assert pg_dict_in == pg_dict_out
-
-    # Tests conversion from placement group to dict and back.
-    def pg_to_dict_to_pg(pg_in):
-        pg_dict = pg_in.to_dict()
-        pg_out = PlacementGroup.from_dict(pg_dict)
-        assert pg_out.id == pg_in.id
-        assert pg_out.bundle_cache == pg_in.bundle_cache
-
-    pg_id = PlacementGroupID(id=bytes(16))
-    id_string = bytes(16).hex()
-    bundle_cache = [{"CPU": 2}, {"custom_resource": 5}]
-
-    pg_with_bundles = PlacementGroup(id=pg_id, bundle_cache=bundle_cache)
-    pg_to_dict_to_pg(pg_with_bundles)
-
-    pg_no_bundles = PlacementGroup(id=pg_id)
-    pg_to_dict_to_pg(pg_no_bundles)
-
-    pg_dict_with_bundles = {"id": id_string, "bundle_cache": bundle_cache}
-    dict_to_pg_to_dict(pg_dict_with_bundles)
-
-    pg_dict_no_bundles = {"id": id_string, "bundle_cache": None}
-    dict_to_pg_to_dict(pg_dict_no_bundles)
-
-
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     """Tests the scheduling of lots of actors will not be blocked
        when using placement groups.
@@ -456,7 +420,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def ready(self):
             pass
@@ -606,6 +570,109 @@ def test_placement_group_status(ray_start_cluster):
     cpu_usage = demand_output["usage"].split("\n")[0]
     expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
     assert cpu_usage == expected
+
+
+def test_placement_group_removal_leak_regression(ray_start_cluster):
+    """Related issue:
+        https://github.com/ray-project/ray/issues/19131
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=5)
+    ray.init(address=cluster.address)
+
+    TOTAL_CPUS = 8
+    bundles = [{"CPU": 1, "GPU": 1}]
+    bundles += [{"CPU": 1} for _ in range(TOTAL_CPUS - 1)]
+
+    pg = placement_group(bundles, strategy="PACK")
+    # Here, we simulate that the ready task is queued and
+    # the new node is up. As soon as the new node is up,
+    # the ready task is scheduled.
+    # See https://github.com/ray-project/ray/pull/19138
+    # for more details about the test.
+    o = pg.ready()
+    # Add an artificial delay until the new node is up.
+    time.sleep(3)
+    cluster.add_node(num_cpus=5, num_gpus=1)
+    ray.get(o)
+    bundle_resource_name = f"bundle_group_{pg.id.hex()}"
+    expected_bundle_wildcard_val = TOTAL_CPUS * 1000
+
+    # This should fail if there's a leakage
+    # because the bundle resources are never returned properly.
+    def check_bundle_leaks():
+        bundle_resources = ray.available_resources()[bundle_resource_name]
+        return expected_bundle_wildcard_val == bundle_resources
+
+    wait_for_condition(check_bundle_leaks)
+
+
+def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
+    """Please refer to https://github.com/ray-project/ray/pull/19911
+    for more details.
+    """
+    with monkeypatch.context() as m:
+        # Increase broadcasting interval so that node resource will arrive
+        # at raylet after local resource all being allocated.
+        m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        cluster = ray_start_cluster
+
+        cluster.add_node(num_cpus=16, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        # We need to init here so that we can make sure it's connecting to
+        # the raylet where it only has cpu resources.
+        # This is a hacky way to prevent scheduling hanging which will
+        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
+        # there is no node has this resource.
+        ray.init(address="auto")
+        cluster.add_node(num_cpus=16, num_gpus=1)
+        cluster.wait_for_nodes()
+        NUM_CPU_BUNDLES = 30
+
+        @ray.remote(num_cpus=1)
+        class Worker(object):
+            def __init__(self, i):
+                self.i = i
+
+            def work(self):
+                time.sleep(0.1)
+                print("work ", self.i)
+
+        @ray.remote(num_cpus=1, num_gpus=1)
+        class Trainer(object):
+            def __init__(self, i):
+                self.i = i
+
+            def train(self):
+                time.sleep(0.2)
+                print("train ", self.i)
+
+        bundles = [{"CPU": 1, "GPU": 1}]
+        bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
+        pg = placement_group(bundles, strategy="PACK")
+        ray.get(pg.ready())
+
+        # Local resource will be allocated and here we are to ensure
+        # local view is consistent and node resouce updates are discarded
+        workers = [
+            Worker.options(placement_group=pg).remote(i)
+            for i in range(NUM_CPU_BUNDLES)
+        ]
+        trainer = Trainer.options(placement_group=pg).remote(0)
+        ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
+        ray.get(trainer.train.remote())
+
+
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

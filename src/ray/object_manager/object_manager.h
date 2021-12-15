@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -58,7 +58,7 @@ struct ObjectManagerConfig {
   /// The object manager's global timer frequency.
   unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to node id lookup.
+  /// that failed.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
@@ -170,7 +170,8 @@ class ObjectManager : public ObjectManagerInterface,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      const std::function<void(const ObjectID &)> fail_pull_request);
 
   ~ObjectManager();
 
@@ -240,8 +241,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return string.
   std::string DebugString() const;
 
-  /// Record metrics.
-  void RecordMetrics() const;
+  /// Record the internal stats.
+  void RecordMetrics();
 
   /// Populate object store stats.
   ///

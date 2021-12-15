@@ -19,6 +19,7 @@ import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
+from ray.serve.utils import DEFAULT
 from ray._private.test_utils import SignalActor
 
 
@@ -410,7 +411,7 @@ def test_asgi_compatible(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-@pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
+@pytest.mark.parametrize("route_prefix", [DEFAULT.VALUE, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
     app = FastAPI()
 
@@ -423,10 +424,7 @@ def test_doc_generation(serve_instance, route_prefix):
 
     App.deploy()
 
-    if route_prefix is None:
-        prefix = "/App"
-    else:
-        prefix = route_prefix
+    prefix = App.route_prefix
 
     if not prefix.endswith("/"):
         prefix += "/"
@@ -558,22 +556,25 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fastapi_shutdown_hook(serve_instance):
     # https://github.com/ray-project/ray/issues/18349
-    signal = SignalActor.remote()
+    shutdown_signal = SignalActor.remote()
+    del_signal = SignalActor.remote()
 
     app = FastAPI()
 
     @app.on_event("shutdown")
     def call_signal():
-        signal.send.remote()
+        shutdown_signal.send.remote()
 
     @serve.deployment
     @serve.ingress(app)
     class A:
-        pass
+        def __del__(self):
+            del_signal.send.remote()
 
     A.deploy()
     A.delete()
-    ray.get(signal.wait.remote(), timeout=20)
+    ray.get(shutdown_signal.wait.remote(), timeout=20)
+    ray.get(del_signal.wait.remote(), timeout=20)
 
 
 def test_fastapi_method_redefinition(serve_instance):

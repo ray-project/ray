@@ -220,6 +220,14 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+# get_runtime_context() can be called outside of Ray so it should not start
+# Ray automatically.
+def test_no_auto_init(shutdown_only):
+    assert not ray.is_initialized()
+    ray.get_runtime_context()
+    assert not ray.is_initialized()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

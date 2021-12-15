@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Models, Preprocessors, and Action Distributions
 =====================================================
 
@@ -35,7 +37,7 @@ observation space. Thereby, the following simple rules apply:
   via the following line of code (e.g. put this into your loss function to access the original
   observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
 
-For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/atari_wrappers.py>`__
+For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/atari_wrappers.py>`__
 (``preprocessor_pref=deepmind``). However, if the Trainer's config key ``preprocessor_pref`` is set to "rllib",
 the following mappings apply for Atari-type observation spaces:
 
@@ -184,6 +186,8 @@ If you would like to provide your own model logic (instead of using RLlib's buil
 can sub-class either ``TFModelV2`` (for TensorFlow) or ``TorchModelV2`` (for PyTorch) and then
 register and specify your sub-class in the config as follows:
 
+.. _tensorflow-models:
+
 Custom TensorFlow Models
 ````````````````````````
 
@@ -198,16 +202,8 @@ a custom value branch.
 Additional supervised/self-supervised losses can be added via the ``TFModelV2.custom_loss`` method:
 
 .. autoclass:: ray.rllib.models.tf.tf_modelv2.TFModelV2
-
-    .. automethod:: __init__
-    .. automethod:: forward
-    .. automethod:: value_function
-    .. automethod:: custom_loss
-    .. automethod:: metrics
-    .. automethod:: update_ops
-    .. automethod:: register_variables
-    .. automethod:: variables
-    .. automethod:: trainable_variables
+    :members:
+    :noindex:
 
 Once implemented, your TF model can then be registered and used in place of a built-in default one:
 
@@ -240,6 +236,8 @@ More examples and explanations on how to implement custom Tuple/Dict processing 
 (also check out `this test case here <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__),
 custom RNNs, custom model APIs (on top of default models) follow further below.
 
+.. _torch-models:
+
 Custom PyTorch Models
 `````````````````````
 
@@ -257,15 +255,8 @@ Additional supervised/self-supervised losses can be added via the ``TorchModelV2
 See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
 
 .. autoclass:: ray.rllib.models.torch.torch_modelv2.TorchModelV2
-
-    .. automethod:: __init__
-    .. automethod:: forward
-    .. automethod:: value_function
-    .. automethod:: custom_loss
-    .. automethod:: metrics
-    .. automethod:: get_initial_state
-    .. automethod:: variables
-    .. automethod:: trainable_variables
+    :members:
+    :noindex:
 
 Once implemented, your PyTorch model can then be registered and used in place of a built-in model:
 

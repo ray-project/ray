@@ -294,6 +294,7 @@ def test_disconnect_during_get():
         disconnect_thread.join()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
@@ -332,6 +333,9 @@ def test_valid_actor_state():
         assert ray.get(ref) == 100
 
 
+# TODO(ckw017): investigate why test is flaking on HA GCS
+# details: https://github.com/ray-project/ray/issues/20907
+@pytest.mark.skipif(True, reason="Flaky on Windows and HA GCS")
 def test_valid_actor_state_2():
     """
     Do a full disconnect (cancel channel) every 11 requests. Failure

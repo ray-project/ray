@@ -49,6 +49,7 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // be aware of the actor and is not able to manage it.  It is also keyed on
 // RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
 // matches the RuntimeEnvHash required by the task spec.
+typedef int RuntimeEnvHash;
 using SchedulingKey =
     std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
@@ -62,10 +63,13 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
-      int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
+      WorkerType worker_type, int64_t lease_timeout_ms,
+      std::shared_ptr<ActorCreatorInterface> actor_creator, const JobID &job_id,
       uint32_t max_tasks_in_flight_per_worker =
           ::RayConfig::instance().max_tasks_in_flight_per_worker(),
-      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
+      absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
+      uint64_t max_pending_lease_requests_per_scheduling_category =
+          ::RayConfig::instance().max_pending_lease_requests_per_scheduling_category())
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
@@ -74,9 +78,13 @@ class CoreWorkerDirectTaskSubmitter {
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
+        worker_type_(worker_type),
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
+        job_id_(job_id),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
+        max_pending_lease_requests_per_scheduling_category_(
+            max_pending_lease_requests_per_scheduling_category),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -106,6 +114,11 @@ class CoreWorkerDirectTaskSubmitter {
     return num_leases_requested_;
   }
 
+  /// Report worker backlog information to the local raylet.
+  /// Since each worker only reports to its local rayet
+  /// we avoid double counting backlogs in autoscaler.
+  void ReportWorkerBacklog();
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -125,6 +138,14 @@ class CoreWorkerDirectTaskSubmitter {
   /// local raylet.
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Report worker backlog information to the local raylet
+  void ReportWorkerBacklogInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Report backlog if the backlog size is changed for this scheduling key
+  /// since last report
+  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
@@ -223,6 +244,9 @@ class CoreWorkerDirectTaskSubmitter {
   /// if a remote raylet tells us to spill the task back to the local raylet.
   const NodeID local_raylet_id_;
 
+  /// The type of this core worker process.
+  const WorkerType worker_type_;
+
   /// Interface for actor creation.
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
@@ -232,9 +256,15 @@ class CoreWorkerDirectTaskSubmitter {
   /// Cache of gRPC clients to other workers.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_cache_;
 
+  /// The ID of the job.
+  const JobID job_id_;
+
   // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a
   // worker using a single lease.
   const uint32_t max_tasks_in_flight_per_worker_;
+
+  // Max number of pending lease requests per SchedulingKey.
+  const uint64_t max_pending_lease_requests_per_scheduling_category_;
 
   /// A LeaseEntry struct is used to condense the metadata about a single executor:
   /// (1) The lease client through which the worker should be returned
@@ -295,8 +325,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
-        std::make_pair(nullptr, TaskID::Nil());
+    absl::flat_hash_map<TaskID, rpc::Address> pending_lease_requests;
     TaskSpecification resource_spec = TaskSpecification();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
@@ -307,11 +336,12 @@ class CoreWorkerDirectTaskSubmitter {
         absl::flat_hash_set<rpc::WorkerAddress>();
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
     uint32_t total_tasks_in_flight = 0;
+    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     inline bool CanDelete() const {
-      if (!pending_lease_request.first && task_queue.empty() &&
+      if (pending_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
@@ -337,6 +367,18 @@ class CoreWorkerDirectTaskSubmitter {
 
       // If any worker has more than one task in flight, then that task can be stolen.
       return total_tasks_in_flight > active_workers.size();
+    }
+
+    // Get the current backlog size for this scheduling key
+    [[nodiscard]] inline int64_t BacklogSize() const {
+      if (task_queue.size() < pending_lease_requests.size()) {
+        // During work stealing we may have more pending lease requests than the number of
+        // queued tasks
+        return 0;
+      }
+
+      // Subtract tasks with pending lease requests so we don't double count them.
+      return task_queue.size() - pending_lease_requests.size();
     }
   };
 

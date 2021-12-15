@@ -1,8 +1,11 @@
 import logging
+from typing import Type
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.contrib.bandits.agents.policy import BanditPolicy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -29,5 +32,14 @@ TS_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-LinTSTrainer = build_trainer(
-    name="LinTS", default_config=TS_CONFIG, default_policy=BanditPolicy)
+
+class LinTSTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return TS_CONFIG
+
+    @override(Trainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> \
+            Type[Policy]:
+        return BanditPolicy

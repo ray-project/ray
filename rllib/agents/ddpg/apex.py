@@ -1,6 +1,10 @@
-from ray.rllib.agents.dqn.apex import apex_execution_plan
+from ray.rllib.agents.dqn.apex import ApexTrainer
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
@@ -17,6 +21,8 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_gpus": 0,
         "num_workers": 32,
         "buffer_size": 2000000,
+        # TODO(jungong) : update once Apex supports replay_buffer_config.
+        "replay_buffer_config": None,
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -27,7 +33,16 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     },
 )
 
-ApexDDPGTrainer = DDPGTrainer.with_updates(
-    name="APEX_DDPG",
-    default_config=APEX_DDPG_DEFAULT_CONFIG,
-    execution_plan=apex_execution_plan)
+
+class ApexDDPGTrainer(DDPGTrainer):
+    @classmethod
+    @override(DDPGTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return APEX_DDPG_DEFAULT_CONFIG
+
+    @staticmethod
+    @override(DDPGTrainer)
+    def execution_plan(workers: WorkerSet, config: dict,
+                       **kwargs) -> LocalIterator[dict]:
+        """Use APEX-DQN's execution plan."""
+        return ApexTrainer.execution_plan(workers, config, **kwargs)

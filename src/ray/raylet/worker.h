@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -48,6 +49,8 @@ class WorkerInterface {
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
+  /// Return the worker process's startup token
+  virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
   /// Return the worker shim process.
   virtual Process GetShimProcess() const = 0;
@@ -67,8 +70,7 @@ class WorkerInterface {
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
-  virtual void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) = 0;
-  [[nodiscard]] virtual RuntimeEnvHash GetRuntimeEnvHash() const = 0;
+  virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
   virtual void MarkDetachedActor() = 0;
@@ -76,16 +78,6 @@ class WorkerInterface {
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
-
-  virtual const ResourceIdSet &GetLifetimeResourceIds() const = 0;
-  virtual void SetLifetimeResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetLifetimeResourceIds() = 0;
-
-  virtual const ResourceIdSet &GetTaskResourceIds() const = 0;
-  virtual void SetTaskResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetTaskResourceIds() = 0;
-  virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
-  virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
 
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
@@ -113,6 +105,18 @@ class WorkerInterface {
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+
+  /// Return True if the worker is available for scheduling a task or actor.
+  virtual bool IsAvailableForScheduling() const = 0;
+
+ protected:
+  virtual void SetStartupToken(StartupToken startup_token) = 0;
+
+  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
+  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -122,109 +126,108 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
-         rpc::WorkerType worker_type, const std::string &ip_address,
-         std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
+         const Language &language, rpc::WorkerType worker_type,
+         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
+         rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
-  rpc::WorkerType GetWorkerType() const override;
-  void MarkDead() override;
-  bool IsDead() const override;
-  void MarkBlocked() override;
-  void MarkUnblocked() override;
-  bool IsBlocked() const override;
+  rpc::WorkerType GetWorkerType() const;
+  void MarkDead();
+  bool IsDead() const;
+  void MarkBlocked();
+  void MarkUnblocked();
+  bool IsBlocked() const;
   /// Return the worker's ID.
-  WorkerID WorkerId() const override;
+  WorkerID WorkerId() const;
   /// Return the worker process.
-  Process GetProcess() const override;
-  void SetProcess(Process proc) override;
+  Process GetProcess() const;
+  /// Return the worker process's startup token
+  StartupToken GetStartupToken() const;
+  void SetProcess(Process proc);
   /// Return this worker shim process.
-  Process GetShimProcess() const override;
-  void SetShimProcess(Process proc) override;
-  Language GetLanguage() const override;
-  const std::string IpAddress() const override;
+  Process GetShimProcess() const;
+  void SetShimProcess(Process proc);
+  Language GetLanguage() const;
+  const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
-  void Connect(int port) override;
+  void Connect(int port);
   /// Testing-only
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override;
-  int Port() const override;
-  int AssignedPort() const override;
-  void SetAssignedPort(int port) override;
-  void AssignTaskId(const TaskID &task_id) override;
-  const TaskID &GetAssignedTaskId() const override;
-  bool AddBlockedTaskId(const TaskID &task_id) override;
-  bool RemoveBlockedTaskId(const TaskID &task_id) override;
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const override;
-  const JobID &GetAssignedJobId() const override;
-  void SetRuntimeEnvHash(RuntimeEnvHash runtime_env_hash) override;
-  RuntimeEnvHash GetRuntimeEnvHash() const override;
-  void AssignActorId(const ActorID &actor_id) override;
-  const ActorID &GetActorId() const override;
-  void MarkDetachedActor() override;
-  bool IsDetachedActor() const override;
-  const std::shared_ptr<ClientConnection> Connection() const override;
-  void SetOwnerAddress(const rpc::Address &address) override;
-  const rpc::Address &GetOwnerAddress() const override;
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
+  int Port() const;
+  int AssignedPort() const;
+  void SetAssignedPort(int port);
+  void AssignTaskId(const TaskID &task_id);
+  const TaskID &GetAssignedTaskId() const;
+  bool AddBlockedTaskId(const TaskID &task_id);
+  bool RemoveBlockedTaskId(const TaskID &task_id);
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
+  const JobID &GetAssignedJobId() const;
+  int GetRuntimeEnvHash() const;
+  void AssignActorId(const ActorID &actor_id);
+  const ActorID &GetActorId() const;
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
+  const std::shared_ptr<ClientConnection> Connection() const;
+  void SetOwnerAddress(const rpc::Address &address);
+  const rpc::Address &GetOwnerAddress() const;
 
-  const ResourceIdSet &GetLifetimeResourceIds() const override;
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids) override;
-  void ResetLifetimeResourceIds() override;
+  void DirectActorCallArgWaitComplete(int64_t tag);
 
-  const ResourceIdSet &GetTaskResourceIds() const override;
-  void SetTaskResourceIds(ResourceIdSet &resource_ids) override;
-  void ResetTaskResourceIds() override;
-  ResourceIdSet ReleaseTaskCpuResources() override;
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) override;
-
-  void DirectActorCallArgWaitComplete(int64_t tag) override;
-
-  const BundleID &GetBundleId() const override;
-  void SetBundleId(const BundleID &bundle_id) override;
+  const BundleID &GetBundleId() const;
+  void SetBundleId(const BundleID &bundle_id);
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
     return allocated_instances_;
   };
 
-  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; };
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
 
-  void ClearLifetimeAllocatedInstances() override {
-    lifetime_allocated_instances_ = nullptr;
-  };
+  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  RayTask &GetAssignedTask() override { return assigned_task_; };
+  RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const RayTask &assigned_task) override {
-    assigned_task_ = assigned_task;
-  };
+  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
-  bool IsRegistered() override { return rpc_client_ != nullptr; }
+  bool IsRegistered() { return rpc_client_ != nullptr; }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
+  bool IsAvailableForScheduling() const {
+    return !IsDead()                        // Not dead
+           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
+  }
+
+  rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
+
+ protected:
+  void SetStartupToken(StartupToken startup_token);
 
  private:
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
+  /// The worker's process's startup_token
+  StartupToken startup_token_;
   /// The worker's shim process. The shim process PID is the same with worker process PID,
   /// except starting worker process in container.
   Process shim_proc_;
@@ -246,15 +249,11 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  JobID assigned_job_id_;
+  const JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
-  /// Note that actors with dynamic options can only be run on a specific
-  /// worker, so in this case, the runtime env will actually be a unique
-  /// per-actor integer.
-  /// 0 means the runtime env hash is not set.
-  RuntimeEnvHash runtime_env_hash_ = 0;
+  const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
@@ -265,12 +264,6 @@ class Worker : public WorkerInterface {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
-  /// The specific resource IDs that this worker owns for its lifetime. This is
-  /// only used for actors.
-  ResourceIdSet lifetime_resource_ids_;
-  /// The specific resource IDs that this worker currently owns for the duration
-  // of a task.
-  ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.

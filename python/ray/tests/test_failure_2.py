@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import signal
@@ -15,9 +14,10 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import Cluster
-from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     Semaphore, wait_for_condition)
+from ray.cluster_utils import cluster_not_supported
+from ray._private.test_utils import (
+    init_error_pubsub, get_error_message, get_log_batch, Semaphore,
+    wait_for_condition, run_string_as_driver_nonblocking)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
@@ -39,15 +39,29 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
     # This actor placement task is infeasible.
-    Foo.remote()
+    foo = Foo.remote()
+    print(foo)
     errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
     # Placement group cannot be made, but no warnings should occur.
-    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
-    pg.ready()
-    f.options(placement_group=pg).remote()
+    total_cpus = ray.cluster_resources()["CPU"]
+
+    # Occupy one cpu by an actor
+    @ray.remote(num_cpus=1)
+    class A:
+        pass
+
+    a = A.remote()
+    print(a)
+
+    @ray.remote(num_cpus=total_cpus)
+    def g():
+        pass
+
+    pg = placement_group([{"CPU": total_cpus}], strategy="STRICT_PACK")
+    g.options(placement_group=pg).remote()
 
     errors = get_error_message(
         p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
@@ -118,18 +132,18 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         nested_wait.locked.remote(),
     ])
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def f():
         time.sleep(1000)
         return 1
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def h(nested_waits):
         nested_wait.release.remote()
         ray.get(nested_waits)
         ray.get(f.remote())
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def g(remote_waits, nested_waits):
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
@@ -364,6 +378,7 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize("use_actors,node_failure",
                          [(False, False), (False, True), (True, False),
                           (True, True)])
@@ -372,7 +387,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
     }
-    cluster = Cluster()
+    cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
@@ -449,29 +464,21 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "_system_config": {
-            "ping_gcs_rpc_server_max_retries": 100
+            "gcs_rpc_server_reconnect_timeout_s": 100
         }
     }],
     indirect=True)
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
-    p = log_pubsub
     # Get gcs server pid to send a signal.
     all_processes = ray.worker._global_node.all_processes
     gcs_server_process = all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
 
     os.kill(gcs_server_pid, signal.SIGBUS)
-    msg = None
-    cnt = 0
-    # wait for max 30 seconds.
-    while cnt < 3000 and not msg:
-        msg = p.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            cnt += 1
-            continue
-        data = json.loads(ray._private.utils.decode(msg["data"]))
-        assert data["pid"] == "gcs_server"
+    # wait for 30 seconds, for the 1st batch of logs.
+    batches = get_log_batch(log_pubsub, 1, timeout=30)
+    assert len(batches) == 1
+    assert batches[0]["pid"] == "gcs_server", batches
 
 
 def test_raylet_node_manager_server_failure(ray_start_cluster_head,
@@ -481,21 +488,56 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
     # Reuse redis port to make node manager grpc server fail to start.
     with pytest.raises(Exception):
         cluster.add_node(wait=False, node_manager_port=redis_port)
-    p = log_pubsub
-    cnt = 0
+
     # wait for max 10 seconds.
-    found = False
-    while cnt < 1000 and not found:
-        msg = p.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            cnt += 1
-            continue
-        data = json.loads(ray._private.utils.decode(msg["data"]))
-        if data["pid"] == "raylet":
-            found = any("Failed to start the grpc server." in line
-                        for line in data["lines"])
-    assert found
+    def matcher(log_batch):
+        return log_batch["pid"] == "raylet" and any(
+            "Failed to start the grpc server." in line
+            for line in log_batch["lines"])
+
+    match = get_log_batch(log_pubsub, 1, timeout=10, matcher=matcher)
+    assert len(match) > 0
+
+
+def test_gcs_server_crash_cluster(ray_start_cluster):
+    # Test the GCS server failures will crash the driver.
+    cluster = ray_start_cluster
+    GCS_RECONNECTION_TIMEOUT = 5
+    node = cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "gcs_rpc_server_reconnect_timeout_s": GCS_RECONNECTION_TIMEOUT
+        })
+
+    script = """
+import ray
+import time
+
+ray.init(address="auto")
+time.sleep(60)
+    """
+
+    # Get gcs server pid to send a signal.
+    all_processes = node.all_processes
+    gcs_server_process = all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    proc = run_string_as_driver_nonblocking(script)
+    # Wait long enough to start the driver.
+    time.sleep(5)
+    start = time.time()
+    print(gcs_server_pid)
+    os.kill(gcs_server_pid, signal.SIGKILL)
+    wait_for_condition(lambda: proc.poll() is None, timeout=10)
+    # Make sure the driver was exited within the timeout instead of hanging.
+    # * 2 for avoiding flakiness.
+    assert time.time() - start < GCS_RECONNECTION_TIMEOUT * 2
+    # Make sure all processes are cleaned up after GCS is crashed.
+    # Currently, not every process is fate shared with GCS.
+    # It seems like log monitor, ray client server, and Redis
+    # are not fate shared.
+    # TODO(sang): Fix it.
+    # wait_for_condition(lambda: not node.any_processes_alive())
 
 
 if __name__ == "__main__":

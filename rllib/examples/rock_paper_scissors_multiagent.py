@@ -101,7 +101,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,
         "train_batch_size": 200,
-        "metrics_smoothing_episodes": 200,
+        "metrics_num_episodes_for_smoothing": 200,
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
@@ -146,7 +146,7 @@ def run_with_custom_entropy_loss(args, stop):
     This performs about the same as the default loss does."""
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model.from_batch(train_batch)
+        logits, _ = model(train_batch)
         action_dist = dist_class(logits, model)
         if args.framework == "torch":
             # Required by PGTorchPolicy's stats fn.
@@ -164,8 +164,9 @@ def run_with_custom_entropy_loss(args, stop):
     EntropyPolicy = policy_cls.with_updates(
         loss_fn=entropy_policy_gradient_loss)
 
-    EntropyLossPG = PGTrainer.with_updates(
-        name="EntropyPG", get_policy_class=lambda _: EntropyPolicy)
+    class EntropyLossPG(PGTrainer):
+        def get_default_policy_class(self, config):
+            return EntropyPolicy
 
     run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 

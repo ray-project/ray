@@ -111,7 +111,7 @@ case "${OSTYPE}" in
   darwin*) ip=$(ipconfig getifaddr en0);;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
-RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="$ip"
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop
@@ -122,7 +122,8 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1 "io.ray.docdemo.$class"
+  java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1\
+   -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
 done
 popd
 

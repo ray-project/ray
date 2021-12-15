@@ -59,14 +59,12 @@ struct TaskOptions {
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "{}",
-              const std::vector<std::string> &runtime_env_uris = {})
+              const std::string &serialized_runtime_env = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env(serialized_runtime_env),
-        runtime_env_uris(runtime_env_uris) {}
+        serialized_runtime_env(serialized_runtime_env) {}
 
   /// The name of this task.
   std::string name;
@@ -78,24 +76,22 @@ struct TaskOptions {
   std::string concurrency_group_name;
   // Runtime Env used by this task. Propagated to child actors and tasks.
   std::string serialized_runtime_env;
-  // URIs contained in the runtime_env.
-  std::vector<std::string> runtime_env_uris;
 };
 
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(
-      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
-      const std::unordered_map<std::string, double> &resources,
-      const std::unordered_map<std::string, double> &placement_resources,
-      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, std::string &ray_namespace, bool is_asyncio,
-      BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
-      bool placement_group_capture_child_tasks = true,
-      const std::string &serialized_runtime_env = "{}",
-      const std::vector<std::string> &runtime_env_uris = {},
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {})
+  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
+                       int max_concurrency,
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::unordered_map<std::string, double> &placement_resources,
+                       const std::vector<std::string> &dynamic_worker_options,
+                       bool is_detached, std::string &name, std::string &ray_namespace,
+                       bool is_asyncio,
+                       const rpc::SchedulingStrategy &scheduling_strategy,
+                       const std::string &serialized_runtime_env = "{}",
+                       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                       bool execute_out_of_order = false, int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -106,11 +102,11 @@ struct ActorCreationOptions {
         name(name),
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
-        placement_options(placement_options),
-        placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
-        runtime_env_uris(runtime_env_uris),
-        concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()){};
+        concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
+        execute_out_of_order(execute_out_of_order),
+        max_pending_calls(max_pending_calls),
+        scheduling_strategy(scheduling_strategy){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -142,20 +138,17 @@ struct ActorCreationOptions {
   const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
-  /// The placement_options include placement_group_id and bundle_index.
-  /// If the actor doesn't belong to a placement group, the placement_group_id will be
-  /// nil, and the bundle_index will be -1.
-  BundleID placement_options;
-  /// When true, the child task will always scheduled on the same placement group
-  /// specified in the PlacementOptions.
-  bool placement_group_capture_child_tasks = true;
   // Runtime Env used by this actor.  Propagated to child actors and tasks.
   std::string serialized_runtime_env;
-  // URIs contained in the runtime_env.
-  std::vector<std::string> runtime_env_uris;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
+  /// Wether the actor execute tasks out of order.
+  const bool execute_out_of_order = false;
+  /// The maxmium actor call pending count.
+  const int max_pending_calls = -1;
+  // The strategy about how to schedule this actor.
+  rpc::SchedulingStrategy scheduling_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

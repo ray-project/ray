@@ -141,21 +141,18 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_cli # cli
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_controller_crashes # timeout
+      -python/ray/serve:test_standalone # timeout
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
-      -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
-      -python/ray/tests:test_basic_2  # hangs on shared cluster tests
-      -python/ray/tests:test_basic_2_client_mode
-      -python/ray/tests:test_basic_3  # timeout
-      -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
@@ -171,6 +168,7 @@ test_python() {
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
+      -python/ray/tests:test_multinode_failures_2
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
@@ -257,7 +255,9 @@ build_dashboard_front_end() {
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
-        nvm use --silent node
+        NODE_VERSION="14"
+        nvm install $NODE_VERSION
+        nvm use --silent $NODE_VERSION
       fi
       install_npm_project
       yarn build
@@ -334,7 +334,52 @@ install_ray() {
   )
 }
 
+validate_wheels_commit_str() {
+  if [ "${OSTYPE}" = msys ]; then
+    echo "Windows builds do not set the commit string, skipping wheel commit validity check."
+    return 0
+  fi
+
+  if [ -n "${BUILDKITE_COMMIT}" ]; then
+    EXPECTED_COMMIT=${BUILDKITE_COMMIT:-}
+  else
+    EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
+  fi
+
+  if [ -z "$EXPECTED_COMMIT" ]; then
+    echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
+    return 0
+  fi
+
+  for whl in .whl/*.whl; do
+    basename=${whl##*/}
+
+    if [[ "$basename" =~ "_cpp" ]]; then
+      # cpp wheels cannot be checked this way
+      echo "Skipping CPP wheel ${basename} for wheel commit validation."
+      continue
+    fi
+
+    folder=${basename%%-cp*}
+    WHL_COMMIT=$(unzip -p "$whl" "${folder}.data/purelib/ray/__init__.py" | grep "__commit__" | awk -F'"' '{print $2}')
+
+    if [ "${WHL_COMMIT}" != "${EXPECTED_COMMIT}" ]; then
+      echo "Error: Observed wheel commit (${WHL_COMMIT}) is not expected commit (${EXPECTED_COMMIT}). Aborting."
+      exit 1
+    fi
+
+    echo "Wheel ${basename} has the correct commit: ${WHL_COMMIT}"
+  done
+
+  echo "All wheels passed the sanity check and have the correct wheel commit set."
+}
+
 build_wheels() {
+  # Create wheel output directory and empty contents
+  # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
+  mkdir -p .whl
+  rm -rf .whl/* || true
+
   case "${OSTYPE}" in
     linux*)
       # Mount bazel cache dir to the docker container.
@@ -355,27 +400,36 @@ build_wheels() {
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
-
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+        quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
+        rm -rf /ray-mount/.whl || true
+        rm -rf /ray/.whl || true
         cp -rT /ray /ray-mount
-        ls /ray-mount
+        ls -a /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
+
+        # Sync the directory to buildkite artifacts
+        rm -rf /artifact-mount/.whl || true
+        cp -r .whl /artifact-mount/.whl
+
+      validate_wheels_commit_str
       fi
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+
+      validate_wheels_commit_str
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -419,7 +473,9 @@ lint_web() {
 
     if [ -z "${BUILDKITE-}" ]; then
       . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+      NODE_VERSION="14"
+      nvm install $NODE_VERSION
+      nvm use --silent $NODE_VERSION
     fi
 
     install_npm_project
@@ -454,7 +510,8 @@ _lint() {
     pushd "${WORKSPACE_DIR}"
       "${ROOT_DIR}"/install-llvm-binaries.sh
     popd
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # Disable clang-tidy until ergonomic issues are resolved.
+    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi
@@ -504,7 +561,7 @@ _check_job_triggers() {
 
   local variable_definitions
   # shellcheck disable=SC2031
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)

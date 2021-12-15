@@ -55,7 +55,10 @@ DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 1 replicas each
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
-DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 100  # 10 replicas each
+# TODO(simon): we should change this back to 100. But due to long poll issue
+# we temporarily downscoped this test.
+# https://github.com/ray-project/ray/pull/20270
+DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 100 replicas each
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
@@ -147,7 +150,7 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
     all_endpoints = list(serve.list_deployments().keys())
     for endpoint in all_endpoints:
         rst_ray_refs.append(
-            warm_up_one_cluster.options(num_cpus=0.1).remote(
+            warm_up_one_cluster.options(num_cpus=0).remote(
                 10, http_host, http_port, endpoint))
     for endpoint in ray.get(rst_ray_refs):
         logger.info(f"Finished warming up {endpoint}")

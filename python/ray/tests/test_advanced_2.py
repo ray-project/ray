@@ -4,13 +4,15 @@ import os
 import sys
 import time
 
+import psutil
 import numpy as np
 import pytest
+import signal
 
 import ray
 import ray.cluster_utils
-
-from ray._private.test_utils import (RayTestTimeoutException,
+from ray._private.test_utils import (run_string_as_driver_nonblocking,
+                                     RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
@@ -743,6 +745,94 @@ def test_max_call_tasks(ray_start_regular):
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
     wait_for_pid_to_exit(pid1)
+
+
+# This case tests that the worker leaked issue when task finished with errors.
+# See https://github.com/ray-project/ray/issues/19639.
+#
+# Case steps are:
+#   1. Start a driver which creates a normal task with a long sleeping. This
+#      makes the normal task doesn't return.
+#   2. Send a SIGTERM to the normal task to trigger an error for it.
+#   3. After the normal task being reconstructed, we send a SIGTERM to the
+#      driver to make it offline and expects Ray collects the idle workers for
+#      the previous nomral task.
+def test_whether_worker_leaked_when_task_finished_with_errors(
+        ray_start_regular):
+
+    driver_template = """
+import ray
+import os
+import ray
+import numpy as np
+import time
+
+ray.init(address="{address}", namespace="test")
+
+# The util actor to store the pid cross jobs.
+@ray.remote
+class PidStoreActor:
+    def __init(self):
+        self._pid = None
+
+    def put(self, pid):
+        self._pid = pid
+        return True
+
+    def get(self):
+        return self._pid
+
+def _store_pid_helper():
+    try:
+        pid_store_actor = ray.get_actor("pid-store", "test")
+    except Exception:
+        pid_store_actor = PidStoreActor.options(
+            name="pid-store", lifetime="detached").remote()
+    assert ray.get(pid_store_actor.put.remote(os.getpid()))
+
+@ray.remote
+def normal_task(large1, large2):
+    # Record the pid of this normal task.
+    _store_pid_helper()
+    time.sleep(60 * 60)
+    return "normaltask"
+
+large = ray.put(np.zeros(100 * 2**10, dtype=np.int8))
+obj = normal_task.remote(large, large)
+print(ray.get(obj))
+"""
+    driver_script = driver_template.format(
+        address=ray_start_regular["redis_address"])
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+    try:
+        driver_proc.wait(10)
+    except Exception:
+        pass
+
+    def get_normal_task_pid():
+        try:
+            pid_store_actor = ray.get_actor("pid-store", "test")
+            return ray.get(pid_store_actor.get.remote())
+        except Exception:
+            return None
+
+    wait_for_condition(lambda: get_normal_task_pid() is not None, 10)
+    pid_store_actor = ray.get_actor("pid-store", "test")
+    normal_task_pid = ray.get(pid_store_actor.get.remote())
+    assert normal_task_pid is not None
+    normal_task_proc = psutil.Process(normal_task_pid)
+    print("killing normal task process, pid =", normal_task_pid)
+    normal_task_proc.send_signal(signal.SIGTERM)
+
+    def normal_task_was_reconstructed():
+        curr_pid = get_normal_task_pid()
+        return curr_pid is not None and curr_pid != normal_task_pid
+
+    wait_for_condition(lambda: normal_task_was_reconstructed(), 10)
+    driver_proc.send_signal(signal.SIGTERM)
+    # Sleep here to make sure raylet has triggered cleaning up
+    # the idle workers.
+    wait_for_condition(lambda: not psutil.pid_exists(normal_task_pid), 10)
 
 
 if __name__ == "__main__":

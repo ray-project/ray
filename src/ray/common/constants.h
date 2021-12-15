@@ -44,6 +44,7 @@ constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
+constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;
@@ -51,3 +52,6 @@ constexpr int kMessagePackOffset = 9;
 /// Filename of "shim process" that sets up Python worker environment.
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray.ray_constants.
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
+
+/// The version of Ray
+constexpr char kRayVersion[] = "2.0.0.dev0";
