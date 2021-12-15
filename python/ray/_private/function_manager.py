@@ -38,10 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def make_exports_prefix(job_id: bytes) -> bytes:
-    if ray_constants.ISOLATE_EXPORTS:
-        return b"IsolatedExports:" + job_id
-    else:
-        return b"Exports"
+    return b"IsolatedExports:" + job_id
 
 
 def make_export_key(pos: int, job_id: bytes) -> bytes:
