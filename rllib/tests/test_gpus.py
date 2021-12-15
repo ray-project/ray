@@ -98,6 +98,7 @@ class TestGPUs(unittest.TestCase):
                     print("via ray.tune.run()")
                     tune.run(
                         "PG", config=config, stop={"training_iteration": 0})
+
         ray.shutdown()
 
 
