@@ -120,6 +120,39 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
+.. tip:: 
+
+  If your machine is running out of memory during the build or the build is causing other programs to crash, try adding the following line to ``~/.bazelrc``:
+
+  ``build --disk_cache=~/bazel-cache --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4``
+
+
+Environment variables that influence this step
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can tweak the build with the following environment variables (in `setup.py`):
+
+- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
+  to build java portions of the codebase
+- ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
+- ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
+  ``cpp``) build will not provide some ``cpp`` interfaces
+- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no bazel build steps will be
+  executed
+- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
+  python packages
+- ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
+  other value will be ignored
+- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
+  ``--local_cpu_resources`` argument for the call to bazel, which will limit the
+  number of CPUs used during bazel steps.
+- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
+  ``None`` which is ``cwd()``
+- ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
+- ``BAZEL_PATH``: used on Windows to find ``bazel.exe``, see below
+- ``MINGW_DIR``: used on Windows to find ``bazel.exe`` if not found in ``BAZEL_PATH``
+
 Building Ray on Windows (full)
 ------------------------------
 

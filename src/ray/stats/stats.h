@@ -36,9 +36,6 @@ namespace stats {
 
 #include <boost/asio.hpp>
 
-/// Include metric_defs.h to define measure items.
-#include "ray/stats/metric_defs.h"
-
 // TODO(sang) Put all states and logic into a singleton class Stats.
 static std::shared_ptr<IOServicePool> metrics_io_service_pool;
 static std::shared_ptr<MetricExporterClient> exporter;

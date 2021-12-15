@@ -1,0 +1,139 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+option java_package = "io.ray.runtime.generated";
+
+/// The pip type runtime env.
+message PipRuntimeEnv {
+  /// The pip packages config.
+  message Config {
+    /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
+    repeated string packages = 1;
+  }
+  oneof pip_runtime_env {
+    /// The pip packages config.
+    Config config = 1;
+    /// The name of a local virtual env.
+    string virtual_env_name = 2;
+  }
+}
+
+/// The conda type runtime env.
+message CondaRuntimeEnv {
+  oneof conda_runtime_env {
+    /// The conda YAML config.
+    string config = 1;
+    /// The name of a local conda env.
+    string conda_env_name = 2;
+  }
+}
+
+/// The container type runtime env.
+message ContainerRuntimeEnv {
+  /// The container image.
+  string image = 1;
+  /// The default worker path in the container.
+  string worker_path = 2;
+  /// A list of docker run options. Refer to
+  /// https://docs.docker.com/engine/reference/run/.
+  repeated string run_options = 3;
+}
+
+/// A set of plugin runtime envs.
+message PluginRuntimeEnv {
+  message Plugin {
+    /// The python class which implements the runtime env plugin.
+    string class_path = 1;
+    /// The serialized config.
+    string config = 2;
+  }
+  repeated Plugin plugins = 1;
+}
+
+/// The jars type runtime env.
+message JarsRuntimeEnv {
+  /// TODO(SongGuyang)
+}
+
+/// The maven type runtime env.
+message MavenRuntimeEnv {
+  /// TODO(SongGuyang)
+}
+
+message RuntimeEnvUris {
+  /// working dir uri
+  string working_dir_uri = 1;
+  /// python modules uris
+  repeated string py_modules_uris = 2;
+  /// conda uri
+  string conda_uri = 3;
+  /// pip uri
+  string pip_uri = 4;
+  /// plugin uris
+  repeated string plugin_uris = 5;
+}
+
+/// The runtime environment describes all the runtime packages needed to
+/// run some task or actor.
+message RuntimeEnv {
+  /// List of URIs (either in the GCS or external
+  /// storage), each of which is a zip file that will be unpacked and
+  /// inserted into the PYTHONPATH of the workers.
+  repeated string py_modules = 1;
+  /// Specifies the working directory of the worker.
+  string working_dir = 2;
+  /// Runtime env uris of different types.
+  RuntimeEnvUris uris = 3;
+  /// Environment variables to set.
+  map<string, string> env_vars = 4;
+  /// The extension fields.
+  map<string, string> extensions = 5;
+  /// One of typed runtime env of python
+  oneof python_runtime_env {
+    /// pip runtime env
+    PipRuntimeEnv pip_runtime_env = 6;
+    /// conda runtime env
+    CondaRuntimeEnv conda_runtime_env = 7;
+    /// container runtime env
+    ContainerRuntimeEnv py_container_runtime_env = 8;
+    /// plugin runtime env
+    PluginRuntimeEnv py_plugin_runtime_env = 9;
+  }
+  /// One of typed runtime env of java
+  oneof java_runtime_env {
+    /// jars runtime env
+    JarsRuntimeEnv jars_runtime_env = 10;
+    /// maven runtime env
+    MavenRuntimeEnv maven_runtime_env = 11;
+    /// container runtime env
+    ContainerRuntimeEnv java_container_runtime_env = 12;
+    /// plugin runtime env
+    PluginRuntimeEnv java_plugin_runtime_env = 13;
+  }
+}
+
+/// The runtime env information which is transfered between ray core processes.
+message RuntimeEnvInfo {
+  /// The serialized runtime env passed from the user.
+  string serialized_runtime_env = 1;
+  /// URIs used in this runtime env. These will be used for reference counting.
+  repeated string uris = 2;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool runtime_env_eager_install = 3;
+}

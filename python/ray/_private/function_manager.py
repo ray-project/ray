@@ -37,6 +37,11 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
+def make_export_key(pos):
+    # big-endian for ordering in binary
+    return b"Exports:" + pos.to_bytes(8, "big")
+
+
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
     Attributes:
@@ -76,7 +81,13 @@ class FunctionActorManager:
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
         self.cv = threading.Condition(lock=self.lock)
+
         self.execution_infos = {}
+        # This is the counter to keep track of how many keys have already
+        # been exported so that we can find next key quicker.
+        self._num_exported = 0
+        # This is to protect self._num_exported when doing exporting
+        self._export_lock = threading.Lock()
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -127,6 +138,29 @@ class FunctionActorManager:
         except Exception:
             return None
 
+    def export_key(self, key):
+        """Export a key so it can be imported by other workers"""
+
+        # It's going to check all the keys until if reserve one key not
+        # existing in the cluster.
+        # One optimization is that we can use importer counter since
+        # it's sure keys before this counter has been allocated.
+        with self._export_lock:
+            self._num_exported = max(self._num_exported,
+                                     self._worker.import_thread.num_imported)
+            while True:
+                self._num_exported += 1
+                holder = make_export_key(self._num_exported)
+                # This step is atomic since internal kv is a single thread
+                # atomic db.
+                if self._worker.gcs_client.internal_kv_put(
+                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
+                    break
+        if self._worker.gcs_pubsub_enabled:
+            self._worker.gcs_publisher.publish_function_key(key)
+        else:
+            self._worker.redis_client.lpush("Exports", "a")
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
         Args:
@@ -167,7 +201,7 @@ class FunctionActorManager:
         })
         self._worker.gcs_client.internal_kv_put(key, val, True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        self._worker.redis_client.rpush("Exports", key)
+        self.export_key(key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
@@ -245,10 +279,6 @@ class FunctionActorManager:
                         function=function,
                         function_name=function_name,
                         max_calls=max_calls))
-                # Add the function to the function table.
-                self._worker.redis_client.rpush(
-                    b"FunctionTable:" + function_id.binary(),
-                    self._worker.worker_id)
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -367,7 +397,7 @@ class FunctionActorManager:
                                                 pickle.dumps(actor_class_info),
                                                 True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        self._worker.redis_client.rpush("Exports", key)
+        self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):

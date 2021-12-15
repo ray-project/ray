@@ -6,6 +6,7 @@ import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -158,5 +159,34 @@ public class ConcurrencyGroupTest extends BaseTest {
     ObjectRef<Boolean> ret8 = myActor.task(CountDownActor::f5).remote();
     Assert.assertTrue(ret7.get());
     Assert.assertTrue(ret8.get());
+  }
+
+  private static class ConcurrencyActor2 {
+
+    public String f1() throws InterruptedException {
+      TimeUnit.MINUTES.sleep(100);
+      return "never returned";
+    }
+
+    public String f2() {
+      return "ok";
+    }
+  }
+
+  /// This case tests that blocking task in default group will block other groups.
+  /// See https://github.com/ray-project/ray/issues/20475
+  @Test(groups = {"cluster"})
+  public void testDefaultCgDoNotBlockOthers() {
+    ConcurrencyGroup group =
+        new ConcurrencyGroupBuilder<ConcurrencyActor2>()
+            .setName("group")
+            .setMaxConcurrency(1)
+            .addMethod(ConcurrencyActor2::f2)
+            .build();
+
+    ActorHandle<ConcurrencyActor2> myActor =
+        Ray.actor(ConcurrencyActor2::new).setConcurrencyGroups(group).remote();
+    myActor.task(ConcurrencyActor2::f1).remote();
+    Assert.assertEquals(myActor.task(ConcurrencyActor2::f2).remote().get(), "ok");
   }
 }

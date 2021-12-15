@@ -17,7 +17,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
-
 #include <chrono>
 
 #include "absl/synchronization/mutex.h"
@@ -221,6 +220,9 @@ class ClientCallManager {
   /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
+  /// \param[in] call_name The name of the gRPC method call.
+  /// \param[in] method_timeout_ms The timeout of the RPC method in ms.
+  /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
@@ -228,10 +230,13 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
-      std::string call_name) {
+      std::string call_name, int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.RecordStart(call_name);
+    if (method_timeout_ms == -1) {
+      method_timeout_ms = call_timeout_ms_;
+    }
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
-                                                        call_timeout_ms_);
+                                                        method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

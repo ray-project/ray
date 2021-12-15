@@ -8,7 +8,7 @@ import time
 import ray
 import ray.ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, convert_actor_state
 
 from ray._raylet import GlobalStateAccessor
 
@@ -102,7 +102,7 @@ def test_global_state_actor_table(ray_start_regular):
     def get_state():
         return list(ray.state.actors().values())[0]["State"]
 
-    dead_state = gcs_utils.ActorTableData.DEAD
+    dead_state = convert_actor_state(gcs_utils.ActorTableData.DEAD)
     for _ in range(10):
         if get_state() == dead_state:
             break
@@ -137,10 +137,12 @@ def test_global_state_actor_entry(ray_start_regular):
     b_actor_id = b._actor_id.hex()
     assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
     assert ray.state.actors(
-        actor_id=a_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
+        actor_id=a_actor_id)["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.ALIVE)
     assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
     assert ray.state.actors(
-        actor_id=b_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
+        actor_id=b_actor_id)["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.ALIVE)
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])

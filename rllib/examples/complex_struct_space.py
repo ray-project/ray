@@ -43,6 +43,7 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "my_model",
         },
+        "_disable_preprocessor_api": False,
     }
 
     stop = {

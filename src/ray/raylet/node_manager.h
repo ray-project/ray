@@ -90,6 +90,8 @@ struct NodeManagerConfig {
   std::string store_socket_name;
   /// The path to the ray temp dir.
   std::string temp_dir;
+  /// The path of this ray log dir.
+  std::string log_dir;
   /// The path of this ray session dir.
   std::string session_dir;
   /// The path of this ray resource dir.

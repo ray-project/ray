@@ -103,6 +103,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
   ///
   ///  \param resource_request: Task to be scheduled.
+  ///  \param scheduling_strategy: Strategy about how to schedule this task.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
@@ -116,6 +117,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the resource request.
   int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
+                                 const rpc::SchedulingStrategy &scheduling_strategy,
                                  bool actor_creation, bool force_spillback,
                                  int64_t *violations, bool *is_infeasible);
 
@@ -127,6 +129,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   //           resource request.
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
+      const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
 
@@ -385,6 +388,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+
+  /// Get the number of cpus on this node.
+  uint64_t GetNumCpus() const;
 
   /// Check whether a task request is schedulable on a the local node. A node is
   /// schedulable if it has the available resources needed to execute the task.

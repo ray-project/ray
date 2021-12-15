@@ -1,32 +1,21 @@
-"""
-Recurrent Experience Replay in Distributed Reinforcement Learning (R2D2)
-========================================================================
-
-[1] Recurrent Experience Replay in Distributed Reinforcement Learning -
-    S Kapturowski, G Ostrovski, J Quan, R Munos, W Dabney - 2019, DeepMind
-
-This file defines the distributed Trainer class for the R2D2
-algorithm. See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
-
-Detailed documentation:
-https://docs.ray.io/en/master/rllib-algorithms.html#recurrent-replay-distributed-dqn-r2d2
-"""  # noqa: E501
-
 import logging
-from typing import List, Optional, Type
+from typing import Type
 
-from ray.rllib.agents import dqn
+from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as \
+    DQN_DEFAULT_CONFIG
 from ray.rllib.agents.dqn.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.agents.dqn.r2d2_torch_policy import R2D2TorchPolicy
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
-    dqn.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
+R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
+    DQN_DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
     {
         # Learning rate for adam optimizer.
         "lr": 1e-4,
@@ -85,58 +74,53 @@ DEFAULT_CONFIG = dqn.DQNTrainer.merge_trainer_configs(
 # yapf: enable
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings.
-
-    Rewrites rollout_fragment_length to take into account burn-in and
-    max_seq_len truncation.
-    """
-    if config["replay_sequence_length"] != -1:
-        raise ValueError(
-            "`replay_sequence_length` is calculated automatically to be "
-            "model->max_seq_len + burn_in!")
-    # Add the `burn_in` to the Model's max_seq_len.
-    # Set the replay sequence length to the max_seq_len of the model.
-    config["replay_sequence_length"] = \
-        config["burn_in"] + config["model"]["max_seq_len"]
-
-    if config.get("batch_mode") != "complete_episodes":
-        raise ValueError("`batch_mode` must be 'complete_episodes'!")
-
-
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
-    """Calculate the round robin weights for the rollout and train steps"""
-    if not config["training_intensity"]:
-        return [1, 1]
-    # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
-    # Training intensity is specified in terms of
-    # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    weights = [1, config["training_intensity"] / native_ratio]
-    return weights
-
-
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with R2D2Trainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        return R2D2TorchPolicy
-
-
 # Build an R2D2 trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-R2D2Trainer = dqn.DQNTrainer.with_updates(
-    name="R2D2",
-    default_policy=R2D2TFPolicy,
-    get_policy_class=get_policy_class,
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-)
+class R2D2Trainer(DQNTrainer):
+    """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
+
+    Trainer defining the distributed R2D2 algorithm.
+    See `r2d2_[tf|torch]_policy.py` for the definition of the policies.
+
+    [1] Recurrent Experience Replay in Distributed Reinforcement Learning -
+        S Kapturowski, G Ostrovski, J Quan, R Munos, W Dabney - 2019, DeepMind
+
+
+    Detailed documentation:
+    https://docs.ray.io/en/master/rllib-algorithms.html#\
+    recurrent-replay-distributed-dqn-r2d2
+    """
+
+    @classmethod
+    @override(DQNTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return R2D2_DEFAULT_CONFIG
+
+    @override(DQNTrainer)
+    def get_default_policy_class(self,
+                                 config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            return R2D2TorchPolicy
+        else:
+            return R2D2TFPolicy
+
+    @override(DQNTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        """Checks and updates the config based on settings.
+
+        Rewrites rollout_fragment_length to take into account burn-in and
+        max_seq_len truncation.
+        """
+        super().validate_config(config)
+
+        if config["replay_sequence_length"] != -1:
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "model->max_seq_len + burn_in!")
+        # Add the `burn_in` to the Model's max_seq_len.
+        # Set the replay sequence length to the max_seq_len of the model.
+        config["replay_sequence_length"] = \
+            config["burn_in"] + config["model"]["max_seq_len"]
+
+        if config.get("batch_mode") != "complete_episodes":
+            raise ValueError("`batch_mode` must be 'complete_episodes'!")
