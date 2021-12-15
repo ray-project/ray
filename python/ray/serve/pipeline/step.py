@@ -55,10 +55,11 @@ class CallablePipelineStep(PipelineStep):
     """
 
     def __init__(self, callable_factory: Callable[[], Callable],
-                 config: StepConfig):
+                class_name: str, config: StepConfig):
         super().__init__(config)
         assert callable(callable_factory)
         self._callable_factory = callable_factory
+        self._class_name = class_name
 
     def options(self, *args, **kwargs):
         raise NotImplementedError("No options yet!")
@@ -66,7 +67,7 @@ class CallablePipelineStep(PipelineStep):
     def __call__(self, *args, **kwargs):
         _validate_step_args(*args, **kwargs)
         return ExecutorPipelineNode(
-            self._callable_factory, self._config, incoming_edges=args)
+            self._callable_factory, self._class_name, self._config, incoming_edges=args)
 
 
 class UninstantiatedClassPipelineStep(PipelineStep):
@@ -79,13 +80,15 @@ class UninstantiatedClassPipelineStep(PipelineStep):
     def __init__(self, _class: Callable, config: StepConfig):
         super().__init__(config)
         self._class = _class
+        self._class_name = _class.__name__
+
 
     def options(self, *args, **kwargs):
         raise NotImplementedError("No options yet!")
 
     def __call__(self, *args, **kwargs):
         return CallablePipelineStep(lambda: self._class(*args, **kwargs),
-                                    self._config)
+                                    self._class_name, self._config)
 
 
 def step(_func_or_class: Optional[Callable] = None,

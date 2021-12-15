@@ -22,11 +22,11 @@ class PipelineNode(ABC):
 class Pipeline:
     """A deployed pipeline that can be called by the user."""
 
-    def __init__(self, entry_node: PipelineNode):
-        self._entry_node = entry_node
+    def __init__(self, output_node: PipelineNode):
+        self._output_node = output_node
 
     def call(self, input_arg: Tuple[Any]) -> Any:
-        result = self._entry_node._call(input_arg)
+        result = self._output_node._call(input_arg)
         if isinstance(result, ObjectRef):
             result = ray.get(result)
 
@@ -43,10 +43,11 @@ class ExecutorPipelineNode(PipelineNode):
     """
 
     def __init__(self, callable_factory: Callable[[], Callable],
-                 config: StepConfig, incoming_edges: Tuple[PipelineNode]):
+                class_name: str, config: StepConfig, incoming_edges: Tuple[PipelineNode]):
         # Serialize to make this class environment-independent.
         self._serialized_callable_factory: bytes = cloudpickle.dumps(
             callable_factory)
+        self._class_name = class_name
         self._config: StepConfig = config
         self._incoming_edges: PipelineNode = incoming_edges
 
@@ -73,6 +74,9 @@ class ExecutorPipelineNode(PipelineNode):
         args = tuple(node._call(input_arg) for node in self._incoming_edges)
         return self._executor.call(*args)
 
+    def __repr__(self) -> str:
+        return f"[ExecutorPipelineNode: {self._class_name}]"
+
 
 class InputPipelineNode(PipelineNode):
     def deploy(self) -> PipelineNode:
@@ -80,6 +84,9 @@ class InputPipelineNode(PipelineNode):
 
     def _call(self, input_arg: Tuple[Any]) -> Any:
         return input_arg
+
+    def __repr__(self):
+        return "INPUT_NODE"
 
 
 # Special node that's used to designate the input of a pipeline.
