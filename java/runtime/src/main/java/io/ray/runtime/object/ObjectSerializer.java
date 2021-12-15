@@ -53,6 +53,8 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
+  private static final RootAllocator root = new RootAllocator(Long.MAX_VALUE);
+
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
@@ -87,9 +89,7 @@ public class ObjectSerializer {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
         try (ArrowStreamReader reader =
-            new ArrowStreamReader(
-                new ByteBufferBackedInputStream(nativeRayObject.buffer),
-                new RootAllocator(Long.MAX_VALUE))) {
+            new ArrowStreamReader(new ByteBufferBackedInputStream(nativeRayObject.buffer), root)) {
           reader.loadNextBatch();
           return reader.getVectorSchemaRoot();
         } catch (Exception e) {
