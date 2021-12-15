@@ -3,7 +3,7 @@ Workflow Metadata
 
 Observability is important for workflow - sometimes we not only want
 to get the output, but also want to gain insights on the internal
-states (e.g. to measure the performance or find the bottleneck).
+states (e.g., to measure the performance or find bottlenecks).
 Workflow metadata provides a number of stats that helps understand
 the workflow, from basic running status and step options, to performance
 and user-imposed metadata.
@@ -119,6 +119,25 @@ And you can also do this in a nested way:
     assert workflow.get_metadata("counter", "incr_2")["user_metadata"] == {"current_n": 2}
     assert workflow.get_metadata("counter", "incr_3")["user_metadata"] == {"current_n": 3}
     assert workflow.get_metadata("counter", "incr_4")["user_metadata"] == {"current_n": 4}
+
+Available Metrics
+-----------------
+**workflow level**
+
+- status: workflow states, can be one of RUNNING, FAILED, RESUMABLE, CANCELED or SUCCESSFUL.
+- user_metadata: a python dictionary of user input metadata that is passed in ``workflow.run()``.
+- stats: workflow running stats, including workflow start time and end time.
+
+**step level**
+
+- name:
+- workflow:
+- workflow_refs:
+- step_options:
+- user_metadata: a python dictionary of user input metadata that is passed in ``step.options()`` or ``@workflow.step()``.
+decorators
+- stats: step running stats, including step start time and end time.
+
 
 Notes
 -----
