@@ -384,10 +384,13 @@ void raylet::RayletClient::PrepareBundleResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
   rpc::PrepareBundleResourcesRequest request;
+  std::set<std::string> nodes;
   for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
     auto message_bundle = request.add_bundle_specs();
     message_bundle->CopyFrom(bundle_spec->GetMessage());
   }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->PrepareBundleResources(request, callback);
 }
 
