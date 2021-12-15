@@ -42,7 +42,7 @@ tabulate
 tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
-starlette>=1.4.0
+starlette>=0.14.2
 
 # Requirements for running tests
 pyarrow==4.0.1
