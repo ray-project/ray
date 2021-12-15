@@ -625,6 +625,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::function<void(bool, const std::string &)> &callback,
       const std::string &serialized_allocated_resource_instances = "{}");
 
+  void AddStartingWorkerProcess(
+      State &state, const int workers_to_start, const rpc::WorkerType worker_type,
+      const Process &proc, const std::chrono::high_resolution_clock::time_point &start,
+      const rpc::RuntimeEnvInfo &runtime_env_info);
+
+  void RemoveStartingWorkerProcess(State &state, const StartupToken &proc_startup_token);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.

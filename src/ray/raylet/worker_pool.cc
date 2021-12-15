@@ -193,6 +193,26 @@ void WorkerPool::update_worker_startup_token_counter() {
   worker_startup_token_counter_ += 1;
 }
 
+void WorkerPool::AddStartingWorkerProcess(
+    State &state, const int workers_to_start, const rpc::WorkerType worker_type,
+    const Process &proc, const std::chrono::high_resolution_clock::time_point &start,
+    const rpc::RuntimeEnvInfo &runtime_env_info) {
+  state.starting_worker_processes.emplace(
+      worker_startup_token_counter_,
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
+                                start, runtime_env_info});
+  runtime_env_manager_.AddURIReference(
+      kWorkerSetupTokenPrefix + std::to_string(worker_startup_token_counter_),
+      runtime_env_info);
+}
+
+void WorkerPool::RemoveStartingWorkerProcess(State &state,
+                                             const StartupToken &proc_startup_token) {
+  state.starting_worker_processes.erase(proc_startup_token);
+  runtime_env_manager_.RemoveURIReference(kWorkerSetupTokenPrefix +
+                                          std::to_string(proc_startup_token));
+}
+
 std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
@@ -431,13 +451,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                 << worker_startup_token_counter_;
   MonitorStartingWorkerProcess(proc, worker_startup_token_counter_, language,
                                worker_type);
-  state.starting_worker_processes.emplace(
-      worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
-                                start, runtime_env_info});
-  runtime_env_manager_.AddURIReference(
-      kWorkerSetupTokenPrefix + std::to_string(worker_startup_token_counter_),
-      runtime_env_info);
+  AddStartingWorkerProcess(state, workers_to_start, worker_type, proc, start,
+                           runtime_env_info);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -487,9 +502,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                           proc_startup_token, nullptr, status, &found,
                                           &used, &task_id);
       }
-      state.starting_worker_processes.erase(it);
-      runtime_env_manager_.RemoveURIReference(kWorkerSetupTokenPrefix +
-                                              std::to_string(proc_startup_token));
+      RemoveStartingWorkerProcess(state, proc_startup_token);
       if (IsIOWorkerType(worker_type)) {
         // Mark the I/O worker as failed.
         auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -692,9 +705,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
                                          it->second.runtime_env_info);
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
-      state.starting_worker_processes.erase(it);
-      runtime_env_manager_.RemoveURIReference(kWorkerSetupTokenPrefix +
-                                              std::to_string(worker_startup_token));
+      RemoveStartingWorkerProcess(state, worker_startup_token);
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
     }
