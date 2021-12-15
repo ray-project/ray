@@ -42,11 +42,11 @@ tabulate
 tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
-starlette
+starlette>=1.4.0
 
 # Requirements for running tests
 pyarrow==4.0.1
-blist; platform_system != "Windows"
+blist~=1.3.6; platform_system != "Windows"
 azure-cli-core~=2.29.1
 azure-identity~=1.7.0
 azure-mgmt-compute~=23.1.0
@@ -90,7 +90,6 @@ tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd
-starlette
 fastapi
 smart_open[s3]
 tqdm
