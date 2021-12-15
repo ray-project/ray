@@ -73,15 +73,28 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   /**
    * Set the max number of concurrent calls to allow for this actor.
    *
-   * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
-   * not guaranteed when {@code max_concurrency > 1}.
+   * <p>The maximum concurrency defaults to 1 for threaded execution. Note that the execution order
+   * is not guaranteed when {@code max_concurrency > 1}.
    *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
+   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor.
    * @return self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
+    return self();
+  }
+
+  /**
+   * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+   * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+   * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+   *
+   * @param maxPendingCalls The maximum number of pending calls for this actor.
+   * @return self
+   */
+  public T setMaxPendingCalls(int maxPendingCalls) {
+    builder.setMaxPendingCalls(maxPendingCalls);
     return self();
   }
 
