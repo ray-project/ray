@@ -83,8 +83,10 @@ message RuntimeEnvUris {
   repeated string py_modules_uris = 2;
   /// conda uri
   string conda_uri = 3;
+  /// pip uri
+  string pip_uri = 4;
   /// plugin uris
-  repeated string plugin_uris = 4;
+  repeated string plugin_uris = 5;
 }
 
 /// The runtime environment describes all the runtime packages needed to

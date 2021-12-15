@@ -43,6 +43,7 @@ tensorboardX >= 1.9
 uvicorn>=0.15.0
 dataclasses; python_version < '3.7'
 starlette>=0.14.2
+aiorwlock
 
 # Requirements for running tests
 pyarrow==4.0.1

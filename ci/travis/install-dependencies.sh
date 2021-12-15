@@ -275,6 +275,9 @@ install_toolchains() {
 }
 
 download_mnist() {
+  if [ -d "${HOME}/data/MNIST" ]; then
+    return
+  fi
   mkdir -p "${HOME}/data"
   curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"

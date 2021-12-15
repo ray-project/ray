@@ -131,6 +131,15 @@ class DQNTrainer(SimpleQTrainer):
         return DEFAULT_CONFIG
 
     @override(SimpleQTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        super().validate_config(config)
+
+        # Update effective batch size to include n-step
+        adjusted_rollout_len = max(config["rollout_fragment_length"],
+                                   config["n_step"])
+        config["rollout_fragment_length"] = adjusted_rollout_len
+
+    @override(SimpleQTrainer)
     def get_default_policy_class(
             self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":

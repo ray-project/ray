@@ -555,6 +555,8 @@ if __name__ == "__main__":
         e2e_end_time = timeit.default_timer()
         total_time = e2e_end_time - e2e_start_time
         print(f"Job finished in {total_time} seconds.")
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+            f.write(json.dumps({"time": total_time, "success": 1}))
         exit()
 
     # Random global shuffle

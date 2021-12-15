@@ -130,5 +130,19 @@ of what the event stats look like:
     CoreWorkerService.grpc_client.RemoveObjectLocationOwner - 43177 total (0 active), CPU time: mean = 2.368 us, total = 102.252 ms
     NodeManagerService.grpc_server.PinObjectIDs - 40000 total (0 active), CPU time: mean = 194.860 us, total = 7.794 s
 
+Callback latency injection
+--------------------------
+Sometimes, bugs are caused by RPC issues, for example, due to the delay of some requests, the system goes to a deadlock.
+To debug and reproduce this kind of issue, we need to have a way to inject latency for the RPC request. To enable this,
+``RAY_testing_asio_delay_us`` is introduced. If you'd like to make the callback of some RPC requests be executed after some time,
+you can do it with this variable. For example:
+
+.. code-block:: shell
+
+  RAY_testing_asio_delay_us="NodeManagerService.grpc_client.PrepareBundleResources=2000000:2000000" ray start --head
+
+
+The syntax for this is ``RAY_testing_asio_delay_us="method1=min_us:max_us,method2=min_us:max_us"``. Entries are comma separated.
+There is a special method ``*`` which means all methods. It has a lower priority compared with other entries.
 
 .. _`issues`: https://github.com/ray-project/ray/issues

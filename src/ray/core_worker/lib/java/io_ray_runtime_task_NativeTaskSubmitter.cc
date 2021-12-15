@@ -150,6 +150,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -214,11 +215,24 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
+    max_pending_calls = static_cast<int32_t>(env->GetIntField(
+        actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
 
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!placement_options.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(
+        placement_options.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        placement_options.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
   ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -230,10 +244,11 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       name,
       ray_namespace,
       /*is_asyncio=*/false,
-      placement_options,
-      /*placement_group_capture_child_tasks=*/true,
+      /*scheduling_strategy=*/scheduling_strategy,
       /*serialized_runtime_env=*/"{}",
-      concurrency_groups};
+      concurrency_groups,
+      /*execute_out_of_order*/ false,
+      max_pending_calls};
   return actor_creation_options;
 }
 
@@ -296,14 +311,25 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!placement_group_options.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(
+        placement_group_options.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        placement_group_options.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, task_args, task_options,
-      /*max_retries=*/0,
-      /*retry_exceptions=*/false,
-      /*placement_options=*/placement_group_options,
-      /*placement_group_capture_child_tasks=*/true,
-      /*debugger_breakpoint*/ "");
+  auto return_refs =
+      CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args, task_options,
+                                                    /*max_retries=*/0,
+                                                    /*retry_exceptions=*/false,
+                                                    /*scheduling_strategy=*/
+                                                    scheduling_strategy,
+                                                    /*debugger_breakpoint*/ "");
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
@@ -348,8 +374,21 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
 
   auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options);
+  if (!return_refs.has_value()) {
+    std::stringstream ss;
+    ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()
+       << " could not be submitted to " << actor_id;
+    ss << " because more than "
+       << CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id)->MaxPendingCalls();
+    ss << " tasks are queued on the actor. This limit can be adjusted with the "
+          "`setMaxPendingCalls` actor option.";
+    env->ThrowNew(java_ray_pending_calls_limit_exceeded_exception_class,
+                  ss.str().c_str());
+    return nullptr;
+  }
+
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs) {
+  for (const auto &ref : return_refs.value()) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
 

@@ -17,9 +17,7 @@ from ray._private.test_utils import (
     run_string_as_driver, wait_for_condition, is_placement_group_removed,
     convert_actor_state)
 from ray.exceptions import RaySystemError
-from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup, placement_group,
-                                      remove_placement_group)
+from ray.util.placement_group import (placement_group, remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
@@ -43,7 +41,7 @@ def get_ray_status_output(address):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -68,7 +66,7 @@ def test_create_placement_group_during_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
@@ -408,45 +406,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
 
         assert len(gpu_ids_res) == 2
-
-
-def test_placement_group_client_option_serialization():
-    """Tests conversion of placement group to json-serializable dict and back.
-
-    Tests conversion
-    placement_group -> dict -> placement_group and
-    dict -> placement_group -> dict
-    with and without non-null bundle cache.
-    """
-
-    # Tests conversion from dict to placement group and back.
-    def dict_to_pg_to_dict(pg_dict_in):
-        pg = PlacementGroup.from_dict(pg_dict_in)
-        pg_dict_out = pg.to_dict()
-        assert pg_dict_in == pg_dict_out
-
-    # Tests conversion from placement group to dict and back.
-    def pg_to_dict_to_pg(pg_in):
-        pg_dict = pg_in.to_dict()
-        pg_out = PlacementGroup.from_dict(pg_dict)
-        assert pg_out.id == pg_in.id
-        assert pg_out.bundle_cache == pg_in.bundle_cache
-
-    pg_id = PlacementGroupID(id=bytes(16))
-    id_string = bytes(16).hex()
-    bundle_cache = [{"CPU": 2}, {"custom_resource": 5}]
-
-    pg_with_bundles = PlacementGroup(id=pg_id, bundle_cache=bundle_cache)
-    pg_to_dict_to_pg(pg_with_bundles)
-
-    pg_no_bundles = PlacementGroup(id=pg_id)
-    pg_to_dict_to_pg(pg_no_bundles)
-
-    pg_dict_with_bundles = {"id": id_string, "bundle_cache": bundle_cache}
-    dict_to_pg_to_dict(pg_dict_with_bundles)
-
-    pg_dict_no_bundles = {"id": id_string, "bundle_cache": None}
-    dict_to_pg_to_dict(pg_dict_no_bundles)
 
 
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):

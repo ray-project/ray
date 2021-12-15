@@ -300,9 +300,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
-  /// Collect stats from gcs placement group manager in-memory data structures.
-  void CollectStats() const;
-
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -310,6 +307,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void Initialize(const GcsInitData &gcs_init_data);
 
   std::string DebugString() const;
+
+  /// Record internal metrics of the placement group manager.
+  void RecordMetrics() const;
 
  private:
   /// Push a placement group to pending queue.

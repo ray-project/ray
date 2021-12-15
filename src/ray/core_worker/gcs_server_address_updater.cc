@@ -53,20 +53,22 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
   raylet_client_->GetGcsServerAddress([this](const Status &status,
                                              const rpc::GetGcsServerAddressReply &reply) {
+    const int64_t max_retries =
+        RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() * 1000 /
+        RayConfig::instance().gcs_service_address_check_interval_milliseconds();
     if (!status.ok()) {
       failed_ping_count_ += 1;
-      auto warning_threshold =
-          RayConfig::instance().ping_gcs_rpc_server_max_retries() / 2;
+      auto warning_threshold = max_retries / 2;
       RAY_LOG_EVERY_N(WARNING, warning_threshold)
           << "Failed to get the gcs server address from raylet " << failed_ping_count_
           << " times in a row. If it keeps failing to obtain the address, "
              "the worker might crash. Connection status "
           << status;
-      if (failed_ping_count_ == RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+      if (failed_ping_count_ >= max_retries) {
         std::stringstream os;
         os << "Failed to receive the GCS address for " << failed_ping_count_
            << " times without success. The worker will exit ungracefully. It is because ";
-        if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+        if (status.IsGrpcUnavailable()) {
           RAY_LOG(WARNING) << os.str()
                            << "raylet has died, and it couldn't obtain the GCS address "
                               "from the raylet anymore. Please check the log from "
