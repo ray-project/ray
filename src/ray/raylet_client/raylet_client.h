@@ -278,12 +278,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   Status AnnounceWorkerPort(int port);
 
-  /// Submit a task using the raylet code path.
-  ///
-  /// \param The task specification.
-  /// \return ray::Status.
-  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
-
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.

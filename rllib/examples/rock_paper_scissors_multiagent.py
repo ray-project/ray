@@ -101,7 +101,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,
         "train_batch_size": 200,
-        "metrics_smoothing_episodes": 200,
+        "metrics_num_episodes_for_smoothing": 200,
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {

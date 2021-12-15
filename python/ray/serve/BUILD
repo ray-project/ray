@@ -186,7 +186,7 @@ py_test(
     name = "test_router",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "flaky"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 

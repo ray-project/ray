@@ -1273,9 +1273,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()

@@ -166,9 +166,11 @@ class GcsActorManagerTest : public ::testing::Test {
 
   std::shared_ptr<gcs::GcsActor> RegisterActor(const JobID &job_id, int max_restarts = 0,
                                                bool detached = false,
-                                               const std::string &name = "") {
+                                               const std::string &name = "",
+                                               const std::string &ray_namespace = "") {
     std::promise<std::shared_ptr<gcs::GcsActor>> promise;
-    auto request = Mocker::GenRegisterActorRequest(job_id, max_restarts, detached, name);
+    auto request = Mocker::GenRegisterActorRequest(job_id, max_restarts, detached, name,
+                                                   ray_namespace);
     // `DestroyActor` triggers some asynchronous operations.
     // If we register an actor after destroying an actor, it may result in multithreading
     // reading and writing the same variable. In order to avoid the problem of
@@ -968,6 +970,45 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
     ASSERT_TRUE(status.IsNotFound());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
+  }
+}
+
+TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
+  std::string actor_name = "actor";
+  std::string ray_namespace = "actor_namespace";
+
+  auto job_id_1 = JobID::FromInt(1);
+  auto request_1 =
+      Mocker::GenRegisterActorRequest(job_id_1, 0, true, actor_name, ray_namespace);
+  auto actor_id_1 =
+      ActorID::FromBinary(request_1.task_spec().actor_creation_task_spec().actor_id());
+  {
+    Status status = gcs_actor_manager_->RegisterActor(
+        request_1, [](const std::shared_ptr<gcs::GcsActor> &actor) {});
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
+              actor_id_1.Binary());
+  }
+
+  {
+    auto owner_address = request_1.task_spec().caller_address();
+    auto node_id = NodeID::FromBinary(owner_address.raylet_id());
+    gcs_actor_manager_->OnNodeDead(node_id);
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
+              ActorID::Nil().Binary());
+  }
+
+  {
+    auto job_id_2 = JobID::FromInt(2);
+    auto request_2 =
+        Mocker::GenRegisterActorRequest(job_id_2, 0, true, actor_name, ray_namespace);
+    auto actor_id_2 =
+        ActorID::FromBinary(request_2.task_spec().actor_creation_task_spec().actor_id());
+    auto status = gcs_actor_manager_->RegisterActor(
+        request_2, [](const std::shared_ptr<gcs::GcsActor> &actor) {});
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
+              actor_id_2.Binary());
   }
 }
 
