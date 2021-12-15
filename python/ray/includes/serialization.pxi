@@ -1,5 +1,6 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
+import contextlib
 import cython
 
 DEF MEMCOPY_THREADS = 6
@@ -147,6 +148,18 @@ cdef class SubBuffer:
         return self.size
 
 
+@contextlib.contextmanager
+def _temporarily_disable_gc():
+    gc_enabled = gc.isenabled()
+    try:
+        if gc_enabled:
+            gc.disable()
+        yield
+    finally:
+        if gc_enabled:
+            gc.enable()
+
+
 cdef class MessagePackSerializer(object):
     @staticmethod
     def dumps(o, python_serializer=None):
@@ -174,12 +187,10 @@ cdef class MessagePackSerializer(object):
                 if python_deserializer is not None:
                     return python_deserializer(msgpack.loads(data))
                 raise Exception('Unrecognized ext type id: {}'.format(code))
-        try:
-            gc.disable()  # Performance optimization for msgpack.
+
+        with _temporarily_disable_gc():  # Performance optimization for msgpack
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False,
                                  strict_map_key=False)
-        finally:
-            gc.enable()
 
 
 @cython.boundscheck(False)

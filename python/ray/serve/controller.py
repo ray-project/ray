@@ -220,10 +220,7 @@ class ServeController:
             entry["class_name"] = (
                 deployment_info.replica_config.func_or_class_name)
             entry["version"] = deployment_info.version or "None"
-            # TODO(architkulkarni): When we add the feature to allow
-            # deployments with no HTTP route, update the below line.
-            # Or refactor the route_prefix logic in the Deployment class.
-            entry["http_route"] = route_prefix or f"/{deployment_name}"
+            entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
             entry["end_time"] = deployment_info.end_time_ms or 0
             entry["status"] = ("DELETED"
@@ -333,8 +330,9 @@ class ServeController:
 
         goal_id, updating = self.deployment_state_manager.deploy(
             name, deployment_info)
-        endpoint_info = EndpointInfo(route=route_prefix)
-        self.endpoint_state.update_endpoint(name, endpoint_info)
+        if route_prefix is not None:
+            endpoint_info = EndpointInfo(route=route_prefix)
+            self.endpoint_state.update_endpoint(name, endpoint_info)
         return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

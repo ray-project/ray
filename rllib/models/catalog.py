@@ -806,35 +806,33 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Complex space, where at least one sub-space is image.
-        # -> Complex input model (which auto-flattens everything, but correctly
-        # processes image components with default CNN stacks).
-        space_to_check = input_space if not hasattr(
+        orig_space = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
-        if isinstance(input_space, (Dict, Tuple)) or (isinstance(
-                space_to_check, (Dict, Tuple)) and any(
-                    isinstance(s, Box) and len(s.shape) >= 2
-                    for s in tree.flatten(space_to_check.spaces))):
-            return ComplexNet
 
-        # Single, flattenable/one-hot-able space -> Simple FCNet.
-        if isinstance(input_space, (Discrete, MultiDiscrete)) or \
-                len(input_space.shape) == 1 or (
-                len(input_space.shape) == 2):
+        # `input_space` is 3D Box -> VisionNet.
+        if isinstance(input_space, Box) and len(input_space.shape) == 3:
+            if framework == "jax":
+                raise NotImplementedError("No non-FC default net for JAX yet!")
+            elif model_config.get("_use_default_native_models") and \
+                    Keras_VisionNet:
+                return Keras_VisionNet
+            return VisionNet
+        # `input_space` is 1D Box -> FCNet.
+        elif isinstance(input_space, Box) and len(input_space.shape) == 1 and \
+                (not isinstance(orig_space, (Dict, Tuple)) or not any(
+                    isinstance(s, Box) and len(s.shape) >= 2
+                    for s in tree.flatten(orig_space.spaces))):
             # Keras native requested AND no auto-rnn-wrapping.
             if model_config.get("_use_default_native_models") and Keras_FCNet:
                 return Keras_FCNet
             # Classic ModelV2 FCNet.
             else:
                 return FCNet
-
-        elif framework == "jax":
-            raise NotImplementedError("No non-FC default net for JAX yet!")
-
-        # Last resort: Conv2D stack for single image spaces.
-        if model_config.get("_use_default_native_models") and Keras_VisionNet:
-            return Keras_VisionNet
-        return VisionNet
+        # Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
+        else:
+            if framework == "jax":
+                raise NotImplementedError("No non-FC default net for JAX yet!")
+            return ComplexNet
 
     @staticmethod
     def _get_multi_action_distribution(dist_class, action_space, config,

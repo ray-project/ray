@@ -25,7 +25,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
-    const std::string &ray_namespace, bool execute_out_of_order) {
+    const std::string &ray_namespace, int32_t max_pending_calls,
+    bool execute_out_of_order) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -40,6 +41,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_name(name);
   inner.set_ray_namespace(ray_namespace);
   inner.set_execute_out_of_order(execute_out_of_order);
+  inner.set_max_pending_calls(max_pending_calls);
   return inner;
 }
 
@@ -70,6 +72,8 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
       actor_table_data.task_spec().actor_creation_task_spec().ray_namespace());
   inner.set_execute_out_of_order(
       actor_table_data.task_spec().actor_creation_task_spec().execute_out_of_order());
+  inner.set_max_pending_calls(
+      actor_table_data.task_spec().actor_creation_task_spec().max_pending_calls());
   return inner;
 }
 }  // namespace
@@ -80,11 +84,12 @@ ActorHandle::ActorHandle(
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
-    const std::string &ray_namespace, bool execute_out_of_order)
+    const std::string &ray_namespace, int32_t max_pending_calls,
+    bool execute_out_of_order)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
           actor_creation_task_function_descriptor, extension_data, max_task_retries, name,
-          ray_namespace, execute_out_of_order)) {}
+          ray_namespace, max_pending_calls, execute_out_of_order)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
