@@ -387,6 +387,9 @@ def restore_original_dimensions(obs: TensorType,
     elif tensorlib == "torch":
         assert torch is not None
         tensorlib = torch
+    elif tensorlib == "numpy":
+        assert np is not None
+        tensorlib = np
     original_space = getattr(obs_space, "original_space", obs_space)
     return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
