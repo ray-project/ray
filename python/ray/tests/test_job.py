@@ -76,8 +76,8 @@ for k in ray.worker.global_worker.redis_client.keys():
     if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
         count += 1
 
-# Check exports aren't shared across job ids.
-assert count == 2, count
+# Check exports aren't shared across the 5 jobs.
+assert count < 5, count
 """
     with tempfile.TemporaryDirectory() as tmpdir:
         os.makedirs(os.path.join(tmpdir, "v1"))
