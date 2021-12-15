@@ -4,8 +4,8 @@ Workflow Metadata
 Observability is important for workflow - sometimes we not only want
 to get the output, but also want to gain insights on the internal
 states (e.g., to measure the performance or find bottlenecks).
-Workflow metadata provides a number of stats that helps understand
-the workflow, from basic running status and step options, to performance
+Workflow metadata provides several stats that help understand
+the workflow, from basic running status and step options to performance
 and user-imposed metadata.
 
 Retrieving metadata
@@ -42,7 +42,7 @@ providing the step name:
 
 User-defined metadata
 ----------------------------
-Custom metadata can be added to a workflow or a workflow step by user,
+Custom metadata can be added to a workflow or a workflow step by the user,
 this is useful when you want to attach some extra information to the
 workflow or workflow step.
 
@@ -58,7 +58,7 @@ workflow or workflow step.
     assert workflow.get_metadata("add_example_3", name="add_step")["user_metadata"] == {"step_k": "step_v"}
 
 **Note: user-defined metadata must be a python dictionary with values that are
-json serializable.**
+JSON serializable.**
 
 Metadata in Virtual Actor
 -------------------------
@@ -124,7 +124,7 @@ Available Metrics
 -----------------
 **workflow level**
 
-- status: workflow states, can be one of RUNNING, FAILED, RESUMABLE, CANCELED or SUCCESSFUL.
+- status: workflow states, can be one of RUNNING, FAILED, RESUMABLE, CANCELED, or SUCCESSFUL.
 - user_metadata: a python dictionary of user input metadata that is passed in ``workflow.run()``.
 - stats: workflow running stats, including workflow start time and end time.
 
@@ -173,7 +173,7 @@ is completed).
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
-2. For resumed workflow, current behavior is that "stats" will
+2. For resumed workflow, the current behavior is that "stats" will
 be updated whenever a workflow is resumed.
 
 .. code-block:: python
@@ -204,3 +204,5 @@ be updated whenever a workflow is resumed.
     # resume updated running stats
     assert workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
     assert workflow_metadata_resumed["stats"]["end_time"] > workflow_metadata_failed["stats"]["end_time"]
+
+
