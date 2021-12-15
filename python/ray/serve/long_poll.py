@@ -5,8 +5,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
-                    Union)
+from typing import (Any, Tuple, Callable, DefaultDict, Dict, Set, Union)
 
 import ray
 from ray.serve.utils import logger
