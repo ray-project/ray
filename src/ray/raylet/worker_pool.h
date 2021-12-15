@@ -701,7 +701,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// - Add URI reference when a worker instance registered.
   /// - Remove URI reference when a worker instance disconnected.
   ///
-  /// An example:
+  /// A normal state change flow is:
+  ///   job level:
+  ///       HandleJobStarted(ref + 1 = 1) -> HandleJobFinshed(ref - 1 = 0)
+  ///   worker level:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> OnWorkerStarted X 3 (ref + 3 = 4)
+  ///       -> All worker instances registered (ref - 1 = 3)
+  ///       -> DisconnectWorker X 3 (ref - 3 = 0)
+  ///
+  /// A state change flow for worker timeout case is:
+  ///       StartWorkerProcess(ref + 1 = 1)
+  ///       -> OnWorkerStarted X 2 (ref + 2 = 3)
+  ///       -> One worker registration times out, kill worker process (ref - 1 = 2)
+  ///       -> DisconnectWorker X 2 (ref - 2 = 0)
+  ///
+  /// An example to show reference table changes:
   ///
   ///   Start a job with eager installed runtime env:
   ///       ray.init(runtime_env=
