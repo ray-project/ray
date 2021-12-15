@@ -38,8 +38,8 @@ opencv-python-headless==4.3.0.36
 pandas>=1.0.5; python_version < '3.7'
 pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
-tabulate
-tensorboardX >= 1.9
+tabulate~=0.8.9
+tensorboardX ~= 2.4.1
 uvicorn>=0.15.0
 dataclasses; python_version < '3.7'
 starlette>=0.14.2
