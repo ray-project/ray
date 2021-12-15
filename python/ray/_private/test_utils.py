@@ -1080,7 +1080,9 @@ def chdir(d: str):
 
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
-        for subdir in ["conda", "pip"]:
+        for subdir in [
+                "conda", "pip", "working_dir_files", "py_modules_files"
+        ]:
             all_files = os.listdir(
                 os.path.join(node.get_runtime_env_dir_path(), subdir))
             # Check that there are no files remaining except for .lock files

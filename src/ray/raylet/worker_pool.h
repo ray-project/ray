@@ -713,15 +713,18 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///       HandleJobStarted(ref + 1 = 1) -> HandleJobFinshed(ref - 1 = 0)
   ///   worker level:
   ///       StartWorkerProcess(ref + 1 = 1)
-  ///       -> OnWorkerStarted X 3 (ref + 3 = 4)
+  ///       -> OnWorkerStarted * 3 (ref + 3 = 4)
   ///       -> All worker instances registered (ref - 1 = 3)
-  ///       -> DisconnectWorker X 3 (ref - 3 = 0)
+  ///       -> DisconnectWorker * 3 (ref - 3 = 0)
   ///
   /// A state change flow for worker timeout case is:
   ///       StartWorkerProcess(ref + 1 = 1)
-  ///       -> OnWorkerStarted X 2 (ref + 2 = 3)
+  ///       -> OnWorkerStarted * 2 (ref + 2 = 3)
   ///       -> One worker registration times out, kill worker process (ref - 1 = 2)
-  ///       -> DisconnectWorker X 2 (ref - 2 = 0)
+  ///       -> DisconnectWorker * 2 (ref - 2 = 0)
+  ///
+  /// Note: "OnWorkerStarted * 3" means that three workers are started. And we assume
+  /// that the worker process has tree worker instances totally.
   ///
   /// An example to show reference table changes:
   ///
