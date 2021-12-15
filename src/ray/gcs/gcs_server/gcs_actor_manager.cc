@@ -994,7 +994,7 @@ void GcsActorManager::OnActorSchedulingFailed(
         "created..";
     break;
   default:
-    RAY_LOG(FATAL) << "Unknown error, failure type " << failure_type ;
+    RAY_LOG(FATAL) << "Unknown error, failure type " << failure_type;
     break;
   }
 

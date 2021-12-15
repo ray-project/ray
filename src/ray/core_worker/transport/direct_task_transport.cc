@@ -570,10 +570,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
-                        task_spec.TaskId(), rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
+                        task_spec.TaskId(),
+                        rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
                   } else {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
-                        task_spec.TaskId(), rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
+                        task_spec.TaskId(),
+                        rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
                   }
                 }
                 task_queue.pop_front();

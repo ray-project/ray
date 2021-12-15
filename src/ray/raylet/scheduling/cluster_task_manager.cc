@@ -171,15 +171,15 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   }
 
   const auto &required_resource =
-        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+      task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
   for (auto &entry : required_resource) {
     if (!cluster_resource_scheduler_->ResourcesExist(entry.first)) {
       RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
-      PlacementGroupID::Nil());
+                PlacementGroupID::Nil());
       RAY_LOG(DEBUG) << "The placement group: "
-                      << task.GetTaskSpecification().PlacementGroupBundleId().first
-                      << " was removed when poping workers for task: " << task_id
-                      << ", will cancel the task.";
+                     << task.GetTaskSpecification().PlacementGroupBundleId().first
+                     << " was removed when poping workers for task: " << task_id
+                     << ", will cancel the task.";
       CancelTask(task_id, rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED);
       canceled = true;
     }
