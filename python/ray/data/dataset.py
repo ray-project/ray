@@ -1932,18 +1932,18 @@ class Dataset(Generic[T]):
         DataLoader,  and n, m, k are the number of features per tensor):
 
         * If ``feature_columns`` is a ``List[str]``, the features will be
-        a tensor of shape (N, n), with columns corresponding to =
-        ``feature_columns``
+          a tensor of shape (N, n), with columns corresponding to =
+          ``feature_columns``
 
         * If ``feature_columns`` is a ``List[List[str]]``, the features will be
-        a list of tensors of shape [(N, m),...,(N, k)], with columns of each
-        tensor corresponding to the elements of ``feature_columns``
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
 
         * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
-        will be a dict of key-tensor pairs of shape
-        {key1: (N, m),..., keyN: (N, k)}, with columns of each
-        tensor corresponding to the value of ``feature_columns`` under the
-        key.
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
 
         If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
         of shape (N, 1). Otherwise, it will be of shape (N,). It can also be
