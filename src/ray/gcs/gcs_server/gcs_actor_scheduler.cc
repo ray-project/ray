@@ -23,6 +23,21 @@
 namespace ray {
 namespace gcs {
 
+std::string ActorSchedulingFailedType_Name(ActorSchedulingFailedType failed_type) {
+  switch (failed_type) {
+  case ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED:
+    return "PLACEMENT_GROUP_REMOVED";
+  case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
+    return "RUNTIME_ENV_SETUP_FAILED";
+  case ActorSchedulingFailedType::CANCELLED_ACTIVELY:
+    return "CANCELLED_ACTIVELY";
+  case ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES:
+    return "NOT_ENOUGH_RESOURCES";
+  default:
+    return "UNKNOWN";
+  }
+}
+
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,

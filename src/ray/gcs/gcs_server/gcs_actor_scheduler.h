@@ -45,6 +45,8 @@ enum class ActorSchedulingFailedType {
   ActorSchedulingFailedType_MAX = 4,
 };
 
+std::string ActorSchedulingFailedType_Name(ActorSchedulingFailedType failed_type);
+
 class GcsActorSchedulerInterface {
  public:
   /// Schedule the specified actor.

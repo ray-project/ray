@@ -53,7 +53,8 @@ message RequestWorkerLeaseRequest {
 message RequestWorkerLeaseReply {
   // Request lease worker cancel type.
   enum CancelType {
-    Canceled because the placement group is removed. Currently tasks fate share with their placement group.
+    // Canceled because the placement group is removed.
+    // Currently tasks fate share with their placement group.
     PLACEMENT_GROUP_REMOVED = 0;
     // Canceled because of the failure of the runtime env setup.
     RUNTIME_ENV_SETUP_FAILED = 1;
