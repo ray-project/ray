@@ -960,6 +960,8 @@ class Trainer(Trainable):
         agent_steps_sampled = self._counters[NUM_AGENT_STEPS_SAMPLED]
         agent_steps_trained = self._counters[NUM_AGENT_STEPS_TRAINED]
 
+        result = None
+
         while True:
             # Try to train one step.
             try:
@@ -1008,11 +1010,12 @@ class Trainer(Trainable):
                 # Repeat if not enough time has passed or if not enough
                 # env|train timesteps have been processed (or these min values
                 # are not provided by the user).
-                if (not min_t or time.time() - time_start >= min_t) and \
+                if result is not None and \
+                        (not min_t or time.time() - time_start >= min_t) and \
                         (not min_sample_ts or sampled >= min_sample_ts) and \
                         (not min_train_ts or trained >= min_train_ts):
                     break
-            else:
+            elif result is not None:
                 break
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
