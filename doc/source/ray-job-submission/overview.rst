@@ -282,4 +282,4 @@ Job Submission Architecture
 
 The following diagram shows the underlying structure and steps for each Job submission.
 
-.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_subimssion_arch.png
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_submission_arch_v2.png
