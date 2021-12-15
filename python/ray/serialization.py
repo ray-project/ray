@@ -1,6 +1,7 @@
 import logging
 import threading
 import traceback
+import _asyncio
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
@@ -117,6 +118,18 @@ class SerializationContext:
             )
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+
+        def asyncio_futureiter_deserializer(object_ref):
+            print("in asyncio_futureiter_deserializer")
+            return object_ref.as_future(_internal=True).__await__()
+
+        def asyncio_futureiter_reducer(obj):
+            print("in asyncio_futureiter_reducer")
+            return asyncio_futureiter_deserializer, (obj._object_ref, )
+
+        self._register_cloudpickle_reducer(_asyncio.FutureIter,
+                                           asyncio_futureiter_reducer)
+
         serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):

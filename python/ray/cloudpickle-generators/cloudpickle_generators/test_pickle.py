@@ -8,6 +8,7 @@ def f(a, b):
     for n in range(a):
         yield b + b[-1] * n
 
+
 gen = f(4, 'ay')
 print(next(gen))
 print(next(gen))
@@ -16,9 +17,11 @@ new_gen = cloudpickle.loads(cloudpickle.dumps(gen))
 print(next(new_gen))
 print(next(new_gen))
 
+
 @ray.remote
 def h():
     return 1
+
 
 async def g():
     # pass
@@ -35,6 +38,8 @@ async def g():
 coro = g()
 f1 = coro.send(None)
 pprint(f1)
+import pdb; pdb.set_trace()
+
 f1.get_loop()._run_once()
 pprint(f1)
 

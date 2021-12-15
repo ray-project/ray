@@ -8,6 +8,7 @@
 /python/ray/jars/
 /python/ray/cpp/
 /python/build
+/python/ray/cloudpickle-generators/build
 /python/dist
 /python/python-driver-*
 /python/ray/serve/generated

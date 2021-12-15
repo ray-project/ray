@@ -132,7 +132,9 @@ cdef class ObjectRef(BaseID):
         return py_future
 
     def __await__(self):
-        return self.as_future(_internal=True).__await__()
+        iter = self.as_future(_internal=True).__await__()
+        iter._object_ref = self
+        return iter
 
     def as_future(self, _internal=False) -> asyncio.Future:
         """Wrap ObjectRef with an asyncio.Future.
