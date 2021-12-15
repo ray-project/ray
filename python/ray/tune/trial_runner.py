@@ -13,22 +13,24 @@ import ray
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
-from ray.tune.stopper import NoopStopper
+from ray.tune.experiment import Experiment
+from ray.tune.insufficient_resources_manager import (
+    InsufficientResourcesManager)
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
                              TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.stopper import NoopStopper
+from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
 from ray.tune.trial import Checkpoint, Trial
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
-from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -260,6 +262,7 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+        self._insufficient_resources_manager = InsufficientResourcesManager()
         self._pending_trial_queue_times = {}
 
         # Set the number of maximum pending trials
@@ -701,7 +704,8 @@ class TrialRunner:
                     timeout = 0.1
                 self._process_events(timeout=timeout)
             else:
-                self.trial_executor.on_no_available_trials(self.get_trials())
+                self._insufficient_resources_manager.on_no_available_trials(
+                    self.get_trials())
 
         self._stop_experiment_if_needed()
 

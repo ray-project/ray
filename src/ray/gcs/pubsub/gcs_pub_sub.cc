@@ -334,7 +334,7 @@ Status GcsSubscriber::SubscribeAllJobs(
       const JobID id = JobID::FromBinary(msg.key_id());
       subscribe(id, msg.job_message());
     };
-    // TODO: Improve error handling, e.g. try to resubscribe automatically.
+    // TODO(mwtian): Improve error handling, e.g. try to resubscribe automatically.
     auto subscription_failure_callback = [](const std::string &, const Status &status) {
       RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
     };

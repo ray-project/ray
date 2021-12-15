@@ -1,5 +1,3 @@
-import socket
-from contextlib import closing
 from typing import Dict, List, Union
 import copy
 import glob
@@ -343,14 +341,6 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
         cloudpickle.dump(state, f)
 
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
-
-
-def find_free_port():
-    """Finds a free port on the current node."""
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:

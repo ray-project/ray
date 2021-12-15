@@ -374,7 +374,8 @@ class MBMPOTrainer(Trainer):
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers, config, **kwargs) -> LocalIterator[dict]:
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
         assert len(kwargs) == 0, (
             "MBMPO execution_plan does NOT take any additional parameters")
 

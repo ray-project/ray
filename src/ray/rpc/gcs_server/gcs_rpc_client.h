@@ -45,16 +45,52 @@ class Executor {
   std::function<void(GcsRpcClient *gcs_rpc_client)> operation_;
 };
 
-// Define a void GCS RPC client method.
+/// Define a void GCS RPC client method.
+///
+/// Example:
+///   VOID_GCS_RPC_CLIENT_METHOD(
+///     ActorInfoGcsService,
+///     CreateActor,
+///     actor_info_grpc_client_,
+///     /*method_timeout_ms*/ -1,) # Default value
+///   generates
+///
+///     # Asynchronous RPC. Callback will be invoked once the RPC is replied.
+///     rpc_client_.CreateActor(request, callback, timeout_ms = -1);
+///
+///     # Synchronous RPC. The function will return once the RPC is replied.
+///     rpc_client_.SyncCreateActor(request, *reply, timeout_ms = -1);
+///
+/// Retry protocol:
+///   Currently, Ray assumes the GCS server is HA.
+///   That says, when there's any RPC failure, the method will automatically retry
+///   under the hood.
+///
+/// \param SERVICE name of the service.
+/// \param METHOD name of the RPC method.
+/// \param grpc_client The grpc client to invoke RPC.
+/// \param method_timeout_ms The RPC timeout in ms. If the RPC times out,
+/// it will return status::TimedOut. Timeout can be configured in 3 levels;
+/// whole service, handler, and each call.
+/// The priority of timeout is each call > handler > whole service
+/// (the lower priority timeout is overwritten by the higher priority timeout).
+/// \param SPECS The cpp method spec. For example, override.
+///
+/// Currently, SyncMETHOD will copy the reply additionally.
+/// TODO(sang): Fix it.
 #define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, method_timeout_ms,    \
                                    SPECS)                                              \
   void METHOD(const METHOD##Request &request,                                          \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                   \
+              const ClientCallback<METHOD##Reply> &callback,                           \
+              const int64_t timeout_ms = method_timeout_ms) SPECS {                    \
     auto executor = new Executor(this);                                                \
     auto operation_callback = [this, request, callback, executor](                     \
                                   const ray::Status &status,                           \
                                   const METHOD##Reply &reply) {                        \
-      if (!status.IsIOError()) {                                                       \
+      if (status.IsTimedOut()) {                                                       \
+        callback(status, reply);                                                       \
+        delete executor;                                                               \
+      } else if (!status.IsGrpcError()) {                                              \
         auto status =                                                                  \
             reply.status().code() == (int)StatusCode::OK                               \
                 ? Status()                                                             \
@@ -66,13 +102,26 @@ class Executor {
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
-    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
+    auto operation = [request, operation_callback,                                     \
+                      timeout_ms](GcsRpcClient *gcs_rpc_client) {                      \
       RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
-                                 gcs_rpc_client->grpc_client, method_timeout_ms));     \
+                                 gcs_rpc_client->grpc_client, timeout_ms));            \
     };                                                                                 \
     executor->Execute(operation);                                                      \
+  }                                                                                    \
+                                                                                       \
+  ray::Status Sync##METHOD(const METHOD##Request &request, METHOD##Reply *reply_in,    \
+                           const int64_t timeout_ms = method_timeout_ms) {             \
+    std::promise<Status> promise;                                                      \
+    METHOD(                                                                            \
+        request,                                                                       \
+        [&promise, reply_in](const Status &status, const METHOD##Reply &reply) {       \
+          reply_in->CopyFrom(reply);                                                   \
+          promise.set_value(status);                                                   \
+        },                                                                             \
+        timeout_ms);                                                                   \
+    return promise.get_future().get();                                                 \
   }
-
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:

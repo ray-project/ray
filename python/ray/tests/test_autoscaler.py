@@ -1259,6 +1259,34 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
 
+    def testSummarizerFailedCreate(self):
+        """Checks that event summarizer reports failed node creation.
+        """
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.error_creates = True
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = MockAutoscaler(
+            config_path,
+            LoadMetrics(),
+            MockNodeInfoStub(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+
+        # Expect the next two messages in the logs.
+        msg = "Failed to launch 2 nodes of type ray-legacy-worker-node-type."
+
+        def expected_message_logged():
+            return msg in autoscaler.event_summarizer.summary()
+
+        self.waitFor(expected_message_logged)
+
     def testReadonlyNodeProvider(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)
@@ -1322,6 +1350,9 @@ class AutoscalingTest(unittest.TestCase):
         mock_metrics.started_nodes.inc.assert_called_with(2)
         assert mock_metrics.worker_create_node_time.observe.call_count == 2
         autoscaler.update()
+        # The two autoscaler update iterations in this test led to two
+        # observations of the update time.
+        assert mock_metrics.update_time.observe.call_count == 2
         self.waitForNodes(2)
 
         # running_workers metric should be set to 2

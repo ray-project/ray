@@ -21,7 +21,7 @@ def test_no_match(mock_longest_prefix_router):
 
 def test_default_route(mock_longest_prefix_router):
     router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo()})
+    router.update_routes({"endpoint": EndpointInfo(route="/endpoint")})
 
     route, handle = router.match_route("/nonexistent")
     assert route is None and handle is None
@@ -77,12 +77,12 @@ def test_prefix_match(mock_longest_prefix_router):
 
 def test_update_routes(mock_longest_prefix_router):
     router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo()})
+    router.update_routes({"endpoint": EndpointInfo(route="/endpoint")})
 
     route, handle = router.match_route("/endpoint")
     assert route == "/endpoint" and handle == "endpoint"
 
-    router.update_routes({"endpoint2": EndpointInfo()})
+    router.update_routes({"endpoint2": EndpointInfo(route="/endpoint2")})
 
     route, handle = router.match_route("/endpoint")
     assert route is None and handle is None
