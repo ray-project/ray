@@ -39,6 +39,12 @@ def patch_dask(ray_dask_persist, ray_dask_persist_mixin):
 
 patch_dask(ray_dask_persist, ray_dask_persist_mixin)
 
+# Manually set the global Dask scheduler config at import time.
+# We also force the task-based shuffle to be used since the disk-based
+# shuffle doesn't work for a multi-node Ray cluster that doesn't share
+# the filesystem.
+dask.config.set(scheduler=ray_dask_get, shuffle="tasks")
+
 __all__ = [
     # Schedulers
     "ray_dask_get",
