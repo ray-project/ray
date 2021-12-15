@@ -321,6 +321,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The Trainer guarantees all eval workers have the latest policy state
     # before this function is called.
     "custom_eval_function": None,
+    # Make sure the latest available evaluation results are always attached to
+    # a step result dict.
+    # This may be useful if Tune or some other meta controller needs access
+    # to evaluation metrics all the time.
+    "always_attach_evaluation_results": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -986,7 +991,6 @@ class Trainer(Trainable):
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
                 step_results = next(self.train_exec_impl)
-
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
             # Parallel eval + training.
@@ -997,24 +1001,25 @@ class Trainer(Trainable):
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
-
-                        evaluation_metrics = self.evaluate(
+                        self.evaluate(
                             duration_fn=functools.partial(
                                 auto_duration_fn, unit, self.config[
                                     "evaluation_num_workers"], self.config[
                                         "evaluation_config"]))
                     else:
-                        evaluation_metrics = self.evaluate()
+                        self.evaluate()
                     # Collect the training results from the future.
                     step_results = train_future.result()
             # Sequential: train (already done above), then eval.
             else:
-                evaluation_metrics = self.evaluate()
+                self.evaluate()
 
-            # Add evaluation results to train results.
-            assert isinstance(evaluation_metrics, dict), \
+        if (evaluate_this_iter
+                or self.config["always_attach_evaluation_results"]):
+            # Attach latest available evaluation results to train results.
+            assert isinstance(self.evaluation_metrics, dict), \
                 "Trainer.evaluate() needs to return a dict."
-            step_results.update(evaluation_metrics)
+            step_results.update(self.evaluation_metrics)
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config["env_task_fn"] is not None:
@@ -1176,9 +1181,13 @@ class Trainer(Trainable):
                     self.evaluation_workers.remote_workers())
             metrics["timesteps_this_iter"] = num_ts_run
 
-        self.evaluation_metrics = metrics
+        # Evaluation does not run for every step.
+        # Save evaluation metrics on trainer, so it can be attached to
+        # subsequent step results as latest evaluation result.
+        self.evaluation_metrics = {"evaluation": metrics}
 
-        return {"evaluation": metrics}
+        # Also return the results here for convenience.
+        return self.evaluation_metrics
 
     @DeveloperAPI
     @staticmethod

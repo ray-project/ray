@@ -191,7 +191,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
-  CollectStats();
+  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -561,11 +561,11 @@ void GcsServer::InstallEventListeners() {
   }
 }
 
-void GcsServer::CollectStats() {
-  gcs_actor_manager_->CollectStats();
-  gcs_placement_group_manager_->CollectStats();
+void GcsServer::RecordMetrics() const {
+  gcs_actor_manager_->RecordMetrics();
+  gcs_placement_group_manager_->RecordMetrics();
   execute_after(
-      main_service_, [this] { CollectStats(); },
+      main_service_, [this] { RecordMetrics(); },
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 

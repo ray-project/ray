@@ -481,6 +481,25 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     assert batches[0]["pid"] == "gcs_server", batches
 
 
+def test_list_named_actors_timeout(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 3s
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "ActorInfoGcsService.grpc_server.ListNamedActors"
+            "=3000000:3000000")
+        ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
+
+        @ray.remote
+        class A:
+            pass
+
+        a = A.options(name="hi").remote()
+        print(a)
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.util.list_named_actors()
+
+
 def test_raylet_node_manager_server_failure(ray_start_cluster_head,
                                             log_pubsub):
     cluster = ray_start_cluster_head

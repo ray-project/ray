@@ -1076,3 +1076,26 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
+    if pip_list is None:
+        pip_list = ["pip-install-test==0.5"]
+    if field == "conda":
+        conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
+        if spec_format == "file":
+            conda_file = tmp_path / f"environment-{hash(str(pip_list))}.yml"
+            conda_file.write_text(yaml.dump(conda_dict))
+            conda = str(conda_file)
+        elif spec_format == "python_object":
+            conda = conda_dict
+        runtime_env = {"conda": conda}
+    elif field == "pip":
+        if spec_format == "file":
+            pip_file = tmp_path / f"requirements-{hash(str(pip_list))}.txt"
+            pip_file.write_text("\n".join(pip_list))
+            pip = str(pip_file)
+        elif spec_format == "python_object":
+            pip = pip_list
+        runtime_env = {"pip": pip}
+    return runtime_env
