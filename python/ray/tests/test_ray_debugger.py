@@ -9,7 +9,7 @@ import pexpect
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import ray_constants
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private import services
@@ -241,8 +241,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     ray.get(result)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     c = Cluster(

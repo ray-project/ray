@@ -17,14 +17,15 @@ namespace core {
 class MockCoreWorkerDirectActorTaskSubmitterInterface
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  MOCK_METHOD(void, AddActorQueueIfNotExists, (const ActorID &actor_id), (override));
+  MOCK_METHOD(void, AddActorQueueIfNotExists,
+              (const ActorID &actor_id, int32_t max_pending_calls), (override));
   MOCK_METHOD(void, ConnectActor,
               (const ActorID &actor_id, const rpc::Address &address,
                int64_t num_restarts),
               (override));
   MOCK_METHOD(void, DisconnectActor,
               (const ActorID &actor_id, int64_t num_restarts, bool dead,
-               const std::shared_ptr<rpc::RayException> &creation_task_exception),
+               const rpc::RayException *creation_task_exception),
               (override));
   MOCK_METHOD(void, KillActor,
               (const ActorID &actor_id, bool force_kill, bool no_restart), (override));

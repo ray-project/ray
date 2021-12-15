@@ -18,7 +18,7 @@
 
 #include <boost/range/join.hpp>
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -39,7 +39,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes)
+    size_t max_pinned_task_arguments_bytes, std::function<int64_t(void)> get_time_ms,
+    int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -52,9 +53,10 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      metric_tasks_queued_(0),
-      metric_tasks_dispatched_(0),
-      metric_tasks_spilled_(0) {}
+      get_time_ms_(get_time_ms),
+      sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
+      sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -74,15 +76,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
-      auto placement_resources =
-          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-      // This argument is used to set violation, which is an unsupported feature now.
-      int64_t _unused;
-      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources,
-          /*requires_object_store_memory=*/false,
-          task.GetTaskSpecification().IsActorCreationTask(),
-          /*force_spillback=*/false, &_unused, &is_infeasible);
+      std::string node_id_string =
+          GetBestSchedulableNode(*work,
+                                 /*requires_object_store_memory=*/false,
+                                 /*force_spillback=*/false, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -284,6 +281,20 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
+
+    if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
+      // Initialize the class info.
+      info_by_sched_cls_.emplace(
+          scheduling_class,
+          SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(scheduling_class)));
+    }
+    auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
+
+    /// We cap the maximum running tasks of a scheduling class to avoid
+    /// scheduling too many tasks of a single type/depth, when there are
+    /// deeper/other functions that should be run. We need to apply back
+    /// pressure to limit the number of worker processes started in scenarios
+    /// with nested tasks.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
@@ -293,6 +304,32 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
         continue;
+      }
+
+      // Check if the scheduling class is at capacity now.
+      if (sched_cls_cap_enabled_ &&
+          sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
+          work->GetState() == internal::WorkStatus::WAITING) {
+        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+                       << " next update time=" << sched_cls_info.next_update_time;
+        if (get_time_ms_() < sched_cls_info.next_update_time) {
+          // We're over capacity and it's not time to admit a new task yet.
+          // Calculate the next time we should admit a new task.
+          int64_t current_capacity = sched_cls_info.running_tasks.size();
+          int64_t allowed_capacity = sched_cls_info.capacity;
+          int64_t exp = current_capacity - allowed_capacity;
+          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
+          if (wait_time > sched_cls_cap_max_ms_) {
+            wait_time = sched_cls_cap_max_ms_;
+            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
+                                "task. Worker process startup is being throttled.";
+          }
+
+          int64_t target_time = get_time_ms_() + wait_time;
+          sched_cls_info.next_update_time =
+              std::min(target_time, sched_cls_info.next_update_time);
+          break;
+        }
       }
 
       bool args_missing = false;
@@ -336,6 +373,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
+        auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+        auto it = info_by_sched_cls_.find(sched_cls);
+        if (it != info_by_sched_cls_.end()) {
+          it->second.running_tasks.erase(spec.TaskId());
+          if (it->second.running_tasks.size() == 0) {
+            info_by_sched_cls_.erase(it);
+          }
+        }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
@@ -369,6 +414,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
+        // Force us to recalculate the next update time the next time a task
+        // comes through this queue. We should only do this when we're
+        // confident we're ready to dispatch the task after all checks have
+        // passed.
+        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
+        sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
@@ -406,13 +457,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                       bool &is_infeasible) {
-  const auto &spec = work->task.GetTaskSpecification();
-  int64_t _unused;
-  auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
-  std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources,
-      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, &is_infeasible);
+  std::string node_id_string =
+      GetBestSchedulableNode(*work,
+                             /*requires_object_store_memory=*/false,
+                             /*force_spillback=*/false, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -425,14 +473,13 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+    const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  metric_tasks_queued_++;
-  auto work = std::make_shared<internal::Work>(task, reply, [send_reply_callback] {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+  auto work = std::make_shared<internal::Work>(
+      task, grant_or_reject, reply,
+      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -469,6 +516,17 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
+  {
+    auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
+    auto it = info_by_sched_cls_.find(sched_cls);
+    if (it != info_by_sched_cls_.end()) {
+      it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
+      if (it->second.running_tasks.size() == 0) {
+        info_by_sched_cls_.erase(it);
+      }
+    }
+  }
+
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
@@ -880,7 +938,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-std::string ClusterTaskManager::DebugStr() const {
+void ClusterTaskManager::RecomputeDebugStats() const {
   auto accumulator =
       [](size_t state,
          const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
@@ -892,7 +950,7 @@ std::string ClusterTaskManager::DebugStr() const {
   size_t num_worker_not_started_by_job_config_not_exist = 0;
   size_t num_worker_not_started_by_registration_timeout = 0;
   size_t num_worker_not_started_by_process_rate_limit = 0;
-  size_t num_worker_waiting_for_workers = 0;
+  size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
 
   size_t num_infeasible_tasks = std::accumulate(
@@ -906,7 +964,7 @@ std::string ClusterTaskManager::DebugStr() const {
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
                                &num_worker_not_started_by_process_rate_limit,
-                               &num_worker_waiting_for_workers, &num_cancelled_tasks](
+                               &num_tasks_waiting_for_workers, &num_cancelled_tasks](
                                   size_t state,
                                   const std::pair<
                                       int, std::deque<std::shared_ptr<internal::Work>>>
@@ -915,7 +973,7 @@ std::string ClusterTaskManager::DebugStr() const {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       const auto &work = *work_it++;
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        num_worker_waiting_for_workers += 1;
+        num_tasks_waiting_for_workers += 1;
       } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
         num_cancelled_tasks += 1;
       } else if (work->GetUnscheduledCause() ==
@@ -947,34 +1005,71 @@ std::string ClusterTaskManager::DebugStr() const {
       std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
                       per_work_accumulator);
 
-  if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
+  /// Update the internal states.
+  internal_stats_.num_waiting_for_resource = num_waiting_for_resource;
+  internal_stats_.num_waiting_for_plasma_memory = num_waiting_for_plasma_memory;
+  internal_stats_.num_waiting_for_remote_node_resources =
+      num_waiting_for_remote_node_resources;
+  internal_stats_.num_worker_not_started_by_job_config_not_exist =
+      num_worker_not_started_by_job_config_not_exist;
+  internal_stats_.num_worker_not_started_by_registration_timeout =
+      num_worker_not_started_by_registration_timeout;
+  internal_stats_.num_worker_not_started_by_process_rate_limit =
+      num_worker_not_started_by_process_rate_limit;
+  internal_stats_.num_tasks_waiting_for_workers = num_tasks_waiting_for_workers;
+  internal_stats_.num_cancelled_tasks = num_cancelled_tasks;
+  internal_stats_.num_infeasible_tasks = num_infeasible_tasks;
+  internal_stats_.num_tasks_to_schedule = num_tasks_to_schedule;
+  internal_stats_.num_tasks_to_dispatch = num_tasks_to_dispatch;
+}
+
+void ClusterTaskManager::RecordMetrics() const {
+  /// This method intentionally doesn't call RecomputeDebugStats() because
+  /// that function is expensive. RecomputeDebugStats is called by DebugStr method
+  /// and they are always periodically called by node manager.
+  stats::NumReceivedTasks.Record(internal_stats_.num_tasks_to_schedule);
+  stats::NumDispatchedTasks.Record(internal_stats_.num_tasks_to_dispatch);
+  stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
+  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
+  stats::NumInfeasibleTasks.Record(internal_stats_.num_infeasible_tasks);
+}
+
+std::string ClusterTaskManager::DebugStr() const {
+  RecomputeDebugStats();
+  if (internal_stats_.num_tasks_to_schedule + internal_stats_.num_tasks_to_dispatch +
+          internal_stats_.num_infeasible_tasks >
+      1000) {
     RAY_LOG(WARNING)
         << "More than 1000 tasks are queued in this node. This can cause slow down.";
   }
 
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
-  buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
-  buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
-  buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
-  buffer << "num_waiting_for_resource: " << num_waiting_for_resource << "\n";
-  buffer << "num_waiting_for_plasma_memory: " << num_waiting_for_plasma_memory << "\n";
+  buffer << "Infeasible queue length: " << internal_stats_.num_infeasible_tasks << "\n";
+  buffer << "Schedule queue length: " << internal_stats_.num_tasks_to_schedule << "\n";
+  buffer << "Dispatch queue length: " << internal_stats_.num_tasks_to_dispatch << "\n";
+  buffer << "num_waiting_for_resource: " << internal_stats_.num_waiting_for_resource
+         << "\n";
+  buffer << "num_waiting_for_plasma_memory: "
+         << internal_stats_.num_waiting_for_plasma_memory << "\n";
   buffer << "num_waiting_for_remote_node_resources: "
-         << num_waiting_for_remote_node_resources << "\n";
+         << internal_stats_.num_waiting_for_remote_node_resources << "\n";
   buffer << "num_worker_not_started_by_job_config_not_exist: "
-         << num_worker_not_started_by_job_config_not_exist << "\n";
+         << internal_stats_.num_worker_not_started_by_job_config_not_exist << "\n";
   buffer << "num_worker_not_started_by_registration_timeout: "
-         << num_worker_not_started_by_registration_timeout << "\n";
+         << internal_stats_.num_worker_not_started_by_registration_timeout << "\n";
   buffer << "num_worker_not_started_by_process_rate_limit: "
-         << num_worker_not_started_by_process_rate_limit << "\n";
-  buffer << "num_worker_waiting_for_workers: " << num_worker_waiting_for_workers << "\n";
-  buffer << "num_cancelled_tasks: " << num_cancelled_tasks << "\n";
+         << internal_stats_.num_worker_not_started_by_process_rate_limit << "\n";
+  buffer << "num_tasks_waiting_for_workers: "
+         << internal_stats_.num_tasks_waiting_for_workers << "\n";
+  buffer << "num_cancelled_tasks: " << internal_stats_.num_cancelled_tasks << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
+
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
@@ -1009,25 +1104,18 @@ std::string ClusterTaskManager::DebugStr() const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Running tasks by scheduling class:\n";
+
+  for (const auto &pair : info_by_sched_cls_) {
+    const auto &sched_cls = pair.first;
+    const auto &info = pair.second;
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
+           << "/" << info.capacity << "\n";
+  }
+
   buffer << "==================================================\n";
   return buffer.str();
-}
-
-void ClusterTaskManager::RecordMetrics() {
-  stats::NumReceivedTasks.Record(metric_tasks_queued_);
-  stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
-  stats::NumSpilledTasks.Record(metric_tasks_spilled_);
-  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-
-  metric_tasks_queued_ = 0;
-  metric_tasks_dispatched_ = 0;
-  metric_tasks_spilled_ = 0;
-
-  uint64_t num_infeasible_tasks = 0;
-  for (const auto &pair : infeasible_tasks_) {
-    num_infeasible_tasks += pair.second.size();
-  }
-  stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
 }
 
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
@@ -1042,16 +1130,11 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     RayTask task = work->task;
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
-    auto placement_resources =
-        task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-    // This argument is used to set violation, which is an unsupported feature now.
-    int64_t _unused;
     bool is_infeasible;
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/false,
-        task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/false, &_unused, &is_infeasible);
+    std::string node_id_string =
+        GetBestSchedulableNode(*work,
+                               /*requires_object_store_memory=*/false,
+                               /*force_spillback=*/false, &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -1075,7 +1158,6 @@ void ClusterTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-  metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
@@ -1150,7 +1232,15 @@ void ClusterTaskManager::Dispatch(
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                                    const std::shared_ptr<internal::Work> &work) {
-  metric_tasks_spilled_++;
+  auto send_reply_callback = work->callback;
+
+  if (work->grant_or_reject) {
+    work->reply->set_rejected(true);
+    send_reply_callback();
+    return;
+  }
+
+  internal_stats_.metric_tasks_spilled++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
@@ -1171,11 +1261,6 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    reply->set_rejected(true);
-  }
-
-  auto send_reply_callback = work->callback;
   send_reply_callback();
 }
 
@@ -1321,18 +1406,14 @@ void ClusterTaskManager::SpillWaitingTasks() {
     bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
                    << " to remote node. Force spillback? " << force_spillback;
-    auto placement_resources =
-        task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-    int64_t _unused;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/true,
-        task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
+    std::string node_id_string =
+        GetBestSchedulableNode(*(*it),
+                               /*requires_object_store_memory=*/true,
+                               /*force_spillback=*/force_spillback, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -1397,6 +1478,39 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
   }
   return ResourceSet(total_normal_task_resources);
+}
+
+uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
+    SchedulingClass sched_cls_id) const {
+  auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
+  double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
+  uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
+
+  if (cpu_req == 0 || total_cpus == 0) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
+}
+
+std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &work,
+                                                       bool requires_object_store_memory,
+                                                       bool force_spillback,
+                                                       bool *is_infeasible) {
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
+  if (work.grant_or_reject && !force_spillback && IsLocallySchedulable(work.task)) {
+    *is_infeasible = false;
+    return self_node_id_.Binary();
+  }
+
+  // This argument is used to set violation, which is an unsupported feature now.
+  int64_t _unused;
+  return cluster_resource_scheduler_->GetBestSchedulableNode(
+      work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
+      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
+      requires_object_store_memory,
+      work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
+      is_infeasible);
 }
 
 }  // namespace raylet

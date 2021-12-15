@@ -9,6 +9,7 @@ try:
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioActorSubscriber
 import ray._private.gcs_utils as gcs_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import rest_response
@@ -61,14 +62,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_actors(self):
         # TODO(fyrestone): Refactor code for updating actor / node / job.
-        # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
-
-        key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
 
         def _process_actor_table_data(data):
             actor_class = actor_classname_from_task_spec(
@@ -115,42 +108,69 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(
                     actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
 
-        # Receive actors from channel.
         state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
-        async for sender, msg in receiver.iter():
-            try:
-                actor_id, actor_table_data = msg
-                pubsub_message = gcs_utils.PubSubMessage.FromString(
-                    actor_table_data)
-                message = gcs_utils.ActorTableData.FromString(
-                    pubsub_message.data)
-                actor_table_data = actor_table_data_to_dict(message)
-                _process_actor_table_data(actor_table_data)
-                # If actor is not new registered but updated, we only update
-                # states related fields.
-                if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+
+        def process_actor_data_from_pubsub(actor_id, actor_table_data):
+            actor_table_data = actor_table_data_to_dict(actor_table_data)
+            _process_actor_table_data(actor_table_data)
+            # If actor is not new registered but updated, we only update
+            # states related fields.
+            if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+                actor_table_data_copy = dict(DataSource.actors[actor_id])
+                for k in state_keys:
+                    actor_table_data_copy[k] = actor_table_data[k]
+                actor_table_data = actor_table_data_copy
+            actor_id = actor_table_data["actorId"]
+            job_id = actor_table_data["jobId"]
+            node_id = actor_table_data["address"]["rayletId"]
+            # Update actors.
+            DataSource.actors[actor_id] = actor_table_data
+            # Update node actors (only when node_id is not Nil).
+            if node_id != actor_consts.NIL_NODE_ID:
+                node_actors = dict(DataSource.node_actors.get(node_id, {}))
+                node_actors[actor_id] = actor_table_data
+                DataSource.node_actors[node_id] = node_actors
+            # Update job actors.
+            job_actors = dict(DataSource.job_actors.get(job_id, {}))
+            job_actors[actor_id] = actor_table_data
+            DataSource.job_actors[job_id] = job_actors
+
+        aioredis_client = self._dashboard_head.aioredis_client
+
+        # Receive actors from channel.
+        if gcs_pubsub_enabled():
+            gcs_addr = await aioredis_client.get("GcsServerAddress")
+            subscriber = GcsAioActorSubscriber(address=gcs_addr.decode())
+            await subscriber.subscribe()
+
+            while True:
+                try:
+                    actor_id, actor_table_data = await subscriber.poll()
+                    # Convert to lower case hex ID.
+                    actor_id = actor_id.hex()
+                    process_actor_data_from_pubsub(actor_id, actor_table_data)
+                except Exception:
+                    logger.exception("Error processing actor info from GCS.")
+
+        else:
+            receiver = Receiver()
+            key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
+            pattern = receiver.pattern(key)
+            await aioredis_client.psubscribe(pattern)
+            logger.info("Subscribed to %s", key)
+
+            async for sender, msg in receiver.iter():
+                try:
+                    actor_id, actor_table_data = msg
                     actor_id = actor_id.decode("UTF-8")[len(
                         gcs_utils.TablePrefix_ACTOR_string + ":"):]
-                    actor_table_data_copy = dict(DataSource.actors[actor_id])
-                    for k in state_keys:
-                        actor_table_data_copy[k] = actor_table_data[k]
-                    actor_table_data = actor_table_data_copy
-                actor_id = actor_table_data["actorId"]
-                job_id = actor_table_data["jobId"]
-                node_id = actor_table_data["address"]["rayletId"]
-                # Update actors.
-                DataSource.actors[actor_id] = actor_table_data
-                # Update node actors (only when node_id is not Nil).
-                if node_id != actor_consts.NIL_NODE_ID:
-                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                    node_actors[actor_id] = actor_table_data
-                    DataSource.node_actors[node_id] = node_actors
-                # Update job actors.
-                job_actors = dict(DataSource.job_actors.get(job_id, {}))
-                job_actors[actor_id] = actor_table_data
-                DataSource.job_actors[job_id] = job_actors
-            except Exception:
-                logger.exception("Error receiving actor info.")
+                    pubsub_message = gcs_utils.PubSubMessage.FromString(
+                        actor_table_data)
+                    actor_table_data = gcs_utils.ActorTableData.FromString(
+                        pubsub_message.data)
+                    process_actor_data_from_pubsub(actor_id, actor_table_data)
+                except Exception:
+                    logger.exception("Error processing actor info from Redis.")
 
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:

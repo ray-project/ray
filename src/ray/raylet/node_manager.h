@@ -90,6 +90,8 @@ struct NodeManagerConfig {
   std::string store_socket_name;
   /// The path to the ray temp dir.
   std::string temp_dir;
+  /// The path of this ray log dir.
+  std::string log_dir;
   /// The path of this ray session dir.
   std::string session_dir;
   /// The path of this ray resource dir.
@@ -605,7 +607,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+      const rpc::RayException *creation_task_exception = nullptr);
 
   /// ID of this node.
   NodeID self_node_id_;

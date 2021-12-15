@@ -44,6 +44,10 @@ message RequestWorkerLeaseRequest {
   TaskSpec resource_spec = 1;
   // Worker's backlog size for this spec's shape.
   int64 backlog_size = 2;
+  // If it's true, either grant the lease if the task is
+  // locally schedulable or reject the request.
+  // Else, the raylet may return another raylet at which to retry the request.
+  bool grant_or_reject = 3;
 }
 
 message RequestWorkerLeaseReply {

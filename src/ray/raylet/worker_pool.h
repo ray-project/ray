@@ -402,16 +402,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param status The output status of work process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param runtime_env_hash The hash of runtime env.
-  /// \param serialized_runtime_env The runtime environment for the started worker
+  /// \param serialized_runtime_env_context The context of runtime env.
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
-  /// process. \return The id of the process that we started if it's positive, otherwise
-  /// it means we didn't start a process.
-  Process StartWorkerProcess(
+  /// \return The process that we started and a token. If the token is less than 0,
+  /// we didn't start a process.
+  std::tuple<Process, StartupToken> StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
+      const int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
@@ -461,6 +461,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     Process proc;
+    /// The worker process start time.
+    std::chrono::high_resolution_clock::time_point start_time;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -498,12 +500,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// same with worker process PID, except starting worker process in container.
     absl::flat_hash_map<StartupToken, StartingWorkerProcessInfo>
         starting_worker_processes;
-    /// A map for looking up the task by the pid of starting worker process.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task by the startup token of starting worker process.
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
+    /// A map for looking up the task with dynamic options by the startup token of
     /// starting worker process. Note that this is used for the dedicated worker
     /// processes.
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo>
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo>
         starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
@@ -597,7 +599,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Try to find a task that is associated with the given worker process from the given
   /// queue. If found, invoke its PopWorkerCallback.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param proc The process which the worker belongs to.
+  /// \param startup_token The startup token representing the worker.
   /// \param worker A new idle worker. If the worker is empty, we could also callback
   /// to the task.
   /// \param status The pop worker status which will be forwarded to
@@ -607,8 +609,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
-      absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
-      const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+      absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
+      StartupToken startup_token, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
@@ -681,6 +683,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// Stats
+  int64_t process_failed_job_config_missing_ = 0;
+  int64_t process_failed_rate_limited_ = 0;
+  int64_t process_failed_pending_registration_ = 0;
+  int64_t process_failed_runtime_env_setup_failed_ = 0;
+
+  friend class WorkerPoolTest;
 };
 
 }  // namespace raylet

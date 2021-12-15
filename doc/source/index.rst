@@ -236,6 +236,7 @@ Papers
 
    walkthrough.rst
    using-ray.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
@@ -266,6 +267,7 @@ Papers
    serve/http-servehandle.rst
    serve/deployment.rst
    serve/ml-models.rst
+   serve/pipeline.rst
    serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
@@ -279,9 +281,11 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
-   data/examples/big_data_ingestion
+   data/dataset-ml-preprocessing.rst
+   data/dataset-execution-model.rst
    data/dataset-tensor-support.rst
    data/package-ref.rst
+   data/examples/big_data_ingestion
    data/dask-on-ray.rst
    data/mars-on-ray.rst
    data/modin/index.rst
@@ -330,7 +334,7 @@ Papers
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-package-ref.rst
+   rllib/package_ref/index.rst
    rllib-dev.rst
 
 .. toctree::

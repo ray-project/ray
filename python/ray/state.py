@@ -124,6 +124,8 @@ class GlobalState:
         """
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
+            "ActorClassName": actor_table_data.class_name,
+            "IsDetached": actor_table_data.is_detached,
             "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
@@ -137,11 +139,13 @@ class GlobalState:
                 "NodeID": binary_to_hex(
                     actor_table_data.owner_address.raylet_id),
             },
-            "State": actor_table_data.state,
+            "State": gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.
+            values_by_number[actor_table_data.state].name,
             "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
             "StartTime": actor_table_data.start_time,
             "EndTime": actor_table_data.end_time,
+            "DeathCause": actor_table_data.death_cause
         }
         return actor_info
 

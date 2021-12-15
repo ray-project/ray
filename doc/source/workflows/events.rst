@@ -94,7 +94,7 @@ After the workflow finishes checkpointing the event, the event listener will be 
             message = await self.consumer.poll()
             return message
 
-        async def after_checkpoint(self, event: KafkaEventType) -> None:
+        async def event_checkpointed(self, event: KafkaEventType) -> None:
              self.consuemr.commit(event, asynchronous=False)
 
 

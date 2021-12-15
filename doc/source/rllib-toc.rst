@@ -1,5 +1,16 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Table of Contents
 =======================
+
+RLlib Core Concepts
+-------------------
+
+*  `Policies <rllib/core-concepts.html#policies>`__
+
+*  `Sample Batches <rllib/core-concepts.html#sample-batches>`__
+
+*  `Training <rllib/core-concepts.html#training>`__
 
 Training APIs
 -------------

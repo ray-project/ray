@@ -6,6 +6,7 @@
   - remove the table of contents
   - remove the PyTorch Lightning Compatibility section
   - Be sure not to delete the API reference section in the bottom of this file.
+  - add `.. _ray-lightning-tuning:` before the "Hyperparameter Tuning with Ray Tune" section
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
@@ -130,6 +131,8 @@ With sharded training, leverage the scalability of data parallel training while 
    trainer.fit(ptl_model)
 
 See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html#sharded-training>`__ for more information on sharded training.
+
+.. _ray-lightning-tuning:
 
 Hyperparameter Tuning with Ray Tune
 -----------------------------------

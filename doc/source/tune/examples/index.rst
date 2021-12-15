@@ -45,6 +45,7 @@ Search Algorithm Examples
 - :doc:`/tune/examples/nevergrad_example`: Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
 - :doc:`/tune/examples/optuna_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
 - :doc:`/tune/examples/optuna_define_by_run_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] with a define-by-run function
+- :doc:`/tune/examples/optuna_multiobjective_example`: Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] for multi-objective optimization
 - :doc:`/tune/examples/zoopt_example`: Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
 - :doc:`/tune/examples/sigopt_example`: Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
 - :doc:`/tune/examples/hebo_example`: Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]

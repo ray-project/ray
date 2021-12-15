@@ -28,20 +28,6 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the name of this actor. This actor will be accessible from all jobs by this name via {@link
-   * Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is only
-   * accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
-   *
-   * @param name The name of the named actor.
-   * @return self
-   * @see io.ray.api.options.ActorCreationOptions.Builder#setGlobalName(String)
-   */
-  public T setGlobalName(String name) {
-    builder.setGlobalName(name);
-    return self();
-  }
-
-  /**
    * Set a custom resource requirement to reserve for the lifetime of this actor. This method can be
    * called multiple times. If the same resource is set multiple times, the latest quantity will be
    * used.
@@ -87,15 +73,28 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   /**
    * Set the max number of concurrent calls to allow for this actor.
    *
-   * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
-   * not guaranteed when {@code max_concurrency > 1}.
+   * <p>The maximum concurrency defaults to 1 for threaded execution. Note that the execution order
+   * is not guaranteed when {@code max_concurrency > 1}.
    *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
+   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor.
    * @return self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
   public T setMaxConcurrency(int maxConcurrency) {
     builder.setMaxConcurrency(maxConcurrency);
+    return self();
+  }
+
+  /**
+   * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+   * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+   * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+   *
+   * @param maxPendingCalls The maximum number of pending calls for this actor.
+   * @return self
+   */
+  public T setMaxPendingCalls(int maxPendingCalls) {
+    builder.setMaxPendingCalls(maxPendingCalls);
     return self();
   }
 

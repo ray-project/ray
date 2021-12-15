@@ -1,7 +1,6 @@
+import abc
 import os
-from contextlib import closing
 import logging
-import socket
 from pathlib import Path
 from threading import Thread
 
@@ -10,6 +9,7 @@ from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union
 import ray
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
+from ray.util.ml_utils.util import find_free_port
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -53,11 +53,7 @@ def check_for_failure(
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
-
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        port = s.getsockname()[1]
+    port = find_free_port()
 
     return addr, port
 
@@ -102,3 +98,19 @@ def update_env_vars(env_vars: Dict[str, Any]):
     """
     sanitized = {k: str(v) for k, v in env_vars.items()}
     os.environ.update(sanitized)
+
+
+class Singleton(abc.ABCMeta):
+    """Singleton Abstract Base Class
+
+    https://stackoverflow.com/questions/33364070/implementing
+    -singleton-as-metaclass-but-for-abstract-classes
+    """
+
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(
+                *args, **kwargs)
+        return cls._instances[cls]

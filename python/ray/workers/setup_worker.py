@@ -12,11 +12,6 @@ parser = argparse.ArgumentParser(
         "Set up the environment for a Ray worker and launch the worker."))
 
 parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    help="the serialized parsed runtime env dict")
-
-parser.add_argument(
     "--serialized-runtime-env-context",
     type=str,
     help="the serialized runtime env context")

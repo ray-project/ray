@@ -15,10 +15,12 @@
 #pragma once
 
 #include <ctype.h>
+
 #include <functional>
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
@@ -260,7 +262,9 @@ void RegisterView(const std::string &name, const std::string &description,
 template <typename T = void>
 void RegisterViewWithTagList(const std::string &name, const std::string &description,
                              const std::vector<opencensus::tags::TagKey> &tag_keys,
-                             const std::vector<double> &buckets) {}
+                             const std::vector<double> &buckets) {
+  static_assert(std::is_same_v<T, void>);
+}
 
 template <StatsType T, StatsType... Ts>
 void RegisterViewWithTagList(const std::string &name, const std::string &description,
@@ -358,6 +362,8 @@ class Stats {
 
 }  // namespace ray
 
+#define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name
+
 // STATS_DEPAREN will remove () for it's parameter
 // For example
 //   STATS_DEPAREN((a, b, c))
@@ -370,7 +376,7 @@ class Stats {
 #define STATS_VANISH
 
 /*
-  Syntax suguar to define a metrics:
+  Syntax sugar to define a metrics:
       DEFINE_stats(name,
         desctiption,
         (tag1, tag2, ...),
@@ -391,5 +397,3 @@ class Stats {
   ray::stats::internal::Stats STATS_##name(                                \
       #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
       ray::stats::internal::RegisterViewWithTagList<__VA_ARGS__>)
-
-#define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name

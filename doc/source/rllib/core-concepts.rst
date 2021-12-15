@@ -3,11 +3,15 @@
 
 .. _rllib-core-concepts:
 
+
+RLlib Core Concepts
+===================
+
 In this section, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
 
 Policies
-========
+--------
 
 `Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
 Python classes that define how an agent acts in an environment.
@@ -39,7 +43,7 @@ define a trainable policy with a functional-style API, for example:
       loss_fn=policy_gradient_loss)
 
 Sample Batches
-==============
+--------------
 
 Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__, all data interchange in RLlib is in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__. Sample batches encode one or more fragments of a trajectory. Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
 
@@ -59,7 +63,7 @@ A typical sample batch looks something like the following when summarized. Since
 In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__, sample batches are collected separately for each individual policy.
 
 Training
-========
+--------
 
 Policies each define a ``learn_on_batch()`` method that improves the policy given a sample batch of input. For TF and Torch policies, this is implemented using a `loss function` that takes as input sample batch tensors and outputs a scalar loss. Here are a few example loss functions:
 

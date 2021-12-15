@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _ref-cluster-setup:
 
 Ray with Cluster Managers

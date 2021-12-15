@@ -9,10 +9,12 @@ from ray.train.backend import BackendConfig, Backend
 from ray.train.session import shutdown_session
 from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class TensorflowConfig(BackendConfig):
     @property

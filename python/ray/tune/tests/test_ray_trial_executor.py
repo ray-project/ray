@@ -37,7 +37,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.trial_executor.logger, "warning")
+    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
@@ -177,14 +177,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
-        checkpoint = self.trial_executor.pause_trial(trial)
+        self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial, checkpoint)
+        self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def _testPauseUnpause(self, result_buffer_length):
+    def _testPauseAndStart(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = f"{result_buffer_length}"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
@@ -201,8 +201,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
@@ -210,14 +208,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseUnpauseNoBuffer(self):
-        self._testPauseUnpause(0)
+    def testPauseAndStartNoBuffer(self):
+        self._testPauseAndStart(0)
 
-    def testPauseUnpauseTrivialBuffer(self):
-        self._testPauseUnpause(1)
+    def testPauseAndStartTrivialBuffer(self):
+        self._testPauseAndStart(1)
 
-    def testPauseUnpauseActualBuffer(self):
-        self._testPauseUnpause(8)
+    def testPauseAndStartActualBuffer(self):
+        self._testPauseAndStart(8)
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
@@ -424,15 +422,34 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             name="no_name",
             lifetime=None)
 
+        pgf_3 = PlacementGroupFactory(
+            [{
+                "custom": 7,
+                "GPU": 4,
+                "CPU": 2.0,
+                "custom2": 0
+            }, {
+                "custom": 1.0,
+                "GPU": 2,
+                "CPU": 3,
+                "custom2": 0
+            }],
+            strategy="PACK",
+            name="no_name",
+            lifetime=None)
+
         self.assertEqual(pgf_1, pgf_2)
+        self.assertEqual(pgf_2, pgf_3)
 
         # Hash testing
         counter = Counter()
         counter[pgf_1] += 1
         counter[pgf_2] += 1
+        counter[pgf_3] += 1
 
-        self.assertEqual(counter[pgf_1], 2)
-        self.assertEqual(counter[pgf_2], 2)
+        self.assertEqual(counter[pgf_1], 3)
+        self.assertEqual(counter[pgf_2], 3)
+        self.assertEqual(counter[pgf_3], 3)
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

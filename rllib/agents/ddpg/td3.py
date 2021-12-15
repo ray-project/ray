@@ -5,6 +5,8 @@ TD3 paper.
 """
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,
@@ -57,7 +59,9 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "use_state_preprocessor": False,
     })
 
-TD3Trainer = DDPGTrainer.with_updates(
-    name="TD3",
-    default_config=TD3_DEFAULT_CONFIG,
-)
+
+class TD3Trainer(DDPGTrainer):
+    @classmethod
+    @override(DDPGTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return TD3_DEFAULT_CONFIG

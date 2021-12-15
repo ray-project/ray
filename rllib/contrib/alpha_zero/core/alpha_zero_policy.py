@@ -123,7 +123,7 @@ class AlphaZeroPolicy(TorchPolicy):
             sample_batch["t"])
         return sample_batch
 
-    @override(Policy)
+    @override(TorchPolicy)
     def learn_on_batch(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 

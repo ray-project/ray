@@ -59,6 +59,9 @@ jmethodID java_system_gc;
 
 jclass java_ray_exception_class;
 jclass java_ray_intentional_system_exit_exception_class;
+jclass java_ray_timeout_exception_class;
+
+jclass java_ray_pending_calls_limit_exceeded_exception_class;
 
 jclass java_ray_actor_exception_class;
 jmethodID java_ray_exception_to_bytes;
@@ -94,7 +97,6 @@ jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_global;
 jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
@@ -102,10 +104,10 @@ jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
+jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
-jfieldID java_placement_group_creation_options_global;
 jfieldID java_placement_group_creation_options_name;
 jfieldID java_placement_group_creation_options_bundles;
 jfieldID java_placement_group_creation_options_strategy;
@@ -213,8 +215,14 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_intentional_system_exit_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
 
+  java_ray_timeout_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayTimeoutException");
+
   java_ray_actor_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayActorException");
+
+  java_ray_pending_calls_limit_exceeded_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/PendingCallsLimitExceededException");
 
   java_ray_exception_to_bytes =
       env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");
@@ -275,8 +283,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
   java_placement_group_creation_options_strategy_class =
       LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
-  java_placement_group_creation_options_global =
-      env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
   java_placement_group_creation_options_name = env->GetFieldID(
       java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
   java_placement_group_creation_options_bundles = env->GetFieldID(
@@ -289,8 +295,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_global =
-      env->GetFieldID(java_actor_creation_options_class, "global", "Z");
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_max_restarts =
@@ -306,6 +310,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
   java_actor_creation_options_concurrency_groups = env->GetFieldID(
       java_actor_creation_options_class, "concurrencyGroups", "Ljava/util/List;");
+  java_actor_creation_options_max_pending_calls =
+      env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");
   java_concurrency_group_impl_get_function_descriptors = env->GetMethodID(
@@ -369,6 +375,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
+  env->DeleteGlobalRef(java_ray_timeout_exception_class);
   env->DeleteGlobalRef(java_ray_actor_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);

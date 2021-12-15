@@ -185,14 +185,6 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
-}
-
 Status raylet::RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
@@ -298,7 +290,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 void raylet::RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec,
+    const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size) {
   google::protobuf::Arena arena;
@@ -310,6 +302,7 @@ void raylet::RayletClient::RequestWorkerLease(
   // used any more.
   request->unsafe_arena_set_allocated_resource_spec(
       const_cast<rpc::TaskSpec *>(&task_spec));
+  request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(*request, callback);
 }

@@ -40,9 +40,3 @@ transformers==4.10.0
 wandb==0.12.5
 xgboost==1.3.3
 zoopt==0.4.1
-
-# Dependencies for Hugging Face examples:
-# `python/ray/train/examples/transformers/transformers_example.py`
-accelerate==0.5.1
-datasets==1.14.0
-sentencepiece==0.1.96

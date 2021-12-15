@@ -77,6 +77,15 @@ class BlockList:
                 BlockList(self._blocks[block_idx:],
                           self._metadata[block_idx:]))
 
+    def get_blocks(self) -> List[ObjectRef[Block]]:
+        """Bulk version of iter_blocks().
+
+        Prefer calling this instead of the iter form for performance if you
+        don't need lazy evaluation.
+        """
+        # Overriden in LazyBlockList for bulk evaluation.
+        return list(self.iter_blocks())
+
     def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
         """Iterate over the blocks of this block list.
 
@@ -100,6 +109,16 @@ class BlockList:
 
         return Iter()
 
+    def get_blocks_with_metadata(
+            self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
+        """Bulk version of iter_blocks_with_metadata().
+
+        Prefer calling this instead of the iter form for performance if you
+        don't need lazy evaluation.
+        """
+        self.get_blocks()  # Force bulk evaluation in LazyBlockList.
+        return list(self.iter_blocks_with_metadata())
+
     def iter_blocks_with_metadata(
             self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         """Iterate over the blocks along with their runtime metadata.
@@ -120,7 +139,7 @@ class BlockList:
         This may differ from initial_num_blocks() for LazyBlockList, which
         doesn't know how many blocks will be produced until tasks finish.
         """
-        return len(list(self.iter_blocks()))
+        return len(self.get_blocks())
 
     def ensure_schema_for_first_block(
             self) -> Optional[Union["pyarrow.Schema", type]]:
