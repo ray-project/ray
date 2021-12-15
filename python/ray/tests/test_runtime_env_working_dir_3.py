@@ -5,8 +5,8 @@ import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError
-from ray._private.test_utils import (
-    wait_for_condition, check_local_files_gced)
+from ray._private.test_utils import (wait_for_condition,
+                                     check_local_files_gced)
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
 
@@ -37,9 +37,8 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
             "num_nodes": 1,
             "_system_config": {
                 "num_workers_soft_limit": 0,
-                "testing_asio_delay_us": 
-                    "InternalKVGcsService.grpc_server.InternalKVGet"
-                    "=2000000:2000000",
+                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
+                ".InternalKVGet=2000000:2000000",
                 "worker_register_timeout_seconds": 1,
             },
         },
@@ -47,9 +46,8 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
             "num_nodes": 1,
             "_system_config": {
                 "num_workers_soft_limit": 5,
-                "testing_asio_delay_us": 
-                    "InternalKVGcsService.grpc_server.InternalKVGet"
-                    "=2000000:2000000",
+                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
+                ".InternalKVGet=2000000:2000000",
                 "worker_register_timeout_seconds": 1,
             },
         },
@@ -84,9 +82,9 @@ def test_task_level_gc(ray_start_cluster, option):
             test_module.one()
 
     if option == "working_dir":
-        runtime_env={"working_dir": S3_PACKAGE_URI}
+        runtime_env = {"working_dir": S3_PACKAGE_URI}
     else:
-        runtime_env={"py_modules": [S3_PACKAGE_URI]}
+        runtime_env = {"py_modules": [S3_PACKAGE_URI]}
 
     # Note: We should set a bigger timeout if downloads the s3 package slowly.
     get_timeout = 10
@@ -94,7 +92,9 @@ def test_task_level_gc(ray_start_cluster, option):
     # Start a task with runtime env
     if worker_register_timeout:
         with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
+            ray.get(
+                f.options(runtime_env=runtime_env).remote(),
+                timeout=get_timeout)
     else:
         ray.get(f.options(runtime_env=runtime_env).remote())
     if soft_limit_zero or worker_register_timeout:
@@ -127,7 +127,9 @@ def test_task_level_gc(ray_start_cluster, option):
     # Start a task with runtime env
     if worker_register_timeout:
         with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
+            ray.get(
+                f.options(runtime_env=runtime_env).remote(),
+                timeout=get_timeout)
     else:
         ray.get(f.options(runtime_env=runtime_env).remote())
     if soft_limit_zero or worker_register_timeout:
