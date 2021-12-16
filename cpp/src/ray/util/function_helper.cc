@@ -86,6 +86,12 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
                      << "' not found in " << lib_path;
     return "";
   }
+  // In some compiler, the static ray runtime maybe a new instance in dynamic library, so
+  // we need init it in dynamic library to make sure the new instance valid.
+  auto init_func =
+      boost::dll::import_alias<void(std::shared_ptr<RayRuntime>)>(lib, "InitRayRuntime");
+  init_func(RayRuntimeHolder::Instance().Runtime());
+
   auto get_remote_func = boost::dll::import_alias<
       std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>()>(
       lib, internal_function_name);

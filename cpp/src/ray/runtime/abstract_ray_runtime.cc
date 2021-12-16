@@ -52,6 +52,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
+    internal::RayRuntimeHolder::Instance().Init(runtime);
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
       // Load functions from code search path.
