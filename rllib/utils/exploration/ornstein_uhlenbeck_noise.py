@@ -41,27 +41,24 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            ou_theta (float): The theta parameter of the Ornstein-Uhlenbeck
-                process.
-            ou_sigma (float): The sigma parameter of the Ornstein-Uhlenbeck
-                process.
-            ou_base_scale (float): A fixed scaling factor, by which all OU-
+            action_space: The gym action space used by the environment.
+            ou_theta: The theta parameter of the Ornstein-Uhlenbeck process.
+            ou_sigma: The sigma parameter of the Ornstein-Uhlenbeck process.
+            ou_base_scale: A fixed scaling factor, by which all OU-
                 noise is multiplied. NOTE: This is on top of the parent
                 GaussianNoise's scaling.
-            random_timesteps (int): The number of timesteps for which to act
+            random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
-            initial_scale (float): The initial scaling weight to multiply
-                the noise with.
-            final_scale (float): The final scaling weight to multiply
-                the noise with.
-            scale_timesteps (int): The timesteps over which to linearly anneal
-                the scaling factor (after(!) having used random actions for
+            initial_scale: The initial scaling weight to multiply the
+                noise with.
+            final_scale: The final scaling weight to multiply the noise with.
+            scale_timesteps: The timesteps over which to linearly anneal the
+                scaling factor (after(!) having used random actions for
                 `random_timesteps` steps.
-            scale_schedule (Optional[Schedule]): An optional Schedule object
-                to use (instead of constructing one from the given parameters).
-            framework (Optional[str]): One of None, "tf", "torch".
+            scale_schedule: An optional Schedule object to use (instead
+                of constructing one from the given parameters).
+            framework: One of None, "tf", "torch".
         """
         # The current OU-state value (gets updated each time, an eploration
         # action is computed).
