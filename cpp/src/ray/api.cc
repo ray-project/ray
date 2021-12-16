@@ -19,7 +19,7 @@
 
 namespace ray {
 
-static bool is_init_;
+static bool is_init_ = false;
 
 void Init(ray::RayConfig &config, int argc, char **argv) {
   if (!IsInitialized()) {
