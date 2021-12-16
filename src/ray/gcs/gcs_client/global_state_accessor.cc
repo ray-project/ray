@@ -325,6 +325,12 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     } else {
       int relevant_client_index = -1;
       int head_node_client_index = -1;
+      std::pair<std::string, int> gcs_address;
+      {
+        absl::WriterMutexLock lock(&mutex_);
+        gcs_address = gcs_client_->GetGcsServerAddress();
+      }
+
       for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
         const auto &node = nodes[i];
         std::string ip_address = node.node_manager_address();
@@ -334,8 +340,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
         }
         // TODO(kfstorm): Do we need to replace `node_ip_address` with
         // `get_node_ip_address()`?
-        if ((ip_address == "127.0.0.1" && gcs_client_->GetGcsServerAddress().first == node_ip_address) ||
-            ip_address == gcs_client_->GetGcsServerAddress().first) {
+        if ((ip_address == "127.0.0.1" && gcs_address.first == node_ip_address) ||
+            ip_address == gcs_address.first) {
           head_node_client_index = i;
         }
       }
@@ -351,7 +357,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
         std::ostringstream oss;
         oss << "This node has an IP address of " << node_ip_address << ", and Ray "
             << "expects this IP address to be either the GCS address or one of"
-            << " the Raylet addresses. Connected to GCS at " << gcs_client_->GetGcsServerAddress().first
+            << " the Raylet addresses. Connected to GCS at " << gcs_address.first
             << " and found raylets at ";
         for (size_t i = 0; i < nodes.size(); i++) {
           if (i > 0) {
