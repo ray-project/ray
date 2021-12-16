@@ -227,8 +227,8 @@ if __name__ == "__main__":
         # will be hang when the ray.state is connected and the GCS is exit.
         # Please refer to: https://github.com/ray-project/ray/issues/16328
         service_discovery = PrometheusServiceDiscoveryWriter(
-            args.redis_address, args.redis_password,
-            args.gcs_address, args.temp_dir)
+            args.redis_address, args.redis_password, args.gcs_address,
+            args.temp_dir)
         # Need daemon True to avoid dashboard hangs at exit.
         service_discovery.daemon = True
         service_discovery.start()

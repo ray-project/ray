@@ -323,8 +323,9 @@ def wait_for_node(redis_address,
             the node appears in the client table.
     """
     global_state = ray.state.GlobalState()
-    global_state._initialize_global_state(_get_gcs_client_options(
-        redis_address, redis_password, gcs_server_address))
+    global_state._initialize_global_state(
+        _get_gcs_client_options(redis_address, redis_password,
+                                gcs_server_address))
     start_time = time.time()
     while time.time() - start_time < timeout:
         clients = global_state.node_table()
@@ -344,7 +345,8 @@ def get_node_to_connect_for_driver(redis_address,
                                    redis_password=None):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_server_address)
+    gcs_options = _get_gcs_client_options(redis_address, redis_password,
+                                          gcs_server_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -1666,7 +1668,6 @@ def start_raylet(redis_address,
 
         if redis_password is not None and len(redis_password) != 0:
             agent_command.append("--redis-password={}".format(redis_password))
-
 
     command = [
         RAYLET_EXECUTABLE,

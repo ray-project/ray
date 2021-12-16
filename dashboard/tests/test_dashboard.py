@@ -48,6 +48,7 @@ def make_gcs_client(address_info):
         gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     return gcs_client
 
+
 def cleanup_test_files():
     module_path = ray.dashboard.modules.__path__[0]
     filename = os.path.join(module_path, "test_for_bad_import.py")
@@ -643,7 +644,8 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
-@pytest.mark.skipif(use_gcs_for_bootstrap(), reason="Killing will make it hang")
+@pytest.mark.skipif(
+    use_gcs_for_bootstrap(), reason="Killing will make it hang")
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)

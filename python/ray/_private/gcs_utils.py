@@ -100,6 +100,7 @@ def use_gcs_for_bootstrap():
         assert gcs_pubsub_enabled()
     return ret
 
+
 def get_gcs_address_from_redis(redis) -> str:
     """Reads GCS address from redis.
 

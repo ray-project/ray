@@ -190,7 +190,8 @@ class Cluster:
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
                 if use_gcs_for_bootstrap():
-                    gcs_options = GcsClientOptions.from_gcs_address(node.get_gcs_address())
+                    gcs_options = GcsClientOptions.from_gcs_address(
+                        node.get_gcs_address())
                 else:
                     gcs_options = GcsClientOptions.from_redis_address(
                         self.redis_address, self.redis_password)

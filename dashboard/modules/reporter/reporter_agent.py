@@ -151,7 +151,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             self._redis_address, _ = dashboard_agent.redis_address
             self._is_head_node = (self._ip == self._redis_address)
         else:
-            self._is_head_node = (self._ip == dashboard_agent.gcs_address.split(":")[0])
+            self._is_head_node = (
+                self._ip == dashboard_agent.gcs_address.split(":")[0])
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)

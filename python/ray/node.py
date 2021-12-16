@@ -145,11 +145,13 @@ class Node:
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             if use_gcs_for_bootstrap():
-                ray_params.update_if_absent(gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
+                ray_params.update_if_absent(
+                    gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
             self._webui_url = None
             if use_gcs_for_bootstrap():
-                self._gcs_address = (f"{socket.gethostbyname(socket.gethostname())}:"
-                                     f"{self._ray_params.gcs_server_port}")
+                self._gcs_address = (
+                    f"{socket.gethostbyname(socket.gethostname())}:"
+                    f"{self._ray_params.gcs_server_port}")
         else:
             if use_gcs_for_bootstrap():
                 self._gcs_address = self._ray_params.gcs_server_address
@@ -247,8 +249,7 @@ class Node:
             try:
                 ray._private.services.wait_for_node(
                     self.redis_address, self.get_gcs_address(),
-                    self._plasma_store_socket_name,
-                    self.redis_password)
+                    self._plasma_store_socket_name, self.redis_password)
             except TimeoutError:
                 raise Exception(
                     "The current node has not been updated within 30 "

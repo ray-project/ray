@@ -198,8 +198,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             self.redis_address = redis_address
             self.redis_password = redis_password
 
-        ray.state.state._initialize_global_state(
-            gcs_client_options)
+        ray.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -213,12 +212,13 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             if node["alive"] is True
         ]
         if not use_gcs_for_bootstrap():
-            redis_client = services.create_redis_client(self.redis_address,
-                                                        self.redis_password)
+            redis_client = services.create_redis_client(
+                self.redis_address, self.redis_password)
             autoscaler_addr = redis_client.get("AutoscalerMetricsAddress")
         else:
             gcs_client = GcsClient(address=self.gcs_address)
-            autoscaler_addr = gcs_client.internal_kv_get("AutoscalerMetricsAddress", None)
+            autoscaler_addr = gcs_client.internal_kv_get(
+                "AutoscalerMetricsAddress", None)
         if autoscaler_addr:
             metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
         return json.dumps([{
