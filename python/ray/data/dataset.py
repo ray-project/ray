@@ -1924,8 +1924,8 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item are the features, and the second item
-        is the label. Those can take on different forms, dependning on
+        elements. The first item contains the feature tensor(s), and the second item
+        is the label tensor. Those can take on different forms, depending on
         the specified arguments.
 
         For the features tensor (N is the ``batch_size`` used by the
