@@ -2463,12 +2463,13 @@ def test_to_torch_feature_columns(ray_start_regular_shared, input, force_dtype,
             assert isinstance(features, torch.Tensor)
             if force_dtype:
                 assert features.dtype == torch.long
+            data = features
         elif input == "list":
             assert isinstance(features, list)
             assert all(isinstance(item, torch.Tensor) for item in features)
             if force_dtype:
                 assert all(item.dtype == torch.long for item in features)
-            features = torch.cat(tuple(features), dim=1)
+            data = torch.cat(tuple(features), dim=1)
         elif input == "dict":
             assert isinstance(features, dict)
             assert all(
@@ -2476,7 +2477,7 @@ def test_to_torch_feature_columns(ray_start_regular_shared, input, force_dtype,
             if force_dtype:
                 assert all(
                     item.dtype == torch.long for item in features.values())
-            features = torch.cat(tuple(features.values()), dim=1)
+            data = torch.cat(tuple(features.values()), dim=1)
 
         if not label_type:
             assert label is None
@@ -2489,8 +2490,8 @@ def test_to_torch_feature_columns(ray_start_regular_shared, input, force_dtype,
             else:
                 assert label.dim() == 1
                 label = label.view(-1, 1)
-            features = torch.cat((features, label), dim=1)
-        iterations.append(features.numpy())
+            data = torch.cat((data, label), dim=1)
+        iterations.append(data.numpy())
 
     combined_iterations = np.concatenate(iterations)
     if not label_type:

@@ -1924,14 +1924,15 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item contains the feature tensor(s), and the second item
-        is the label tensor. Those can take on different forms, depending on
-        the specified arguments.
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
 
-        For the features tensor (N is the ``batch_size`` and n, m, k are the number of features per tensor):
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
 
         * If ``feature_columns`` is a ``List[str]``, the features will be
-          a tensor of shape (N, n), with columns corresponding to =
+          a tensor of shape (N, n), with columns corresponding to
           ``feature_columns``
 
         * If ``feature_columns`` is a ``List[List[str]]``, the features will be
@@ -1945,9 +1946,9 @@ class Dataset(Generic[T]):
           key.
 
         If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,). It can also be
-        specifed as None for prediction (note that it will be still present
-        in the tuple yielded by the generator).
+        of shape (N, 1). Otherwise, it will be of shape (N,). ``label_column``
+        can also be specifed as None for prediction (note that it will be
+        still present in the tuple yielded by the generator).
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -1970,8 +1971,9 @@ class Dataset(Generic[T]):
                 the dtype.
             feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],
                 Dict[str, torch.dtype]]): The dtypes to use for the feature
-                tensors. This should match the format of ``feature_columns``.
-                If None, then automatically infer the dtype.
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
             batch_size (int): How many samples per batch to yield at a time.
                 Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
@@ -1998,6 +2000,32 @@ class Dataset(Generic[T]):
                                            isinstance(feature_columns[0],
                                                       (list, tuple)))
 
+        if not feature_columns:
+            feature_columns = None
+
+        if (feature_column_dtypes
+                and not isinstance(feature_column_dtypes, torch.dtype)):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}.")
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys.")
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}.")
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length.")
+
         def make_generator():
             for batch in self.iter_batches(
                     batch_size=batch_size,
@@ -2014,16 +2042,22 @@ class Dataset(Generic[T]):
                     label_tensor = None
 
                 def get_feature_tensors(
-                        batch, feature_columns: List[str],
-                        feature_column_dtypes: "torch.dtype") -> torch.Tensor:
+                        batch,
+                        feature_columns: List[str],
+                        feature_column_dtype: "torch.dtype",
+                        assert_feature_columns_not_empty: bool = False
+                ) -> torch.Tensor:
                     feature_tensors = []
+                    if (assert_feature_columns_not_empty
+                            and not feature_columns):
+                        raise ValueError("`feature_columns` may not be empty")
                     if feature_columns:
                         batch = batch[feature_columns]
 
                     for col in batch.columns:
                         col_vals = batch[col].values
                         t = torch.as_tensor(
-                            col_vals, dtype=feature_column_dtypes)
+                            col_vals, dtype=feature_column_dtype)
                         t = t.view(-1, 1)
                         feature_tensors.append(t)
 
@@ -2036,20 +2070,24 @@ class Dataset(Generic[T]):
                     if isinstance(feature_columns, dict):
                         features_tensor = {
                             key: get_feature_tensors(
-                                batch, feature_columns[key],
+                                batch,
+                                feature_columns[key],
                                 feature_column_dtypes[key]
-                                if isinstance(feature_column_dtypes,
-                                              dict) else feature_column_dtypes)
+                                if isinstance(feature_column_dtypes, dict) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
                             for key in feature_columns
                         }
                     else:
                         features_tensor = [
                             get_feature_tensors(
-                                batch, feature_columns[idx],
+                                batch,
+                                feature_columns[idx],
                                 feature_column_dtypes[idx] if isinstance(
-                                    feature_column_dtypes,
-                                    (list, tuple)) else feature_column_dtypes)
-                            for idx, _ in enumerate(feature_columns)
+                                    feature_column_dtypes, (list, tuple)) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
+                            for idx in range(len(feature_columns))
                         ]
                 yield (features_tensor, label_tensor)
 
@@ -2057,7 +2095,7 @@ class Dataset(Generic[T]):
 
     def to_tf(self,
               *,
-              label_column: Optional[str] = None,
+              label_column: str,
               output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
               prefetch_blocks: int = 0,
