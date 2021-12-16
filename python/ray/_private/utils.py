@@ -144,9 +144,9 @@ def publish_error_to_driver(error_type,
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message,
                                          time.time())
-    if gcs_publisher:
+    if gcs_publisher is not None:
         gcs_publisher.publish_error(job_id.hex().encode(), error_data)
-    elif redis_client:
+    elif redis_client is not None:
         pubsub_msg = gcs_utils.PubSubMessage()
         pubsub_msg.id = job_id.binary()
         pubsub_msg.data = error_data.SerializeToString()

@@ -3,6 +3,7 @@ import ray._private.services as services
 import ray.worker
 import ray._private.profiling as profiling
 import ray._private.utils as utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray import ray_constants
 from ray.state import GlobalState
 from ray._raylet import GcsClientOptions
@@ -32,9 +33,10 @@ def memory_summary(address=None,
     if address == "auto":
         address = services.find_redis_address_or_die()
 
+    # TODO (iycheng): Make it work without redis
     state = GlobalState()
-    state._initialize_global_state(
-        GcsClientOptions.from_redis_address(address, redis_password))
+    gcs_options = GcsClientOptions.from_redis_address(address, redis_password)
+    state._initialize_global_state(gcs_options)
     if stats_only:
         return get_store_stats(state)
     return (memory_summary(state, group_by, sort_by, line_wrap, units,

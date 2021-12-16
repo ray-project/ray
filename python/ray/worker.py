@@ -610,6 +610,7 @@ def init(
         namespace: Optional[str] = None,
         runtime_env: Dict[str, Any] = None,
         # The following are unstable parameters and their use is discouraged.
+        _gcs_server_port: Optional[int] = None,
         _enable_object_reconstruction: bool = False,
         _redis_max_memory: Optional[int] = None,
         _plasma_directory: Optional[str] = None,
@@ -695,6 +696,7 @@ def init(
         dashboard_port(int, None): The port to bind the dashboard server to.
             Defaults to 8265 and Ray will automatically find a free port if
             8265 is not available.
+        gcs_server_port(int, None): The port to start gcs server
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -894,6 +896,7 @@ def init(
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
+            gcs_server_port=_gcs_server_port,
             memory=_memory,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
