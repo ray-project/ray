@@ -28,6 +28,9 @@ async def g():
     c = h.remote()
     r = await c
     print(f"Received r={r}")
+    # c1 = h.remote()
+    # r1 = await c
+
     # print("g sleep 1")
     # await asyncio.sleep(1)
     # print("g sleep 2")
@@ -38,6 +41,7 @@ async def g():
 coro = g()
 f1 = coro.send(None)
 pprint(f1)
+
 import pdb; pdb.set_trace()
 
 f1.get_loop()._run_once()

@@ -36,6 +36,7 @@ from ray._raylet import (
     MessagePackSerializer,
     MessagePackSerializedObject,
     RawSerializedObject,
+    ObjectRefIter,
 )
 from ray import serialization_addons
 
@@ -119,16 +120,16 @@ class SerializationContext:
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
-        def asyncio_futureiter_deserializer(object_ref):
+        def objectref_iter_deserializer(object_ref):
             print("in asyncio_futureiter_deserializer")
             return object_ref.as_future(_internal=True).__await__()
 
-        def asyncio_futureiter_reducer(obj):
+        def objectref_iter_reducer(iter):
             print("in asyncio_futureiter_reducer")
-            return asyncio_futureiter_deserializer, (obj._object_ref, )
+            return objectref_iter_deserializer, (iter.object_ref, )
 
-        self._register_cloudpickle_reducer(_asyncio.FutureIter,
-                                           asyncio_futureiter_reducer)
+        self._register_cloudpickle_reducer(ObjectRefIter,
+                                           objectref_iter_reducer)
 
         serialization_addons.apply(self)
 

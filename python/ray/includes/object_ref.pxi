@@ -35,6 +35,21 @@ def _set_future_helper(
         py_future.set_result(result)
 
 
+class ObjectRefIter:
+    def __init__(self, object_ref, iter):
+        self.object_ref = object_ref
+        self.iter = iter
+
+    def __getattr__(self, attr):
+        return getattr(self.iter, attr)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self.iter.__next__()
+
+
 cdef class ObjectRef(BaseID):
 
     def __cinit__(self):
@@ -132,8 +147,7 @@ cdef class ObjectRef(BaseID):
         return py_future
 
     def __await__(self):
-        iter = self.as_future(_internal=True).__await__()
-        iter._object_ref = self
+        iter = ObjectRefIter(self, self.as_future(_internal=True).__await__())
         return iter
 
     def as_future(self, _internal=False) -> asyncio.Future:
