@@ -280,7 +280,7 @@ class HTTPProxy:
 
         status_code = await _send_request_to_handle(handle, scope, receive,
                                                     send)
-        if status_code is not None:
+        if status_code != "200":
             self.request_error_counter.inc(tags={
                 "route": route_path,
                 "error_code": status_code
