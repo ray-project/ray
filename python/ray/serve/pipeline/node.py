@@ -67,6 +67,9 @@ class ExecutorPipelineNode(PipelineNode):
 
         return Pipeline(self)
 
+    def resize(self):
+        pass
+
     def _call(self, input_arg: Tuple[Any]) -> Any:
         if self._executor is None:
             raise RuntimeError(

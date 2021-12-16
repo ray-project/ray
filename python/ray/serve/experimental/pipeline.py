@@ -32,7 +32,7 @@ class ModelB:
   def __call__(self, req: str) -> str:
     return f"ModelB({self.weight} * {req})"
 
-@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
+@pipeline.node(default_execution_mode=ExecutionMode.ACTORS, default_num_replicas=2)
 class Ensemble:
   def __init__(self, a_weight: float, b_weight: float):
     self.a_weight = a_weight
@@ -45,8 +45,8 @@ class Ensemble:
 def build_dag():
   print("Instantiating model classes with pre-assigned weights.. \n")
   preprocess = Preprocess(0.5) # -> 0.5
-  a = ModelA(0.2) # -> 0.1
-  b = ModelB(0.8) # -> 0.4
+  a = ModelA(id=xxxx, 0.2) # -> 0.1
+  b = ModelB(id=yyyy, 0.8) # -> 0.4
   ensemble = Ensemble(1, 2) # -> 0.1 * 1 + 0.4 * 2 = 0.9
 
   print("Building and instantiating pipeline.. \n")
@@ -61,23 +61,67 @@ def build_dag():
   return dag
 
 # Step 3: Deploy this pipeline using a Driver class as deployment.
-@serve.deployment(route_prefix="/hello")
+@serve.deployment(route_prefix="/hello", num_replicas=2)
+@serve.pipeline(build_dag) # function or uninstantiated DAG
 class Driver:
     def __init__(self):
+        # serve.get_or_create_pipeline() one possible approach
         self._dag = build_dag()
+
+    # def reconfigure(self):
+    #   self.aa = 123
 
     def __call__(self, req: Request):
         input = str(req.query_params["input"])
         return self._dag.call(input)
 
-# Step 4: Enable deployment on arbitrary node, support re-size.
-# @serve.deployment(route_prefix="/whatever")
-# class Driver:
-#     def __init__(self, downstream_deployment: serve.Deployment["A"]):
-#         self._dag = downstream_deployment(preprocess(pipeline.INPUT))
 
-#     async def __call__(self):
-#         return await self._dag.call_async(...)
+
+driver instance v0
+driver instance v0
+
+# driver instance v1
+
+
+serve update my_deployment config.yaml
+
+# my_deployment -> driver deployment handle
+
+#  - Preprocess
+#     - id: zxc
+#     - resources: CPU -> GPU
+#     - model_path: s3://zzzz/bucket/aaa.pkl
+#
+#  - Model
+#     - id: xxxxx -> (driver, dag ExecutorPipelineNode)
+#     - num_replicas: 10 -> 20
+#  - Model
+#     - id: yyyy
+#     - num_replicas: 5
+#  - UnknownClass
+#     - id: zzzzz
+# dependencies: A -> [B, C] -> D
+
+
+# Sharing actor group among two driver instances
+# Update
+
+# Step: FT
+
+
+# Step 4: Enable upgradable node. It needs to use deployment handle in this case
+# 1) can still be constructed with pipeline API
+#     - maybe unified API for both ? like ExecutorNode & Deployment handle
+# 2) upgrade API on deployment level
+# 3) actor calls among executor nodes & deployments, strip the http part
+#     - seem trivial
+@serve.deployment(route_prefix="/hello")
+class Driver:
+    def __init__(self, downstream_deployment_handle: serve.Deployment["A"]):
+        self._dag = downstream_deployment_handle(preprocess(pipeline.INPUT))
+
+    async def __call__(self):
+        return await self._dag.call_async(...)
 
 # Step 5: Support simple single node upgrade with no dependencies.
 
