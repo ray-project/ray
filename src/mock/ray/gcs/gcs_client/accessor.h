@@ -269,10 +269,6 @@ namespace gcs {
 
 class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
-  MOCK_METHOD(Status, AsyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback, int64_t timeout_ms),
-              (override));
   MOCK_METHOD(Status, SyncCreatePlacementGroup,
               (const PlacementGroupSpecification &placement_group_spec), (override));
   MOCK_METHOD(Status, AsyncGet,
@@ -287,16 +283,8 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
   MOCK_METHOD(Status, AsyncGetAll,
               (const MultiItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
-  MOCK_METHOD(Status, AsyncRemovePlacementGroup,
-              (const PlacementGroupID &placement_group_id, const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
   MOCK_METHOD(Status, SyncRemovePlacementGroup,
               (const PlacementGroupID &placement_group_id), (override));
-  MOCK_METHOD(Status, AsyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id, const StatusCallback &callback,
-               int64_t timeout_ms),
-              (override));
   MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id, ),
               (override));
 };

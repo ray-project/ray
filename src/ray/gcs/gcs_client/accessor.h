@@ -765,17 +765,6 @@ class PlacementGroupInfoAccessor {
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  /// Create a placement group to GCS asynchronously.
-  ///
-  /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS.
-  /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
-  /// \return Status. Not used.
-  virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback, int64_t timeout_ms = -1);
-
   /// Create a placement group to GCS synchronously.
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
@@ -813,17 +802,6 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
-  /// Remove a placement group to GCS asynchronously.
-  ///
-  /// \param placement_group_id The id for the placement group to remove.
-  /// \param callback Callback that will be called after the placement group is
-  /// removed from GCS.
-  /// \param timeout_ms The RPC timeout in ms. -1 means the default.
-  /// \return Status
-  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                                           const StatusCallback &callback,
-                                           int64_t timeout_ms = -1);
-
   /// Remove a placement group to GCS synchronously.
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
@@ -831,16 +809,6 @@ class PlacementGroupInfoAccessor {
   /// \param placement_group_id The id for the placement group to remove.
   /// \return Status
   virtual Status SyncRemovePlacementGroup(const PlacementGroupID &placement_group_id);
-
-  /// Wait for a placement group until ready asynchronously.
-  ///
-  /// \param placement_group_id The id for the placement group to wait for until ready.
-  /// \param callback Callback that will be called after the placement group is created.
-  /// \param timeout_ms The RPC timeout in ms. -1 means the default.
-  /// \return Status
-  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
-                                     const StatusCallback &callback,
-                                     int64_t timeout_ms = -1);
 
   /// Wait for a placement group until ready asynchronously.
   ///
