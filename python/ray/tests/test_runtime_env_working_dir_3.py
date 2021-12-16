@@ -20,7 +20,8 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
     os.environ.get("CI") and sys.platform != "linux",
     reason="Requires PR wheels built in CI, so only run on linux CI machines.")
 @pytest.mark.parametrize(
-    "ray_start_cluster", [
+    "ray_start_cluster",
+    [
         {
             "num_nodes": 1,
             "_system_config": {
@@ -37,6 +38,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
             "num_nodes": 1,
             "_system_config": {
                 "num_workers_soft_limit": 0,
+                # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
                 "worker_register_timeout_seconds": 1,
@@ -46,6 +48,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
             "num_nodes": 1,
             "_system_config": {
                 "num_workers_soft_limit": 5,
+                # this delay will make worker start slow and time out
                 "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
                 ".InternalKVGet=2000000:2000000",
                 "worker_register_timeout_seconds": 1,
