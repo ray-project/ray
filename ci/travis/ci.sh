@@ -140,7 +140,6 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
-      -python/ray/serve:test_handle # timeout error (?) https://github.com/ray-project/ray/issues/21106
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
