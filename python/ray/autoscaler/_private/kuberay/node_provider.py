@@ -16,14 +16,6 @@ logger = logging.getLogger(__name__)
 provider_exists = False
 
 
-def to_label_selector(tags):
-    label_selector = ""
-    for k, v in tags.items():
-        if label_selector != "":
-            label_selector += ","
-        label_selector += "{}={}".format(k, v)
-    return label_selector
-
 def status_tag(pod: Dict[str, Any]):
     if "containerStatuses" not in pod["status"]:
         return "pending"
@@ -41,6 +33,19 @@ def status_tag(pod: Dict[str, Any]):
     if "terminated" in state:
         return "update-failed"
     raise ValueError("Unexpected container state.")
+
+def make_node_tags(labels: Dict[str, str], status_tag: str):
+    "Convert Kuberay labels to Ray autoscaler tags."
+    tags = {"ray-node-status": status_tag}
+
+    if labels["ray.io/node-type"] == "head":
+        tags["ray-node-type"] = "head"
+        tags["ray-user-node-type"] = "ray.head.default"
+    else:
+        tags["ray-node-type"] = "worker"
+        tags["ray-user-node-type"] = "ray.worker.default"
+
+    return tags
 
 
 class KuberayNodeProvider(NodeProvider):  # type: ignore
@@ -104,16 +109,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     def node_tags(self, node_id: str) -> Dict[str, str]:
         url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
         data = requests.get(url, headers=self.headers, verify=self.verify).json()
-        tags = data["metadata"]["labels"]
-        result = tags.copy()
-        result["ray-node-status"] = status_tag(data)
-        if result["ray.io/node-type"] == "head":
-            result["ray-node-type"] = "head"
-            result["ray-user-node-type"] = "ray.head.default"
-        else:
-            result["ray-node-type"] = "worker"
-            result["ray-user-node-type"] = "ray.worker.default"
-        return result
+        labels = data["metadata"]["labels"]
+        return make_node_tags(labels, status_tag(data))
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
@@ -122,7 +119,24 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/"
         data = requests.get(url, headers=self.headers, verify=self.verify).json()
 
-        return [pod["metadata"]["name"] for pod in data["items"] if "ray.io/cluster" in pod["metadata"]["labels"] and pod["metadata"]["labels"]["ray.io/cluster"] == "raycluster-complete"]
+        logger.info("Called non_terminated_nodes with tag_filters {}".format(tag_filters))
+
+        result = []
+        for pod in data["items"]:
+            labels = pod["metadata"]["labels"]
+            if labels.get("ray.io/cluster") == "raycluster-complete":
+                def matches(tags, tag_filters):
+                    for k, v in tag_filters.items():
+                        if k not in tags or tags[k] != v:
+                            return False
+                    return True
+                tags = make_node_tags(labels, status_tag(pod))
+                if matches(tags, tag_filters):
+                    result.append(pod["metadata"]["name"])
+
+        logger.info("Result is {}".format(result))
+
+        return result
 
     def terminate_node(self, node_id: str) -> None:
         """Terminates the specified node."""
@@ -132,5 +146,21 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Terminates a set of nodes.
         Returns map of deleted node ids to node metadata.
         """
-        # TODO Implement node termination
+        # Get the current number of replicas
+        url = "https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
+        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        old_replicas = data["spec"]["workerGroupSpecs"][0]["replicas"]
+        # Compute the new number of replicas
+        new_replicas = old_replicas - len(node_ids)
+        # Update the number of replicas
+        path = "/spec/workerGroupSpecs/0/replicas"
+        # TODO: Add retry loop if test and set fails
+        command = [
+            {"op": "test", "path": path, "value": old_replicas},
+            {"op": "replace", "path": path, "value": new_replicas},
+            # {"op": "add", "path": "/spec/workerGroupSpecs/0/scaleStrategy/workersToDelete", "value": node_ids}
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete": node_ids}},
+        ]
+        result = requests.patch(url, json.dumps(command), headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
+        logger.info("result from terminate_nodes = {}".format(result))
         return {}
