@@ -120,7 +120,6 @@ jfieldID java_gcs_client_options_password;
 
 jclass java_native_ray_object_class;
 jmethodID java_native_ray_object_init;
-jmethodID java_native_ray_object_buffer_init;
 jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
 jfieldID java_native_ray_object_contained_object_ids;
@@ -144,8 +143,6 @@ jclass java_resource_value_class;
 jmethodID java_resource_value_init;
 
 JavaVM *jvm;
-
-const std::string OBJECT_METADATA_TYPE_ARROW = "ARROW";
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
@@ -335,8 +332,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_native_ray_object_class = LoadClass(env, "io/ray/runtime/object/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
-  java_native_ray_object_buffer_init = env->GetMethodID(
-      java_native_ray_object_class, "<init>", "(Ljava/nio/ByteBuffer;[B)V");
   java_native_ray_object_data =
       env->GetFieldID(java_native_ray_object_class, "data", "[B");
   java_native_ray_object_metadata =

@@ -225,8 +225,6 @@ extern jfieldID java_gcs_client_options_password;
 extern jclass java_native_ray_object_class;
 /// Constructor of NativeRayObject class
 extern jmethodID java_native_ray_object_init;
-/// Constructor of NativeRayObject class for direct byte buffer
-extern jmethodID java_native_ray_object_buffer_init;
 /// data field of NativeRayObject class
 extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
@@ -259,8 +257,6 @@ extern jmethodID java_resource_value_init;
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 extern JavaVM *jvm;
-
-extern const std::string OBJECT_METADATA_TYPE_ARROW;
 
 /// Throws a Java RayException if the status is not OK.
 #define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)                         \
@@ -580,23 +576,11 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
                                   metadata_ptr->Size());
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   jobject java_obj;
-  if (metadata_str.rfind(OBJECT_METADATA_TYPE_ARROW) == 0) {
-    auto data_ptr = rayObject->GetData();
-    auto java_data = env->NewDirectByteBuffer(
-        reinterpret_cast<void *>(const_cast<uint8_t *>(data_ptr->Data())),
-        data_ptr->Size());
-    java_obj =
-        env->NewObject(java_native_ray_object_class, java_native_ray_object_buffer_init,
-                       java_data, java_metadata);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    env->DeleteLocalRef(java_data);
-  } else {
-    auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
-    java_obj = env->NewObject(java_native_ray_object_class, java_native_ray_object_init,
-                              java_data, java_metadata);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    env->DeleteLocalRef(java_data);
-  }
+  auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
+  java_obj = env->NewObject(java_native_ray_object_class, java_native_ray_object_init,
+                            java_data, java_metadata);
+  RAY_CHECK_JAVA_EXCEPTION(env);
+  env->DeleteLocalRef(java_data);
   env->DeleteLocalRef(java_metadata);
   return java_obj;
 }

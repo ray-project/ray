@@ -1,6 +1,5 @@
 package io.ray.runtime.object;
 
-import com.fasterxml.jackson.databind.util.ByteBufferBackedInputStream;
 import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
@@ -14,6 +13,8 @@ import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -89,7 +90,7 @@ public class ObjectSerializer {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
         try (ArrowStreamReader reader =
-            new ArrowStreamReader(new ByteBufferBackedInputStream(nativeRayObject.buffer), root)) {
+            new ArrowStreamReader(new ByteArrayInputStream(nativeRayObject.data), root)) {
           reader.loadNextBatch();
           return reader.getVectorSchemaRoot();
         } catch (Exception e) {
