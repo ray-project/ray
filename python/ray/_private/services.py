@@ -337,8 +337,15 @@ def get_node_to_connect_for_driver(redis_address,
                                    redis_password=None):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
+    if not ray_constants.GCS_BOOTSTRAP:
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                          redis_password)
+    else:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        gcs_options = GcsClientOptions.from_gcs_address(gcs_ip, int(gcs_port))
+
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -795,6 +802,7 @@ def check_version_info(redis_client):
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    return
     redis_reply = redis_client.get("VERSION_INFO")
 
     # Don't do the check if there is no version information in Redis. This
@@ -1601,6 +1609,14 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
+    if ray_constants.GCS_BOOTSTRAP:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        start_worker_command += [
+            f"--gcs-address={gcs_ip}",
+            f"--gcs-port={gcs_port}",
+        ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1681,6 +1697,13 @@ def start_raylet(redis_address,
         command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if ray_constants.GCS_BOOTSTRAP:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        command += [
+            f"--gcs-address={gcs_ip}",
+            f"--gcs-port={gcs_port}",
+        ]
+    print(command)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

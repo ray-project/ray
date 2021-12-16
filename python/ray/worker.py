@@ -1372,13 +1372,23 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+    if not ray_constants.GCS_BOOTSTRAP:
+        worker.redis_client = node.create_redis_client()
+        worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+    else:
+        worker.redis_client = None
+        worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=ray_constants.GCS_ADDRESS)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address, redis_password=node.redis_password))
+    if not ray_constants.GCS_BOOTSTRAP:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
+    else:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(
+                gcs_ip, int(gcs_port)))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
