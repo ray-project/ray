@@ -179,7 +179,12 @@ class DatasetStats:
         if self.parent:
             out += self.parent.summary_string(already_printed)
             out += "\n"
-        for stage_name, metadata in self.stages.items():
+        first = True
+        for stage_name, metadata in sorted(self.stages.items()):
+            if first:
+                first = False
+            else:
+                out += "\n"
             out += "Stage {} {}: ".format(self.number, stage_name)
             if already_printed and self.dataset_uuid in already_printed:
                 out += "[execution cached]"

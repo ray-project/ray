@@ -66,7 +66,7 @@ def simple_shuffle(input_blocks: BlockList,
     # Eagerly delete the input block references in order to eagerly release
     # the blocks' memory.
     del input_blocks
-    shuffle_map_metadata = map_bar.block_until_complete(shuffle_map_metadata)
+    shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
     map_bar.close()
 
     # Randomize the reduce order of the blocks.
