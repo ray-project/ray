@@ -125,6 +125,9 @@ class BlockAccessor(Generic[T]):
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
+    def get_block_data(self) -> Block:
+        """Return block data"""
+        raise NotImplementedError
 
     def num_rows(self) -> int:
         """Return the number of rows contained in this block."""
@@ -190,7 +193,7 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def builder() -> "BlockBuilder[T]":
+    def builder(block_type: Union[list, bytes, "pyarrow.Table"]) -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
 

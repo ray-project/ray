@@ -50,6 +50,9 @@ class SimpleBlockAccessor(BlockAccessor):
     def __init__(self, items: List[T]):
         self._items = items
 
+    def get_block_data(self) -> Block:
+        return self._items
+
     def num_rows(self) -> int:
         return len(self._items)
 
@@ -102,8 +105,8 @@ class SimpleBlockAccessor(BlockAccessor):
         return list(zip(self._items, other))
 
     @staticmethod
-    def builder() -> SimpleBlockBuilder[T]:
-        return SimpleBlockBuilder()
+    def builder(block_type: list = list) -> SimpleBlockBuilder[T]:
+        return SimpleBlockBuilder(block_type)
 
     def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
         if not callable(key) and key is not None:

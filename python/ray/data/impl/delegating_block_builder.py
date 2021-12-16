@@ -28,7 +28,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
 
     def add_block(self, block: Block) -> None:
         if self._builder is None:
-            self._builder = BlockAccessor.for_block(block).builder()
+            self._builder = BlockAccessor.for_block(block).builder(type(block))
         self._builder.add_block(block)
 
     def build(self) -> Block:

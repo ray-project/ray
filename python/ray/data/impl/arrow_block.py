@@ -1,7 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
+from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -43,10 +43,10 @@ class ArrowRow(TableRow):
 
 
 class ArrowBlockBuilder(TableBlockBuilder[T]):
-    def __init__(self):
+    def __init__(self, block_type: Union["pyarrow.Table", bytes] = "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockBuilder.__init__(self, pyarrow.Table)
+        TableBlockBuilder.__init__(self, block_type)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pyarrow.Table.from_pydict(columns)
@@ -134,8 +134,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> ArrowBlockBuilder[T]:
-        return ArrowBlockBuilder()
+    def builder(block_type: Union["pyarrow.Table", bytes] = "pyarrow.Table") -> ArrowBlockBuilder[T]:
+        return ArrowBlockBuilder(block_type)
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
