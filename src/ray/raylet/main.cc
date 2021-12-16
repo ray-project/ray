@@ -124,12 +124,19 @@ int main(int argc, char *argv[]) {
   // Initialize gcs client
   // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
   // `enable_async_conn` as false.
-  ray::gcs::GcsClientOptions client_options(
-      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
-      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+  if(!RayConfig::instance().bootstrap_with_gcs()) {
+    ray::gcs::GcsClientOptions client_options(
+        redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+        /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  } else {
 
-  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+    ray::gcs::GcsClientOptions client_options(
+        redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+        /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  }
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);

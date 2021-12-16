@@ -113,7 +113,7 @@ class DashboardHead:
         self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_address = gcs_address
+        self.gcs_address = ray_constants.GCS_ADDRESS
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.log_dir = log_dir

@@ -309,11 +309,15 @@ def wait_for_node(redis_address,
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
-    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    if not ray_constants.GCS_BOOTSTRAP:
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                          redis_password)
+    else:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        gcs_options = GcsClientOptions.from_gcs_address(gcs_ip, int(gcs_port))
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -1317,12 +1321,15 @@ def start_dashboard(require_dashboard,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
-
-        # Retrieve the dashboard url
-        redis_client = ray._private.services.create_redis_client(
-            redis_address, redis_password)
         from ray._private.gcs_utils import GcsClient
-        gcs_client = GcsClient.create_from_redis(redis_client)
+        if not ray_constants.GCS_BOOTSTRAP:
+            # Retrieve the dashboard url
+            redis_client = ray._private.services.create_redis_client(
+                redis_address, redis_password)
+            gcs_client = GcsClient.create_from_redis(redis_client)
+        else:
+            gcs_client = GcsClient(address=ray_constants.GCS_ADDRESS)
+
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1405,24 +1412,26 @@ def start_gcs_server(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    gcs_ip_address, gcs_port = redis_address.split(":")
-    redis_password = redis_password or ""
     config_str = serialize_config(config)
     if gcs_server_port is None:
         gcs_server_port = 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--redis_address={gcs_ip_address}",
-        f"--redis_port={gcs_port}",
         f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
     ]
-    if redis_password:
-        command += [f"--redis_password={redis_password}"]
+    if not ray_constants.GCS_BOOTSTRAP:
+        gcs_ip_address, gcs_port = redis_address.split(":")
+        redis_password = redis_password or ""
+        command += [f"--redis_address={gcs_ip_address}",
+                    f"--redis_port={gcs_port}"]
+        if redis_password:
+            command += [f"--redis_password={redis_password}"]
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
@@ -1534,8 +1543,11 @@ def start_raylet(redis_address,
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
-
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    try:
+        gcs_ip_address, gcs_port = redis_address.split(":")
+    except:
+        gcs_ip_address = ""
+        gcs_port = 0
 
     has_java_command = False
     if shutil.which("java") is not None:

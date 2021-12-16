@@ -51,8 +51,7 @@ class Raylet {
   /// \param gcs_client A client connection to the GCS.
   /// \param metrics_export_port A port at which metrics are exposed to.
   Raylet(instrumented_io_context &main_service, const std::string &socket_name,
-         const std::string &node_ip_address, const std::string &redis_address,
-         int redis_port, const std::string &redis_password,
+         const std::string &node_ip_address,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port);

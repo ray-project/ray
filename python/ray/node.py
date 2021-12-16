@@ -455,9 +455,12 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = \
-                        ray._private.gcs_utils.GcsClient.create_from_redis(
-                            self.create_redis_client())
+                    if not ray_constants.GCS_BOOTSTRAP:
+                        self._gcs_client = \
+                            ray._private.gcs_utils.GcsClient.create_from_redis(
+                                self.create_redis_client())
+                    else:
+                        self._gcs_client = ray._private.gcs_utils.GcsClient(address=ray_constants.GCS_ADDRESS)
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -748,7 +751,11 @@ class Node:
         gcs_address = None
         if self._ray_params.gcs_server_port is not None:
             # We suppose redis is on the same host as gcs
-            host, port = self.redis_address.split(":")
+            try:
+                host, port = self.redis_address.split(":")
+            except:
+                host = None
+                port = None
             gcs_address = f"{host}:{self._ray_params.gcs_server_port}"
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
@@ -906,7 +913,10 @@ class Node:
                      f"redirected to {self._logs_dir}.")
         assert self._redis_address is None
         # If this is the head node, start the relevant head node processes.
-        self.start_redis()
+        if not ray_constants.GCS_BOOTSTRAP:
+            self.start_redis()
+        else:
+            self._redis_address = "unknown_host:12345"
 
         self.start_gcs_server()
         if not self._ray_params.no_monitor:

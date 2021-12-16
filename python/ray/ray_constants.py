@@ -295,3 +295,6 @@ KV_NAMESPACE_JOB = "job"
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = "serve"
 KV_NAMESPACE_FUNCTION_TABLE = "fun"
+
+GCS_BOOTSTRAP = os.environ.get("RAY_bootstrap_with_gcs") in ("true", "1")
+GCS_ADDRESS = f"127.0.0.1:{os.environ.get(GCS_PORT_ENVIRONMENT_VARIABLE)}"

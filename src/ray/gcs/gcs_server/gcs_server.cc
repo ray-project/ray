@@ -594,7 +594,7 @@ void GcsServer::PrintAsioStats() {
   }
 }
 
-std::shared_ptr<RedisClient> GetOrConnectRedis() {
+std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
   if(redis_client_ == nullptr) {
     redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
     auto status = redis_client_->Connect(main_service_);

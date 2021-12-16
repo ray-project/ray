@@ -20,7 +20,7 @@ from typing import Any
 from google.protobuf.json_format import MessageToDict
 
 import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
+from ray.ray_constants import env_bool, GCS_BOOTSTRAP
 from ray._private.utils import binary_to_hex
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -217,6 +217,10 @@ def to_posix_time(dt):
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
+    if address is None:
+        return None, None
+    if GCS_BOOTSTRAP:
+        return None, None
     ip, port = address.split(":")
     return ip, int(port)
 
