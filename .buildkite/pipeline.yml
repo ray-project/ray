@@ -327,7 +327,7 @@
       -//python/ray/dashboard:test_job_manager
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory --test_env=RAY_bootstrap_with_gcs=1
       -- python/ray/serve/... -//python/ray/serve:test_cli -//python/ray/serve:test_standalone
     # Re-enable after fixing.
     #- bazel test --config=ci $(./scripts/bazel_export_options)

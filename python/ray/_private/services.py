@@ -1223,6 +1223,7 @@ def start_dashboard(require_dashboard,
                     redis_address,
                     temp_dir,
                     logdir,
+                    gcs_address=None,
                     port=None,
                     stdout_file=None,
                     stderr_file=None,
@@ -1306,6 +1307,8 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
+        if gcs_address is not None:
+            command += [f"--gcs-address={gcs_address}"]
         if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
@@ -1325,7 +1328,7 @@ def start_dashboard(require_dashboard,
         dashboard_returncode = None
         for _ in range(200):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")

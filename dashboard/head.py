@@ -50,7 +50,7 @@ async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
             gcs_address = (await redis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)).decode()
+                dashboard_consts.GCS_SERVER_ADDRESS)).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
@@ -104,8 +104,8 @@ class GCSHealthCheckThread(threading.Thread):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, http_port_retries, redis_address,
-                 redis_password, log_dir):
+    def __init__(self, http_host, http_port, http_port_retries, gcs_address,
+                 redis_address, redis_password, log_dir):
         self.health_check_thread: GCSHealthCheckThread = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
@@ -113,6 +113,7 @@ class DashboardHead:
         self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
+        self.gcs_address = gcs_address
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.log_dir = log_dir
@@ -175,18 +176,26 @@ class DashboardHead:
         logger.info("Loaded %d modules.", len(modules))
         return modules
 
-    async def run(self):
+    async def get_gcs_address(self):
         # Create an aioredis client for all modules.
-        try:
-            self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                self.redis_address, self.redis_password,
-                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-        except (socket.gaierror, ConnectionError):
-            logger.error(
-                "Dashboard head exiting: "
-                "Failed to connect to redis at %s", self.redis_address)
-            sys.exit(-1)
+        if self.gcs_address is not None:
+            return self.gcs_address
+
+        if self.aioredis_client is None:
+            try:
+                self.aioredis_client = \
+                    await dashboard_utils.get_aioredis_client(
+                        self.redis_address, self.redis_password,
+                        dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                        dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+            except (socket.gaierror, ConnectionError):
+                logger.error(
+                    "Dashboard head exiting: "
+                    "Failed to connect to redis at %s", self.redis_address)
+                sys.exit(-1)
+        return await get_gcs_address_with_retry(self.aioredis_client)
+
+    async def run(self):
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -196,9 +205,8 @@ class DashboardHead:
         else:
             self.http_session = aiohttp.ClientSession()
 
-        # Waiting for GCS is ready.
-        # TODO: redis-removal bootstrap
-        gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
+        gcs_address = await self.get_gcs_address()
+
         # Dashboard will handle connection failure automatically
         self.gcs_client = GcsClient(
             address=gcs_address, nums_reconnect_retry=0)
@@ -259,11 +267,11 @@ class DashboardHead:
         # TODO: Use async version if performance is an issue
         # Write the dashboard head port to gcs kv.
         internal_kv._internal_kv_put(
-            ray_constants.REDIS_KEY_DASHBOARD,
+            ray_constants.DASHBOARD_ADDRESS,
             f"{http_host}:{http_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
         internal_kv._internal_kv_put(
-            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+            dashboard_consts.DASHBOARD_RPC_ADDRESS,
             f"{self.ip}:{self.grpc_port}",
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
