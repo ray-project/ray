@@ -832,23 +832,25 @@ class Deployment:
             self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
-    def options(self,
-                func_or_class: Optional[Callable] = None,
-                name: Optional[str] = None,
-                version: Optional[str] = None,
-                prev_version: Optional[str] = None,
-                init_args: Optional[Tuple[Any]] = None,
-                init_kwargs: Optional[Dict[Any, Any]] = None,
-                route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-                num_replicas: Optional[int] = None,
-                ray_actor_options: Optional[Dict] = None,
-                user_config: Optional[Any] = None,
-                max_concurrent_queries: Optional[int] = None,
-                _autoscaling_config: Optional[Union[Dict,
-                                                    AutoscalingConfig]] = None,
-                _graceful_shutdown_wait_loop_s: Optional[float] = None,
-                _graceful_shutdown_timeout_s: Optional[float] = None
-                ) -> "Deployment":
+    def options(
+            self,
+            func_or_class: Optional[Callable] = None,
+            name: Optional[str] = None,
+            version: Optional[str] = None,
+            prev_version: Optional[str] = None,
+            init_args: Optional[Tuple[Any]] = None,
+            init_kwargs: Optional[Dict[Any, Any]] = None,
+            route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+            num_replicas: Optional[int] = None,
+            ray_actor_options: Optional[Dict] = None,
+            user_config: Optional[Any] = None,
+            max_concurrent_queries: Optional[int] = None,
+            _autoscaling_config: Optional[Union[Dict,
+                                                AutoscalingConfig]] = None,
+            _graceful_shutdown_wait_loop_s: Optional[float] = None,
+            _graceful_shutdown_timeout_s: Optional[float] = None,
+            _health_check_period_s: Optional[float] = None,
+            _health_check_timeout_s: Optional[float] = None) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
@@ -894,6 +896,12 @@ class Deployment:
         if _graceful_shutdown_timeout_s is not None:
             new_config.graceful_shutdown_timeout_s = (
                 _graceful_shutdown_timeout_s)
+
+        if _health_check_period_s is not None:
+            new_config.health_check_period_s = _health_check_period_s
+
+        if _health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = _health_check_timeout_s
 
         return Deployment(
             func_or_class,
@@ -947,7 +955,9 @@ def deployment(
         max_concurrent_queries: Optional[int] = None,
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
         _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None
+        _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -967,7 +977,9 @@ def deployment(
         max_concurrent_queries: Optional[int] = None,
         _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
         _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None
+        _graceful_shutdown_timeout_s: Optional[float] = None,
+        _health_check_period_s: Optional[float] = None,
+        _health_check_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -1049,6 +1061,12 @@ def deployment(
 
     if _graceful_shutdown_timeout_s is not None:
         config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+
+    if _health_check_period_s is not None:
+        config.health_check_period_s = _health_check_period_s
+
+    if _health_check_timeout_s is not None:
+        config.health_check_timeout_s = _health_check_timeout_s
 
     def decorator(_func_or_class):
         return Deployment(

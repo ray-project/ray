@@ -62,3 +62,8 @@ MAX_CACHED_HANDLES = 100
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
 CONTROLLER_MAX_CONCURRENCY = 15000
+
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
+DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30

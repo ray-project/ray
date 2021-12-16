@@ -14,8 +14,9 @@ from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import str, ReplicaTag
+from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
+from ray.serve.healthcheck import get_healthcheck_method
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
@@ -45,6 +46,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                            init_kwargs, deployment_config_proto_bytes: bytes,
                            version: DeploymentVersion, controller_name: str,
                            detached: bool):
+            self.user_healthcheck = None
             deployment_def = cloudpickle.loads(serialized_deployment_def)
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes)
@@ -90,6 +92,12 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args,
                                                             **init_kwargs)
+
+                    healthcheck_method = get_healthcheck_method(deployment_def)
+                    if healthcheck_method is not None:
+                        self.user_healthcheck = sync_to_async(
+                            getattr(_callable, healthcheck_method))
+
                 # Setting the context again to update the servable_object.
                 ray.serve.api._set_internal_replica_context(
                     deployment_name,
@@ -107,9 +115,6 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
-
-            # asyncio.Event used to signal that the replica is shutting down.
-            self.shutdown_event = asyncio.Event()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -150,12 +155,12 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
-            self.shutdown_event.set()
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
-        async def run_forever(self):
-            await self.shutdown_event.wait()
+        async def check_health(self):
+            if self.user_healthcheck is not None:
+                await self.user_healthcheck()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica

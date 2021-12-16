@@ -1,15 +1,17 @@
-import math
-import json
-import pickle
-import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
+import json
+import math
 import os
+import pickle
+import random
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
+from ray.exceptions import RayError
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
                               ReplicaName, RunningReplicaInfo)
@@ -103,7 +105,10 @@ class ActorReplicaWrapper:
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
+        self._health_check_period_s: float = 0.0
+        self._health_timeout_s: float = 0.0
         self._health_check_ref: ObjectRef = None
+        self._last_health_check_time: float = 0.0
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
@@ -172,6 +177,10 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
             deployment_info.deployment_config.graceful_shutdown_timeout_s)
+        self._health_check_period_s = (
+            deployment_info.deployment_config.health_check_period_s)
+        self._health_check_timeout_s = (
+            deployment_info.deployment_config.health_check_timeout_s)
 
         self._actor_resources = deployment_info.replica_config.resource_dict
         # it is currently not possiible to create a placement group
@@ -279,6 +288,10 @@ class ActorReplicaWrapper:
                     deployment_config.max_concurrent_queries)
                 self._graceful_shutdown_timeout_s = (
                     deployment_config.graceful_shutdown_timeout_s)
+                self._health_check_period_s = (
+                    deployment_config.health_check_period_s)
+                self._health_check_timeout_s = (
+                    deployment_config.health_check_timeout_s)
             except Exception:
                 logger.exception(
                     f"Exception in deployment '{self._deployment_name}'")
@@ -323,11 +336,42 @@ class ActorReplicaWrapper:
     def check_health(self) -> bool:
         """Check if the actor is healthy."""
         if self._health_check_ref is None:
-            self._health_check_ref = self._actor_handle.run_forever.remote()
+            self._last_health_check_time = time.time()
+            self._health_check_ref = self._actor_handle.check_health.remote()
 
-        ready, _ = ray.wait([self._health_check_ref], timeout=0)
+        healthy = True
+        ready, pending = ray.wait([self._health_check_ref], timeout=0)
+        if len(ready) == 1:
+            # Object ref is ready, ray.get it to check for exceptions.
+            try:
+                ray.get(self._health_check_ref)
 
-        return len(ready) == 0
+                # Health check succeeded. Kick off another and reset the timer
+                # if it's been long enough since the last health check. Add
+                # some randomness to avoid synchronizing across all replicas.
+                healthy = True
+                time_since_last = time.time() - self._last_health_check_time
+                randomized_period = (
+                    self._health_check_period_s * random.uniform(0.9, 1.1))
+                if time_since_last > randomized_period:
+                    self._last_health_check_time = time.time()
+                    self._health_check_ref = self._actor_handle.check_health.remote(  # noqa: E501
+                    )
+            except RayError as e:
+                logger.info(f"Health check for replica {self._replica_tag} "
+                            f"failed: {e}")
+                healthy = False
+        elif time.time(
+        ) - self._last_health_check_time > self._health_check_timeout_s:
+            logger.info(
+                "Didn't receive health check response for replica "
+                f"{self._replica_tag} after "
+                f"{self._health_check_timeout_s}s, marking it unhealthy.")
+            healthy = False
+        else:
+            healthy = True
+
+        return healthy
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
