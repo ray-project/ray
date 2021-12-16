@@ -3,7 +3,7 @@ import json
 import time
 from collections import defaultdict
 import os
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Tuple, Any
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from copy import copy
 
@@ -24,12 +24,13 @@ from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
+from ray.serve.pipeline.node import Pipeline
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import logger
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
-
+from ray.serve.pipeline import InstantiatedPipeline, ExecutorPipelineNode
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
@@ -96,10 +97,25 @@ class ServeController:
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager, all_current_actor_names)
 
+        # Sample:
+        # {
+        #    "unique_driver_name": pipeline.Pipeline() obj as callable
+        # }
+        self.instantiated_pipelines = dict()
+
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def get_or_create_pipeline_dag(
+            self, name: str, dag: ExecutorPipelineNode) -> InstantiatedPipeline:
+        if name in self.instantiated_pipelines:
+            return self.instantiated_pipelines[name]
+        else:
+            pipeline = dag.instantiate() # return A(B(pipeline.INPUT)).instantiate()
+            self.instantiated_pipelines[name] = pipeline
+            return pipeline
 
     def record_autoscaling_metrics(self, data: Dict[str, float],
                                    send_timestamp: float):

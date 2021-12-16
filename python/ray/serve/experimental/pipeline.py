@@ -32,7 +32,7 @@ class ModelB:
   def __call__(self, req: str) -> str:
     return f"ModelB({self.weight} * {req})"
 
-@pipeline.node(default_execution_mode=ExecutionMode.ACTORS, default_num_replicas=2)
+@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class Ensemble:
   def __init__(self, a_weight: float, b_weight: float):
     self.a_weight = a_weight
@@ -45,45 +45,38 @@ class Ensemble:
 def build_dag():
   print("Instantiating model classes with pre-assigned weights.. \n")
   preprocess = Preprocess(0.5) # -> 0.5
-  a = ModelA(id=xxxx, 0.2) # -> 0.1
-  b = ModelB(id=yyyy, 0.8) # -> 0.4
+  a = ModelA(0.2) # -> 0.1
+  b = ModelB(0.8) # -> 0.4
   ensemble = Ensemble(1, 2) # -> 0.1 * 1 + 0.4 * 2 = 0.9
 
   print("Building and instantiating pipeline.. \n")
   dag = ensemble(
     a(preprocess(pipeline.INPUT)),
     b(preprocess(pipeline.INPUT))
-  ).deploy()
-
-  print(dag.call(1))
-  print(f"DAG output node: {dag._output_node}")
+  )
 
   return dag
 
+
+my_dag = build_dag()
+
 # Step 3: Deploy this pipeline using a Driver class as deployment.
 @serve.deployment(route_prefix="/hello", num_replicas=2)
-@serve.pipeline(build_dag) # function or uninstantiated DAG
+@serve.pipeline(dag=my_dag, name="unique_driver_identifier")
 class Driver:
     def __init__(self):
-        # serve.get_or_create_pipeline() one possible approach
-        self._dag = build_dag()
+        # Auto-populated after Driver.deploy() call by serve controller.
+        self._pipeline = None
 
     # def reconfigure(self):
     #   self.aa = 123
 
     def __call__(self, req: Request):
-        input = str(req.query_params["input"])
-        return self._dag.call(input)
+        input = str(req.query_params["data"])
+        return self._pipeline.call(input)
 
 
-
-driver instance v0
-driver instance v0
-
-# driver instance v1
-
-
-serve update my_deployment config.yaml
+# serve update my_deployment config.yaml
 
 # my_deployment -> driver deployment handle
 
@@ -114,16 +107,18 @@ serve update my_deployment config.yaml
 #     - maybe unified API for both ? like ExecutorNode & Deployment handle
 # 2) upgrade API on deployment level
 # 3) actor calls among executor nodes & deployments, strip the http part
-#     - seem trivial
-@serve.deployment(route_prefix="/hello")
-class Driver:
-    def __init__(self, downstream_deployment_handle: serve.Deployment["A"]):
-        self._dag = downstream_deployment_handle(preprocess(pipeline.INPUT))
+# #     - seem trivial
+# @serve.deployment(route_prefix="/hello")
+# class Driver:
+#     def __init__(self, downstream_deployment_handle: serve.Deployment["A"]):
+#         self._dag = downstream_deployment_handle(preprocess(pipeline.INPUT))
 
-    async def __call__(self):
-        return await self._dag.call_async(...)
+#     async def __call__(self):
+#         return await self._dag.call_async(...)
 
 # Step 5: Support simple single node upgrade with no dependencies.
+
+# Step 6: What if driver / actor died ?
 
 # Step 6: Support upgrade-in-tandem with dependencies.
 

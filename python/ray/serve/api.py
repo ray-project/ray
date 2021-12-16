@@ -11,6 +11,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray.serve.pipeline.node import ExecutorPipelineNode, InstantiatedPipeline
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -256,6 +257,13 @@ class Client:
                 f"{url_part}. {tag}")
         else:
             return goal_id
+
+    @_ensure_connected
+    def get_or_create_pipeline_dag(
+            self, name: str,
+            dag: ExecutorPipelineNode) -> InstantiatedPipeline:
+        return ray.get(
+            self._controller.get_or_create_pipeline_dag.remote(name, dag))
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
@@ -950,6 +958,44 @@ def deployment(
         _graceful_shutdown_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     pass
+
+@PublicAPI
+def pipeline(
+    _func_or_class: Callable,
+    dag: ExecutorPipelineNode,
+    name: str
+):
+    """
+    Mark a driver application as pipeline for serve. It's underlying execution
+    is handled entirely by ray actor groups / actor calls, whereas it's
+    deployment and lifecycle management is done by serve controller.
+
+    Example:
+    >>> @serve.deployment(route_prefix="/hello", num_replicas=2)
+        @serve.pipeline(dag=my_dag, name="unique_driver_name")
+        class Driver:
+            def __init__(self):
+                self._pipeline = None
+
+            def __call__(self, req: Request):
+                input = req.query_params["data"]
+                return self._pipeline.call(input)
+    >>> Driver.deploy()
+    """
+    def decorator(cls):
+        if not inspect.isclass(cls):
+            raise ValueError("@serve.pipeline must be used with a class.")
+        class PipelineWrapper(cls):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def get_or_create_pipeline(self):
+                return "AA"
+
+        PipelineWrapper.__name__ = cls.__name__
+        return PipelineWrapper
+
+    return decorator
 
 
 @PublicAPI

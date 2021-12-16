@@ -10,7 +10,7 @@ from ray.serve.pipeline.executor import (create_executor_from_step_config,
 
 
 class PipelineNode(ABC):
-    def deploy(self):
+    def instantiate(self):
         pass
 
     # NOTE(simon): used _call as name so user don't confuse deployed and
@@ -19,8 +19,8 @@ class PipelineNode(ABC):
         pass
 
 
-class Pipeline:
-    """A deployed pipeline that can be called by the user."""
+class InstantiatedPipeline:
+    """An instantiateed pipeline that can be called by the user."""
 
     def __init__(self, output_node: PipelineNode):
         self._output_node = output_node
@@ -35,11 +35,14 @@ class Pipeline:
     async def call_async(self, input_arg: Tuple[Any]) -> Any:
         raise NotImplementedError("No async support yet.")
 
+    def __repr__(self) -> str:
+        return f"[InstantiatedPipeline: output_node {str(self._output_node)}]"
+
 
 class ExecutorPipelineNode(PipelineNode):
     """Result of constructing a pipeline from user-defined steps.
 
-    Call .deploy() on this to instantiate the pipeline.
+    Call .instantiate() on this to instantiate the pipeline.
     """
 
     def __init__(self, callable_factory: Callable[[], Callable],
@@ -51,21 +54,21 @@ class ExecutorPipelineNode(PipelineNode):
         self._config: StepConfig = config
         self._incoming_edges: PipelineNode = incoming_edges
 
-        # Populated in .deploy().
+        # Populated in .instantiate().
         self._executor: Executor = None
 
         assert len(self._incoming_edges) > 0
 
-    def deploy(self) -> Pipeline:
-        """Instantiates executors for this and all dependent nodes.
+    def instantiate(self) -> InstantiatedPipeline:
+        """Instantiates executors for this and all its upstream dependent nodes.
 
-        After the pipeline is deployed, .call() and .call_async() can be used.
+        After the pipeline is instantiated, .call() and .call_async() can be used.
         """
-        [node.deploy() for node in self._incoming_edges]
+        [node.instantiate() for node in self._incoming_edges]
         self._executor = create_executor_from_step_config(
             self._serialized_callable_factory, self._config)
 
-        return Pipeline(self)
+        return InstantiatedPipeline(self)
 
     def resize(self):
         pass
@@ -82,7 +85,7 @@ class ExecutorPipelineNode(PipelineNode):
 
 
 class InputPipelineNode(PipelineNode):
-    def deploy(self) -> PipelineNode:
+    def instantiate(self) -> PipelineNode:
         pass
 
     def _call(self, input_arg: Tuple[Any]) -> Any:
