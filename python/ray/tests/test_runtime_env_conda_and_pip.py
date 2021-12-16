@@ -2,6 +2,7 @@ import os
 import pytest
 import sys
 from ray._private.test_utils import (wait_for_condition, chdir,
+                                     check_local_files_gced,
                                      generate_runtime_env_dict)
 
 import yaml
@@ -14,24 +15,6 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-def check_local_files_gced(cluster):
-    for node in cluster.list_all_nodes():
-        for subdir in ["conda", "pip"]:
-            all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
-            # Check that there are no files remaining except for .lock files
-            # and generated requirements.txt files.
-            # TODO(architkulkarni): these files should get cleaned up too!
-            if len(
-                    list(
-                        filter(lambda f: not f.endswith((".lock", ".txt")),
-                               all_files))) > 0:
-                print(str(all_files))
-                return False
-
-    return True
 
 
 @pytest.mark.skipif(
@@ -157,38 +140,6 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
     ray.kill(a)
 
     wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
-
-
-# TODO(architkulkarni): fix bug #19602 and enable test.
-@pytest.mark.skip("Currently failing")
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
-@pytest.mark.parametrize("field", ["conda", "pip"])
-@pytest.mark.parametrize("spec_format", ["file", "python_object"])
-def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
-    """Tests that actor-level working_dir is GC'd when the actor exits."""
-    cluster, address = start_cluster
-
-    ray.init(address)
-
-    runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
-
-    @ray.remote
-    class A:
-        def test_import(self):
-            import pip_install_test  # noqa: F401
-            return True
-
-    NUM_ACTORS = 5
-    actors = [
-        A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
-    ]
-    ray.get([a.test_import.remote() for a in actors])
-    for i in range(5):
-        assert not check_local_files_gced(cluster)
-        ray.kill(actors[i])
-    wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
 if __name__ == "__main__":

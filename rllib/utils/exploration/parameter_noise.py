@@ -50,10 +50,10 @@ class ParameterNoise(Exploration):
         """Initializes a ParameterNoise Exploration object.
 
         Args:
-            initial_stddev (float): The initial stddev to use for the noise.
-            random_timesteps (int): The number of timesteps to act completely
+            initial_stddev: The initial stddev to use for the noise.
+            random_timesteps: The number of timesteps to act completely
                 randomly (see [1]).
-            sub_exploration (Optional[dict]): Optional sub-exploration config.
+            sub_exploration: Optional sub-exploration config.
                 None for auto-detection/setup.
         """
         assert framework is not None
