@@ -574,7 +574,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.skip(reason="Currently failing with undefined behavior")
 def test_e2e_raise_min_replicas(serve_instance):
     signal = SignalActor.remote()
 
@@ -597,21 +596,20 @@ def test_e2e_raise_min_replicas(serve_instance):
             ray.get(signal.wait.remote())
 
     A.deploy()
+    print("Deployed A.")
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
     handle = A.get_handle()
     [handle.remote() for _ in range(1)]
-
-    print("\nstay at 1\n")
+    print("Issued one request.")
 
     import time
-    time.sleep(3)
-
+    time.sleep(2)
     assert get_num_running_replicas(controller, A) == 1
+    print("Stayed at 1 replica.")
     
-    print("\nredeploy A\n")
     A.options(_autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
@@ -620,22 +618,26 @@ def test_e2e_raise_min_replicas(serve_instance):
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2
         },
-        # We will send over a lot of queries. This will make sure replicas are
-        # killed quickly during cleanup.
         _graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
-        version="v2")
-    A.deploy()
+        version="v1").deploy()
+    print("Redeployed A with min_replicas set to 2.")
 
-    print("\nscale to 2\n")
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
+    time.sleep(2)
+
+    # Confirm that autoscaler doesn't scale above 2 even after waiting
     assert get_num_running_replicas(controller, A) == 2
+    print("Autoscaled to 2 without issuing any new requests.")
 
     signal.send.remote()
+    time.sleep(1)
+    print("Completed request.")
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 2)
     assert get_num_running_replicas(controller, A) > 1
+    print("Stayed at 2 replicas.")
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
