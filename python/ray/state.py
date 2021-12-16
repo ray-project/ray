@@ -74,8 +74,6 @@ class GlobalState:
 
     def _really_init_global_state(self):
         self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
-        import traceback
-        traceback.print_stack()
         self.global_state_accessor.connect()
 
     def actor_table(self, actor_id):

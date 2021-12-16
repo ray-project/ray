@@ -1466,12 +1466,17 @@ def connect(node,
     # As the synchronous and the asynchronous context of redis client is not
     # used in this gcs client. We would not open connection for it by setting
     # `enable_sync_conn` and `enable_async_conn` as false.
-    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        node.redis_address,
-        node.redis_password,
-        enable_sync_conn=False,
-        enable_async_conn=False,
-        enable_subscribe_conn=True)
+    if not ray_constants.GCS_BOOTSTRAP:
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
+    else:
+        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_ip, int(gcs_port))
+
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 

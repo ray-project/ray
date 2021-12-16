@@ -1610,13 +1610,6 @@ def start_raylet(redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    if ray_constants.GCS_BOOTSTRAP:
-        gcs_ip, gcs_port = ray_constants.GCS_ADDRESS.split(":")
-        start_worker_command += [
-            f"--gcs-address={gcs_ip}",
-            f"--gcs-port={gcs_port}",
-        ]
-
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1703,7 +1696,6 @@ def start_raylet(redis_address,
             f"--gcs-address={gcs_ip}",
             f"--gcs-port={gcs_port}",
         ]
-    print(command)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
