@@ -50,7 +50,7 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeErrorMetadataBuffer(
 /// \param protobuf_message The protobuf message to serialize.
 /// \return The buffer that contains serialized msgpack message.
 template <class ProtobufMessage>
-std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializeErrorBuffer(
+std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializedErrorBuffer(
     const ProtobufMessage &protobuf_message) {
   // Structure of bytes stored in object store:
 
@@ -95,7 +95,7 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
     return;
   }
 
-  const auto error_buffer = MakeSerializeErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
+  const auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
   Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
   return;
 }

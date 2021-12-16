@@ -1,9 +1,11 @@
 import os
 from traceback import format_exception
 
+from typing import Union
+
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
-from ray.core.generated.common_pb2 import Address
+from ray.core.generated.common_pb2 import Address, ActorDeathCause
 import ray.ray_constants as ray_constants
 from ray._raylet import WorkerID
 import colorama
@@ -87,7 +89,6 @@ class RayTaskError(RayError):
                  actor_repr=None):
         """Initialize a RayTaskError."""
         import ray
-
         # BaseException implements a __reduce__ method that returns
         # a tuple with the type and the value of self.args.
         # https://stackoverflow.com/a/49715949/2213289
@@ -228,22 +229,29 @@ class RayActorError(RayError):
     """
 
     def __init__(self,
-                 function_name=None,
-                 traceback_str=None,
-                 cause=None,
-                 proctitle=None,
-                 pid=None,
-                 ip=None):
+                 function_name: str = None,
+                 traceback_str: str = None,
+                 cause: Union[Exception, ActorDeathCause] = None,
+                 proctitle: str = None,
+                 pid: int = None,
+                 ip: str = None):
         # Traceback handling is similar to RayTaskError, so we create a
         # RayTaskError to reuse its function.
         # But we don't want RayActorError to inherit from RayTaskError, since
         # they have different meanings.
         self.creation_task_error = None
+        self.base_error_msg = (
+            "The actor died unexpectedly before finishing this task.")
         if function_name and traceback_str and cause:
+            # Only when actor init has failed.
             self.creation_task_error = RayTaskError(
                 function_name, traceback_str, cause, proctitle, pid, ip)
-        elif cause:
-            self.cause = cause
+            self.error_msg = ("The actor died because of an error"
+                              " raised in its creation task, "
+                              f"{self.creation_task_error.__str__()}")
+        else:
+            # Normal actor failure except actor init failure.
+            self.error_msg = self._gen_error_msg_from_cause(cause)
 
     def has_creation_task_error(self):
         return self.creation_task_error is not None
@@ -254,33 +262,32 @@ class RayActorError(RayError):
         return None
 
     def __str__(self):
-        if self.creation_task_error:
-            return ("The actor died because of an error" +
-                    " raised in its creation task, " +
-                    self.creation_task_error.__str__())
+        return self.error_msg
 
-        base_error_msg = (
-            "The actor died unexpectedly before finishing this task")
-        if self.cause:
-            if self.cause.HasField("worker_died_context"):
-                return (f"{base_error_msg} "
-                        f"{self.cause.worker_died_context.error_message}")
-            elif self.cause.HasField("node_died_context"):
-                return (f"{base_error_msg} "
-                        f"{self.cause.node_died_context.error_message}")
-            elif self.cause.HasField("owner_died_context"):
-                return (f"{base_error_msg} "
-                        f"{self.cause.owner_died_context.error_message}")
-            elif self.cause.HasField("killed_by_app_context"):
-                return (f"{base_error_msg} "
-                        f"{self.cause.killed_by_app_context.error_message}")
-            elif self.cause.HasField("out_of_scope_context"):
-                return (f"{base_error_msg} "
-                        f"{self.cause.out_of_scope_context.error_message}")
-            else:
-                assert False, f"Unknown deatch cause. {self.cause}"
+    def _gen_error_msg_from_cause(self, cause: ActorDeathCause):
+        """Generate the error message from the
+        actor died error cause protobuf message.
+        """
+        if not cause:
+            return (f"{self.base_error_msg} due to an unknown reason.")
 
-        return (f"{base_error_msg} due to an unknown reason.")
+        if cause.HasField("worker_died_context"):
+            return (f"{self.base_error_msg} "
+                    f"{cause.worker_died_context.error_message}")
+        elif cause.HasField("node_died_context"):
+            return (f"{self.base_error_msg} "
+                    f"{cause.node_died_context.error_message}")
+        elif cause.HasField("owner_died_context"):
+            return (f"{self.base_error_msg} "
+                    f"{cause.owner_died_context.error_message}")
+        elif cause.HasField("killed_by_app_context"):
+            return (f"{self.base_error_msg} "
+                    f"{cause.killed_by_app_context.error_message}")
+        elif cause.HasField("out_of_scope_context"):
+            return (f"{self.base_error_msg} "
+                    f"{cause.out_of_scope_context.error_message}")
+        else:
+            assert False, f"Unknown death cause. {cause}"
 
     @staticmethod
     def from_task_error(task_error):

@@ -331,6 +331,7 @@ class SerializationContext:
         if isinstance(value, RayTaskError):
             metadata = str(
                 ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            print("Sang ", type(value), value)
             value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
