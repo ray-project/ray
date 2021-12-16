@@ -95,9 +95,10 @@ def node_stats(node_manager_address=None,
     )
 
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    node_stats = stub.GetNodeStats(node_manager_pb2.GetNodeStatsRequest(
-        include_memory_info=include_memory_info),
-                                   timeout=30.0)
+    node_stats = stub.GetNodeStats(
+        node_manager_pb2.GetNodeStatsRequest(
+            include_memory_info=include_memory_info),
+        timeout=30.0)
     return node_stats
 
 
