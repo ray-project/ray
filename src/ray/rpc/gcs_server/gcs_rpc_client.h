@@ -116,6 +116,14 @@ class GcsRpcClient {
         address, port, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         address, port, client_call_manager);
+    ping_grpc_client_ =
+        std::make_unique<GrpcClient<PingGcsService>>(address, port, client_call_manager);
+  }
+
+  void ResetPingClient(const std::string &address, const int port,
+             ClientCallManager &client_call_manager) {
+    ping_grpc_client_ =
+        std::make_unique<GrpcClient<PingGcsService>>(address, port, client_call_manager);
   }
 
   /// Add job info to GCS Service.
@@ -306,6 +314,9 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(PingGcsService, Ping, ping_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -322,6 +333,7 @@ class GcsRpcClient {
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+  std::unique_ptr<GrpcClient<PingGcsService>> ping_grpc_client_;
 };
 
 }  // namespace rpc

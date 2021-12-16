@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_ping_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
@@ -82,9 +83,6 @@ class GcsServer {
   /// Check if gcs server is started.
   bool IsStarted() const { return is_started_; }
 
-  /// Check if gcs server is stopped.
-  bool IsStopped() const { return is_stopped_; }
-
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -135,6 +133,9 @@ class GcsServer {
 
   /// Initialize resource report broadcasting.
   void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
+
+  ///
+  void InitPingManager();
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -209,6 +210,9 @@ class GcsServer {
   std::unique_ptr<GrpcBasedResourceBroadcaster> grpc_based_resource_broadcaster_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
+  /// The gcs ping manager.
+  std::unique_ptr<GcsPingManager> gcs_ping_manager_;
+  std::unique_ptr<rpc::PingGrpcService> ping_service_;
   /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
@@ -232,7 +236,6 @@ class GcsServer {
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
-  std::atomic<bool> is_stopped_;
 };
 
 }  // namespace gcs

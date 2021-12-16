@@ -524,6 +524,18 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());
 }
+
+TEST_F(GcsServerTest, TestPing) {
+  rpc::PingRequest ping_request;
+  std::promise<bool> returned;
+  client_->Ping(ping_request,
+                [&returned](const Status &status, const rpc::PingReply &reply) {
+                  if (status.ok()) {
+                    returned.set_value(true);
+                  }
+                });
+  EXPECT_TRUE(WaitReady(returned.get_future(), timeout_ms_));
+}
 // TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray

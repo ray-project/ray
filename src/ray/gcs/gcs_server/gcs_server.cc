@@ -45,8 +45,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
       periodical_runner_(main_service),
-      is_started_(false),
-      is_stopped_(false) {
+      is_started_(false) {
   // Init backend client.
   redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
   auto status = redis_client_->Connect(main_service_);
@@ -179,6 +178,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Install event listeners.
   InstallEventListeners();
 
+  InitPingManager();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -210,7 +211,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::Stop() {
-  if (!is_stopped_) {
+  if (is_started_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
     // GcsHeartbeatManager should be stopped before RPCServer.
     // Because closing RPC server will cost several seconds, during this time,
@@ -230,7 +231,7 @@ void GcsServer::Stop() {
 
     kv_manager_.reset();
 
-    is_stopped_ = true;
+    is_started_ = false;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
@@ -497,6 +498,15 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitPingManager() {
+  gcs_ping_manager_ = std::make_unique<GcsPingManager>();
+
+  // Register service.
+  ping_service_ =
+      std::make_unique<rpc::PingGrpcService>(main_service_, *gcs_ping_manager_);
+  rpc_server_.RegisterService(*ping_service_);
 }
 
 void GcsServer::InstallEventListeners() {

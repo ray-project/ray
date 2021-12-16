@@ -101,6 +101,13 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
+  template <class Request, class Reply>
+  void CallMethodSync(
+      const Request &request,
+      std::string call_name = "UNKNOWN_RPC", int64_t method_timeout_ms = -1) {
+    stub_
+  }
+
  private:
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.

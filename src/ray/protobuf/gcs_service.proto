@@ -657,4 +657,16 @@ service NodeInfoGcsService {
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
+
+message PingRequest {
+}
+
+message PingReply {
+  GcsStatus status = 1;
+}
+
+// Service for 
+service PingGcsService {
+  rpc Ping(PingRequest) returns (PingReply);
+}
 ///////////////////////////////////////////////////////////////////////////////

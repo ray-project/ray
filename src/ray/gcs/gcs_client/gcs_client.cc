@@ -287,7 +287,7 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
 void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   auto timeout_s =
-      absl::Seconds(RayConfig::instance().gcs_rpc_server_reconnect_timeout_s());
+      absl::Seconds(5);
   auto start = absl::Now();
   auto reconnected = false;
   while (absl::Now() - start < timeout_s) {
@@ -313,7 +313,24 @@ void GcsClient::ReconnectGcsServer() {
 
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
-      if (Ping(address.first, address.second, 100)) {
+      gcs_rpc_client_->ResetPingClient(address.first, address.second, *client_call_manager_);
+      rpc::PingRequest ping_request;
+      std::promise<Status> returned;
+      gcs_rpc_client_->Ping(ping_request,
+                [&returned](const Status &status, const rpc::PingReply &reply) {
+                  RAY_LOG(INFO)<< "Ping return " << status;
+                  returned.set_value(status);
+                });
+      std::future<Status> future = returned.get_future();
+      RAY_LOG(INFO) << "future.wait_for";
+      auto status = future.wait_for(std::chrono::milliseconds(1000));
+      RAY_LOG(INFO) << "future.wait_for done";
+      if (status == std::future_status::ready) {
+        Status s = future.get();
+        RAY_LOG(INFO) << "future.get() " << s;
+      }
+
+      if (status == std::future_status::ready && future.get().ok()) {
         // If `last_reconnect_address_` port is -1, it means that this is the first
         // connection and no log will be printed.
         if (last_reconnect_address_.second != -1) {
@@ -333,9 +350,9 @@ void GcsClient::ReconnectGcsServer() {
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
   } else {
-    RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
-                      "server address was "
-                   << address.first << ":" << address.second;
+    // RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
+    //                   "server address was "
+    //                << address.first << ":" << address.second;
   }
 }
 
