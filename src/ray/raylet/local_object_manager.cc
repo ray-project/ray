@@ -535,20 +535,19 @@ void LocalObjectManager::RecordMetrics() const {
     ray::stats::STATS_spill_manager_throughput_mb.Record(
         restored_bytes_total_ / 1024 / 1024 / restore_time_total_s_, "Restored");
   }
-  ray::stats::STATS_spill_manager_objects_count.Record(pinned_objects_.size(), "Pinned");
-  ray::stats::STATS_spill_manager_objects_count.Record(objects_pending_restore_.size(),
-                                                       "PendingRestore");
-  ray::stats::STATS_spill_manager_objects_count.Record(objects_pending_spill_.size(),
-                                                       "PendingSpill");
+  ray::stats::STATS_spill_manager_objects.Record(pinned_objects_.size(), "Pinned");
+  ray::stats::STATS_spill_manager_objects.Record(objects_pending_restore_.size(),
+                                                 "PendingRestore");
+  ray::stats::STATS_spill_manager_objects.Record(objects_pending_spill_.size(),
+                                                 "PendingSpill");
 
   ray::stats::STATS_spill_manager_objects_bytes.Record(pinned_objects_size_, "Pinned");
   ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_spill_,
                                                        "PendingSpill");
 
-  ray::stats::STATS_spill_manager_cumulative_request_count.Record(spilled_objects_total_,
-                                                                  "Spilled");
-  ray::stats::STATS_spill_manager_cumulative_request_count.Record(restored_objects_total_,
-                                                                  "Restored");
+  ray::stats::STATS_spill_manager_request_total.Record(spilled_objects_total_, "Spilled");
+  ray::stats::STATS_spill_manager_request_total.Record(restored_objects_total_,
+                                                       "Restored");
 }
 
 std::string LocalObjectManager::DebugString() const {

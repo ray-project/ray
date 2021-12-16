@@ -33,6 +33,15 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+/// Convention
+/// Following Prometheus convention
+/// https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+/// Units: ray_[component]_[metrics_name]_[units] (e.g.,
+/// ray_pull_manager_spill_throughput_mb) Gauge: ray_[component]_[metrics_name]s (e.g.,
+/// ray_pull_manager_requests) Cumulative Gauge / Count:
+/// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
+///
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
@@ -46,28 +55,30 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// Object Manager.
-DECLARE_stats(object_manager_chunks_received_count);
+DECLARE_stats(object_manager_received_chunks);
 
 /// Pull Manager
-DECLARE_stats(pull_manager_bytes_usage);
+DECLARE_stats(pull_manager_usage_bytes);
+// TODO(sang): Remove pull_manager_active_bundles and
+// support active/inactive get/wait/task_args
 DECLARE_stats(pull_manager_requested_bundles);
 DECLARE_stats(pull_manager_requests);
 DECLARE_stats(pull_manager_active_bundles);
-DECLARE_stats(pull_manager_retries_count);
+DECLARE_stats(pull_manager_retries_total);
 
 /// Push Manager
-DECLARE_stats(push_manager_in_flight_push_count);
-DECLARE_stats(push_manager_chunks_count);
+DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_chunks);
 
 /// Scheduler
-DECLARE_stats(scheduler_failed_worker_startup_count);
-DECLARE_stats(scheduler_tasks_count);
-DECLARE_stats(scheduler_pending_tasks_count);
+DECLARE_stats(scheduler_failed_worker_startup_total);
+DECLARE_stats(scheduler_tasks);
+DECLARE_stats(scheduler_unscheduleable_tasks);
 
 /// Local Object Manager
-DECLARE_stats(spill_manager_objects_count);
+DECLARE_stats(spill_manager_objects);
 DECLARE_stats(spill_manager_objects_bytes);
-DECLARE_stats(spill_manager_cumulative_request_count);
+DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
 
 /// GCS Resource Manager

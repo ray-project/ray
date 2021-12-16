@@ -51,14 +51,14 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
              ("Method"), (), ray::stats::COUNT);
 
 /// Object Manager.
-DEFINE_stats(object_manager_chunks_received_count,
+DEFINE_stats(object_manager_received_chunks,
              "Number object chunks received broken per type {Total, FailedTotal, "
              "FailedCancelled, FailedPlasmaFull}.",
              ("Type"), (), ray::stats::GAUGE);
 
 /// Pull Manager
 DEFINE_stats(
-    pull_manager_bytes_usage,
+    pull_manager_usage_bytes,
     "The total number of bytes usage broken per type {Available, BeingPulled, Pinned}",
     ("Type"), (), ray::stats::GAUGE);
 DEFINE_stats(pull_manager_requested_bundles,
@@ -69,28 +69,28 @@ DEFINE_stats(pull_manager_requests,
              ("Type"), (), ray::stats::GAUGE);
 DEFINE_stats(pull_manager_active_bundles, "Number of active bundle requests", (), (),
              ray::stats::GAUGE);
-DEFINE_stats(pull_manager_retries_count, "Number of cumulative pull retries.", (), (),
+DEFINE_stats(pull_manager_retries_total, "Number of cumulative pull retries.", (), (),
              ray::stats::GAUGE);
 
 /// Push Manager
-DEFINE_stats(push_manager_in_flight_push_count,
-             "Number of in flight object push requests.", (), (), ray::stats::GAUGE);
-DEFINE_stats(push_manager_chunks_count,
+DEFINE_stats(push_manager_in_flight_pushes, "Number of in flight object push requests.",
+             (), (), ray::stats::GAUGE);
+DEFINE_stats(push_manager_chunks,
              "Number of object chunks transfer broken per type {InFlight, Remaining}.",
              ("Type"), (), ray::stats::GAUGE);
 
 /// Scheduler
 DEFINE_stats(
-    scheduler_tasks_count,
+    scheduler_tasks,
     "Number of tasks waiting for scheduling broken per state {Cancelled, Executing, "
     "Waiting, Dispatched, Received}.",
     ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(scheduler_pending_tasks_count,
+DEFINE_stats(scheduler_unscheduleable_tasks,
              "Number of pending tasks (not scheduleable tasks) broken per reason "
              "{Infeasible, WaitingForResources, "
              "WaitingForPlasmaMemory, WaitingForRemoteResources, WaitingForWorkers}.",
              ("Reason"), (), ray::stats::GAUGE);
-DEFINE_stats(scheduler_failed_worker_startup_count,
+DEFINE_stats(scheduler_failed_worker_startup_total,
              "Number of tasks that fail to be scheduled because workers were not "
              "available. Labels are broken per reason {JobConfigMissing, "
              "RegistrationTimedOut, RateLimited}",
@@ -98,14 +98,14 @@ DEFINE_stats(scheduler_failed_worker_startup_count,
 
 /// Local Object Manager
 DEFINE_stats(
-    spill_manager_objects_count,
+    spill_manager_objects,
     "Number of local objects broken per state {Pinned, PendingRestore, PendingSpill}.",
     ("State"), (), ray::stats::GAUGE);
 DEFINE_stats(spill_manager_objects_bytes,
              "Byte size of local objects broken per state {Pinned, PendingSpill}.",
              ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(spill_manager_cumulative_request_count,
-             "Number of {spill, restore} requests.", ("Type"), (), ray::stats::GAUGE);
+DEFINE_stats(spill_manager_request_total, "Number of {spill, restore} requests.",
+             ("Type"), (), ray::stats::GAUGE);
 DEFINE_stats(spill_manager_throughput_mb,
              "The throughput of {spill, restore} requests in MB.", ("Type"), (),
              ray::stats::GAUGE);
