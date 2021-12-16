@@ -3,7 +3,6 @@ import ray._private.services as services
 import ray.worker
 import ray._private.profiling as profiling
 import ray._private.utils as utils
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray import ray_constants
 from ray.state import GlobalState
 from ray._raylet import GcsClientOptions

@@ -47,7 +47,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
-
   // Init gcs table storage.
   RAY_LOG(INFO) << "GCS Storage is set to " << RayConfig::instance().gcs_storage();
   RAY_LOG(INFO) << "gRPC based pubsub is"
@@ -174,7 +173,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  if(!RayConfig::instance().bootstrap_with_gcs()) {
+  if (!RayConfig::instance().bootstrap_with_gcs()) {
     // Store gcs rpc server address in redis.
     StoreGcsServerAddressInRedis();
   }
@@ -587,7 +586,7 @@ std::string GcsServer::GetDebugState() const {
 }
 
 std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
-  if(redis_client_ == nullptr) {
+  if (redis_client_ == nullptr) {
     redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
     auto status = redis_client_->Connect(main_service_);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;

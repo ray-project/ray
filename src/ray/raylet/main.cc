@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  if(!RayConfig::instance().bootstrap_with_gcs()) {
+  if (!RayConfig::instance().bootstrap_with_gcs()) {
     // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
     // `enable_async_conn` as false.
     ray::gcs::GcsClientOptions client_options(
@@ -262,9 +262,8 @@ int main(int argc, char *argv[]) {
 
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(
-            main_service, raylet_socket_name, node_ip_address,
-            node_manager_config, object_manager_config, gcs_client,
-            metrics_export_port);
+            main_service, raylet_socket_name, node_ip_address, node_manager_config,
+            object_manager_config, gcs_client, metrics_export_port);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
