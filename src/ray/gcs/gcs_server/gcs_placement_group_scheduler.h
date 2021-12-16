@@ -469,14 +469,16 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                       &group_to_bundles) override;
 
  protected:
-  /// Send a bundle PREPARE request to a node. The PREPARE request will lock resources
+  /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
+  /// NOTE: All of given bundles will be prepared on the same node. It is guaranteed that
+  /// all of bundles are atomically prepared on a given node.
   ///
-  /// \param bundle A bundle to schedule on a node.
+  /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to prepare resources for a given bundle.
   /// \param callback
   void PrepareResources(
-      const std::shared_ptr<const BundleSpecification> &bundle,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
