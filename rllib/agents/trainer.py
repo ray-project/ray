@@ -1027,8 +1027,7 @@ class Trainer(Trainable):
 
             # Collect worker metrics.
             if self.config["_disable_execution_plan_api"]:
-                info = result.copy()
-                result["info"] = {LEARNER_INFO: info}
+                result["info"] = {LEARNER_INFO: result.copy()}
 
                 # Collect rollout worker metrics.
                 episodes, self._episodes_to_be_collected = collect_episodes(
@@ -1054,6 +1053,8 @@ class Trainer(Trainable):
 
                 result["num_healthy_workers"] = len(
                     self.workers.remote_workers())
+
+                # Train-steps- and env/agent-steps this iteration.
                 for c in [
                         NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED,
                         NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
@@ -1075,6 +1076,7 @@ class Trainer(Trainable):
                 result["agent_timesteps_total"] = self._counters[
                     NUM_AGENT_STEPS_SAMPLED]
 
+                # Process timer results.
                 timers = {}
                 for k, timer in self._timers.items():
                     timers["{}_time_ms".format(k)] = round(
@@ -1084,9 +1086,12 @@ class Trainer(Trainable):
                             timer.mean_throughput, 3)
                 result["timers"] = timers
 
+                # Process counter results.
                 counters = {}
                 for k, counter in self._counters.items():
                     counters[k] = counter
+                result["counters"] = counters
+                # TODO: Backward compatibility.
                 result["info"].update(counters)
 
                 result["custom_metrics"] = result.get("custom_metrics", {})
@@ -1915,7 +1920,7 @@ class Trainer(Trainable):
         This is the same data as returned by a call to train().
         """
         return self.optimizer.collect_metrics(
-            self.config["collect_metrics_timeout"],
+            self.config["metrics_episode_collection_timeout_s"],
             min_history=self.config["metrics_num_episodes_for_smoothing"],
             selected_workers=selected_workers)
 
@@ -2338,6 +2343,17 @@ class Trainer(Trainable):
             # )
             config["min_time_s_per_reporting"] = \
                 config["min_iter_time_s"]
+
+        if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
+            # TODO: Warn once all algos use the `training_iteration` method.
+            # deprecation_warning(
+            #     old="collect_metrics_timeout",
+            #     new="metrics_episode_collection_timeout_s",
+            #     error=False,
+            # )
+            config["metrics_episode_collection_timeout_s"] = \
+                config["collect_metrics_timeout"]
+
         if config["timesteps_per_iteration"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
             # deprecation_warning(
