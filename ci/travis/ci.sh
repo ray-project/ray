@@ -165,18 +165,9 @@ test_python() {
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_metrics_agent # timeout
-      -python/ray/tests:test_multi_node
-      -python/ray/tests:test_multi_node_2
-      -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multinode_failures_2
-      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
-      -python/ray/tests:test_multiprocessing_client_mode  # timeout
-      -python/ray/tests:test_node_manager
-      -python/ray/tests:test_object_manager
-      -python/ray/tests:test_placement_group # timeout and OOM
-      -python/ray/tests:test_placement_group_2
-      -python/ray/tests:test_placement_group_3
-      -python/ray/tests:test_placement_group_mini_integration
+      -python/ray/tests:test_multiprocessing  # hangs in test_callbacks
+      -python/ray/tests:test_multiprocessing_client_mode  # hangs in test_callbacks
+      -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
