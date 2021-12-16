@@ -1207,7 +1207,7 @@ PlacementGroupInfoAccessor::PlacementGroupInfoAccessor(GcsClient *client_impl)
 
 Status PlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
     const ray::PlacementGroupSpecification &placement_group_spec,
-    const StatusCallback &callback) {
+    const StatusCallback &callback, int64_t timeout_ms) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
@@ -1229,12 +1229,24 @@ Status PlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (callback) {
           callback(status);
         }
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
+Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
+    const ray::PlacementGroupSpecification &placement_group_spec) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncCreatePlacementGroup(
+      placement_group_spec,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
+}
+
 Status PlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
-    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback,
+    int64_t timeout_ms) {
   rpc::RemovePlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   client_impl_->GetGcsRpcClient().RemovePlacementGroup(
@@ -1243,8 +1255,19 @@ Status PlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
         if (callback) {
           callback(status);
         }
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
+    const ray::PlacementGroupID &placement_group_id) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncRemovePlacementGroup(
+      placement_group_id,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
 }
 
 Status PlacementGroupInfoAccessor::AsyncGet(
@@ -1270,14 +1293,16 @@ Status PlacementGroupInfoAccessor::AsyncGet(
 
 Status PlacementGroupInfoAccessor::AsyncGetByName(
     const std::string &name, const std::string &ray_namespace,
-    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
-      request, [name, callback](const Status &status,
-                                const rpc::GetNamedPlacementGroupReply &reply) {
+      request,
+      [name, callback](const Status &status,
+                       const rpc::GetNamedPlacementGroupReply &reply) {
         if (reply.has_placement_group_table_data()) {
           callback(status, reply.placement_group_table_data());
         } else {
@@ -1285,7 +1310,8 @@ Status PlacementGroupInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
                        << status << ", name = " << name;
-      });
+      },
+      /*timeout_ms*/ timeout_ms);
   return Status::OK();
 }
 
@@ -1304,7 +1330,8 @@ Status PlacementGroupInfoAccessor::AsyncGetAll(
 }
 
 Status PlacementGroupInfoAccessor::AsyncWaitUntilReady(
-    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
   rpc::WaitPlacementGroupUntilReadyRequest request;
@@ -1317,8 +1344,19 @@ Status PlacementGroupInfoAccessor::AsyncWaitUntilReady(
         RAY_LOG(DEBUG)
             << "Finished waiting placement group until ready, placement group id = "
             << placement_group_id;
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncWaitUntilReady(
+      placement_group_id,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
 }
 
 InternalKVAccessor::InternalKVAccessor(GcsClient *client_impl)
