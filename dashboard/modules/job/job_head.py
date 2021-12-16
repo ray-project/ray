@@ -210,12 +210,25 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
-        logs: str = self._job_manager.get_job_logs(job_id)
-        # TODO(jiaodong): Support log streaming #19415
-        resp = JobLogsResponse(logs=logs)
+        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_id))
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
+
+    @routes.get("/api/jobs/{job_id}/logs/tail")
+    @_init_ray_and_catch_exceptions
+    async def tail_job_logs(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code)
+
+        ws = aiohttp.web.WebSocketResponse()
+        await ws.prepare(req)
+
+        async for lines in self._job_manager.tail_job_logs(job_id):
+            await ws.send_str(lines)
 
     async def run(self, server):
         if not self._job_manager:

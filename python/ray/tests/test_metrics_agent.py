@@ -28,10 +28,6 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -52,18 +48,16 @@ _METRICS = [
     # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_pending_actors",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
-    "ray_placement_group_creation_latency_ms_sum",
-    "ray_placement_group_scheduling_latency_ms_sum",
-    "ray_pending_placement_group",
-    "ray_registered_placement_group",
-    "ray_infeasible_placement_group",
-    "ray_placement_group_resource_persist_latency_ms_sum"
+    "ray_gcs_placement_group_creation_latency_ms_sum",
+    "ray_gcs_placement_group_scheduling_latency_ms_sum",
+    "ray_gcs_placement_group_count",
+    "ray_gcs_new_resource_creation_latency_ms_sum",
+    "ray_gcs_actors_count",
 ]
 
 # This list of metrics should be kept in sync with
@@ -87,7 +81,12 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True
+        })
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -147,7 +146,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 

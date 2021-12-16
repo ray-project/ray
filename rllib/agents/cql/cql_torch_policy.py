@@ -328,7 +328,7 @@ def compute_gradients_fn(policy, postprocessed_batch):
     model = policy.model
     policy._loss(policy, model, policy.dist_class, batches[0])
     stats = {
-        LEARNER_STATS_KEY: policy._convert_to_non_torch_type(
+        LEARNER_STATS_KEY: policy._convert_to_numpy(
             cql_stats(policy, batches[0]))
     }
     return [None, stats]
