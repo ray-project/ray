@@ -190,7 +190,7 @@
                       "type": "string"
                     },
                     "rayJobId": {
-                      "type": ["string", "null"]
+                      "type": "string"
                     },
                     "status": {
                       "type": "string"
