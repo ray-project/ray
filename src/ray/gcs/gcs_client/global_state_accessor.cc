@@ -321,7 +321,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                  });
 
     if (nodes.empty()) {
-      status = Status::NotFound("Redis has started but no raylets have registered yet.");
+      status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {
       int relevant_client_index = -1;
       int head_node_client_index = -1;
@@ -334,8 +334,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
         }
         // TODO(kfstorm): Do we need to replace `node_ip_address` with
         // `get_node_ip_address()`?
-        if ((ip_address == "127.0.0.1" && redis_ip_address_ == node_ip_address) ||
-            ip_address == redis_ip_address_) {
+        if ((ip_address == "127.0.0.1" && gcs_client_->GetGcsServerAddress().first == node_ip_address) ||
+            ip_address == gcs_client_->GetGcsServerAddress().first) {
           head_node_client_index = i;
         }
       }
@@ -350,8 +350,8 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       if (relevant_client_index < 0) {
         std::ostringstream oss;
         oss << "This node has an IP address of " << node_ip_address << ", and Ray "
-            << "expects this IP address to be either the Redis address or one of"
-            << " the Raylet addresses. Connected to Redis at " << redis_address_
+            << "expects this IP address to be either the GCS address or one of"
+            << " the Raylet addresses. Connected to GCS at " << gcs_client_->GetGcsServerAddress().first
             << " and found raylets at ";
         for (size_t i = 0; i < nodes.size(); i++) {
           if (i > 0) {
@@ -375,9 +375,9 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
       return status;
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "
-                        "not registered with Redis, so retrying. Have you run "
+                        "not registered with GCS, so retrying. Have you run "
                         "'ray start' on this node?";
-    // Some of the information may not be in Redis yet, so wait a little bit.
+    // Some of the information may not be in GCS yet, so wait a little bit.
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 }
