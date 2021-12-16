@@ -1928,8 +1928,7 @@ class Dataset(Generic[T]):
         is the label tensor. Those can take on different forms, depending on
         the specified arguments.
 
-        For the features tensor (N is the ``batch_size`` used by the
-        DataLoader,  and n, m, k are the number of features per tensor):
+        For the features tensor (N is the ``batch_size`` and n, m, k are the number of features per tensor):
 
         * If ``feature_columns`` is a ``List[str]``, the features will be
           a tensor of shape (N, n), with columns corresponding to =
