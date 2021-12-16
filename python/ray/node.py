@@ -194,6 +194,7 @@ class Node:
                 node_info = (
                     ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
+                        self.get_gcs_address(),
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
                 self._plasma_store_socket_name = (
@@ -1318,8 +1319,7 @@ class Node:
             try:
                 result = self.get_gcs_client().internal_kv_get(key, namespace)
             except Exception as e:
-                import traceback
-                logger.error(f"ERROR as {e} {traceback.print_stack()}")
+                logger.debug(f"ERROR as {e}")
                 result = None
 
             if result is not None:
