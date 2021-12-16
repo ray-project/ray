@@ -137,6 +137,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
 
   int64_t GetNumObjectsUnsealed() const;
 
+  void RecordMetrics() const;
+
   void GetDebugDump(std::stringstream &buffer) const;
 
  private:

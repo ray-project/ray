@@ -66,12 +66,23 @@ class InternalKVInterface {
   virtual void Keys(const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;
 
+  /// Return the event loop associated with the instance. This is where the
+  /// callback is called.
+  virtual instrumented_io_context &GetEventLoop() = 0;
+
   virtual ~InternalKVInterface(){};
 };
 
 class RedisInternalKV : public InternalKVInterface {
  public:
-  RedisInternalKV(RedisClient *redis_client) : redis_client_(redis_client) {}
+  explicit RedisInternalKV(const RedisClientOptions &redis_options);
+
+  ~RedisInternalKV() {
+    io_service_.stop();
+    io_thread_->join();
+    redis_client_.reset();
+    io_thread_.reset();
+  }
 
   void Get(const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
@@ -86,8 +97,15 @@ class RedisInternalKV : public InternalKVInterface {
   void Keys(const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
+  instrumented_io_context &GetEventLoop() override { return io_service_; }
+
  private:
-  RedisClient *redis_client_;
+  RedisClientOptions redis_options_;
+  std::unique_ptr<RedisClient> redis_client_;
+  // The io service used by internal kv.
+  instrumented_io_context io_service_;
+  std::unique_ptr<std::thread> io_thread_;
+  boost::asio::io_service::work work_;
 };
 
 class MemoryInternalKV : public InternalKVInterface {
@@ -105,6 +123,8 @@ class MemoryInternalKV : public InternalKVInterface {
 
   void Keys(const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
+
+  instrumented_io_context &GetEventLoop() override { return io_context_; }
 
  private:
   instrumented_io_context &io_context_;
@@ -129,6 +149,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
   void HandleInternalKVDel(const rpc::InternalKVDelRequest &request,
                            rpc::InternalKVDelReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
                               rpc::InternalKVExistsReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
@@ -138,6 +159,8 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::SendReplyCallback send_reply_callback) override;
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
+
+  instrumented_io_context &GetEventLoop() { return kv_instance_->GetEventLoop(); }
 
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;

@@ -246,7 +246,6 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
-
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Number of threads used by rpc server in gcs server.
@@ -282,6 +281,8 @@ RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "redis")
+// Feature flag to enable GCS based bootstrapping.
+RAY_CONFIG(bool, bootstrap_with_gcs, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -305,11 +306,9 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
-/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
-RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
-
-/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+/// Maximum timeout for GCS reconnection in seconds.
+/// Each reconnection ping will be retried every 1 second.
+RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)

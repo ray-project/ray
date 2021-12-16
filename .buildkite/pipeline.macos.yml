@@ -65,7 +65,7 @@ steps:
     - export RAY_INSTALL_JAVA=1
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac,-post_wheel_build --
+    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
@@ -86,7 +86,7 @@ steps:
     - bazel test $(./scripts/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
       python/ray/tests/...
     - *epilogue_commands
 
@@ -95,7 +95,7 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
     - *epilogue_commands
 
@@ -104,22 +104,6 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
-    - *epilogue_commands
-
-- label: ":mac: :apple: :snowflake: Flaky"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,flaky,flaky-mac
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=CI
-      python/ray/tests/... python/ray/serve/...
     - *epilogue_commands
