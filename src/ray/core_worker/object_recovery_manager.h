@@ -25,6 +25,14 @@
 namespace ray {
 namespace core {
 
+struct ObjectRecoveryStats {
+  /// Number of objects that we attempted to recover (by
+  /// pinning another copy, storing an error, etc).
+  int64_t num_object_recovery_attempts = 0;
+  /// Number of objects that were successfully reconstructed.
+  int64_t num_objects_reconstructed = 0;
+};
+
 typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
                                                            int port)>
     ObjectPinningClientFactoryFn;
@@ -89,6 +97,8 @@ class ObjectRecoveryManager {
   /// reconstruction failure callback will be called for this object).
   bool RecoverObject(const ObjectID &object_id);
 
+  ObjectRecoveryStats GetStats() const;
+
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
   /// fails, attempt to reconstruct it by resubmitting the task that created
@@ -141,6 +151,8 @@ class ObjectRecoveryManager {
   /// Objects that are currently pending recovery. Calls to RecoverObject for
   /// objects currently in this set are idempotent.
   absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mu_);
+
+  ObjectRecoveryStats stats_ GUARDED_BY(mu_);
 };
 
 }  // namespace core

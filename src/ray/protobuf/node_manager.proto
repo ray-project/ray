@@ -186,6 +186,11 @@ message ObjectStoreStats {
   // the node has more pull requests than available object store
   // memory.
   bool object_pulls_queued = 13;
+  // Number of objects that we attempted to recover (by
+  // pinning another copy, storing an error, etc).
+  int64 num_object_recovery_attempts = 14;
+  /// Number of objects that were successfully reconstructed.
+  int64 num_objects_reconstructed = 15;
 }
 
 message GetNodeStatsReply {

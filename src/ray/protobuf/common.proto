@@ -520,6 +520,11 @@ message CoreWorkerStats {
   uint32 pid = 22;
   // The worker type.
   WorkerType worker_type = 23;
+  // Number of objects that we attempted to recover (by
+  // pinning another copy, storing an error, etc).
+  int64 num_object_recovery_attempts = 24;
+  /// Number of objects that were successfully reconstructed.
+  int64 num_objects_reconstructed = 25;
 }
 
 message MetricPoint {

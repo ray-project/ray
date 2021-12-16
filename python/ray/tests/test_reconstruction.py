@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.internal.internal_api import memory_summary
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -178,6 +179,48 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(obj)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Very flaky on Windows due to memory usage.")
+def test_stats(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+        "lineage_pinning_enabled": True,
+    }
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1)
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    obj = large_object.options(resources={"node1": 1}).remote()
+    ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    ray.get(dependent_task.remote(obj))
+    stats = memory_summary("auto", stats_only=True)
+    print(stats)
+    assert "1 objects lost from plasma store, 1 reconstructed" in stats
 
 
 # TODO(swang): Add a test to check for ObjectReconstructionFailedError if we

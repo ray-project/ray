@@ -2309,6 +2309,12 @@ rpc::ObjectStoreStats AccumulateStoreStats(
     if (cur_store.object_pulls_queued()) {
       store_stats.set_object_pulls_queued(true);
     }
+    for (const auto &core_worker_stats : reply.core_workers_stats()) {
+      store_stats.set_num_object_recovery_attempts(
+          store_stats.num_object_recovery_attempts() + core_worker_stats.num_object_recovery_attempts());
+      store_stats.set_num_objects_reconstructed(
+          store_stats.num_objects_reconstructed() + core_worker_stats.num_objects_reconstructed());
+    }
   }
   return store_stats;
 }

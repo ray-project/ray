@@ -44,6 +44,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
       // Mark that we are attempting recovery for this object to prevent
       // duplicate restarts of the same object.
       already_pending_recovery = !objects_pending_recovery_.insert(object_id).second;
+      stats_.num_object_recovery_attempts++;
     }
   }
 
@@ -151,6 +152,10 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   auto resubmitted = task_resubmitter_->ResubmitTask(task_id, &task_deps);
 
   if (resubmitted) {
+    {
+      absl::MutexLock lock(&mu_);
+      stats_.num_objects_reconstructed++;
+    }
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);
@@ -171,6 +176,11 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
         /*pin_object=*/true);
   }
+}
+
+ObjectRecoveryStats ObjectRecoveryManager::GetStats() const {
+  absl::MutexLock lock(&mu_);
+  return stats_;
 }
 
 }  // namespace core

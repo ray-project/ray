@@ -3,6 +3,7 @@ import random
 import string
 
 import ray
+from ray.internal.internal_api import memory_summary
 
 import pytest
 import time
@@ -205,6 +206,11 @@ def test_nonstreaming_shuffle(set_kill_interval):
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
         assert not lineage_reconstruction_enabled
+
+    if kill_interval is not None:
+        stats = memory_summary("auto", stats_only=True)
+        print(stats)
+        assert "objects lost from plasma store" in stats
 
 
 @pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")

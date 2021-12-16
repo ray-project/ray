@@ -2905,6 +2905,10 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           stats);
   }
 
+  ObjectRecoveryStats recovery_stats = object_recovery_manager_->GetStats();
+  stats->set_num_object_recovery_attempts(recovery_stats.num_object_recovery_attempts);
+  stats->set_num_objects_reconstructed(recovery_stats.num_objects_reconstructed);
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
