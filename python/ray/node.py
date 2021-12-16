@@ -138,6 +138,26 @@ class Node:
         assert self.max_bytes >= 0
         assert self.backup_count >= 0
 
+        if head:
+            ray_params.update_if_absent(num_redis_shards=1)
+            gcs_server_port = os.getenv(
+                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+            if gcs_server_port:
+                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+            if use_gcs_for_bootstrap():
+                ray_params.update_if_absent(gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
+            self._webui_url = None
+            if use_gcs_for_bootstrap():
+                self._gcs_address = (f"{socket.gethostbyname(socket.gethostname())}:"
+                                     f"{self._ray_params.gcs_server_port}")
+        else:
+            if use_gcs_for_bootstrap():
+                self._gcs_address = self._ray_params.gcs_server_address
+                assert self._gcs_address is not None
+            self.get_gcs_client()
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
+
         # Register the temp dir.
         if head:
             # date including microsecond
@@ -195,23 +215,6 @@ class Node:
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port)
 
-        if head:
-            ray_params.update_if_absent(num_redis_shards=1)
-            gcs_server_port = os.getenv(
-                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
-            if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-            if use_gcs_for_bootstrap():
-                ray_params.update_if_absent(gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
-            self._webui_url = None
-        else:
-            self._webui_url = \
-                ray._private.services.get_webui_url_from_internal_kv()
-            if use_gcs_for_bootstrap():
-                host, _ = self._redis_address.split(":")
-                self._gcs_address = f"{host}:{self._ray_params.gcs_server_port}"
-
-
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
         if not connect_only:
@@ -243,7 +246,8 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address, self._plasma_store_socket_name,
+                    self.redis_address, self.get_gcs_address(),
+                    self._plasma_store_socket_name,
                     self.redis_password)
             except TimeoutError:
                 raise Exception(
@@ -252,6 +256,7 @@ class Node:
                     "the Ray processes failed to startup.")
             node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
+                self.get_gcs_address(),
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
@@ -813,8 +818,6 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
-        self._gcs_address = (f"{socket.gethostbyname(socket.gethostname())}:"
-                             f"{self._ray_params.gcs_server_port}")
         # Init gcs client
         self.get_gcs_client()
 
@@ -1313,7 +1316,8 @@ class Node:
             try:
                 result = self.get_gcs_client().internal_kv_get(key, namespace)
             except Exception as e:
-                logger.error(f"ERROR as {e}")
+                import traceback
+                logger.error(f"ERROR as {e} {traceback.print_stack()}")
                 result = None
 
             if result is not None:

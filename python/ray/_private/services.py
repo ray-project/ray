@@ -1618,7 +1618,7 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
-        f"--gcs-address={gcs_server_address}"
+        f"--gcs-address={gcs_server_address}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",

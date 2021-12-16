@@ -1367,18 +1367,26 @@ def connect(node,
             faulthandler.enable(all_threads=False)
     except io.UnsupportedOperation:
         pass  # ignore
+    if not gcs_utils.use_gcs_for_bootstrap():
+        # Create a Redis client to primary.
+        # The Redis client can safely be shared between threads. However,
+        # that is not true of Redis pubsub clients. See the documentation at
+        # https://github.com/andymccurdy/redis-py#thread-safety.
+        worker.redis_client = node.create_redis_client()
+        worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+        worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
+    else:
+        worker.redis_client = None
+        worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.get_gcs_address())
+        worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(
+                node.get_gcs_address()))
 
-    # Create a Redis client to primary.
-    # The Redis client can safely be shared between threads. However,
-    # that is not true of Redis pubsub clients. See the documentation at
-    # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
-    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1451,17 +1459,20 @@ def connect(node,
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
-
-    redis_address, redis_port = node.redis_address.split(":")
-    # As the synchronous and the asynchronous context of redis client is not
-    # used in this gcs client. We would not open connection for it by setting
-    # `enable_sync_conn` and `enable_async_conn` as false.
-    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        node.redis_address,
-        node.redis_password,
-        enable_sync_conn=False,
-        enable_async_conn=False,
-        enable_subscribe_conn=True)
+    if not gcs_utils.use_gcs_for_bootstrap():
+        redis_address, redis_port = node.redis_address.split(":")
+        # As the synchronous and the asynchronous context of redis client is not
+        # used in this gcs client. We would not open connection for it by setting
+        # `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
+    else:
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.get_gcs_address())
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
