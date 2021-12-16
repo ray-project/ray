@@ -181,7 +181,6 @@ enum ErrorType {
 /// The information per ray error type.
 message RayErrorInfo {
   oneof error {
-    RayException actor_init_failure = 1;
     ActorDeathCause actor_died_error = 2;
   }
 }
@@ -199,6 +198,7 @@ message RayException {
 
 message ActorDeathCause {
   oneof context {
+    // TODO(sang): Consolidate some context to the same field.
     CreationTaskFailureContext creation_task_failure_context = 1;
     ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDeathWorkerDiedContext worker_died_context = 3;

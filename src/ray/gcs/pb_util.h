@@ -149,15 +149,13 @@ inline const std::string &GetActorDeathCauseString(
 inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
-  if (death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
-    error_info.mutable_actor_init_failure()->CopyFrom(
-        death_cause.creation_task_failure_context().creation_task_exception());
-  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext ||
-             death_cause.context_case() == ContextCase::kWorkerDiedContext ||
-             death_cause.context_case() == ContextCase::kNodeDiedContext ||
-             death_cause.context_case() == ContextCase::kOwnerDiedContext ||
-             death_cause.context_case() == ContextCase::kKilledByAppContext ||
-             death_cause.context_case() == ContextCase::kOutOfScopeContext) {
+  if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext ||
+      death_cause.context_case() == ContextCase::kWorkerDiedContext ||
+      death_cause.context_case() == ContextCase::kNodeDiedContext ||
+      death_cause.context_case() == ContextCase::kOwnerDiedContext ||
+      death_cause.context_case() == ContextCase::kKilledByAppContext ||
+      death_cause.context_case() == ContextCase::kOutOfScopeContext ||
+      death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
   } else {
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
