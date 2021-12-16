@@ -990,7 +990,9 @@ class Trainer(Trainable):
                 time.sleep(0.5)
                 raise e
 
-            # Stopping criteria.
+            # Stopping criteria: Only when using the `training_iteration` API,
+            # b/c for the `exec_plan` API, the logic to stop is already built
+            # into the execution plans via the `StandardMetricsReporting` op.
             if self.config["_disable_execution_plan_api"]:
                 if self._by_agent_steps:
                     sampled = self._counters[NUM_AGENT_STEPS_SAMPLED] - \
@@ -1015,6 +1017,7 @@ class Trainer(Trainable):
                         (not min_sample_ts or sampled >= min_sample_ts) and \
                         (not min_train_ts or trained >= min_train_ts):
                     break
+            # No errors (we got results) -> Break.
             elif result is not None:
                 break
 
