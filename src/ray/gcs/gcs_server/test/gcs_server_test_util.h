@@ -175,10 +175,11 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void PrepareBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
         override {
       num_lease_requested += 1;
+      num_prepared_bundle = bundle_specs.size();
       lease_callbacks.push_back(callback);
     }
 
@@ -299,6 +300,8 @@ struct GcsServerMocker {
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
+    // TODO(@clay4444): Remove this once we make the commit rpc request batched!
+    int num_prepared_bundle = 0;
 
     int num_release_unused_bundles_requested = 0;
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
