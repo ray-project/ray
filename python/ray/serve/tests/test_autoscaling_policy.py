@@ -3,6 +3,8 @@ import sys
 import pytest
 from unittest import mock
 
+from typing import List
+
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
                                           calculate_desired_num_replicas)
@@ -87,13 +89,49 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
-def get_num_running_replicas(controller: ServeController,
-                             deployment: Deployment) -> int:
-    """ Get the amount of replicas currently running for given deployment """
+def get_running_replicas(controller: ServeController,
+                         deployment: Deployment) -> List:
+    """ Get the replicas currently running for given deployment """
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment.name))
     running_replicas = replicas.get([ReplicaState.RUNNING])
+    return running_replicas
+
+
+def get_running_replica_tags(controller: ServeController,
+                             deployment: Deployment) -> List:
+    """ Get the replica tags of running replicas for given deployment """
+    running_replicas = get_running_replicas(controller, deployment)
+    return [replica.replica_tag for replica in running_replicas]
+
+
+def get_num_running_replicas(controller: ServeController,
+                             deployment: Deployment) -> int:
+    """ Get the amount of replicas currently running for given deployment """
+    running_replicas = get_running_replicas(controller, deployment)
     return len(running_replicas)
+
+
+def assert_no_replicas_deprovisioned(replica_tags_1: List[str],
+                                     replica_tags_2: List[str]) -> None:
+    """
+    Checks whether any replica tags from replica_tags_1 are absent from
+    replica_tags_2. Assumes that this indicates replicas were de-provisioned.
+
+    replica_tags_1: Replica tags of running replicas at the first timestep
+    replica_tags_2: Replica tags of running replicas at the second timestep
+    """
+
+    replica_tags_2 = set(replica_tags_2)
+    num_matching_replicas = 0
+    for replica in replica_tags_1:
+        num_matching_replicas += replica in replica_tags_2
+    print(f"{num_matching_replicas} replica(s) stayed provisioned between "
+          f"both deployments. All {len(replica_tags_1)} replica(s) were "
+          f"expected to stay provisioned. "
+          f"{len(replica_tags_1) - num_matching_replicas} replica(s) were "
+          f"de-provisioned.")
+    assert len(replica_tags_1) == num_matching_replicas
 
 
 def get_deployment_start_time(controller: ServeController,
@@ -531,6 +569,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
             ray.get(signal.wait.remote())
 
     A.deploy()
+    print("Deployed A with min_replicas 1 and max_replicas 10.")
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
@@ -539,17 +578,19 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     handle = A.get_handle()
     [handle.remote() for _ in range(400)]
-
-    print("\nscale to 10\n")
+    print("Issued 400 requests.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 10)
+    print("Scaled to 10 replicas.")
+    first_deployment_replicas = get_running_replica_tags(controller, A)
+
     assert get_num_running_replicas(controller, A) < 20
 
     [handle.remote() for _ in range(458)]
     import time
     time.sleep(3)
+    print("Issued 458 requests. Request routing in-progress.")
 
-    print("\nredeploy A\n")
     A.options(_autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
@@ -557,11 +598,17 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2
-        })
-    A.deploy()
+        },
+        version="v1").deploy()
+    print("Redeployed A.")
 
-    print("\nscale to 20\n")
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
+    print("Scaled up to 20 requests.")
+    second_deployment_replicas = get_running_replica_tags(controller, A)
+
+    # Confirm that none of the original replicas were de-provisioned
+    assert_no_replicas_deprovisioned(first_deployment_replicas,
+                                     second_deployment_replicas)
 
     signal.send.remote()
 
@@ -609,6 +656,8 @@ def test_e2e_raise_min_replicas(serve_instance):
     time.sleep(2)
     assert get_num_running_replicas(controller, A) == 1
     print("Stayed at 1 replica.")
+
+    first_deployment_replicas = get_running_replica_tags(controller, A)
     
     A.options(_autoscaling_config={
             "metrics_interval_s": 0.1,
@@ -629,6 +678,12 @@ def test_e2e_raise_min_replicas(serve_instance):
     # Confirm that autoscaler doesn't scale above 2 even after waiting
     assert get_num_running_replicas(controller, A) == 2
     print("Autoscaled to 2 without issuing any new requests.")
+
+    second_deployment_replicas = get_running_replica_tags(controller, A)
+
+    # Confirm that none of the original replicas were de-provisioned
+    assert_no_replicas_deprovisioned(first_deployment_replicas,
+                                     second_deployment_replicas)
 
     signal.send.remote()
     time.sleep(1)
