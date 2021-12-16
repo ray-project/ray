@@ -200,7 +200,10 @@ class Client:
             prev_version: Optional[str] = None,
             route_prefix: Optional[str] = None,
             url: Optional[str] = None,
-            _blocking: Optional[bool] = True) -> Optional[GoalId]:
+            _blocking: Optional[bool] = True,
+            pipeline_dag: Optional[Any] = None,
+            pipeline_name: Optional[Any] = None
+        ) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -228,11 +231,16 @@ class Client:
                 "config must be a DeploymentConfig or a dictionary.")
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(name,
-                                           deployment_config.to_proto_bytes(),
-                                           replica_config, version,
-                                           prev_version, route_prefix,
-                                           ray.get_runtime_context().job_id))
+            self._controller.deploy.remote(
+                name,
+                deployment_config.to_proto_bytes(),
+                replica_config, version,
+                prev_version, route_prefix,
+                deployer_job_id=ray.get_runtime_context().job_id,
+                pipeline_dag=pipeline_dag,
+                pipeline_name=pipeline_name
+            )
+        )
 
         tag = f"component=serve deployment={name}"
 
@@ -650,7 +658,10 @@ class Deployment:
                  init_kwargs: Optional[Tuple[Any]] = None,
                  route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
                  ray_actor_options: Optional[Dict] = None,
-                 _internal=False) -> None:
+                 _internal=False,
+                 pipeline_dag=None,
+                 pipeline_name=None,
+        ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
         Deployments should be created, retrieved, and updated using
@@ -711,6 +722,9 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+
+        self._pipeline_dag = pipeline_dag
+        self._pipeline_name = pipeline_name
 
     @property
     def name(self) -> str:
@@ -815,7 +829,10 @@ class Deployment:
             prev_version=self._prev_version,
             route_prefix=self.route_prefix,
             url=self.url,
-            _blocking=_blocking)
+            _blocking=_blocking,
+            pipeline_dag=self._pipeline_dag,
+            pipeline_name=self._pipeline_name
+        )
 
     @PublicAPI
     def delete(self):
@@ -961,7 +978,6 @@ def deployment(
 
 @PublicAPI
 def pipeline(
-    _func_or_class: Callable,
     dag: ExecutorPipelineNode,
     name: str
 ):
@@ -989,8 +1005,11 @@ def pipeline(
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
-            def get_or_create_pipeline(self):
-                return "AA"
+            def get_dag():
+                return dag
+
+            def get_name():
+                return name
 
         PipelineWrapper.__name__ = cls.__name__
         return PipelineWrapper
@@ -1108,6 +1127,8 @@ def deployment(
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
+            pipeline_dag=_func_or_class.get_dag(),
+            pipeline_name=_func_or_class.get_name(),
         )
 
     # This handles both parametrized and non-parametrized usage of the

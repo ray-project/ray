@@ -62,7 +62,7 @@ my_dag = build_dag()
 
 # Step 3: Deploy this pipeline using a Driver class as deployment.
 @serve.deployment(route_prefix="/hello", num_replicas=2)
-@serve.pipeline(dag=my_dag, name="unique_driver_identifier")
+@serve.api.pipeline(dag=my_dag, name="unique_driver_identifier")
 class Driver:
     def __init__(self):
         # Auto-populated after Driver.deploy() call by serve controller.

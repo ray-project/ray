@@ -24,7 +24,6 @@ from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.pipeline.node import Pipeline
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -300,8 +299,11 @@ class ServeController:
                version: Optional[str],
                prev_version: Optional[str],
                route_prefix: Optional[str],
-               deployer_job_id: "Optional[ray._raylet.JobID]" = None
-               ) -> Tuple[Optional[GoalId], bool]:
+               deployer_job_id: "Optional[ray._raylet.JobID]" = None,
+               pipeline_dag: Optional[Any] = None,
+               pipeline_name: Optional[Any] = None
+            ) -> Tuple[Optional[GoalId], bool]:
+        logger.info(f">>>>>>> Calling controller deploy(), pipeline name: {pipeline_name}")
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
