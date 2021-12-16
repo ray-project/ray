@@ -83,9 +83,10 @@ async def _send_request_to_handle(handle, scope, receive, send):
 
     if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
+        return str(result.status_code)
     else:
         await Response(result).send(scope, receive, send)
-    return None
+        return "200"
 
 
 class LongestPrefixRouter:
