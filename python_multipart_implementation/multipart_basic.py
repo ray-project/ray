@@ -1,10 +1,10 @@
 import ray
 from typing import List, Any
 
-
 #########################
 # Basic Implementations #
 #########################
+
 
 @ray.remote
 class Basic:
@@ -12,11 +12,12 @@ class Basic:
     Able to access the multipart object by index.
     Downside: must download the entire multipart object on ray.get()
     """
-    
+
     def __init__(self, items: List[Any]):
-         self.items = items
+        self.items = items
+
     def __getitem__(self, index: Any) -> Any:
-         return self.items[index]
+        return self.items[index]
 
 
 @ray.remote
@@ -29,14 +30,16 @@ class RefBased:
     """
 
     def __init__(self, items: List[Any]):
-         self.items = items
+        self.items = items
+
     def __getitem__(self, index: Any) -> Any:
-         return self.items[index]
+        return self.items[index]
 
 
 ###############################################
 # Advanced Implementation - API Brainstorming #
 ###############################################
+
 
 class MultiPartObjectRef_ExplicitOffsets:
 
@@ -51,7 +54,7 @@ class MultiPartObjectRef_ExplicitOffsets:
         self.items = items
 
     def __getitem__(self, index: Any) -> Any:
-         return self.items[index]
+        return self.items[index]
 
 
 class MultiPartObjectRef_ImplicitOffsets:
@@ -65,4 +68,4 @@ class MultiPartObjectRef_ImplicitOffsets:
         self.items = items
 
     def __getitem__(self, index: Any) -> Any:
-         return self.items[index]
+        return self.items[index]
