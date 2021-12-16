@@ -321,7 +321,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - ./dashboard/tests/run_ui_tests.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=RAY_gcs_grpc_based_pubsub=1
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/... -//python/ray/dashboard:test_dashboard
       -//python/ray/dashboard:test_actor
       -//python/ray/dashboard:test_job_manager

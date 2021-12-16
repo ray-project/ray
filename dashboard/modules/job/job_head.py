@@ -65,10 +65,6 @@ def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
 class JobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-
-        ip, port = dashboard_head.redis_address
-        self._redis_address = f"{ip}:{port}"
-        self._redis_password = dashboard_head.redis_password
         self._job_manager = None
 
     async def _parse_and_validate_request(self, req: Request,

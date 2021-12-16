@@ -27,10 +27,26 @@ from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
+
+def make_gcs_client(address_info):
+    if not use_gcs_for_bootstrap():
+        address = address_info["redis_address"]
+        address = address.split(":")
+        assert len(address) == 2
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    else:
+        address = address_info["gcs_server_address"]
+        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    return gcs_client
 
 def cleanup_test_files():
     module_path = ray.dashboard.modules.__path__[0]
@@ -67,15 +83,7 @@ def test_basic(ray_start_with_dashboard):
             is True)
     address_info = ray_start_with_dashboard
     node_id = address_info["node_id"]
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     all_processes = ray.worker._global_node.all_processes
@@ -147,8 +155,8 @@ def test_basic(ray_start_with_dashboard):
     raylet_proc.wait()
     agent_proc.wait(5)
 
-    # Check redis keys are set.
-    logger.info("Check redis keys are set.")
+    # Check kv keys are set.
+    logger.info("Check kv keys are set.")
     dashboard_address = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DASHBOARD_ADDRESS,
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
@@ -466,17 +474,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
 
-    # Populate the GCS field, check that the data is returned from the
-    # endpoint.
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     ray.experimental.internal_kv._internal_kv_put(
         DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
@@ -607,15 +605,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     address_info = ray_start_with_dashboard
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
@@ -624,7 +614,8 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         sys.executable, dashboard.__file__, f"--host={host}", f"--port={port}",
         f"--temp-dir={temp_dir}", f"--log-dir={log_dir}",
         f"--redis-address={address[0]}:{address[1]}",
-        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}"
+        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
+        f"--gcs-address={address_info['gcs_server_address']}"
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
     p = subprocess.Popen(dashboard_cmd)

@@ -17,7 +17,7 @@ except ImportError:
 
 import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -113,9 +113,14 @@ class DashboardHead:
         self.http_host = "127.0.0.1" if http_host == "localhost" else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_address = gcs_address
-        self.redis_address = dashboard_utils.address_tuple(redis_address)
-        self.redis_password = redis_password
+
+        if use_gcs_for_bootstrap():
+            assert gcs_address is not None
+            self.gcs_address = gcs_address
+        else:
+            self.redis_address = dashboard_utils.address_tuple(redis_address)
+            self.redis_password = redis_password
+
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
@@ -178,10 +183,9 @@ class DashboardHead:
 
     async def get_gcs_address(self):
         # Create an aioredis client for all modules.
-        if self.gcs_address is not None:
+        if use_gcs_for_bootstrap():
             return self.gcs_address
-
-        if self.aioredis_client is None:
+        else:
             try:
                 self.aioredis_client = \
                     await dashboard_utils.get_aioredis_client(
@@ -193,7 +197,7 @@ class DashboardHead:
                     "Dashboard head exiting: "
                     "Failed to connect to redis at %s", self.redis_address)
                 sys.exit(-1)
-        return await get_gcs_address_with_retry(self.aioredis_client)
+            return await get_gcs_address_with_retry(self.aioredis_client)
 
     async def run(self):
 

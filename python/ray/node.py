@@ -22,6 +22,7 @@ import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.resource_spec import ResourceSpec
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap, get_gcs_address_from_redis
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -200,6 +201,8 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+            if use_gcs_for_bootstrap():
+                ray_params.update_if_absent(gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
             self._webui_url = None
         else:
             self._webui_url = \
@@ -431,7 +434,7 @@ class Node:
     @property
     def address_info(self):
         """Get a dictionary of addresses."""
-        return {
+        info = {
             "node_ip_address": self._node_ip_address,
             "raylet_ip_address": self._raylet_ip_address,
             "redis_address": self._redis_address,
@@ -439,8 +442,11 @@ class Node:
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
-            "metrics_export_port": self._metrics_export_port
+            "metrics_export_port": self._metrics_export_port,
+            "gcs_server_address": self.get_gcs_address(),
         }
+
+        return info
 
     def is_head(self):
         return self.head
@@ -455,8 +461,7 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = \
-                        ray._private.gcs_utils.GcsClient.create_from_redis(
+                    self._gcs_client = GcsClient.create_from_redis(
                             self.create_redis_client())
                     break
                 except Exception as e:
@@ -486,6 +491,15 @@ class Node:
     def get_sockets_dir_path(self):
         """Get the path of the sockets directory."""
         return self._sockets_dir
+
+    def get_gcs_address(self):
+        """Get the gcs address."""
+        if use_gcs_for_bootstrap():
+            # TODO (iycheng) Pass gcs address from the front
+            host, _ = self._redis_address.split(":")
+            return f"{host}:{self._ray_params.gcs_server_port}"
+        else:
+            return get_gcs_address_from_redis(self.create_redis_client())
 
     def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
@@ -745,18 +759,13 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        gcs_address = None
-        if self._ray_params.gcs_server_port is not None:
-            # We suppose redis is on the same host as gcs
-            host, port = self.redis_address.split(":")
-            gcs_address = f"{host}:{self._ray_params.gcs_server_port}"
         self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
             self._logs_dir,
-            gcs_address=gcs_address,
+            gcs_address=self.get_gcs_address(),
             stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
@@ -827,6 +836,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            self.get_gcs_address(),
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,

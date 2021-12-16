@@ -1442,6 +1442,7 @@ def start_raylet(redis_address,
                  resource_spec,
                  plasma_directory,
                  object_store_memory,
+                 gcs_server_address,
                  min_worker_port=None,
                  max_worker_port=None,
                  worker_port_list=None,
@@ -1621,6 +1622,7 @@ def start_raylet(redis_address,
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_server_address}",
         ]
 
         if redis_password is not None and len(redis_password) != 0:

@@ -246,16 +246,16 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+        redis_client = None
         gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-            redis_client = None
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=gcs_utils.get_gcs_address_from_redis(redis_client))
-            redis_client = None
+        if use_gcs_for_bootstrap():
+            gcs_publisher = GcsPublisher(args.gcs_address)
+        else:
+            redis_client = ray._private.services.create_redis_client(
+                args.redis_address, password=args.redis_password)
+            if gcs_pubsub_enabled():
+                gcs_publisher = GcsPublisher(
+                    address=get_gcs_address_from_redis(redis_client))
         ray._private.utils.publish_error_to_driver(
             redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,

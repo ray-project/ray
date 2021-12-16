@@ -24,7 +24,7 @@ import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.gcs_utils import GcsClient, \
-    get_gcs_address_from_redis
+    get_gcs_address_from_redis, use_gcs_for_bootstrap
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -68,15 +68,14 @@ class DashboardAgent(object):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
-        self.redis_address = dashboard_utils.address_tuple(redis_address)
-        self.redis_password = redis_password
 
-        # If gcs address is used, we'll not use redis in dashboard
-        # TODO(iycheng): Remove after redis is removed
-        self.gcs_address = gcs_address
-        if self.gcs_address is not None:
-            self.redis_address = None
-            self.redis_password = None
+        if use_gcs_for_bootstrap():
+            assert gcs_address is not None
+            self.gcs_address = gcs_address
+        else:
+            self.redis_address = dashboard_utils.address_tuple(redis_address)
+            self.redis_password = redis_password
+            self.aioredis_client = None
 
         self.temp_dir = temp_dir
         self.session_dir = session_dir
@@ -103,7 +102,6 @@ class DashboardAgent(object):
             self.server, f"{grpc_ip}:{self.dashboard_agent_port}")
         logger.info("Dashboard agent grpc address: %s:%s", grpc_ip,
                     self.grpc_port)
-        self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
@@ -144,7 +142,7 @@ class DashboardAgent(object):
         if sys.platform not in ["win32", "cygwin"]:
             check_parent_task = create_task(_check_parent())
 
-        if self.gcs_address is None:
+        if not use_gcs_for_bootstrap():
             # Create an aioredis client for all modules.
             try:
                 self.aioredis_client = \
@@ -168,8 +166,8 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-        # TODO: redis-removal bootstrap
-        if self.gcs_address is None:
+
+        if not use_gcs_for_bootstrap():
             gcs_address = await self.aioredis_client.get(
                 dashboard_consts.GCS_SERVER_ADDRESS)
             self.gcs_client = GcsClient(address=gcs_address.decode())
@@ -400,18 +398,16 @@ if __name__ == "__main__":
             # Agent is failed to be started many times.
             # Push an error to all drivers, so that users can know the
             # impact of the issue.
+            redis_client = None
             gcs_publisher = None
-            if args.gcs_address:
+            if use_gcs_for_bootstrap():
                 gcs_publisher = GcsPublisher(args.gcs_address)
-            elif gcs_pubsub_enabled():
-                redis_client = ray._private.services.create_redis_client(
-                    args.redis_address, password=args.redis_password)
-                gcs_publisher = GcsPublisher(
-                    address=get_gcs_address_from_redis(redis_client))
-                redis_client = None
             else:
                 redis_client = ray._private.services.create_redis_client(
                     args.redis_address, password=args.redis_password)
+                if gcs_pubsub_enabled():
+                    gcs_publisher = GcsPublisher(
+                        address=get_gcs_address_from_redis(redis_client))
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (
