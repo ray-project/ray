@@ -6,8 +6,11 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.UnreconstructableException;
+import io.ray.runtime.object.ObjectSerializer;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -65,6 +68,22 @@ public class ObjectStoreTest extends BaseTest {
       List<List<String>> l = ImmutableList.of(ImmutableList.of("abc"));
       ObjectRef<List<List<String>>> obj = Ray.put(l);
       Assert.assertEquals(obj.get(), l);
+    }
+
+    {
+      IntVector vector = new IntVector("int", ObjectSerializer.rootAllocator);
+      vector.allocateNew();
+      for (int i = 0; i < 5; i++) {
+        vector.setSafe(i, i);
+      }
+      vector.setValueCount(5);
+      VectorSchemaRoot root = VectorSchemaRoot.of(vector);
+      ObjectRef<VectorSchemaRoot> obj = Ray.put(root);
+      VectorSchemaRoot retrievedRoot = obj.get();
+      IntVector retrievedVector = (IntVector) retrievedRoot.getVector(0);
+      for (int i = 0; i < 5; i++) {
+        Assert.assertEquals(vector.get(i), retrievedVector.get(i));
+      }
     }
   }
 

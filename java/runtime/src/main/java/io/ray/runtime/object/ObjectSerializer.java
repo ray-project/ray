@@ -13,7 +13,6 @@ import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -54,7 +53,7 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
-  private static final RootAllocator root = new RootAllocator(Long.MAX_VALUE);
+  public static final RootAllocator rootAllocator = new RootAllocator(Long.MAX_VALUE);
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
@@ -90,7 +89,7 @@ public class ObjectSerializer {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
         try (ArrowStreamReader reader =
-            new ArrowStreamReader(new ByteArrayInputStream(nativeRayObject.data), root)) {
+            new ArrowStreamReader(new ByteArrayInputStream(nativeRayObject.data), rootAllocator)) {
           reader.loadNextBatch();
           return reader.getVectorSchemaRoot();
         } catch (Exception e) {
