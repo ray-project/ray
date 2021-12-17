@@ -431,12 +431,16 @@ The following metrics are exposed by Ray Serve:
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
      - The number of HTTP requests processed.
+   * - ``serve_num_http_error_requests``
+     - The number of non-200 HTTP responses.
    * - ``serve_num_router_requests``
      - The number of requests processed by the router.
    * - ``serve_handle_request_counter``
      - The number of requests processed by this ServeHandle.
    * - ``serve_deployment_queued_queries``
      - The number of queries for this deployment waiting to be assigned to a replica.
+   * - ``serve_num_deployment_http_error_requests``
+     - The number of non-200 HTTP responses returned by each deployment.
 
 To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
 

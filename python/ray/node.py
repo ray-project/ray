@@ -923,9 +923,10 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
+            gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+                self.redis_address, self.redis_password)
             global_state = ray.state.GlobalState()
-            global_state._initialize_global_state(
-                self.redis_address, redis_password=self.redis_password)
+            global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()
             assert self._config.items() <= new_config.items(), (
                 "The system config from GCS is not a superset of the local"

@@ -165,17 +165,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.second = port;
       });
 
-  // Initialize gcs client.
-  // As the synchronous and the asynchronous context of redis client is not used in this
-  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
-  // `enable_async_conn` as false.
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
-      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
-      options_.gcs_options.password_,
-      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
-      /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<gcs::GcsClient>(
-      gcs_options, [this](std::pair<std::string, int> *address) {
+      options_.gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
           address->first = gcs_server_address_.first;
