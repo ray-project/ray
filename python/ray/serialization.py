@@ -7,9 +7,7 @@ from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
 from google.protobuf.message import Message
-
-from google.protobuf.descriptor_pb2 import DescriptorProto
-from google.protobuf.descriptor import MakeDescriptor, FileDescriptor
+from google.protobuf.descriptor import FileDescriptor
 from google.protobuf.descriptor_pool import Default
 from google.protobuf.reflection import MakeClass
 from ray.exceptions import (
@@ -36,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 class DeserializationError(Exception):
     pass
+
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     # NOTE(suquark): This function should be a global function so
@@ -206,17 +205,23 @@ class SerializationContext:
                     0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return _actor_handle_deserializer(obj)
-            elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PROTOBUF:
+            elif metadata_fields[
+                    0] == ray_constants.OBJECT_METADATA_TYPE_PROTOBUF:
                 data = self._deserialize_msgpack_data(data, metadata_fields)
                 file_desc_tuple, val_tuple = pickle.loads(data)
                 pb_pool = Default()
                 try:
-                    msg_desc = pb_pool.FindMessageTypeByName(f"{file_desc_tuple[1]}.{val_tuple[0]}")
+                    msg_desc = pb_pool.FindMessageTypeByName(
+                        f"{file_desc_tuple[1]}.{val_tuple[0]}")
                     cls = MakeClass(msg_desc)
                     print("DBG>> builtin")
                 except KeyError:
-                    file_desc = FileDescriptor(file_desc_tuple[0], file_desc_tuple[1], serialized_pb=file_desc_tuple[2])
-                    cls = MakeClass(file_desc.message_types_by_name[val_tuple[0]])
+                    file_desc = FileDescriptor(
+                        file_desc_tuple[0],
+                        file_desc_tuple[1],
+                        serialized_pb=file_desc_tuple[2])
+                    cls = MakeClass(
+                        file_desc.message_types_by_name[val_tuple[0]])
                     print("DBG>> import")
                 obj = cls()
                 obj.ParseFromString(val_tuple[1])
@@ -352,9 +357,11 @@ class SerializationContext:
             value = serialized
         elif isinstance(value, Message):
             file_desc = type(value).DESCRIPTOR.file
-            file_desc_tuple = (file_desc.name, file_desc.package, file_desc.serialized_pb)
+            file_desc_tuple = (file_desc.name, file_desc.package,
+                               file_desc.serialized_pb)
             print("DBG:", file_desc.name, file_desc.package)
-            val_tuple = (type(value).DESCRIPTOR.name, value.SerializeToString())
+            val_tuple = (type(value).DESCRIPTOR.name,
+                         value.SerializeToString())
             value = pickle.dumps((file_desc_tuple, val_tuple))
             metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
         else:
