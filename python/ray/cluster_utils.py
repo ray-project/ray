@@ -185,6 +185,7 @@ class Cluster:
                     spawn_reaper=self._shutdown_at_exit)
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
+                self.gcs_address = self.head_node.get_gcs_address()
                 self.redis_password = node_args.get(
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
                 self.webui_url = self.head_node.webui_url
