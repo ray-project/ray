@@ -254,7 +254,11 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None, multipart=False):
+    def put_object(self,
+                   value,
+                   object_ref=None,
+                   owner_address=None,
+                   multipart=False):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -301,10 +305,12 @@ class Worker:
             #     offsets.append(i)
             #     i += v.total_bytes
             # serialized_value = "".join(values)
-            serialized_value, offsets = self.get_serialization_context().multi_serialize(value)
+            serialized_value, offsets = self.get_serialization_context(
+            ).multi_serialize(value)
         else:
             offsets = None
-            serialized_value = self.get_serialization_context().serialize(value)
+            serialized_value = self.get_serialization_context().serialize(
+                value)
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -1769,7 +1775,9 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def put(value: Any, *, multipart: bool=False,
+def put(value: Any,
+        *,
+        multipart: bool = False,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
 
@@ -1808,7 +1816,9 @@ def put(value: Any, *, multipart: bool=False,
     with profiling.profile("ray.put"):
         try:
             object_ref = worker.put_object(
-                value, owner_address=serialize_owner_address, multipart=multipart)
+                value,
+                owner_address=serialize_owner_address,
+                multipart=multipart)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

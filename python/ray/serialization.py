@@ -359,9 +359,9 @@ class SerializationContext:
         else:
             pickle5_serialized_object = None
 
-        serialized_obj = MessagePackSerializedObject(metadata, msgpack_data,
-                                                     contained_object_refs,
-                                                     pickle5_serialized_object)
+        serialized_obj = MessagePackSerializedObject(
+            metadata, msgpack_data, contained_object_refs,
+            pickle5_serialized_object)
 
         if multipart:
             return serialized_obj, offsets
@@ -381,7 +381,7 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
-    
+
     def multi_serialize(self, values):
         """
         Serialized a collection of objects.
