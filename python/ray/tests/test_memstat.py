@@ -5,6 +5,7 @@ import time
 import pytest
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.internal.internal_api import memory_summary
 
 # RayConfig to enable recording call sites during ObjectRej creations.
@@ -69,7 +70,7 @@ def count(memory_str, substr):
         "_system_config": ray_config
     }], indirect=True)
 def test_driver_put_ref(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
     info = memory_summary(address)
     assert num_objects(info) == 0, info
     x_id = ray.put("HI")
@@ -88,7 +89,7 @@ def test_driver_put_ref(ray_start_regular):
         "_system_config": ray_config
     }], indirect=True)
 def test_worker_task_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
 
     @ray.remote
     def f(y):
@@ -131,7 +132,7 @@ def test_worker_task_refs(ray_start_regular):
         "_system_config": ray_config
     }], indirect=True)
 def test_actor_task_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
 
     @ray.remote
     class Actor:
@@ -183,7 +184,7 @@ def test_actor_task_refs(ray_start_regular):
         "_system_config": ray_config
     }], indirect=True)
 def test_nested_object_refs(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
     x_id = ray.put(np.zeros(100000))
     y_id = ray.put([x_id])
     z_id = ray.put([y_id])
@@ -201,7 +202,7 @@ def test_nested_object_refs(ray_start_regular):
         "_system_config": ray_config
     }], indirect=True)
 def test_pinned_object_call_site(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
     # Local ref only.
     x_id = ray.put(np.zeros(100000))
     info = memory_summary(address)
@@ -270,7 +271,7 @@ def test_multi_node_stats(shutdown_only):
         "_system_config": ray_config
     }], indirect=True)
 def test_group_by_sort_by(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
 
     @ray.remote
     def f(y):
@@ -300,7 +301,7 @@ def test_group_by_sort_by(ray_start_regular):
         "_system_config": ray_config
     }], indirect=True)
 def test_memory_used_output(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["bootstrap_address"]
     import numpy as np
     _ = ray.put(np.ones(8 * 1024 * 1024, dtype=np.int8))
 

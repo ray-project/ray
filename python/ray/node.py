@@ -464,6 +464,9 @@ class Node:
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
             "gcs_server_address": self.get_gcs_address(),
+            "bootstrap_address": (self.get_gcs_address()
+                                  if use_gcs_for_bootstrap()
+                                  else self._redis_address)
         }
 
         return info
@@ -966,8 +969,12 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-                self.redis_address, self.redis_password)
+            if not use_gcs_for_bootstrap():
+                gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+                    self.redis_address, self.redis_password)
+            else:
+                gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+                    self.get_gcs_address())
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()

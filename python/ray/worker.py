@@ -948,6 +948,7 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
+            bootstrap_address=bootstrap_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,

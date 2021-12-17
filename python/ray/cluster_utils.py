@@ -121,6 +121,7 @@ class Cluster:
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
+        self.gcs_address = None
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
         self.global_state = ray.state.GlobalState()
@@ -136,7 +137,9 @@ class Cluster:
 
     @property
     def address(self):
-        return self.redis_address
+        if not use_gcs_for_bootstrap():
+            return self.redis_address
+        return self.gcs_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
@@ -198,6 +201,8 @@ class Cluster:
                         self.redis_address, self.redis_password)
                 self.global_state._initialize_global_state(gcs_options)
             else:
+                ray_params.update_if_absent(bootstrap_address=self.address)
+                ray_params.update_if_absent(gcs_server_address=self.gcs_address)
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 # We only need one log monitor per physical node.
                 ray_params.update_if_absent(include_log_monitor=False)

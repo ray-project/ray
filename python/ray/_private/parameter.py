@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 import ray.ray_constants as ray_constants
-
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 logger = logging.getLogger(__name__)
 
 
@@ -192,6 +192,8 @@ class RayParams:
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.gcs_server_address = gcs_server_address
+        if self.gcs_server_address is None and use_gcs_for_bootstrap():
+            self.gcs_server_address = bootstrap_address
         self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
         self.raylet_ip_address = raylet_ip_address
