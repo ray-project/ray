@@ -527,6 +527,14 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
+# AlphaStar
+py_test(
+    name = "test_alpha_star",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/alpha_star/tests/test_alpha_star.py"]
+)
+
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
