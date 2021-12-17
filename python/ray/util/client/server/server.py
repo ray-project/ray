@@ -823,7 +823,8 @@ def main():
             try:
                 if not ray.experimental.internal_kv._internal_kv_initialized():
                     if use_gcs_for_bootstrap():
-                        gcs_client = ray._private.gcs_utils.GcsClient(address=args.gcs_address)
+                        gcs_client = ray._private.gcs_utils.GcsClient(
+                            address=args.gcs_address)
                     else:
                         redis_client = try_create_redis_client(
                             args.redis_address, args.redis_password)

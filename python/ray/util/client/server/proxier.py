@@ -167,7 +167,6 @@ class ProxyManager():
         self._gcs_address = connection_tuple["gcs_server_address"]
         return self._gcs_address
 
-
     @property
     def redis_address(self) -> str:
         """
@@ -190,8 +189,9 @@ class ProxyManager():
         if self._node:
             return self._node
 
-        ray_params = RayParams(redis_address=self.redis_address,
-                               gcs_server_address=self.gcs_address)
+        ray_params = RayParams(
+            redis_address=self.redis_address,
+            gcs_server_address=self.gcs_address)
         if self._redis_password:
             ray_params.redis_password = self._redis_password
 
