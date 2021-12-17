@@ -106,7 +106,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def builder(block_type: list = list) -> SimpleBlockBuilder[T]:
-        return SimpleBlockBuilder(block_type)
+        return SimpleBlockBuilder()
 
     def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
         if not callable(key) and key is not None:
