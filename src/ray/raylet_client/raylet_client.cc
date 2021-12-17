@@ -316,6 +316,28 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
+std::shared_ptr<Buffer> raylet::RayletClient::GetObjectRange(const ObjectID &object_id,
+                                                             int64_t range_offset,
+                                                             int64_t range_size) {
+  std::promise<void> promise;
+  std::shared_ptr<Buffer> buffer;
+  rpc::GetObjectRangeRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_offset(range_offset);
+  request.set_size(range_size);
+  grpc_client_->GetObjectRange(
+      request, [this, &promise, &buffer](const Status &status,
+                                         const rpc::GetObjectRangeReply &reply) {
+        auto data = reply.data();
+        buffer.reset(new LocalMemoryBuffer(reinterpret_cast<uint8_t *>(data.data()),
+                                           data.size(), /*copy_data=*/true));
+        promise.set_value();
+      });
+  promise.get_future().wait();
+  RAY_CHECK(buffer != nullptr);
+  return buffer;
+}
+
 void raylet::RayletClient::ReportWorkerBacklog(
     const WorkerID &worker_id,
     const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {

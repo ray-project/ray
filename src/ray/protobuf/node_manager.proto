@@ -275,6 +275,20 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message GetObjectRangeRequest {
+  // Requested ObjectID.
+  bytes object_id = 1;
+  // Offset in bytes of the read.
+  uint64 offset = 2;
+  // Size in bytes of the range of data to send.
+  uint64 size = 3;
+}
+
+message GetObjectRangeReply {
+  // Response data, empty on error.
+  bytes data = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage
@@ -316,6 +330,8 @@ service NodeManagerService {
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.
   rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Try to get a range of data from an object.
+  rpc GetObjectRange(GetObjectRangeRequest) returns (GetObjectRangeReply);
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);

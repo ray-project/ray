@@ -140,7 +140,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   void HandleGetObjectRange(const rpc::GetObjectRangeRequest &request,
                             rpc::GetObjectRangeReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
+                            rpc::SendReplyCallback send_reply_callback);
 
   /// Handle free objects request
   ///

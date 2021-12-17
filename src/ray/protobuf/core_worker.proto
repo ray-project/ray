@@ -219,6 +219,7 @@ message ObjectLocationStateUpdate {
 
 message GetObjectLocationsOwnerRequest {
   WorkerObjectLocationsSubMessage object_location_request = 1;
+  int64 index = 2;
 }
 
 message GetObjectLocationsOwnerReply {

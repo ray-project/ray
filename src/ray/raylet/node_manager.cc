@@ -2376,6 +2376,12 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   return builder.str();
 }
 
+void NodeManager::HandleGetObjectRange(const rpc::GetObjectRangeRequest &request,
+                                       rpc::GetObjectRangeReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  object_manager_.HandleGetObjectRange(request, reply, send_reply_callback);
+}
+
 void NodeManager::HandleFormatGlobalMemoryInfo(
     const rpc::FormatGlobalMemoryInfoRequest &request,
     rpc::FormatGlobalMemoryInfoReply *reply, rpc::SendReplyCallback send_reply_callback) {

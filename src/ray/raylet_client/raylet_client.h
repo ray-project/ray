@@ -366,6 +366,9 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
+  std::shared_ptr<Buffer> GetObjectRange(const ObjectID &object_id, int64_t range_offset,
+                                         int64_t range_size);
+
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,

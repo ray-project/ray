@@ -62,7 +62,8 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
   return ObjectLocation(NodeID::FromBinary(object_info.primary_node_id()),
                         object_info.object_size(), std::move(node_ids), is_spilled,
                         object_info.spilled_url(),
-                        NodeID::FromBinary(object_info.spilled_node_id()));
+                        NodeID::FromBinary(object_info.spilled_node_id()),
+                        object_info.range_offset(), object_info.range_size());
 }
 }  // namespace
 
@@ -992,10 +993,20 @@ Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
   return Status::OK();
 }
 
-Status CoreWorker::GetWithIndex(const ObjectID &id, const int64_t index,
+Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
                                 std::shared_ptr<RayObject> &result) {
-  // TODO 1. Resolve the object offsets by RPC to the owner of the object
-  // TODO 2. Fetch the object data from a node with the object via GetObjectRangeData
+  std::vector<std::shared_ptr<ObjectLocation>> results;
+  RAY_RETURN_NOT_OK(GetLocationFromOwner({object_id}, 60000, index, &results));
+  auto location = results[0];
+  int64_t range_offset = location->RangeOffset();
+  int64_t range_size = location->RangeSize();
+  RAY_CHECK(range_size > 0) << "Expected range data " << range_size;
+  RAY_CHECK(range_offset >= 0) << "Expected range data " << range_offset;
+  RAY_LOG(ERROR) << "Sending range request " << range_size << " " << range_offset;
+  // TODO(ekl) pick raylet from locations, assuming single node for now.
+  auto buffer = local_raylet_client_->GetObjectRange(object_id, range_size, range_offset);
+  RAY_CHECK(buffer != nullptr) << "Range request failed";
+  result.reset(new RayObject(buffer, nullptr, {}));
   return Status::OK();
 }
 
@@ -1204,7 +1215,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 }
 
 Status CoreWorker::GetLocationFromOwner(
-    const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, int64_t index,
     std::vector<std::shared_ptr<ObjectLocation>> *results) {
   results->resize(object_ids.size());
   if (object_ids.empty()) {
@@ -1221,6 +1232,7 @@ Status CoreWorker::GetLocationFromOwner(
     auto owner_address = GetOwnerAddress(object_id);
     auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
+    request.set_index(index);
     auto object_location_request = request.mutable_object_location_request();
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
@@ -2748,7 +2760,8 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   auto object_id = ObjectID::FromBinary(object_location_request.object_id());
   auto object_info = reply->mutable_object_location_info();
-  auto status = reference_counter_->FillObjectInformation(object_id, object_info);
+  auto index = request.index();
+  auto status = reference_counter_->FillObjectInformation(object_id, index, object_info);
   send_reply_callback(status, nullptr, nullptr);
 }
 

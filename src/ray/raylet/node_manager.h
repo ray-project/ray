@@ -534,6 +534,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  // TODO move to object manager?
+  void HandleGetObjectRange(const rpc::GetObjectRangeRequest &request,
+                            rpc::GetObjectRangeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `RequestObjectSpillage` request.
   void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
                                    rpc::RequestObjectSpillageReply *reply,

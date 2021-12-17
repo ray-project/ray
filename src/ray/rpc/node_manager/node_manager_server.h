@@ -42,6 +42,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetObjectRange, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)
 
@@ -133,6 +134,10 @@ class NodeManagerServiceHandler {
   virtual void HandleGetSystemConfig(const GetSystemConfigRequest &request,
                                      GetSystemConfigReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetObjectRange(const GetObjectRangeRequest &request,
+                                    GetObjectRangeReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetGcsServerAddress(const GetGcsServerAddressRequest &request,
                                          GetGcsServerAddressReply *reply,
