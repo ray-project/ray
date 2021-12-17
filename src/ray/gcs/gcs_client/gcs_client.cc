@@ -140,7 +140,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
-      [this](rpc::GcsServiceFailureType type, const std::function<void()> callback) { GcsServiceFailureDetected(type, callback); });
+      [this](rpc::GcsServiceFailureType type, const std::function<void()> callback) {
+        GcsServiceFailureDetected(type, callback);
+      });
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
@@ -257,18 +259,22 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
     if (address != current_gcs_server_address_) {
       // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
       // callback.
-      current_gcs_server_address_ = address;
-      GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART, nullptr);
+      if (GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+                                    nullptr)) {
+        current_gcs_server_address_ = address;
+      }
     }
   }
 }
 
-void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type, const std::function<void()> callback) {
+bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
+                                          const std::function<void()> callback) {
   RAY_LOG(INFO) << "GcsServiceFailureDetected " << (int)type;
+  bool result = false;
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.
-    ReconnectGcsServerAsync([callback]() {
+    result = ReconnectGcsServerAsync([callback]() {
       RAY_LOG(INFO) << "ReconnectGcsServerAsync callback 1 called";
       if (callback) {
         callback();
@@ -278,7 +284,7 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type, const
   case rpc::GcsServiceFailureType::GCS_SERVER_RESTART:
     // If GCS sever address has changed, reconnect to GCS server and redo
     // subscription.
-    ReconnectGcsServerAsync([this, callback]() {
+    result = ReconnectGcsServerAsync([this, callback]() {
       RAY_LOG(INFO) << "ReconnectGcsServerAsync callback 2 called";
       // If using GCS server for pubsub, resubscribe to GCS publishers.
       resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
@@ -293,16 +299,20 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type, const
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
     break;
   }
+
+  return result;
 }
 
-void GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
+bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
+  RAY_LOG(INFO) << "reconnect_in_progress_ " << reconnect_in_progress_;
   if (reconnect_in_progress_) {
     // std::this_thread::sleep_for(
     //   std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));
-    return;
+    return false;
   }
   reconnect_in_progress_ = true;
   DoReconnect(absl::Now(), callback);
+  return true;
 }
 
 void GcsClient::DoReconnect(absl::Time start, const std::function<void()> callback) {
@@ -324,6 +334,7 @@ void GcsClient::DoReconnect(absl::Time start, const std::function<void()> callba
           << "Repeated reconnection in "
           << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
           << " milliseconds, return directly.";
+      callback();
       return;
     }
 

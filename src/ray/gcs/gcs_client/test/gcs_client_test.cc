@@ -514,7 +514,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Timeout waiting for GCS server reply, default is 2s.
-  const std::chrono::milliseconds timeout_ms_{2000};
+  const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());

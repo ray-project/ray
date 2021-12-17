@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/gcs/pb_util.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
@@ -26,7 +26,7 @@ class GcsPingManager : public rpc::PingHandler {
   explicit GcsPingManager() {}
 
   void HandlePing(const rpc::PingRequest &request, rpc::PingReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
+                  rpc::SendReplyCallback send_reply_callback);
 };
 
 }  // namespace gcs
