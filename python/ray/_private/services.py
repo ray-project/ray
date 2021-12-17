@@ -1305,6 +1305,7 @@ def _start_redis_instance(executable,
 
 
 def start_log_monitor(redis_address,
+                      gcs_address,
                       logs_dir,
                       stdout_file=None,
                       stderr_file=None,
@@ -1316,6 +1317,7 @@ def start_log_monitor(redis_address,
 
     Args:
         redis_address (str): The address of the Redis instance.
+        gcs_address (str): The address of the GCS.
         logs_dir (str): The directory of logging files.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1333,10 +1335,14 @@ def start_log_monitor(redis_address,
     log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
                                         "log_monitor.py")
     command = [
-        sys.executable, "-u", log_monitor_filepath,
-        f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
+        sys.executable,
+        "-u",
+        log_monitor_filepath,
+        f"--redis-address={redis_address}",
+        f"--gcs-address={gcs_address}",
+        f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
     ]
     if redis_password:
         command += ["--redis-password", redis_password]

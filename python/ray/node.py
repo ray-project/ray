@@ -486,7 +486,8 @@ class Node:
                     break
                 except Exception as e:
                     time.sleep(1)
-                    logger.debug(f"Waiting for gcs up {e}")
+                    logger.error(f"Waiting for gcs up {e}")
+            assert self._gcs_client is not None
             ray.experimental.internal_kv._initialize_internal_kv(
                 self._gcs_client)
 
@@ -763,6 +764,7 @@ class Node:
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
+            self.get_gcs_address(),
             self._logs_dir,
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
