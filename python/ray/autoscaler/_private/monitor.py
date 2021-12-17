@@ -425,11 +425,12 @@ class Monitor:
         else:
             redis_client = None
         gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=get_gcs_address_from_redis(redis_client))
+        if gcs_pubsub_enabled():
+            if use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=get_gcs_address_from_redis(redis_client))
         from ray._private.utils import publish_error_to_driver
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,

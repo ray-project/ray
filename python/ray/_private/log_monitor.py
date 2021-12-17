@@ -463,11 +463,12 @@ if __name__ == "__main__":
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=gcs_utils.get_gcs_address_from_redis(redis_client))
+        if gcs_pubsub_enabled():
+            if gcs_utils.use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "

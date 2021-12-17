@@ -400,14 +400,18 @@ if __name__ == "__main__":
             # impact of the issue.
             redis_client = None
             gcs_publisher = None
-            if use_gcs_for_bootstrap():
-                gcs_publisher = GcsPublisher(args.gcs_address)
+            if gcs_pubsub_enabled():
+                if use_gcs_for_bootstrap():
+                    gcs_publisher = GcsPublisher(args.gcs_address)
+                else:
+                    redis_client = ray._private.services.create_redis_client(
+                        args.redis_address, password=args.redis_password)
+                    gcs_publisher = GcsPublisher(
+                        address=get_gcs_address_from_redis(redis_client))
             else:
                 redis_client = ray._private.services.create_redis_client(
                     args.redis_address, password=args.redis_password)
-                if gcs_pubsub_enabled():
-                    gcs_publisher = GcsPublisher(
-                        address=get_gcs_address_from_redis(redis_client))
+
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (

@@ -5,7 +5,6 @@ import time
 import pytest
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.internal.internal_api import memory_summary
 
 # RayConfig to enable recording call sites during ObjectRej creations.

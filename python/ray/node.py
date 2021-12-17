@@ -489,7 +489,7 @@ class Node:
                     break
                 except Exception as e:
                     time.sleep(1)
-                    logger.error(f"Waiting for gcs up {e}")
+                    logger.debug(f"Waiting for gcs up {e}")
             assert self._gcs_client is not None
             ray.experimental.internal_kv._initialize_internal_kv(
                 self._gcs_client)
