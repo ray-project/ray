@@ -469,11 +469,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           metrics_export_port, no_monitor, tracing_startup_hook,
           ray_debugger_external):
     """Start Ray processes manually on the local machine."""
-    if services.bootstrap_with_gcs() and gcs_server_port is not None:
-        cli_logger.abort("`{}` is deprecated. Specify {} instead.",
-                         cf.bold("--gcs-server-port"), cf.bold("--port"))
+    if gcs_server_port and not head:
         raise ValueError(
-            "`--gcs-server-port` is deprecated. Specify `--port` instead.")
+            "gcs_server_port can be only assigned when you specify --head.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -513,7 +511,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
-        autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
@@ -530,22 +527,15 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external)
-
     if head:
-        # Start head node.
-
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
             port = ray_constants.DEFAULT_PORT
-        elif port == 0:
+
+        if port == 0:
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
-
-        # Override GCS port to `--port`.
-        if services.bootstrap_with_gcs():
-            assert ray_params.gcs_server_port is None
-            ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -598,26 +588,24 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-
-        # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_port=port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
+            autoscaling_config=autoscaling_config,
         )
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            redis_addresses = services.find_redis_address()
-            if default_address in redis_addresses:
+            redis_addresses = services.find_redis_address(default_address)
+            if len(redis_addresses) > 0:
                 raise ConnectionError(
-                    f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {redis_addresses}. "
-                    "Please specify a different port using the `--port`"
-                    " command to `ray start`.")
+                    f"Ray is already running at {default_address}. "
+                    f"Please specify a different port using the `--port`"
+                    f" command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
@@ -682,68 +670,57 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
     else:
-        # Start worker node.
-
-        # Ensure `--address` flag is specified.
-        if address is None:
-            cli_logger.abort(
-                "`{}` is a required flag unless starting a head "
-                "node with `{}`.", cf.bold("--address"), cf.bold("--head"))
-            raise Exception("`--address` is a required flag unless starting a "
-                            "head node with `--head`.")
-
-        # Raise error if any head-only flag are specified.
-        head_only_flags = {
-            "--port": port,
-            "--redis-shard-ports": redis_shard_ports,
-            "--include-dashboard": include_dashboard
-        }
-        for flag, val in head_only_flags.items():
-            if val is None:
-                continue
-            cli_logger.abort(
-                "`{}` should only be specified when starting head "
-                "node with `{}`.", cf.bold(flag), cf.bold("--head"))
-            raise ValueError(
-                f"{flag} should only be specified when starting head node "
-                "with `--head`.")
-
         # Start Ray on a non-head node.
-        bootstrap_address, address_ip, address_port = \
-            services.validate_bootstrap_address(address)
+        redis_address = None
+        if address is not None:
+            (redis_address, redis_address_ip,
+             redis_address_port) = services.validate_redis_address(address)
+        if not (port is None):
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--port"), cf.bold("--head"))
 
-        if bootstrap_address is None:
-            cli_logger.abort("Cannot extract host IP and port from `{}={}`.",
-                             cf.bold("--address"), cf.bold(address))
-            raise Exception("Cannot extract host IP and port from "
-                            f"`--address={address}`.")
-        ray_params.update(bootstrap_address=bootstrap_address)
+            raise Exception("If --head is not passed in, --port is not "
+                            "allowed.")
+        if redis_shard_ports is not None:
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
 
-        if services.bootstrap_with_gcs():
-            raise NotImplementedError(
-                "Check version info via GCS is not implemented.")
-        else:
-            # Wait for the Redis server to be started. And throw an exception
-            # if we can't connect to it.
-            services.wait_for_redis_to_start(
-                address_ip, address_port, password=redis_password)
+            raise Exception("If --head is not passed in, --redis-shard-ports "
+                            "is not allowed.")
+        if redis_address is None:
+            cli_logger.abort("`{}` is required unless starting with `{}`.",
+                             cf.bold("--address"), cf.bold("--head"))
 
-            # Create a Redis client.
-            redis_client = services.create_redis_client(
-                address_ip, password=redis_password)
+            raise Exception("If --head is not passed in, --address must "
+                            "be provided.")
+        if include_dashboard:
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--include-dashboard"), cf.bold("--head"))
 
-            # Check that the version information on this node matches the
-            # version information that the cluster was started with.
-            services.check_version_info(redis_client)
+            raise ValueError(
+                "If --head is not passed in, the --include-dashboard"
+                "flag is not relevant.")
 
-            ray_params.update(redis_address=bootstrap_address)
+        # Wait for the Redis server to be started. And throw an exception if we
+        # can't connect to it.
+        services.wait_for_redis_to_start(
+            redis_address_ip, redis_address_port, password=redis_password)
+
+        # Create a Redis client.
+        redis_client = services.create_redis_client(
+            redis_address, password=redis_password)
+
+        # Check that the version information on this node matches the version
+        # information that the cluster was started with.
+        services.check_version_info(redis_client)
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(address_ip))
+            node_ip_address=services.get_node_ip_address(redis_address))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
+        ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
 
