@@ -218,7 +218,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         else:
             gcs_client = GcsClient(address=self.gcs_address)
             autoscaler_addr = gcs_client.internal_kv_get(
-                "AutoscalerMetricsAddress", None)
+                b"AutoscalerMetricsAddress", None)
         if autoscaler_addr:
             metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
         return json.dumps([{
