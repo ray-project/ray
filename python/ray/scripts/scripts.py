@@ -19,6 +19,7 @@ import psutil
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -611,18 +612,23 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            redis_addresses = services.find_redis_address()
-            if default_address in redis_addresses:
+            if not use_gcs_for_bootstrap():
+                bootstrap_addresses = services.find_redis_address()
+            else:
+                bootstrap_addresses = services.find_gcs_address()
+
+            if default_address in bootstrap_addresses:
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {redis_addresses}. "
+                    f"but is already running at {bootstrap}. "
                     "Please specify a different port using the `--port`"
                     " command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
 
-        redis_address = node.redis_address
+        bootstrap_address = node.redis_address if not use_gcs_for_bootstrap() \
+            else node.get_gcs_address()
         if temp_dir is None:
             # Default temp directory.
             temp_dir = ray._private.utils.get_user_temp_dir()
@@ -632,7 +638,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # TODO: Consider using the custom temp_dir for this file across the
         # code base. (https://github.com/ray-project/ray/issues/16458)
         with open(current_cluster_path, "w") as f:
-            print(redis_address, file=f)
+            print(bootstrap_address, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -648,9 +654,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # NOTE(kfstorm): Java driver rely on this line to get the address
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"), redis_address,
+                cf.bold("  ray start --address='{}'{}"), bootstrap_address,
                 f" --redis-password='{redis_password}'"
-                if redis_password else "")
+                if redis_password and not use_gcs_for_bootstrap() else "")
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
@@ -660,7 +666,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     cf.magenta("="), cf.yellow("'auto'"),
                     ", _redis_password{}{}".format(
                         cf.magenta("="), cf.yellow("'" + redis_password + "'"))
-                    if redis_password else "")
+                    if redis_password and not use_gcs_for_bootstrap() else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")
