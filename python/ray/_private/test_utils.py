@@ -1078,6 +1078,26 @@ def chdir(d: str):
     os.chdir(old_dir)
 
 
+def check_local_files_gced(cluster):
+    for node in cluster.list_all_nodes():
+        for subdir in [
+                "conda", "pip", "working_dir_files", "py_modules_files"
+        ]:
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir))
+            # Check that there are no files remaining except for .lock files
+            # and generated requirements.txt files.
+            # TODO(architkulkarni): these files should get cleaned up too!
+            if len(
+                    list(
+                        filter(lambda f: not f.endswith((".lock", ".txt")),
+                               all_files))) > 0:
+                print(str(all_files))
+                return False
+
+    return True
+
+
 def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
     if pip_list is None:
         pip_list = ["pip-install-test==0.5"]
