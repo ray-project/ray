@@ -375,7 +375,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "compress_observations": False,
     # Wait for metric batches for at most this many seconds. Those that
     # have not returned in time will be collected in the next train iteration.
-    "collect_metrics_timeout": 180,
+    "metrics_episode_collection_timeout_s": 180,
     # Smooth metrics over this many episodes.
     "metrics_num_episodes_for_smoothing": 100,
     # Minimum time interval to run one `train()` call for:
@@ -572,6 +572,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     "timesteps_per_iteration": 0,
     # Use `min_time_s_per_reporting` instead.
     "min_iter_time_s": DEPRECATED_VALUE,
+    # Use `metrics_episode_collection_timeout_s` instead.
+    "collect_metrics_timeout": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -1034,7 +1036,8 @@ class Trainer(Trainable):
                     self.workers.local_worker(),
                     self.workers.remote_workers(),
                     self._episodes_to_be_collected,
-                    timeout_seconds=self.config["collect_metrics_timeout"])
+                    timeout_seconds=self.config[
+                        "metrics_episode_collection_timeout_s"])
                 orig_episodes = list(episodes)
                 missing = self.config["metrics_num_episodes_for_smoothing"] -\
                     len(episodes)
