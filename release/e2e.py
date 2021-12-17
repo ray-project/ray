@@ -211,7 +211,7 @@ import yaml
 
 import anyscale
 import anyscale.conf
-from anyscale.api import instantiate_api_client
+from anyscale.authenticate import get_auth_api_client
 from anyscale.controllers.session_controller import SessionController
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
@@ -242,7 +242,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
     "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
-                                    "https://beta.anyscale.com"),
+                                    "https://console.anyscale.com"),
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
@@ -1306,13 +1306,10 @@ def run_test_config(
     # So we use the session controller instead.
     sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
 
-    session_controller = SessionController(
-        api_client=instantiate_api_client(
-            cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
-            host=GLOBAL_CONFIG["ANYSCALE_HOST"],
-        ),
-        anyscale_api_client=sdk.api_client,
-    )
+    get_auth_api_client(
+        cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"])
+    session_controller = SessionController()
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
