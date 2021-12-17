@@ -1,4 +1,5 @@
 import sys
+import time
 
 import ray
 
@@ -18,6 +19,8 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      run_string_as_driver, wait_for_condition)
+from ray.exceptions import LocalRayletDiedError
+import ray.experimental.internal_kv as internal_kv
 
 
 def search_raylet(cluster):
@@ -466,6 +469,32 @@ ray.get(task.remote(), timeout=3)
         # worker will be killed so it won't try to register to raylet
         assert ("Received a register request from an "
                 "unknown worker shim process") not in e.value.output.decode()
+
+
+def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
+    cluster = ray_start_cluster
+    head = cluster.add_node(num_cpus=4, resources={"foo": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"foo": 1})
+    def func():
+        internal_kv._internal_kv_put("test_func", "func")
+        while True:
+            time.sleep(1)
+
+    func.remote()
+    while not internal_kv._internal_kv_exists("test_func"):
+        time.sleep(0.1)
+
+    # The lease request should wait inside raylet
+    # since there is no available resources.
+    ret = func.remote()
+    # Waiting for the lease request to reach raylet.
+    time.sleep(1)
+    head.kill_raylet()
+    with pytest.raises(LocalRayletDiedError):
+        ray.get(ret)
 
 
 if __name__ == "__main__":

@@ -31,42 +31,14 @@ from ray.autoscaler._private.fake_multi_node.node_provider import \
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler._private.cli_logger import (add_click_logging_options,
+                                                cli_logger, cf)
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
-
-logging_options = [
-    click.option(
-        "--log-style",
-        required=False,
-        type=click.Choice(cli_logger.VALID_LOG_STYLES, case_sensitive=False),
-        default="auto",
-        help=("If 'pretty', outputs with formatting and color. If 'record', "
-              "outputs record-style without formatting. "
-              "'auto' defaults to 'pretty', and disables pretty logging "
-              "if stdin is *not* a TTY.")),
-    click.option(
-        "--log-color",
-        required=False,
-        type=click.Choice(["auto", "false", "true"], case_sensitive=False),
-        default="auto",
-        help=("Use color logging. "
-              "Auto enables color logging if stdout is a TTY.")),
-    click.option("-v", "--verbose", default=None, count=True)
-]
-
-
-def add_click_options(options):
-    def wrapper(f):
-        for option in reversed(logging_options):
-            f = option(f)
-        return f
-
-    return wrapper
 
 
 @click.group()
@@ -399,6 +371,12 @@ def debug(address):
     default=0,
     help="the port for dashboard agents to listen for http on.")
 @click.option(
+    "--dashboard-agent-grpc-port",
+    type=int,
+    hidden=True,
+    default=None,
+    help="the port for dashboard agents to listen for grpc on.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -477,24 +455,25 @@ def debug(address):
     default=False,
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
-@add_click_options(logging_options)
+@add_click_logging_options
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
           min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port,
-          dashboard_agent_listen_port, block, plasma_directory,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          system_config, enable_object_reconstruction, metrics_export_port,
-          no_monitor, tracing_startup_hook, ray_debugger_external, log_style,
-          log_color, verbose):
+          dashboard_agent_listen_port, dashboard_agent_grpc_port, block,
+          plasma_directory, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir, system_config, enable_object_reconstruction,
+          metrics_export_port, no_monitor, tracing_startup_hook,
+          ray_debugger_external):
     """Start Ray processes manually on the local machine."""
-    cli_logger.configure(log_style, log_color, verbose)
-    if gcs_server_port and not head:
+    if services.bootstrap_with_gcs() and gcs_server_port is not None:
+        cli_logger.abort("`{}` is deprecated. Specify {} instead.",
+                         cf.bold("--gcs-server-port"), cf.bold("--port"))
         raise ValueError(
-            "gcs_server_port can be only assigned when you specify --head.")
+            "`--gcs-server-port` is deprecated. Specify `--port` instead.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -534,6 +513,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
@@ -543,21 +523,29 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
+        metrics_agent_port=dashboard_agent_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external)
+
     if head:
+        # Start head node.
+
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
             port = ray_constants.DEFAULT_PORT
-
-        if port == 0:
+        elif port == 0:
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
+
+        # Override GCS port to `--port`.
+        if services.bootstrap_with_gcs():
+            assert ray_params.gcs_server_port is None
+            ray_params.gcs_server_port = port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -610,24 +598,26 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
+
+        # Initialize Redis settings.
         ray_params.update_if_absent(
             redis_port=port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
-            autoscaling_config=autoscaling_config,
         )
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            redis_addresses = services.find_redis_address(default_address)
-            if len(redis_addresses) > 0:
+            redis_addresses = services.find_redis_address()
+            if default_address in redis_addresses:
                 raise ConnectionError(
-                    f"Ray is already running at {default_address}. "
-                    f"Please specify a different port using the `--port`"
-                    f" command to `ray start`.")
+                    f"Ray is trying to start at {default_address}, "
+                    f"but is already running at {redis_addresses}. "
+                    "Please specify a different port using the `--port`"
+                    " command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
@@ -692,57 +682,68 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
     else:
-        # Start Ray on a non-head node.
-        redis_address = None
-        if address is not None:
-            (redis_address, redis_address_ip,
-             redis_address_port) = services.validate_redis_address(address)
-        if not (port is None):
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--port"), cf.bold("--head"))
+        # Start worker node.
 
-            raise Exception("If --head is not passed in, --port is not "
-                            "allowed.")
-        if redis_shard_ports is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
+        # Ensure `--address` flag is specified.
+        if address is None:
+            cli_logger.abort(
+                "`{}` is a required flag unless starting a head "
+                "node with `{}`.", cf.bold("--address"), cf.bold("--head"))
+            raise Exception("`--address` is a required flag unless starting a "
+                            "head node with `--head`.")
 
-            raise Exception("If --head is not passed in, --redis-shard-ports "
-                            "is not allowed.")
-        if redis_address is None:
-            cli_logger.abort("`{}` is required unless starting with `{}`.",
-                             cf.bold("--address"), cf.bold("--head"))
-
-            raise Exception("If --head is not passed in, --address must "
-                            "be provided.")
-        if include_dashboard:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-dashboard"), cf.bold("--head"))
-
+        # Raise error if any head-only flag are specified.
+        head_only_flags = {
+            "--port": port,
+            "--redis-shard-ports": redis_shard_ports,
+            "--include-dashboard": include_dashboard
+        }
+        for flag, val in head_only_flags.items():
+            if val is None:
+                continue
+            cli_logger.abort(
+                "`{}` should only be specified when starting head "
+                "node with `{}`.", cf.bold(flag), cf.bold("--head"))
             raise ValueError(
-                "If --head is not passed in, the --include-dashboard"
-                "flag is not relevant.")
+                f"{flag} should only be specified when starting head node "
+                "with `--head`.")
 
-        # Wait for the Redis server to be started. And throw an exception if we
-        # can't connect to it.
-        services.wait_for_redis_to_start(
-            redis_address_ip, redis_address_port, password=redis_password)
+        # Start Ray on a non-head node.
+        bootstrap_address, address_ip, address_port = \
+            services.validate_bootstrap_address(address)
 
-        # Create a Redis client.
-        redis_client = services.create_redis_client(
-            redis_address, password=redis_password)
+        if bootstrap_address is None:
+            cli_logger.abort("Cannot extract host IP and port from `{}={}`.",
+                             cf.bold("--address"), cf.bold(address))
+            raise Exception("Cannot extract host IP and port from "
+                            f"`--address={address}`.")
+        ray_params.update(bootstrap_address=bootstrap_address)
 
-        # Check that the version information on this node matches the version
-        # information that the cluster was started with.
-        services.check_version_info(redis_client)
+        if services.bootstrap_with_gcs():
+            raise NotImplementedError(
+                "Check version info via GCS is not implemented.")
+        else:
+            # Wait for the Redis server to be started. And throw an exception
+            # if we can't connect to it.
+            services.wait_for_redis_to_start(
+                address_ip, address_port, password=redis_password)
+
+            # Create a Redis client.
+            redis_client = services.create_redis_client(
+                address_ip, password=redis_password)
+
+            # Check that the version information on this node matches the
+            # version information that the cluster was started with.
+            services.check_version_info(redis_client)
+
+            ray_params.update(redis_address=bootstrap_address)
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(redis_address))
+            node_ip_address=services.get_node_ip_address(address_ip))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
 
@@ -792,11 +793,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     "--force",
     is_flag=True,
     help="If set, ray will send SIGKILL instead of SIGTERM.")
-@add_click_options(logging_options)
-def stop(force, verbose, log_style, log_color):
+@add_click_logging_options
+def stop(force):
     """Stop Ray processes manually on the local machine."""
-
-    cli_logger.configure(log_style, log_color, verbose)
 
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
@@ -938,13 +937,11 @@ def stop(force, verbose, log_style, log_color):
     help=("Ray uses login shells (bash --login -i) to run cluster commands "
           "by default. If your workflow is compatible with normal shells, "
           "this can be disabled for a better user experience."))
-@add_click_options(logging_options)
+@add_click_logging_options
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
-       use_login_shells, log_style, log_color, verbose):
+       use_login_shells):
     """Create or update a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     if restart_only or no_restart:
         cli_logger.doassert(restart_only != no_restart,
                             "`{}` is incompatible with `{}`.",
@@ -1001,12 +998,10 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     is_flag=True,
     default=False,
     help="Retain the minimal amount of workers specified in the config.")
-@add_click_options(logging_options)
+@add_click_logging_options
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers, log_style, log_color, verbose):
+         keep_min_workers):
     """Tear down a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
 
@@ -1051,12 +1046,9 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-@add_click_options(logging_options)
-def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
-            verbose):
+@add_click_logging_options
+def monitor(cluster_config_file, lines, cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
@@ -1091,12 +1083,10 @@ def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
-@add_click_options(logging_options)
+@add_click_logging_options
 def attach(cluster_config_file, start, screen, tmux, cluster_name,
-           no_config_cache, new, port_forward, log_style, log_color, verbose):
+           no_config_cache, new, port_forward):
     """Create or attach to a SSH session to a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(
         cluster_config_file,
@@ -1119,12 +1109,9 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-@add_click_options(logging_options)
-def rsync_down(cluster_config_file, source, target, cluster_name, log_style,
-               log_color, verbose):
+@add_click_logging_options
+def rsync_down(cluster_config_file, source, target, cluster_name):
     """Download specific files from a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
 
@@ -1144,12 +1131,9 @@ def rsync_down(cluster_config_file, source, target, cluster_name, log_style,
     is_flag=True,
     required=False,
     help="Upload to all nodes (workers and head).")
-@add_click_options(logging_options)
-def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
-             log_style, log_color, verbose):
+@add_click_logging_options
+def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
     """Upload specific files to a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     if all_nodes:
         cli_logger.warning(
             "WARNING: the `all_nodes` option is deprecated and will be "
@@ -1211,10 +1195,9 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     type=str,
     help="(deprecated) Use '-- --arg1 --arg2' for script args.")
 @click.argument("script_args", nargs=-1)
-@add_click_options(logging_options)
+@add_click_logging_options
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           no_config_cache, port_forward, script, args, script_args, log_style,
-           log_color, verbose):
+           no_config_cache, port_forward, script, args, script_args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1224,8 +1207,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     Example:
         >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
-    cli_logger.configure(log_style, log_color, verbose)
-
     cli_logger.doassert(not (screen and tmux),
                         "`{}` and `{}` are incompatible.", cf.bold("--screen"),
                         cf.bold("--tmux"))
@@ -1335,13 +1316,10 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     multiple=True,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
-@add_click_options(logging_options)
+@add_click_logging_options
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, no_config_cache, port_forward, log_style, log_color,
-         verbose):
+         cluster_name, no_config_cache, port_forward):
     """Execute a command via SSH on a Ray cluster."""
-    cli_logger.configure(log_style, log_color, verbose)
-
     port_forward = [(port, port) for port in list(port_forward)]
 
     exec_cluster(
@@ -1892,15 +1870,13 @@ def install_nightly(verbose, dryrun):
     type=str,
     help="The directory to generate the bazel project template to,"
     " if provided.")
-@add_click_options(logging_options)
-def cpp(show_library_path, generate_bazel_project_template_to, log_style,
-        log_color, verbose):
+@add_click_logging_options
+def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
             " and '--generate-bazel-project-template-to'.")
-    cli_logger.configure(log_style, log_color, verbose)
     raydir = os.path.abspath(os.path.dirname(ray.__file__))
     cpp_dir = os.path.join(raydir, "cpp")
     cpp_templete_dir = os.path.join(cpp_dir, "example")

@@ -582,6 +582,7 @@ def test_accelerator_type_api(shutdown_only):
         lambda: ray.available_resources()[resource_name] < quantity)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 def test_detect_docker_cpus():
     # No limits set
     with tempfile.NamedTemporaryFile(

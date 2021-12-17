@@ -1034,7 +1034,7 @@ def _do_policy_eval(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: PolicyMap,
-        sample_collector,
+        sample_collector: SampleCollector,
         active_episodes: Dict[EnvID, Episode],
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.

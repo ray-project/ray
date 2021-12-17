@@ -22,7 +22,8 @@ import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioSubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsAioErrorSubscriber, GcsAioLogSubscriber
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
@@ -117,7 +118,8 @@ class DashboardHead:
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
-        self.gcs_subscriber = None
+        self.gcs_error_subscriber = None
+        self.gcs_log_subscriber = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
@@ -203,12 +205,13 @@ class DashboardHead:
         internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
-        self.gcs_subscriber = None
         if gcs_pubsub_enabled():
-            self.gcs_subscriber = GcsAioSubscriber(
+            self.gcs_error_subscriber = GcsAioErrorSubscriber(
                 channel=self.aiogrpc_gcs_channel)
-            await self.gcs_subscriber.subscribe_error()
-            await self.gcs_subscriber.subscribe_logs()
+            self.gcs_log_subscriber = GcsAioLogSubscriber(
+                channel=self.aiogrpc_gcs_channel)
+            await self.gcs_error_subscriber.subscribe()
+            await self.gcs_log_subscriber.subscribe()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()

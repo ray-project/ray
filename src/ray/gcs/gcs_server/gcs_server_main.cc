@@ -55,33 +55,11 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_list);
 
-  auto promise = std::make_shared<std::promise<void>>();
-  std::thread([=] {
-    instrumented_io_context service;
-
-    // Init backend client.
-    ray::gcs::RedisClientOptions redis_client_options(redis_address, redis_port,
-                                                      redis_password);
-    auto redis_client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
-    auto status = redis_client->Connect(service);
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-    // Init storage.
-    auto storage = std::make_shared<ray::gcs::RedisGcsTableStorage>(redis_client);
-
-    // The internal_config is only set on the gcs--other nodes get it from GCS.
-    auto on_done = [promise, &service](const ray::Status &status) {
-      promise->set_value();
-      service.stop();
-    };
-    ray::rpc::StoredConfig config;
-    config.set_config(config_list);
-    RAY_CHECK_OK(
-        storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
-    boost::asio::io_service::work work(service);
-    service.run();
-  }).detach();
-  promise->get_future().get();
+  // IO Service for main loop.
+  instrumented_io_context main_service;
+  // Ensure that the IO service keeps running. Without this, the main_service will exit
+  // as soon as there is no more work to be processed.
+  boost::asio::io_service::work work(main_service);
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
@@ -95,12 +73,6 @@ int main(int argc, char *argv[]) {
                       std::unordered_map<std::string, std::string>(), log_dir,
                       RayConfig::instance().event_level());
   }
-
-  // IO Service for main loop.
-  instrumented_io_context main_service;
-  // Ensure that the IO service keeps running. Without this, the main_service will exit
-  // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
@@ -116,6 +88,7 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
   gcs_server_config.log_dir = log_dir;
+  gcs_server_config.raylet_config_list = config_list;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
