@@ -68,8 +68,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             with tempfile.TemporaryDirectory() as tmp_dir:
                 zip_dir = Path(tmp_working_dir)
                 package = shutil.make_archive(
-                    os.path.join(tmp_dir, "test"), "zip", zip_dir / "..",
-                    zip_dir.name)
+                    os.path.join(tmp_dir, "test"), "zip", zip_dir)
                 ray.init(address, runtime_env={"working_dir": package})
         elif option == "py_modules":
             ray.init(
