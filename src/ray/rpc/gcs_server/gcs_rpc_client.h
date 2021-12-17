@@ -365,7 +365,7 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
 
   VOID_GCS_RPC_CLIENT_METHOD(PingGcsService, Ping, ping_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
+                             /*method_timeout_ms*/ 100, )
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 

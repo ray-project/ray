@@ -213,6 +213,12 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Reconnect to GCS RPC server.
   void ReconnectGcsServer();
 
+  ///
+  void DoReconnect(absl::Time start);
+
+  ///
+  void OnReconnected(const Status &status, absl::Time start, std::pair<std::string, int> address);
+
   std::shared_ptr<RedisClient> redis_client_;
 
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
@@ -234,6 +240,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Retry interval to reconnect to a GCS server.
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
+
+  // A flag to indicate whether reconnecting to gcs is in progress or not.
+  std::atomic<bool> reconnect_in_progress_ = false;
 };
 
 }  // namespace gcs

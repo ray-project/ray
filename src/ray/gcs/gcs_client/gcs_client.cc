@@ -285,74 +285,75 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
 }
 
 void GcsClient::ReconnectGcsServer() {
+  if (reconnect_in_progress_) {
+    return;
+  }
+  reconnect_in_progress_ = true;
+  DoReconnect(absl::Now());
+}
+
+void GcsClient::DoReconnect(absl::Time start) {
+  if (disconnected_) {
+    return;
+  }
   std::pair<std::string, int> address;
-  auto timeout_s =
-      absl::Seconds(5);
-  auto start = absl::Now();
-  auto reconnected = false;
-  while (absl::Now() - start < timeout_s) {
-    if (disconnected_) {
+  if (get_server_address_func_(&address)) {
+    // After GCS is restarted, the gcs client will reestablish the connection. At
+    // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
+    // avoid repeated connections in a short period of time, we add a protection
+    // mechanism: if the address does not change (meaning gcs server doesn't restart),
+    // the connection can be made at most once in
+    // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
+    if (last_reconnect_address_ == address &&
+        (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
+            RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
+      RAY_LOG(DEBUG)
+          << "Repeated reconnection in "
+          << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
+          << " milliseconds, return directly.";
       return;
     }
-    if (get_server_address_func_(&address)) {
-      // After GCS is restarted, the gcs client will reestablish the connection. At
-      // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
-      // avoid repeated connections in a short period of time, we add a protection
-      // mechanism: if the address does not change (meaning gcs server doesn't restart),
-      // the connection can be made at most once in
-      // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
-      if (last_reconnect_address_ == address &&
-          (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
-              RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
-        RAY_LOG(DEBUG)
-            << "Repeated reconnection in "
-            << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
-            << " milliseconds, return directly.";
-        return;
-      }
 
-      RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
-                     << address.second;
-      gcs_rpc_client_->ResetPingClient(address.first, address.second, *client_call_manager_);
-      rpc::PingRequest ping_request;
-      std::promise<Status> returned;
-      gcs_rpc_client_->Ping(ping_request,
-                [&returned](const Status &status, const rpc::PingReply &reply) {
-                  RAY_LOG(INFO)<< "Ping return " << status;
-                  returned.set_value(status);
-                });
-      std::future<Status> future = returned.get_future();
-      RAY_LOG(INFO) << "future.wait_for";
-      auto status = future.wait_for(std::chrono::milliseconds(1000));
-      RAY_LOG(INFO) << "future.wait_for done";
-      if (status == std::future_status::ready) {
-        Status s = future.get();
-        RAY_LOG(INFO) << "future.get() " << s;
-      }
-
-      if (status == std::future_status::ready && future.get().ok()) {
-        // If `last_reconnect_address_` port is -1, it means that this is the first
-        // connection and no log will be printed.
-        if (last_reconnect_address_.second != -1) {
-          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                        << address.second;
-        }
-        reconnected = true;
-        break;
-      }
-    }
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));
+    RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
+                   << address.second;
+    gcs_rpc_client_->ResetPingClient(address.first, address.second,
+                                     *client_call_manager_);
+    rpc::PingRequest ping_request;
+    gcs_rpc_client_->Ping(
+        ping_request,
+        [this, start, address](const Status &status, const rpc::PingReply &reply) {
+          RAY_LOG(INFO) << "Ping return " << status;
+          OnReconnected(status, start, address);
+        });
   }
+}
 
-  if (reconnected) {
+void GcsClient::OnReconnected(const Status &status, absl::Time start,
+                              std::pair<std::string, int> address) {
+  if (status.ok()) {
+    // If `last_reconnect_address_` port is -1, it means that this is the first
+    // connection and no log will be printed.
+    if (last_reconnect_address_.second != -1) {
+      RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                    << address.second;
+    }
+
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
+    reconnect_in_progress_ = false;
   } else {
-    // RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
-    //                   "server address was "
-    //                << address.first << ":" << address.second;
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));
+    if (absl::Now() - start <
+        absl::Seconds(RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())) {
+      DoReconnect(start);
+    } else {
+      RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
+                        "server address was "
+                     << address.first << ":" << address.second;
+      reconnect_in_progress_ = false;
+    }
   }
 }
 
