@@ -140,7 +140,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
-      [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
+      [this](rpc::GcsServiceFailureType type, const std::function<void()> callback) { GcsServiceFailureDetected(type, callback); });
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
@@ -258,25 +258,35 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
       // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
       // callback.
       current_gcs_server_address_ = address;
-      GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART);
+      GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART, nullptr);
     }
   }
 }
 
-void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
+void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type, const std::function<void()> callback) {
+  RAY_LOG(INFO) << "GcsServiceFailureDetected " << (int)type;
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.
-    ReconnectGcsServerAsync(nullptr);
+    ReconnectGcsServerAsync([callback]() {
+      RAY_LOG(INFO) << "ReconnectGcsServerAsync callback 1 called";
+      if (callback) {
+        callback();
+      }
+    });
     break;
   case rpc::GcsServiceFailureType::GCS_SERVER_RESTART:
     // If GCS sever address has changed, reconnect to GCS server and redo
     // subscription.
-    ReconnectGcsServerAsync([this]() {
+    ReconnectGcsServerAsync([this, callback]() {
+      RAY_LOG(INFO) << "ReconnectGcsServerAsync callback 2 called";
       // If using GCS server for pubsub, resubscribe to GCS publishers.
       resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
       // Resend resource usage after reconnected, needed by resource view in GCS.
       node_resource_accessor_->AsyncReReportResourceUsage();
+      if (callback) {
+        callback();
+      }
     });
     break;
   default:
@@ -343,10 +353,11 @@ void GcsClient::OnReconnected(const Status &status, absl::Time start,
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
-    reconnect_in_progress_ = false;
     if (callback) {
+      RAY_LOG(INFO) << "Reconnected call callback";
       callback();
     }
+    reconnect_in_progress_ = false;
   } else {
     std::this_thread::sleep_for(
         std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));

@@ -103,8 +103,10 @@ class Executor {
         if (no_retry) {                                                                \
           callback(status, reply);                                                     \
         } else {                                                                       \
-          gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT);        \
-          executor->Retry();                                                           \
+          gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT, [executor]() { \
+          RAY_LOG(INFO) << #METHOD << " retry";  \
+            executor->Retry();                                                           \
+          });        \
         }                                                                              \
       }                                                                                \
     };                                                                                 \
@@ -140,7 +142,7 @@ class GcsRpcClient {
   /// and reconnect to GCS RPC server when gcs service failure is detected.
   GcsRpcClient(
       const std::string &address, const int port, ClientCallManager &client_call_manager,
-      std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
+      std::function<void(GcsServiceFailureType, const std::function<void()> callback)> gcs_service_failure_detected = nullptr)
       : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
     Reset(address, port, client_call_manager);
   };
@@ -373,7 +375,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PingGcsService, Ping, ping_grpc_client_,
                              /*method_timeout_ms*/ 111, true, )
  private:
-  std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
+  std::function<void(GcsServiceFailureType, const std::function<void()> callback)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
