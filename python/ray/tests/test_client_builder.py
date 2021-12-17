@@ -8,6 +8,7 @@ from unittest.mock import patch, Mock
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import run_string_as_driver_nonblocking,\
     wait_for_condition, run_string_as_driver
 
@@ -155,9 +156,15 @@ while True:
     # ray.client().connect() so it should create a fourth one.
     p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
 
-    wait_for_condition(
-        lambda: len(ray._private.services.find_redis_address()) == 4,
-        retry_interval_ms=1000)
+    if not use_gcs_for_bootstrap():
+        wait_for_condition(
+            lambda: len(ray._private.services.find_redis_address()) == 4,
+            retry_interval_ms=1000)
+    else:
+        wait_for_condition(
+            lambda: len(ray._private.services.find_gcs_address()) == 4,
+            retry_interval_ms=1000)
+
 
     p1.kill()
     p2.kill()
