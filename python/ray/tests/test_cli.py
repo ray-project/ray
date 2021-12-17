@@ -41,6 +41,7 @@ import ray.autoscaler._private.aws.config as aws_config
 from ray.cluster_utils import Cluster, cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 boto3_list = [{
     "InstanceType": "t1.micro",
@@ -242,8 +243,10 @@ def test_ray_start(configure_lang):
     assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
 
     _die_on_error(runner.invoke(scripts.stop))
-
-    _check_output_via_pattern("test_ray_start.txt", result)
+    if not use_gcs_for_bootstrap():
+        _check_output_via_pattern("test_ray_start.txt", result)
+    else:
+        _check_output_via_pattern("test_ray_start_gcs.txt", result)
 
 
 @pytest.mark.skipif(
