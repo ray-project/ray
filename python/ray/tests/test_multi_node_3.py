@@ -161,7 +161,7 @@ def test_connecting_in_local_case(ray_start_regular):
 import ray
 ray.init(address="{}")
 print("success")
-""".format(address_info["redis_address"])
+""".format(address_info["bootstrap_address"])
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -205,7 +205,7 @@ tune.run_experiments({{
     }}
 }})
 print("success")
-""".format(address_info["redis_address"])
+""".format(address_info["bootstrap_address"])
 
     for i in range(2):
         out = run_string_as_driver(driver_script)
@@ -329,7 +329,7 @@ print("success")
 
 def test_multi_driver_logging(ray_start_regular):
     address_info = ray_start_regular
-    address = address_info["redis_address"]
+    address = address_info["bootstrap_address"]
 
     # ray.init(address=address)
     driver1_wait = Semaphore.options(name="driver1_wait").remote(value=0)

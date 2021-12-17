@@ -171,10 +171,10 @@ class GcsChannel:
         self._aio = aio
 
     def connect(self):
-        if use_gcs_for_bootstrap():
-            gcs_address = self._gcs_address
-        else:
+        if self._redis_client is not None:
             gcs_address = get_gcs_address_from_redis(self._redis_client)
+        else:
+            gcs_address = self._gcs_address
 
         self._channel = create_gcs_channel(gcs_address, self._aio)
 

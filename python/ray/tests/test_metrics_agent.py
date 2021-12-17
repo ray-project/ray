@@ -243,9 +243,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
     addr = ray.init(address=cluster.address)
-    redis_address = addr["redis_address"]
     writer = PrometheusServiceDiscoveryWriter(
-        redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD,
+        addr.get("redis_address"),
+        addr.get("gcs_server_address"),
+        ray.ray_constants.REDIS_DEFAULT_PASSWORD,
         cluster.gcs_address, "/tmp/ray")
 
     def get_metrics_export_address_from_node(nodes):

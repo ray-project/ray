@@ -521,10 +521,8 @@ class Node:
         if use_gcs_for_bootstrap():
             # TODO (iycheng) Pass gcs address from the front
             return self._gcs_address
-
-        if self._gcs_address is None:
-            self._gcs_address = get_gcs_address_from_redis(
-                self.create_redis_client())
+        self._gcs_address = get_gcs_address_from_redis(
+            self.create_redis_client())
         return self._gcs_address
 
     def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
