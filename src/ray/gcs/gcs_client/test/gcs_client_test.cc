@@ -706,7 +706,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
 }
 
 TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
-
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));

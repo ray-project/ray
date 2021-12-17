@@ -2126,8 +2126,7 @@ def start_monitor(redis_address,
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
-        f"--redis-address={redis_address}",
-        f"--gcs-address={gcs_address}",
+        f"--redis-address={redis_address}", f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}"
     ]

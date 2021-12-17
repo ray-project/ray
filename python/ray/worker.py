@@ -846,7 +846,7 @@ def init(
         bootstrap_address, _, _ = services.validate_bootstrap_address(address)
     else:
         bootstrap_address = None
-    redis_address = None if services.bootstrap_with_gcs(
+    redis_address = None if gcs_utils.use_gcs_for_bootstrap(
     ) else bootstrap_address
 
     if configure_logging:

@@ -719,10 +719,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             f"`--address={address}`.")
         ray_params.update(bootstrap_address=bootstrap_address)
 
-        if services.bootstrap_with_gcs():
-            raise NotImplementedError(
-                "Check version info via GCS is not implemented.")
-        else:
+        # TODO(mwtian): wait for GCS when bootstrapping with GCS.
+        if not services.bootstrap_with_gcs():
             # Wait for the Redis server to be started. And throw an exception
             # if we can't connect to it.
             services.wait_for_redis_to_start(
