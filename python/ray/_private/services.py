@@ -392,10 +392,11 @@ def get_ray_address_to_use_or_die():
     Returns:
         A string to pass into `ray.init(address=...)`
     """
-    return os.environ.get(
-        ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-        _find_gcs_address_or_die()
-        if bootstrap_with_gcs() else _find_redis_address_or_die())
+    addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if addr is None or addr == "auto":
+        addr = (_find_gcs_address_or_die()
+                if bootstrap_with_gcs() else _find_redis_address_or_die())
+    return addr
 
 
 def wait_for_node(redis_address,
