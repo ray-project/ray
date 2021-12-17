@@ -717,18 +717,18 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-def create_ray_handler(redis_address, redis_password):
+def create_ray_handler(bootstrap_address, redis_password):
     def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
-        if redis_address:
+        if bootstrap_address:
             if redis_password:
                 ray.init(
-                    address=redis_address,
+                    address=bootstrap_address,
                     _redis_password=redis_password,
                     job_config=job_config,
                     **ray_init_kwargs)
             else:
                 ray.init(
-                    address=redis_address,
+                    address=bootstrap_address,
                     job_config=job_config,
                     **ray_init_kwargs)
         else:
@@ -797,9 +797,11 @@ def main():
         help="The port to use for connecting to the runtime_env agent.")
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
-
-    ray_connect_handler = create_ray_handler(args.redis_address,
-                                             args.redis_password)
+    if not use_gcs_for_bootstrap():
+        ray_connect_handler = create_ray_handler(args.redis_address,
+                                                 args.redis_password)
+    else:
+        ray_connect_handler = create_ray_handler(args.gcs_address, None)
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")

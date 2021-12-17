@@ -158,27 +158,24 @@ class ProxyManager():
         """
         Returns the provided Ray gcs address, or creates a new cluster.
         """
-        if self._gcs_address:
-            return self._gcs_address
-        # Start a new, locally scoped cluster.
-        connection_tuple = ray.init()
-        self._redis_address = connection_tuple["redis_address"]
-        self._session_dir = connection_tuple["session_dir"]
-        self._gcs_address = connection_tuple["gcs_server_address"]
+        self._init_ray()
         return self._gcs_address
+
+    def _init_ray(self):
+        if (use_gcs_for_bootstrap() and self._gcs_address is None) or \
+           (not use_gcs_for_bootstrap() and self._redis_address is None):
+            # Start a new, locally scoped cluster.
+            connection_tuple = ray.init()
+            self._redis_address = connection_tuple["redis_address"]
+            self._session_dir = connection_tuple["session_dir"]
+            self._gcs_address = connection_tuple["gcs_server_address"]
 
     @property
     def redis_address(self) -> str:
         """
         Returns the provided Ray Redis address, or creates a new cluster.
         """
-        if self._redis_address:
-            return self._redis_address
-        # Start a new, locally scoped cluster.
-        connection_tuple = ray.init()
-        self._redis_address = connection_tuple["redis_address"]
-        self._session_dir = connection_tuple["session_dir"]
-        self._gcs_address = connection_tuple["gcs_server_address"]
+        self._init_ray()
         return self._redis_address
 
     @property
