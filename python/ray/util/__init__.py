@@ -45,6 +45,29 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
         return [name for _, name in actors]
 
 
+async def execute(parent_actor, coro):
+    while True:
+        import pdb; pdb.set_trace()
+        try:
+            fut = coro.send(None)
+        except StopIteration as val:
+            return val.value
+
+        if hasattr(fut, "_object_ref"):
+            object_ref = fut._object_ref
+            actor = object_ref.actor()
+            # assert actor is not None, \
+            #     "Awaiting ObjectRef from Task is unimplemented! "\
+            #     "Please only await on actors."
+            if actor is not None:
+                result = await actor.__ray_execute_coroutine__.remote(coro,
+                                                                      object_ref)
+                return result
+
+        # fut.get_loop().run_until_complete(fut)
+        # yield
+
+
 __all__ = [
     "ActorPool",
     "disable_log_once_globally",

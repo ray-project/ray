@@ -71,25 +71,61 @@ async def g():
 
     return sum
 
-coro = g()
-result = None
-while True:
-    # import pdb; pdb.set_trace()
-    try:
-        fut = coro.send(None)
-    except StopIteration as val:
-        result = val.value
-        break
+# import pdb; pdb.set_trace()
 
-    if hasattr(fut, "_object_ref"):
-        print(f"ObjectRef fut={fut}")
-        new_coro = cloudpickle.loads(cloudpickle.dumps(coro))
-        coro = new_coro
-    else:
-        print(f"Not ObjectRef fut={fut}")
-
-    # TODO: figure out a way to yield thread?
-    fut.get_loop().run_until_complete(fut)
+@ray.remote
+class StepA:
+    async def PreProcess(self):
+        return 1
 
 
-print(f"result={result}")
+@ray.remote
+class StepB:
+    async def Compute(self, data):
+        return data + 10
+
+
+@ray.remote
+class StepC:
+    async def Store(self, data):
+        return data + 100
+
+
+a = StepA.remote()
+b = StepB.remote()
+c = StepC.remote()
+
+
+async def flow():
+    data = await a.PreProcess.remote()
+    value = await b.Compute.remote(data)
+    result = await c.Store.remote(value)
+    return result
+
+
+print(f"result={asyncio.run(ray.util.execute(None, flow()))}")
+
+
+# coro = g()
+# result = None
+
+# while True:
+#     # import pdb; pdb.set_trace()
+#     try:
+#         fut = coro.send(None)
+#     except StopIteration as val:
+#         result = val.value
+#         break
+#
+#     if hasattr(fut, "_object_ref"):
+#         print(f"ObjectRef fut={fut}")
+#         new_coro = cloudpickle.loads(cloudpickle.dumps(coro))
+#         coro = new_coro
+#     else:
+#         print(f"Not ObjectRef fut={fut}")
+#
+#     # TODO: figure out a way to yield thread?
+#     fut.get_loop().run_until_complete(fut)
+
+
+# print(f"result={result}")

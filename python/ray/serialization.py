@@ -121,11 +121,9 @@ class SerializationContext:
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
         def objectref_iter_deserializer(object_ref):
-            print("in asyncio_futureiter_deserializer")
             return object_ref.__await__()
 
         def objectref_iter_reducer(iter):
-            print("in asyncio_futureiter_reducer")
             return objectref_iter_deserializer, (iter.object_ref, )
 
         self._register_cloudpickle_reducer(ObjectRefIter,

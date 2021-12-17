@@ -1327,22 +1327,8 @@ def modify_class(cls):
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
 
-        async def __ray_execute_coroutine__(self, coro):
-            while True:
-                try:
-                    fut = coro.send(None)
-                except StopIteration as val:
-                    return val.value
-
-                if hasattr(fut, "_object_ref"):
-                    actor = fut._object_ref.actor()
-                    next_coro = ray.cloudpickle.loads(
-                        ray.cloudpickle.dumps(coro))
-                    result = await actor.__ray_execute_coroutine__.remote(
-                        next_coro)
-                    return result
-
-                fut.get_loop().run_until_complete(fut)
+        async def __ray_execute_coroutine__(self, coro, ref):
+            return await ray.util.execute(self, coro)
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
