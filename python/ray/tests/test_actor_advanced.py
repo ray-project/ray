@@ -13,21 +13,9 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
-    SignalActor, wait_for_condition, wait_for_pid_to_exit, convert_actor_state)
+    make_global_state_accessor, SignalActor, wait_for_condition,
+    wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray._raylet import GlobalStateAccessor, GcsClientOptions
-
-
-def make_global_state_accessor(address_info):
-    addr = address_info["bootstrap_address"]
-    if not gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_redis_address(
-            addr, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    else:
-        gcs_options = GcsClientOptions.from_gcs_address(addr)
-    global_state_accessor = GlobalStateAccessor(gcs_options)
-    global_state_accessor.connect()
-    return global_state_accessor
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):

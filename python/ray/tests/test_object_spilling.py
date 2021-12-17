@@ -171,7 +171,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
     ref2 = ray.put(arr)  # noqa
 
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -257,7 +257,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -296,7 +296,7 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -335,7 +335,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -368,7 +368,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     x_id = f.remote()  # noqa
     ray.get(x_id)
-    s = memory_summary(address=address["redis_address"], stats_only=True)
+    s = memory_summary(address=address["bootstrap_address"], stats_only=True)
     assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
@@ -382,10 +382,10 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     ray.get(func_with_ref.remote(obj))
 
-    s = memory_summary(address=address["redis_address"], stats_only=True)
+    s = memory_summary(address=address["bootstrap_address"], stats_only=True)
     # 50MB * 5 references + 30MB used for task execution.
     assert "Objects consumed by Ray tasks: 280 MiB." in s, s
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -447,7 +447,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
     assert duration <= timedelta(
         seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(
@@ -479,7 +479,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 ref = random.choice(replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["bootstrap_address"])
 
 
 @pytest.mark.skipif(

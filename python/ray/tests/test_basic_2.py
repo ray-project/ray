@@ -695,7 +695,7 @@ if __name__ == "__main__":
         with open(test_driver, "w") as f:
             f.write(
                 code_test.format(
-                    repr(ray_start_regular_shared["redis_address"])))
+                    repr(ray_start_regular_shared["bootstrap_address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 

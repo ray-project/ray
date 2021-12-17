@@ -152,10 +152,10 @@ print("My job id: ", str(ray.get_runtime_context().job_id))
 ray.shutdown()
     """
 
-    non_hanging = driver_template.format(ray_start_regular["redis_address"],
-                                         "sleep(1)")
-    hanging_driver = driver_template.format(ray_start_regular["redis_address"],
-                                            "sleep(60)")
+    non_hanging = driver_template.format(
+        ray_start_regular["bootstrap_address"], "sleep(1)")
+    hanging_driver = driver_template.format(
+        ray_start_regular["bootstrap_address"], "sleep(60)")
 
     out = run_string_as_driver(non_hanging)
     p = run_string_as_driver_nonblocking(hanging_driver)

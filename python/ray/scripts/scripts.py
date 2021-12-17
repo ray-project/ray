@@ -620,7 +620,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if default_address in bootstrap_addresses:
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {bootstrap}. "
+                    f"but is already running at {bootstrap_addresses}. "
                     "Please specify a different port using the `--port`"
                     " command to `ray start`.")
 
@@ -1500,10 +1500,14 @@ def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    redis_client = ray._private.services.create_redis_client(
-        address, redis_password)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
-        redis_client)
+    if not use_gcs_for_bootstrap():
+        redis_client = ray._private.services.create_redis_client(
+            address, redis_password)
+        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+            redis_client)
+    else:
+        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         DEBUG_AUTOSCALING_STATUS)

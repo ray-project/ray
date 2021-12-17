@@ -26,6 +26,7 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -48,6 +49,18 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
     pass
+
+
+def make_global_state_accessor(address_info):
+    addr = address_info["bootstrap_address"]
+    if not gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = GcsClientOptions.from_redis_address(
+            addr, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    else:
+        gcs_options = GcsClientOptions.from_gcs_address(addr)
+    global_state_accessor = GlobalStateAccessor(gcs_options)
+    global_state_accessor.connect()
+    return global_state_accessor
 
 
 def _pid_alive(pid):
