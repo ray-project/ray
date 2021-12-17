@@ -14,7 +14,6 @@ import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 import ray
-from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -982,82 +981,18 @@ class Trainer(Trainable):
                     time.sleep(0.5)
                     raise e
 
+        result = step_results
+
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
             self._sync_filters_if_needed(self.workers)
 
             # Collect worker metrics.
             if self.config["_disable_execution_plan_api"]:
-                result["info"] = {LEARNER_INFO: result.copy()}
-
-                # Collect rollout worker metrics.
-                episodes, self._episodes_to_be_collected = collect_episodes(
-                    self.workers.local_worker(),
-                    self.workers.remote_workers(),
-                    self._episodes_to_be_collected,
-                    timeout_seconds=self.config[
-                        "metrics_episode_collection_timeout_s"])
-                orig_episodes = list(episodes)
-                missing = self.config["metrics_num_episodes_for_smoothing"] -\
-                    len(episodes)
-                if missing > 0:
-                    episodes = self._episode_history[-missing:] + episodes
-                    assert len(episodes) <= \
-                           self.config["metrics_num_episodes_for_smoothing"]
-                self._episode_history.extend(orig_episodes)
-                self._episode_history = \
-                    self._episode_history[
-                        -self.config["metrics_num_episodes_for_smoothing"]:]
-                result["sampler_results"] = summarize_episodes(
-                    episodes, orig_episodes)
-                # TODO: Don't dump sampler results into top-level.
-                result.update(result["sampler_results"])
-
-                result["num_healthy_workers"] = len(
-                    self.workers.remote_workers())
-
-                # Train-steps- and env/agent-steps this iteration.
-                for c in [
-                        NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED,
-                        NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-                ]:
-                    result[c] = self._counters[c]
-                if self._by_agent_steps:
-                    result[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
-                    result[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-                    # TODO: For CQL and other algos, count by trained steps.
-                    result["timesteps_total"] = self._counters[
-                        NUM_AGENT_STEPS_SAMPLED]
-                else:
-                    result[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
-                    result[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
-                    # TODO: For CQL and other algos, count by trained steps.
-                    result["timesteps_total"] = self._counters[
-                        NUM_ENV_STEPS_SAMPLED]
-                # TODO: Backward compatibility.
-                result["agent_timesteps_total"] = self._counters[
-                    NUM_AGENT_STEPS_SAMPLED]
-
-                # Process timer results.
-                timers = {}
-                for k, timer in self._timers.items():
-                    timers["{}_time_ms".format(k)] = round(
-                        timer.mean * 1000, 3)
-                    if timer.has_units_processed():
-                        timers["{}_throughput".format(k)] = round(
-                            timer.mean_throughput, 3)
-                result["timers"] = timers
-
-                # Process counter results.
-                counters = {}
-                for k, counter in self._counters.items():
-                    counters[k] = counter
-                result["counters"] = counters
-                # TODO: Backward compatibility.
-                result["info"].update(counters)
-
-                result["custom_metrics"] = result.get("custom_metrics", {})
-                result["episode_media"] = result.get("episode_media", {})
+                result = self._compile_results(
+                    step_ctx=step_ctx,
+                    learner_results=step_results,
+                )
 
         return result
 
@@ -1874,18 +1809,6 @@ class Trainer(Trainable):
         # Sync new weights to remote workers.
         self._sync_weights_to_workers(worker_set=self.workers)
 
-    #@DeveloperAPI
-    #def collect_metrics(self,
-    #                    selected_workers: List[ActorHandle] = None) -> dict:
-    #    """Collects metrics from the remote workers of this agent.
-    #
-    #    This is the same data as returned by a call to train().
-    #    """
-    #    return self.optimizer.collect_metrics(
-    #        self.config["metrics_episode_collection_timeout_s"],
-    #        min_history=self.config["metrics_num_episodes_for_smoothing"],
-    #        selected_workers=selected_workers)
-
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
@@ -2651,17 +2574,21 @@ class Trainer(Trainable):
         class StepCtx:
             def __enter__(self):
                 # First call to stop, `result` is expected to be None ->
-                # Start with self.failures=-1 -> set to 0 the very first call to
-                # `self.stop()`.
+                # Start with self.failures=-1 -> set to 0 the very first call
+                # to `self.stop()`.
                 self.failures = -1
 
                 self.time_start = time.time()
                 self.sampled = 0
                 self.trained = 0
-                self.init_env_steps_sampled = trainer._counters[NUM_ENV_STEPS_SAMPLED]
-                self.init_env_steps_trained = trainer._counters[NUM_ENV_STEPS_TRAINED]
-                self.init_agent_steps_sampled = trainer._counters[NUM_AGENT_STEPS_SAMPLED]
-                self.init_agent_steps_trained = trainer._counters[NUM_AGENT_STEPS_TRAINED]
+                self.init_env_steps_sampled = trainer._counters[
+                    NUM_ENV_STEPS_SAMPLED]
+                self.init_env_steps_trained = trainer._counters[
+                    NUM_ENV_STEPS_TRAINED]
+                self.init_agent_steps_sampled = trainer._counters[
+                    NUM_AGENT_STEPS_SAMPLED]
+                self.init_agent_steps_trained = trainer._counters[
+                    NUM_AGENT_STEPS_TRAINED]
                 return self
 
             def __exit__(self, *args):
@@ -2678,9 +2605,10 @@ class Trainer(Trainable):
                         raise RuntimeError(
                             "Failed to recover from worker crash.")
 
-                # Stopping criteria: Only when using the `training_iteration` API,
-                # b/c for the `exec_plan` API, the logic to stop is already built
-                # into the execution plans via the `StandardMetricsReporting` op.
+                # Stopping criteria: Only when using the `training_iteration`
+                # API, b/c for the `exec_plan` API, the logic to stop is
+                # already built into the execution plans via the
+                # `StandardMetricsReporting` op.
                 elif trainer.config["_disable_execution_plan_api"]:
                     if trainer._by_agent_steps:
                         self.sampled = \
@@ -2700,14 +2628,18 @@ class Trainer(Trainable):
                     min_t = trainer.config["min_time_s_per_reporting"]
                     min_sample_ts = trainer.config[
                         "min_sample_timesteps_per_reporting"]
-                    min_train_ts = trainer.config["min_train_timesteps_per_reporting"]
+                    min_train_ts = trainer.config[
+                        "min_train_timesteps_per_reporting"]
                     # Repeat if not enough time has passed or if not enough
-                    # env|train timesteps have been processed (or these min values
-                    # are not provided by the user).
+                    # env|train timesteps have been processed (or these min
+                    # values are not provided by the user).
                     if result is not None and \
-                        (not min_t or time.time() - self.time_start >= min_t) and \
-                        (not min_sample_ts or self.sampled >= min_sample_ts) and \
-                        (not min_train_ts or self.trained >= min_train_ts):
+                            (not min_t or
+                             time.time() - self.time_start >= min_t) and \
+                            (not min_sample_ts or
+                             self.sampled >= min_sample_ts) and \
+                            (not min_train_ts or
+                             self.trained >= min_train_ts):
                         return True
                 # No errors (we got results) -> Break.
                 elif result is not None:
@@ -2716,6 +2648,79 @@ class Trainer(Trainable):
                 return False
 
         return StepCtx()
+
+    def _compile_results(self, *, step_ctx, learner_results=None):
+        learner_results = learner_results or {}
+
+        results = {}
+        results["info"] = {LEARNER_INFO: learner_results}
+
+        # Collect rollout worker metrics.
+        episodes, self._episodes_to_be_collected = collect_episodes(
+            self.workers.local_worker(),
+            self.workers.remote_workers(),
+            self._episodes_to_be_collected,
+            timeout_seconds=self.config[
+                "metrics_episode_collection_timeout_s"])
+        orig_episodes = list(episodes)
+        missing = self.config["metrics_num_episodes_for_smoothing"] - \
+            len(episodes)
+        if missing > 0:
+            episodes = self._episode_history[-missing:] + episodes
+            assert len(episodes) <= \
+                   self.config["metrics_num_episodes_for_smoothing"]
+        self._episode_history.extend(orig_episodes)
+        self._episode_history = \
+            self._episode_history[
+                -self.config["metrics_num_episodes_for_smoothing"]:]
+        results["sampler_results"] = summarize_episodes(
+            episodes, orig_episodes)
+        # TODO: Don't dump sampler results into top-level.
+        results.update(results["sampler_results"])
+
+        results["num_healthy_workers"] = len(self.workers.remote_workers())
+
+        # Train-steps- and env/agent-steps this iteration.
+        for c in [
+                NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED,
+                NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
+        ]:
+            results[c] = self._counters[c]
+        if self._by_agent_steps:
+            results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+            results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            # TODO: For CQL and other algos, count by trained steps.
+            results["timesteps_total"] = self._counters[
+                NUM_AGENT_STEPS_SAMPLED]
+        else:
+            results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+            results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            # TODO: For CQL and other algos, count by trained steps.
+            results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
+        # TODO: Backward compatibility.
+        results["agent_timesteps_total"] = self._counters[
+            NUM_AGENT_STEPS_SAMPLED]
+
+        # Process timer results.
+        timers = {}
+        for k, timer in self._timers.items():
+            timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
+            if timer.has_units_processed():
+                timers["{}_throughput".format(k)] = round(
+                    timer.mean_throughput, 3)
+        results["timers"] = timers
+
+        # Process counter results.
+        counters = {}
+        for k, counter in self._counters.items():
+            counters[k] = counter
+        results["counters"] = counters
+        # TODO: Backward compatibility.
+        results["info"].update(counters)
+
+        results["custom_metrics"] = learner_results.get("custom_metrics", {})
+        results["episode_media"] = learner_results.get("episode_media", {})
+        return results
 
     def __repr__(self):
         return type(self).__name__
@@ -2737,3 +2742,12 @@ class Trainer(Trainable):
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)
+
+    # TODO: `self.optimizer` is no longer created in Trainer ->
+    #  Deprecate this method.
+    @Deprecated(error=False)
+    def collect_metrics(self, selected_workers=None):
+        return self.optimizer.collect_metrics(
+            self.config["metrics_episode_collection_timeout_s"],
+            min_history=self.config["metrics_num_episodes_for_smoothing"],
+            selected_workers=selected_workers)
