@@ -8,9 +8,8 @@ import time
 import ray
 import ray.ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import (
-    wait_for_condition, convert_actor_state,
-    make_global_state_accessor)
+from ray._private.test_utils import (wait_for_condition, convert_actor_state,
+                                     make_global_state_accessor)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.

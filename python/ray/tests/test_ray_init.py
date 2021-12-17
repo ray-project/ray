@@ -26,8 +26,8 @@ def password():
 
 
 class TestRedisPassword:
-    @pytest.mark.skipif(use_gcs_for_bootstrap(),
-                        reason="Not valid for gcs bootstrap")
+    @pytest.mark.skipif(
+        use_gcs_for_bootstrap(), reason="Not valid for gcs bootstrap")
     def test_redis_password(self, password, shutdown_only):
         @ray.remote
         def f():

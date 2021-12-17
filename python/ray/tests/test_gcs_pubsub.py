@@ -1,8 +1,6 @@
 import sys
 import threading
 
-import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
     GcsLogSubscriber, GcsFunctionKeySubscriber, GcsAioPublisher, \
     GcsAioErrorSubscriber, GcsAioLogSubscriber, GcsAioResourceUsageSubscriber
