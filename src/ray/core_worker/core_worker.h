@@ -318,7 +318,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             const int64_t index, std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used

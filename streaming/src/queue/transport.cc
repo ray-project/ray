@@ -24,7 +24,7 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 
   std::vector<std::shared_ptr<RayObject>> results;
   Status get_st =
-      CoreWorkerProcess::GetCoreWorker().Get(return_ids, timeout_ms, &results);
+      CoreWorkerProcess::GetCoreWorker().Get(return_ids, timeout_ms, -1, &results);
   if (!get_st.ok()) {
     STREAMING_LOG(ERROR) << "Get fail.";
     return nullptr;
