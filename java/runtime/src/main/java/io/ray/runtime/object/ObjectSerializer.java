@@ -12,19 +12,15 @@ import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import io.ray.runtime.util.ArrowUtil;
 import io.ray.runtime.util.IdUtil;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.ipc.ArrowStreamReader;
-import org.apache.arrow.vector.ipc.ArrowStreamWriter;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -52,8 +48,6 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OBJECT_DELETED.getNumber()).getBytes();
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
-
-  public static final RootAllocator rootAllocator = new RootAllocator(Long.MAX_VALUE);
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
@@ -88,13 +82,7 @@ public class ObjectSerializer {
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
-        try (ArrowStreamReader reader =
-            new ArrowStreamReader(new ByteArrayInputStream(nativeRayObject.data), rootAllocator)) {
-          reader.loadNextBatch();
-          return reader.getVectorSchemaRoot();
-        } catch (Exception e) {
-          e.printStackTrace();
-        }
+        return ArrowUtil.deserialize(data);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
@@ -164,20 +152,8 @@ public class ObjectSerializer {
       return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof VectorSchemaRoot) {
       // serialize arrow data using IPC Stream format
-      try {
-        ByteArrayOutputStream sink = new ByteArrayOutputStream();
-        ArrowStreamWriter writer = new ArrowStreamWriter((VectorSchemaRoot) object, null, sink);
-        writer.start();
-        writer.writeBatch();
-        writer.end();
-        writer.close();
-        NativeRayObject result =
-            new NativeRayObject(sink.toByteArray(), OBJECT_METADATA_TYPE_ARROW);
-        sink.close();
-        return result;
-      } catch (Exception e) {
-        throw new RayException("IO Exception");
-      }
+      byte[] bytes = ArrowUtil.serialize((VectorSchemaRoot) object);
+      return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_ARROW);
     } else if (object instanceof RayTaskException) {
       RayTaskException taskException = (RayTaskException) object;
       byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();

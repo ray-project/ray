@@ -29,6 +29,7 @@ def gen_java_deps():
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
             "org.apache.arrow:arrow-vector:2.0.0",
             "org.apache.arrow:arrow-memory-core:2.0.0",
+            "org.apache.arrow:arrow-memory-unsafe:2.0.0",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

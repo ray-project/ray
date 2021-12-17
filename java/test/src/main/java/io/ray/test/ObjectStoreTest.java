@@ -6,7 +6,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.UnreconstructableException;
-import io.ray.runtime.object.ObjectSerializer;
+import io.ray.runtime.util.ArrowUtil;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.arrow.vector.IntVector;
@@ -71,7 +71,7 @@ public class ObjectStoreTest extends BaseTest {
     }
 
     {
-      IntVector vector = new IntVector("int", ObjectSerializer.rootAllocator);
+      IntVector vector = new IntVector("int", ArrowUtil.rootAllocator);
       vector.allocateNew();
       for (int i = 0; i < 5; i++) {
         vector.setSafe(i, i);
