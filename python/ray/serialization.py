@@ -122,7 +122,7 @@ class SerializationContext:
 
         def objectref_iter_deserializer(object_ref):
             print("in asyncio_futureiter_deserializer")
-            return object_ref.as_future(_internal=True).__await__()
+            return object_ref.__await__()
 
         def objectref_iter_reducer(iter):
             print("in asyncio_futureiter_reducer")

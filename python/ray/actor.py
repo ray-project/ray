@@ -119,7 +119,14 @@ class ActorMethod:
         )
 
     def remote(self, *args, **kwargs):
-        return self._remote(args, kwargs)
+        actor = self._actor_ref()
+        ref = self._remote(args, kwargs)
+        if isinstance(ref, ray.ObjectRef):
+            ref.set_actor(actor)
+        else:
+            for r in ref:
+                r.set_actor(actor)
+        return ref
 
     def options(self, **options):
         """Convenience method for executing an actor method call with options.
@@ -1319,6 +1326,23 @@ def modify_class(cls):
             worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
+
+        async def __ray_execute_coroutine__(self, coro):
+            while True:
+                try:
+                    fut = coro.send(None)
+                except StopIteration as val:
+                    return val.value
+
+                if hasattr(fut, "_object_ref"):
+                    actor = fut._object_ref.actor()
+                    next_coro = ray.cloudpickle.loads(
+                        ray.cloudpickle.dumps(coro))
+                    result = await actor.__ray_execute_coroutine__.remote(
+                        next_coro)
+                    return result
+
+                fut.get_loop().run_until_complete(fut)
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

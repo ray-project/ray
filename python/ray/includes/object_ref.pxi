@@ -114,6 +114,12 @@ cdef class ObjectRef(BaseID):
     def call_site(self):
         return decode(self.call_site_data)
 
+    def set_actor(self, actor):
+        self._actor = actor
+
+    def actor(self):
+        return self._actor
+
     def size(self):
         return CObjectID.Size()
 
@@ -147,7 +153,9 @@ cdef class ObjectRef(BaseID):
         return py_future
 
     def __await__(self):
-        iter = ObjectRefIter(self, self.as_future(_internal=True).__await__())
+        fut = self.as_future(_internal=True)
+        fut._object_ref = self
+        iter = ObjectRefIter(self, fut.__await__())
         return iter
 
     def as_future(self, _internal=False) -> asyncio.Future:
