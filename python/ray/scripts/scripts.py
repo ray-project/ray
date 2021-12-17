@@ -628,7 +628,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
 
         bootstrap_address = node.redis_address if not use_gcs_for_bootstrap() \
-            else node.get_gcs_address()
+            else node.gcs_address
         if temp_dir is None:
             # Default temp directory.
             temp_dir = ray._private.utils.get_user_temp_dir()
