@@ -30,10 +30,10 @@ class RefBased:
     """
 
     def __init__(self, items: List[Any]):
-        self.items = items
+        self.items = [ray.put(x) for x in items]
 
     def __getitem__(self, index: Any) -> Any:
-        return self.items[index]
+        return ray.get(self.items[index])
 
 
 ###############################################
