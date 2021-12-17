@@ -32,9 +32,5 @@ public class RaySerializerTest extends BaseTest {
     Assert.assertEquals(env.getWorkingDir(), newEnv.getWorkingDir());
   }
 
-  public static class TestActor {
-    public String returnWorkingDir(RuntimeEnvCommon.RuntimeEnv envProto) {
-      return envProto.getWorkingDir();
-    }
-  }
+
 }
