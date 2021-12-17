@@ -160,7 +160,7 @@ def test_replica_startup_status_transitions(ray_cluster):
         print(status)
         return status == PENDING_INITIALIZATION
 
-    wait_for_condition(is_replica_pending_initialization)
+    wait_for_condition(is_replica_pending_initialization, timeout=25)
 
     # send signal to complete replica intialization
     signal.send.remote()
