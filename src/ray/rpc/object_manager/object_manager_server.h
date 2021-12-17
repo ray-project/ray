@@ -23,9 +23,10 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS               \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push, -1) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, -1) \
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS                         \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push, -1)           \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, -1)           \
+  RPC_SERVICE_HANDLER(ObjectManagerService, GetObjectRange, -1) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, -1)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
@@ -44,6 +45,10 @@ class ObjectManagerServiceHandler {
   /// Handle a `Pull` request
   virtual void HandlePull(const PullRequest &request, PullReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
+  /// Handle a `GetObjectRange` request
+  virtual void HandleGetObjectRange(const GetObjectRangeRequest &request,
+                                    GetObjectRangeReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
   virtual void HandleFreeObjects(const FreeObjectsRequest &request,
                                  FreeObjectsReply *reply,

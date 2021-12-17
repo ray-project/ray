@@ -772,6 +772,17 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void ObjectManager::HandleGetObjectRange(const rpc::GetObjectRangeRequest &request,
+                                         rpc::GetObjectRangeReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(ERROR) << "Received range request for object [" << object_id << "].";
+
+  // TODO fill out response with range data.
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
                                       rpc::FreeObjectsReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
