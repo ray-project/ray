@@ -167,25 +167,19 @@ public class ObjectSerializer {
       return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
     } else {
       try {
-        byte[] serializedObject;
-        byte[] metadata;
-
         boolean isProtobuf = ProtobufSerializer.isProtobufObject(object);
+        Pair<byte[], Boolean> serialized = Serializer.encode(object);
+        byte[] metadata;
         if (isProtobuf) {
           metadata = OBJECT_METADATA_TYPE_PROTOBUF;
-          serializedObject = ProtobufSerializer.encode(object);
+        } else if (serialized.getRight()) {
+          metadata = OBJECT_METADATA_TYPE_CROSS_LANGUAGE;
         } else {
-          Pair<byte[], Boolean> serialized = Serializer.encode(object);
-          if (serialized.getRight()) {
-            metadata = OBJECT_METADATA_TYPE_CROSS_LANGUAGE;
-          } else {
-            metadata = OBJECT_METADATA_TYPE_JAVA;
-          }
-          serializedObject = serialized.getLeft();
+          metadata = OBJECT_METADATA_TYPE_JAVA;
         }
         NativeRayObject nativeRayObject =
             new NativeRayObject(
-                serializedObject,
+                serialized.getLeft(),
                 metadata);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;

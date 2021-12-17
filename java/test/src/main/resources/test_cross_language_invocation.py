@@ -5,6 +5,20 @@ import ray
 
 
 @ray.remote
+def read_a_magic_field(runtime_env_proto_input):
+    # Help! I don't have the protobuf source and stub for this type yet.
+    # I don't have to specify proto_input is of type RuntimeEnvProto.
+    return runtime_env_proto_input.working_dir
+
+
+
+
+
+
+
+
+
+@ray.remote
 def py_return_input(v):
     return v
 

@@ -51,7 +51,8 @@ public class ArgumentsBuilder {
                   || Bytes.indexOf(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW) == 0
                   || Bytes.indexOf(
                           value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE)
-                      == 0;
+                      == 0
+                  || Bytes.indexOf(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_PROTOBUF) == 0;
           if (!isCrossData) {
             throw new IllegalArgumentException(
                 String.format(
