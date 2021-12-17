@@ -254,7 +254,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(self, value, object_ref=None, owner_address=None, multipart=False):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -291,18 +291,33 @@ class Worker:
             assert object_ref is None, ("Local Mode does not support "
                                         "inserting with an ObjectRef")
 
-        serialized_value = self.get_serialization_context().serialize(value)
+        if multipart:
+            # values = []
+            # offsets = []
+            # i = 0
+            # for item in value:
+            #     v = self.get_serialization_context().serialize(item)
+            #     values.append(v)
+            #     offsets.append(i)
+            #     i += v.total_bytes
+            # serialized_value = "".join(values)
+            serialized_value, offsets = self.get_serialization_context().multi_serialize(value)
+        else:
+            offsets = None
+            serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
+
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
                 serialized_value,
                 object_ref=object_ref,
-                owner_address=owner_address),
+                owner_address=owner_address,
+                offsets=offsets),
             # If the owner address is set, then the initial reference is
             # already acquired internally in CoreWorker::CreateOwned.
             # TODO(ekl) we should unify the code path more with the others
@@ -1754,7 +1769,7 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
 
 @PublicAPI
 @client_mode_hook(auto_init=True)
-def put(value: Any, *,
+def put(value: Any, *, multipart: bool=False,
         _owner: Optional["ray.actor.ActorHandle"] = None) -> ray.ObjectRef:
     """Store an object in the object store.
 
@@ -1793,7 +1808,7 @@ def put(value: Any, *,
     with profiling.profile("ray.put"):
         try:
             object_ref = worker.put_object(
-                value, owner_address=serialize_owner_address)
+                value, owner_address=serialize_owner_address, multipart=multipart)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

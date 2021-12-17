@@ -312,7 +312,7 @@ class SerializationContext:
             metadata, inband, writer,
             self.get_and_clear_contained_object_refs())
 
-    def _serialize_to_msgpack(self, value):
+    def _serialize_to_msgpack(self, value, multipart=False):
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         contained_object_refs = []
@@ -339,7 +339,18 @@ class SerializationContext:
             python_objects.append(o)
             return index
 
-        msgpack_data = MessagePackSerializer.dumps(value, _python_serializer)
+        if multipart:
+            msgpack_data = []
+            offsets = []
+            data_serialized = 0
+            for v in value:
+                packet = MessagePackSerializer.dumps(v, _python_serializer)
+                offsets.append(data_serialized)
+                data_serialized += len(packet)
+            msgpack_data = "".join(msgpack_data)
+        else:
+            msgpack_data = MessagePackSerializer.dumps(value,
+                                                       _python_serializer)
 
         if python_objects:
             metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
@@ -348,9 +359,14 @@ class SerializationContext:
         else:
             pickle5_serialized_object = None
 
-        return MessagePackSerializedObject(metadata, msgpack_data,
-                                           contained_object_refs,
-                                           pickle5_serialized_object)
+        serialized_obj = MessagePackSerializedObject(metadata, msgpack_data,
+                                                     contained_object_refs,
+                                                     pickle5_serialized_object)
+
+        if multipart:
+            return serialized_obj, offsets
+        else:
+            return serialized_obj
 
     def serialize(self, value):
         """Serialize an object.
@@ -365,3 +381,21 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
+    
+    def multi_serialize(self, values):
+        """
+        Serialized a collection of objects.
+
+        Args:
+            values: The collection of objects to serialize.
+        Returns:
+            Tuple (
+                - Concatenated serialized object
+                - Offset List
+            )
+        """
+
+        # TODO: Handle special case when values is an array of Byte objects
+        # (See serialize() function above)
+
+        return self._serialize_to_msgpack(values, multipart=True)
