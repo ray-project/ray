@@ -1,9 +1,13 @@
 import os
 import pytest
 import sys
+import time
+
 from ray._private.test_utils import (
     wait_for_condition, check_local_files_gced, generate_runtime_env_dict)
 import ray
+
+from unittest import mock
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -63,7 +67,7 @@ def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
 @pytest.mark.parametrize("field", ["conda", "pip"])
 @pytest.mark.parametrize("spec_format", ["file", "python_object"])
 def test_task_level_gc(ray_start_cluster, field, spec_format, tmp_path):
-    """Tests that task-level working_dir is GC'd when the actor exits."""
+    """Tests that task-level working_dir is GC'd when the task exits."""
 
     cluster = ray_start_cluster
 
@@ -117,6 +121,42 @@ def test_task_level_gc(ray_start_cluster, field, spec_format, tmp_path):
         wait_for_condition(lambda: check_local_files_gced(cluster))
     else:
         # Local files should not be gced because of an enough soft limit.
+        assert not check_local_files_gced(cluster)
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def skip_local_gc():
+    with mock.patch.dict(os.environ, {
+            "RAY_runtime_env_skip_local_gc": "1",
+    }):
+        print("RAY_runtime_env_skip_local_gc enabled.")
+        yield
+
+
+class TestSkipLocalGC:
+    @pytest.mark.parametrize("field", ["conda", "pip"])
+    def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, field,
+                                   tmp_path):
+        cluster, address = start_cluster
+        runtime_env = generate_runtime_env_dict(field, "python_object",
+                                                tmp_path)
+        ray.init(address, namespace="test", runtime_env=runtime_env)
+
+        @ray.remote
+        def f():
+            import pip_install_test  # noqa: F401
+            return True
+
+        assert ray.get(f.remote())
+
+        ray.shutdown()
+
+        # Give enough time for potentially uninstalling a conda env
+        time.sleep(10)
+
+        # Check nothing was GC'ed
         assert not check_local_files_gced(cluster)
 
 
