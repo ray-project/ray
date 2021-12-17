@@ -143,13 +143,6 @@ class Node:
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
 
-        # Initialize webui url
-        if head:
-            self._webui_url = None
-        else:
-            self._webui_url = \
-                ray._private.services.get_webui_url_from_internal_kv()
-
         self._gcs_address = None
         if head:
             gcs_server_port = os.getenv(
@@ -168,6 +161,13 @@ class Node:
                 self._gcs_address = self._ray_params.gcs_server_address
                 assert self._gcs_address is not None
             self.get_gcs_client()
+
+        # Initialize webui url
+        if head:
+            self._webui_url = None
+        else:
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
 
         # Register the temp dir.
         if head:
