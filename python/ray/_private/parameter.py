@@ -302,6 +302,8 @@ class RayParams:
                 self.dashboard_agent_listen_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
+        if use_gcs_for_bootstrap():
+            pre_selected_ports.pop("gcs")
         redis_shard_ports = self.redis_shard_ports
         if redis_shard_ports is None:
             redis_shard_ports = []
