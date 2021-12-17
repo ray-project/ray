@@ -320,6 +320,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              const int64_t index, std::vector<std::shared_ptr<RayObject>> *results);
 
+  Status GetWithIndex(const ObjectID &id, const int64_t index,
+                      std::shared_ptr<RayObject> &result);
+
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
   /// internally, never by user code.

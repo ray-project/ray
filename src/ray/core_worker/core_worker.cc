@@ -992,11 +992,22 @@ Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
   return Status::OK();
 }
 
+Status CoreWorker::GetWithIndex(const ObjectID &id, const int64_t index,
+                                std::shared_ptr<RayObject> &result) {
+  // TODO
+  return Status::OK();
+}
+
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        const int64_t index,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
-  RAY_LOG(ERROR) << "Get With Index " << index;
+
+  if (index > 0) {
+    RAY_LOG(ERROR) << "Get With Index " << index;
+    RAY_CHECK(ids.size() == 1);
+    return GetWithIndex(ids[0], index, (*results)[0]);
+  }
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
