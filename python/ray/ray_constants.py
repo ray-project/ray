@@ -232,6 +232,8 @@ OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
+# A constant used as object metadata to indicate the object is cross language.
+OBJECT_METADATA_TYPE_PROTOBUF = b"PROTOBUF"
 
 # A constant used as object metadata to indicate the object is an actor handle.
 # This value should be synchronized with the Java definition in
