@@ -1,8 +1,10 @@
 package io.ray.test;
 
+import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorClass;
+import io.ray.runtime.generated.RuntimeEnvCommon;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
 import org.testng.Assert;
@@ -20,5 +22,19 @@ public class RaySerializerTest extends BaseTest {
     Assert.assertEquals(result.getId(), pyActor.getId());
     Assert.assertEquals(result.getModuleName(), "test");
     Assert.assertEquals(result.getClassName(), "RaySerializerTest");
+  }
+
+  @Test
+  public void testSerializeProtobuf() {
+    RuntimeEnvCommon.RuntimeEnv env = RuntimeEnvCommon.RuntimeEnv.newBuilder().setWorkingDir("working_dir").build();
+    ObjectRef<RuntimeEnvCommon.RuntimeEnv> ref = Ray.put(env);
+    RuntimeEnvCommon.RuntimeEnv newEnv = ref.get();
+    Assert.assertEquals(env.getWorkingDir(), newEnv.getWorkingDir());
+  }
+
+  public static class TestActor {
+    public String returnWorkingDir(RuntimeEnvCommon.RuntimeEnv envProto) {
+      return envProto.getWorkingDir();
+    }
   }
 }

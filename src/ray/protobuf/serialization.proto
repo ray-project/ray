@@ -17,6 +17,8 @@ option cc_enable_arenas = true;
 
 package ray.serialization;
 
+option java_package = "io.ray.runtime.generated";
+
 // This is the protocol for python object serialization with pickle5.
 //
 // ## About Pickle 5 Protocol
@@ -92,4 +94,17 @@ message PythonObject {
   uint64 raw_buffers_size = 2;
   // The metadata of python buffer objects.
   repeated PythonBuffer buffer = 3;
+}
+
+// The message for protobuf message object.
+message ProtobufObject {
+  // The serialized protobuf data
+  bytes serialized_data = 1;
+  // protobuf type name
+  string name = 2;
+
+  // file descriptor
+  string descriptor_name = 4;
+  string descriptor_package = 5;
+  bytes descriptor_serialize_pb = 6;
 }

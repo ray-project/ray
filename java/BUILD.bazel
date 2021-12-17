@@ -203,12 +203,18 @@ java_proto_compile(
     deps = ["@//src/ray/protobuf:serve_proto"],
 )
 
+java_proto_compile(
+    name = "serialization_java_proto",
+    deps = ["@//src/ray/protobuf:serialization_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
         ":common_java_proto",
         ":gcs_java_proto",
         ":runtime_env_common_java_proto",
+        ":serialization_java_proto",
     ],
 )
 

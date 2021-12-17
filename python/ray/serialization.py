@@ -6,6 +6,7 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
+from ray.core.generated.serialization_pb2 import ProtobufObject
 from google.protobuf.message import Message
 from google.protobuf.descriptor import FileDescriptor
 from google.protobuf.descriptor_pool import Default
@@ -208,23 +209,26 @@ class SerializationContext:
             elif metadata_fields[
                     0] == ray_constants.OBJECT_METADATA_TYPE_PROTOBUF:
                 data = self._deserialize_msgpack_data(data, metadata_fields)
-                file_desc_tuple, val_tuple = pickle.loads(data)
+                proto_wrapper = ProtobufObject.FromString(data)
+
                 pb_pool = Default()
                 try:
-                    msg_desc = pb_pool.FindMessageTypeByName(
-                        f"{file_desc_tuple[1]}.{val_tuple[0]}")
+                    message_name = f"{proto_wrapper.descriptor_package}.{proto_wrapper.name}"
+                    msg_desc = pb_pool.FindMessageTypeByName(message_name)
                     cls = MakeClass(msg_desc)
-                    print("DBG>> builtin")
+                    logger.error(f"Importing protobuf {message_name}")
                 except KeyError:
                     file_desc = FileDescriptor(
-                        file_desc_tuple[0],
-                        file_desc_tuple[1],
-                        serialized_pb=file_desc_tuple[2])
+                        proto_wrapper.descriptor_name,
+                        proto_wrapper.descriptor_package,
+                        serialized_pb=proto_wrapper.descriptor_serialize_pb)
                     cls = MakeClass(
-                        file_desc.message_types_by_name[val_tuple[0]])
-                    print("DBG>> import")
+                        file_desc.message_types_by_name[proto_wrapper.name])
+                    logger.error(
+                        f"Can't find protobuf {proto_wrapper.name} in pool, "
+                        "creating dynamic class from the file descriptor.")
                 obj = cls()
-                obj.ParseFromString(val_tuple[1])
+                obj.ParseFromString(proto_wrapper.serialized_data)
                 return obj
 
             # Otherwise, return an exception object based on
@@ -357,12 +361,17 @@ class SerializationContext:
             value = serialized
         elif isinstance(value, Message):
             file_desc = type(value).DESCRIPTOR.file
-            file_desc_tuple = (file_desc.name, file_desc.package,
-                               file_desc.serialized_pb)
-            print("DBG:", file_desc.name, file_desc.package)
-            val_tuple = (type(value).DESCRIPTOR.name,
-                         value.SerializeToString())
-            value = pickle.dumps((file_desc_tuple, val_tuple))
+
+            proto_wrapper = ProtobufObject()
+            proto_wrapper.serialized_data = value.SerializeToString()
+            proto_wrapper.name = type(value).DESCRIPTOR.name
+            proto_wrapper.descriptor_name = file_desc.name
+            proto_wrapper.descriptor_package = file_desc.package
+            proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
+
+            print(proto_wrapper)
+
+            value = proto_wrapper.SerializeToString()
             metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE

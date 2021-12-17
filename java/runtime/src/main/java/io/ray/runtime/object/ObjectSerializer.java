@@ -11,6 +11,7 @@ import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
+import io.ray.runtime.serializer.ProtobufSerializer;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
@@ -48,6 +49,7 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_PROTOBUF = "PROTOBUF".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
@@ -84,8 +86,11 @@ public class ObjectSerializer {
         }
         return data;
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0
-          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0) {
+          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0
+      ) {
         return Serializer.decode(data, objectType);
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PROTOBUF) == 0) {
+        return ProtobufSerializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
@@ -162,13 +167,26 @@ public class ObjectSerializer {
       return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
     } else {
       try {
-        Pair<byte[], Boolean> serialized = Serializer.encode(object);
+        byte[] serializedObject;
+        byte[] metadata;
+
+        boolean isProtobuf = ProtobufSerializer.isProtobufObject(object);
+        if (isProtobuf) {
+          metadata = OBJECT_METADATA_TYPE_PROTOBUF;
+          serializedObject = ProtobufSerializer.encode(object);
+        } else {
+          Pair<byte[], Boolean> serialized = Serializer.encode(object);
+          if (serialized.getRight()) {
+            metadata = OBJECT_METADATA_TYPE_CROSS_LANGUAGE;
+          } else {
+            metadata = OBJECT_METADATA_TYPE_JAVA;
+          }
+          serializedObject = serialized.getLeft();
+        }
         NativeRayObject nativeRayObject =
             new NativeRayObject(
-                serialized.getLeft(),
-                serialized.getRight()
-                    ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE
-                    : OBJECT_METADATA_TYPE_JAVA);
+                serializedObject,
+                metadata);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;
       } catch (Exception e) {

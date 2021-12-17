@@ -202,6 +202,11 @@ cc_proto_library(
     deps = ["serialization_proto"],
 )
 
+python_grpc_compile(
+    name = "serialization_py_proto",
+    deps = [":serialization_proto"],
+)
+
 proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
