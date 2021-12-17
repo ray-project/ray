@@ -92,8 +92,10 @@ class UninstantiatedClassPipelineStep(PipelineStep):
 
 
 def step(_func_or_class: Optional[Callable] = None,
+         node_id: Optional[str] = None,
          execution_mode: Union[ExecutionMode, str] = ExecutionMode.LOCAL,
-         num_replicas: int = 1) -> Callable[[Callable], PipelineStep]:
+         num_replicas: int = 1,
+         ) -> Callable[[Callable], PipelineStep]:
     """Decorator used to define a pipeline step.
 
     Args:

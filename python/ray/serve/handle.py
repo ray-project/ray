@@ -66,6 +66,8 @@ class RayServeHandle:
             self,
             controller_handle: ActorHandle,
             endpoint_name: EndpointTag,
+            version: Optional[str] = None,
+            prev_version: Optional[str] = None,
             handle_options: Optional[HandleOptions] = None,
             *,
             _router: Optional[Router] = None,
@@ -87,12 +89,17 @@ class RayServeHandle:
             "endpoint": self.endpoint_name
         })
 
+        self._version = version
+        self._prev_version = prev_version
+
         self.router: Router = _router or self._make_router()
 
     def _make_router(self) -> Router:
         return Router(
             self.controller_handle,
             self.endpoint_name,
+            version=self._version,
+            prev_version=self._prev_version,
             event_loop=asyncio.get_event_loop(),
         )
 
@@ -205,6 +212,8 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.endpoint_name,
+            version=self._version,
+            prev_version=self._prev_version,
             event_loop=create_or_get_async_loop_in_thread(),
         )
 

@@ -8,7 +8,7 @@ from ray.serve import pipeline
 from ray.serve.pipeline import ExecutionMode
 
 # Step 1: Define classes with annotated executor mode
-@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
+@pipeline.node(node_id=1, execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class Preprocess:
   def __init__(self, constant: float):
     self.constant = constant
@@ -16,7 +16,7 @@ class Preprocess:
   def __call__(self, req: str) -> str:
     return f"Preprocess({self.constant} * {req})"
 
-@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
+@pipeline.node(node_id=2, execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class ModelA:
   def __init__(self, weight: float):
     self.weight = weight
@@ -24,7 +24,7 @@ class ModelA:
   def __call__(self, req: str) -> str:
     return f"ModelA({self.weight} * {req})"
 
-@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
+@pipeline.node(node_id=3, execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class ModelB:
   def __init__(self, weight: float):
     self.weight = weight
@@ -32,7 +32,7 @@ class ModelB:
   def __call__(self, req: str) -> str:
     return f"ModelB({self.weight} * {req})"
 
-@pipeline.node(execution_mode=ExecutionMode.ACTORS, num_replicas=2)
+@pipeline.node(node_id=4, execution_mode=ExecutionMode.ACTORS, num_replicas=2)
 class Ensemble:
   def __init__(self, a_weight: float, b_weight: float):
     self.a_weight = a_weight
@@ -59,24 +59,35 @@ def build_dag():
 
 
 my_dag = build_dag()
+pipeline_id = "jiao_first_pipeline"
+config = {
+  "Preprocess": {
+    "node_id": 1,
+    "num_replicas": 2 # Deployment config overrides class decorator
+  },
+  "ModelA": {
+    "node_id": 2,
+    "num_replicas": 2
+  },
+  "ModelB": {
+    "node_id": 3,
+    "num_replicas": 2
+  },
+  "Ensemble": {
+    "node_id": 4,
+    "num_replicas": 2
+  }
+}
+# Step 3: Deploy this pipeline via serve api
+def deploy_pipeline():
+  return serve.deploy(pipeline_id, config, pipeline_dag=my_dag)
 
-# Step 3: Deploy this pipeline using a Driver class as deployment.
-@serve.deployment(route_prefix="/hello", num_replicas=2)
-@serve.api.pipeline(dag=my_dag, name="unique_driver_identifier")
-class Driver:
-    def __init__(self):
-        # Auto-populated after Driver.deploy() call by serve controller.
-        self._pipeline = None
+# handle = serve.get_handle(pipeline_name)
 
-    # def reconfigure(self):
-    #   self.aa = 123
+# handle.remote(request)
 
-    def __call__(self, req: Request):
-        input = str(req.query_params["data"])
-        return self._pipeline.call(input)
-
-
-# serve update my_deployment config.yaml
+# # serve update my_deployment config.yaml
+# serve.deploy(pipeline_id, new_config)
 
 # my_deployment -> driver deployment handle
 
@@ -128,7 +139,9 @@ def main():
   # build_dag()
   ray.init(address="auto")
   serve.start(detached=True)
-  Driver.deploy()
+  pipeline_handle = deploy_pipeline()
+
+  print(ray.get(pipeline_handle.remote("1")))
 
 if __name__ == "__main__":
   main()

@@ -90,6 +90,29 @@ class ActorsExecutor(Executor):
     async def call_async(self) -> ObjectRef:
         raise NotImplementedError("No async support yet.")
 
+    def resize(self):
+        """
+        Simply change actor group size on the fly in batches.
+        """
+        pass
+
+    def reconfigure(self):
+        """
+        Call reconfigure() on each instantiated class.
+
+        Split into two actor groups in the meantime.
+
+        For prototype, don't worry about rollback or transient failure.
+        """
+        pass
+
+    def update_code(self):
+        """
+        Similar to reconfigure, except it swaps _actors with a new set of
+        actors by applying new serialized_callable_factory.
+        """
+        pass
+
 
 def create_executor_from_step_config(serialized_callable_factory: bytes,
                                      config: StepConfig) -> Executor:

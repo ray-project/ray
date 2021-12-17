@@ -1,6 +1,6 @@
 try:
     from ray.serve.api import (start, get_replica_context, shutdown, ingress,
-                               deployment, get_deployment, list_deployments)
+                               deployment, get_deployment, list_deployments, deploy)
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
 except ModuleNotFoundError as e:
@@ -16,5 +16,5 @@ ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "batch", "start", "HTTPOptions", "get_replica_context", "shutdown",
-    "ingress", "deployment", "get_deployment", "list_deployments"
+    "ingress", "deployment", "get_deployment", "list_deployments", "deploy"
 ]

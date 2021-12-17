@@ -5,6 +5,7 @@ import inspect
 import logging
 import random
 import re
+from sys import version
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -113,6 +114,8 @@ class Client:
         self.handle_cache = dict()
         self._evicted_handle_keys = set()
 
+        self.instantiated_pipelines = dict()
+
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
         # throws a nasty stacktrace).
@@ -186,6 +189,24 @@ class Client:
             return True
         else:
             return False
+
+    @_ensure_connected
+    def deploy_pipeline(
+        self,
+        pipeline_id: str,
+        config: Dict[str, Any],
+        pipeline_dag: Optional[ExecutorPipelineNode] = None
+    ):
+        pipeline_ref = ray.get(
+            self._controller.deploy_pipeline.remote(
+                pipeline_id,
+                config,
+                pipeline_dag=pipeline_dag
+            )
+        )
+
+        logger.info(f"Deployment of pipeline with  id {pipeline_id} is successful.")
+        return pipeline_ref
 
     @_ensure_connected
     def deploy(
@@ -292,6 +313,8 @@ class Client:
             endpoint_name: str,
             missing_ok: Optional[bool] = False,
             sync: bool = True,
+            version: str = "",
+            prev_version: str = "",
             _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
@@ -307,6 +330,7 @@ class Client:
         Returns:
             RayServeHandle
         """
+        logger.info(f"\n>>>>> Calling get_handle with endpoint_name: {endpoint_name}, version: {version}, prev_version: {prev_version} \n")
         cache_key = (endpoint_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
@@ -344,12 +368,16 @@ class Client:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
+                version=version,
+                prev_version=prev_version,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
+                version=version,
+                prev_version=prev_version,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -854,7 +882,12 @@ class Deployment:
             ServeHandle
         """
         return _get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync)
+            self._name,
+            missing_ok=True,
+            sync=sync,
+            version=self._version,
+            prev_version=self._prev_version
+        )
 
     @PublicAPI
     def options(self,
@@ -977,44 +1010,13 @@ def deployment(
     pass
 
 @PublicAPI
-def pipeline(
-    dag: ExecutorPipelineNode,
-    name: str
+def deploy(
+    pipeline_id: str,
+    config: Dict[str, Any],
+    pipeline_dag: Optional[ExecutorPipelineNode] = None
 ):
-    """
-    Mark a driver application as pipeline for serve. It's underlying execution
-    is handled entirely by ray actor groups / actor calls, whereas it's
-    deployment and lifecycle management is done by serve controller.
-
-    Example:
-    >>> @serve.deployment(route_prefix="/hello", num_replicas=2)
-        @serve.pipeline(dag=my_dag, name="unique_driver_name")
-        class Driver:
-            def __init__(self):
-                self._pipeline = None
-
-            def __call__(self, req: Request):
-                input = req.query_params["data"]
-                return self._pipeline.call(input)
-    >>> Driver.deploy()
-    """
-    def decorator(cls):
-        if not inspect.isclass(cls):
-            raise ValueError("@serve.pipeline must be used with a class.")
-        class PipelineWrapper(cls):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
-            def get_dag():
-                return dag
-
-            def get_name():
-                return name
-
-        PipelineWrapper.__name__ = cls.__name__
-        return PipelineWrapper
-
-    return decorator
+    return _get_global_client().deploy_pipeline(
+        pipeline_id, config, pipeline_dag=pipeline_dag)
 
 
 @PublicAPI
@@ -1127,8 +1129,6 @@ def deployment(
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             _internal=True,
-            pipeline_dag=_func_or_class.get_dag(),
-            pipeline_name=_func_or_class.get_name(),
         )
 
     # This handles both parametrized and non-parametrized usage of the

@@ -177,6 +177,8 @@ class Router:
             self,
             controller_handle: ActorHandle,
             deployment_name: str,
+            version: str = "",
+            prev_version: str = "",
             event_loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: assign a replica.
@@ -204,6 +206,10 @@ class Router:
             },
             call_in_event_loop=event_loop,
         )
+        self._version = version
+        self._prev_version = prev_version
+
+        logger.info(f"\n ===== Created router for {deployment_name} with version {version}, prev_version {prev_version} \n")
 
     async def assign_request(
             self,

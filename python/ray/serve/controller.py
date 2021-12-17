@@ -107,14 +107,16 @@ class ServeController:
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    def get_or_create_pipeline_dag(
-            self, name: str, dag: ExecutorPipelineNode) -> InstantiatedPipeline:
-        if name in self.instantiated_pipelines:
-            return self.instantiated_pipelines[name]
-        else:
-            pipeline = dag.instantiate() # return A(B(pipeline.INPUT)).instantiate()
-            self.instantiated_pipelines[name] = pipeline
-            return pipeline
+    def deploy_pipeline(
+            self,
+            pipeline_id: str,
+            config: Dict[str, Any],
+            pipeline_dag: Optional[ExecutorPipelineNode] = None
+        ):
+
+
+        pipeline = pipeline_dag.instantiate() # return A(B(pipeline.INPUT)).instantiate()
+        return ray.put(pipeline)
 
     def record_autoscaling_metrics(self, data: Dict[str, float],
                                    send_timestamp: float):
