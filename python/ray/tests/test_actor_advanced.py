@@ -22,8 +22,7 @@ def make_global_state_accessor(address_info):
     addr = address_info["bootstrap_address"]
     if not gcs_utils.use_gcs_for_bootstrap():
         gcs_options = GcsClientOptions.from_redis_address(
-            addr,
-            ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+            addr, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     else:
         gcs_options = GcsClientOptions.from_gcs_address(addr)
     global_state_accessor = GlobalStateAccessor(gcs_options)

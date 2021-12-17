@@ -33,7 +33,8 @@ def memory_summary(address=None,
 
     state = GlobalState()
     if not use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_redis_address(address, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(
+            address, redis_password)
     else:
         gcs_options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(gcs_options)

@@ -465,8 +465,8 @@ class Node:
             "metrics_export_port": self._metrics_export_port,
             "gcs_server_address": self.get_gcs_address(),
             "bootstrap_address": (self.get_gcs_address()
-                                  if use_gcs_for_bootstrap()
-                                  else self._redis_address)
+                                  if use_gcs_for_bootstrap() else
+                                  self._redis_address)
         }
 
         return info

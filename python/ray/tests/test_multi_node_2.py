@@ -73,9 +73,10 @@ def test_system_config(ray_start_cluster_head):
 def setup_monitor(address):
     # TODO: remove the duplicate address once we remove redis
     monitor = Monitor(
-        address, # redis_address
-        address, # gcs_address
-        None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        address,  # redis_address
+        address,  # gcs_address
+        None,
+        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     return monitor
 
 
