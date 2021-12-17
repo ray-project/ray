@@ -139,6 +139,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
+      -python/ray/serve:test_standalone # timeout
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
