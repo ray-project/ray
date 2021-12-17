@@ -955,73 +955,32 @@ class Trainer(Trainable):
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
-        failures = 0
-        time_start = time.time()
-        env_steps_sampled = self._counters[NUM_ENV_STEPS_SAMPLED]
-        env_steps_trained = self._counters[NUM_ENV_STEPS_TRAINED]
-        agent_steps_sampled = self._counters[NUM_AGENT_STEPS_SAMPLED]
-        agent_steps_trained = self._counters[NUM_AGENT_STEPS_TRAINED]
+        step_results = None
 
-        result = None
-
-        while True:
-            # Try to train one step.
-            try:
-                result = self.step_attempt()
-            # @ray.remote RolloutWorker failure -> Try to recover,
-            # if necessary.
-            except RayError as e:
-                if self.config["ignore_worker_failures"]:
-                    logger.exception(
-                        "Error in train call, attempting to recover")
-                    self.try_recover_from_step_attempt()
-                    # Fail after n retries.
-                    failures += 1
-                    if failures > MAX_WORKER_FAILURE_RETRIES:
-                        raise RuntimeError(
-                            "Failed to recover from worker crash.")
-                else:
-                    logger.info(
-                        "Worker crashed during call to train(). To attempt to "
-                        "continue training without the failed worker, set "
-                        "`'ignore_worker_failures': True`.")
+        with self._step_context() as step_ctx:
+            while not step_ctx.should_stop(step_results):
+                # Try to train one step.
+                try:
+                    step_results = self.step_attempt()
+                # @ray.remote RolloutWorker failure.
+                except RayError as e:
+                    # Try to recover w/o the failed worker.
+                    if self.config["ignore_worker_failures"]:
+                        logger.exception(
+                            "Error in train call, attempting to recover")
+                        self.try_recover_from_step_attempt()
+                    # Error out.
+                    else:
+                        logger.warning(
+                            "Worker crashed during call to `step_attempt()`. "
+                            "To try to continue training without the failed "
+                            "worker, set `ignore_worker_failures=True`.")
+                        raise e
+                # Any other exception.
+                except Exception as e:
+                    # Allow logs messages to propagate.
+                    time.sleep(0.5)
                     raise e
-            # Any other exception.
-            except Exception as e:
-                # Allow logs messages to propagate.
-                time.sleep(0.5)
-                raise e
-
-            # Stopping criteria: Only when using the `training_iteration` API,
-            # b/c for the `exec_plan` API, the logic to stop is already built
-            # into the execution plans via the `StandardMetricsReporting` op.
-            if self.config["_disable_execution_plan_api"]:
-                if self._by_agent_steps:
-                    sampled = self._counters[NUM_AGENT_STEPS_SAMPLED] - \
-                        agent_steps_sampled
-                    trained = self._counters[NUM_AGENT_STEPS_TRAINED] - \
-                        agent_steps_trained
-                else:
-                    sampled = self._counters[NUM_ENV_STEPS_SAMPLED] - \
-                        env_steps_sampled
-                    trained = self._counters[NUM_ENV_STEPS_TRAINED] - \
-                        env_steps_trained
-
-                min_t = self.config["min_time_s_per_reporting"]
-                min_sample_ts = self.config[
-                    "min_sample_timesteps_per_reporting"]
-                min_train_ts = self.config["min_train_timesteps_per_reporting"]
-                # Repeat if not enough time has passed or if not enough
-                # env|train timesteps have been processed (or these min values
-                # are not provided by the user).
-                if result is not None and \
-                        (not min_t or time.time() - time_start >= min_t) and \
-                        (not min_sample_ts or sampled >= min_sample_ts) and \
-                        (not min_train_ts or trained >= min_train_ts):
-                    break
-            # No errors (we got results) -> Break.
-            elif result is not None:
-                break
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
@@ -1064,14 +1023,14 @@ class Trainer(Trainable):
                 ]:
                     result[c] = self._counters[c]
                 if self._by_agent_steps:
-                    result[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = sampled
-                    result[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = trained
+                    result[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+                    result[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
                     # TODO: For CQL and other algos, count by trained steps.
                     result["timesteps_total"] = self._counters[
                         NUM_AGENT_STEPS_SAMPLED]
                 else:
-                    result[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = sampled
-                    result[NUM_ENV_STEPS_TRAINED + "_this_iter"] = trained
+                    result[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
+                    result[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
                     # TODO: For CQL and other algos, count by trained steps.
                     result["timesteps_total"] = self._counters[
                         NUM_ENV_STEPS_SAMPLED]
@@ -1915,17 +1874,17 @@ class Trainer(Trainable):
         # Sync new weights to remote workers.
         self._sync_weights_to_workers(worker_set=self.workers)
 
-    @DeveloperAPI
-    def collect_metrics(self,
-                        selected_workers: List[ActorHandle] = None) -> dict:
-        """Collects metrics from the remote workers of this agent.
-
-        This is the same data as returned by a call to train().
-        """
-        return self.optimizer.collect_metrics(
-            self.config["metrics_episode_collection_timeout_s"],
-            min_history=self.config["metrics_num_episodes_for_smoothing"],
-            selected_workers=selected_workers)
+    #@DeveloperAPI
+    #def collect_metrics(self,
+    #                    selected_workers: List[ActorHandle] = None) -> dict:
+    #    """Collects metrics from the remote workers of this agent.
+    #
+    #    This is the same data as returned by a call to train().
+    #    """
+    #    return self.optimizer.collect_metrics(
+    #        self.config["metrics_episode_collection_timeout_s"],
+    #        min_history=self.config["metrics_num_episodes_for_smoothing"],
+    #        selected_workers=selected_workers)
 
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
@@ -2587,6 +2546,7 @@ class Trainer(Trainable):
             self.train_exec_impl.shared_metrics.get().restore(
                 state["train_exec_impl"])
 
+    # TODO: Deprecate this method (`build_trainer` should no longer be used).
     @staticmethod
     def with_updates(**overrides) -> Type["Trainer"]:
         raise NotImplementedError(
@@ -2686,6 +2646,76 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    def _step_context(trainer):
+        class StepCtx:
+            def __enter__(self):
+                # First call to stop, `result` is expected to be None ->
+                # Start with self.failures=-1 -> set to 0 the very first call to
+                # `self.stop()`.
+                self.failures = -1
+
+                self.time_start = time.time()
+                self.sampled = 0
+                self.trained = 0
+                self.init_env_steps_sampled = trainer._counters[NUM_ENV_STEPS_SAMPLED]
+                self.init_env_steps_trained = trainer._counters[NUM_ENV_STEPS_TRAINED]
+                self.init_agent_steps_sampled = trainer._counters[NUM_AGENT_STEPS_SAMPLED]
+                self.init_agent_steps_trained = trainer._counters[NUM_AGENT_STEPS_TRAINED]
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def should_stop(self, result):
+
+                # First call to stop, `result` is expected to be None ->
+                # self.failures=0.
+                if result is None:
+                    # Fail after n retries.
+                    self.failures += 1
+                    if self.failures > MAX_WORKER_FAILURE_RETRIES:
+                        raise RuntimeError(
+                            "Failed to recover from worker crash.")
+
+                # Stopping criteria: Only when using the `training_iteration` API,
+                # b/c for the `exec_plan` API, the logic to stop is already built
+                # into the execution plans via the `StandardMetricsReporting` op.
+                elif trainer.config["_disable_execution_plan_api"]:
+                    if trainer._by_agent_steps:
+                        self.sampled = \
+                            trainer._counters[NUM_AGENT_STEPS_SAMPLED] - \
+                            self.init_agent_steps_sampled
+                        self.trained = \
+                            trainer._counters[NUM_AGENT_STEPS_TRAINED] - \
+                            self.init_agent_steps_trained
+                    else:
+                        self.sampled = \
+                            trainer._counters[NUM_ENV_STEPS_SAMPLED] - \
+                            self.init_env_steps_sampled
+                        self.trained = \
+                            trainer._counters[NUM_ENV_STEPS_TRAINED] - \
+                            self.init_env_steps_trained
+
+                    min_t = trainer.config["min_time_s_per_reporting"]
+                    min_sample_ts = trainer.config[
+                        "min_sample_timesteps_per_reporting"]
+                    min_train_ts = trainer.config["min_train_timesteps_per_reporting"]
+                    # Repeat if not enough time has passed or if not enough
+                    # env|train timesteps have been processed (or these min values
+                    # are not provided by the user).
+                    if result is not None and \
+                        (not min_t or time.time() - self.time_start >= min_t) and \
+                        (not min_sample_ts or self.sampled >= min_sample_ts) and \
+                        (not min_train_ts or self.trained >= min_train_ts):
+                        return True
+                # No errors (we got results) -> Break.
+                elif result is not None:
+                    return True
+
+                return False
+
+        return StepCtx()
 
     def __repr__(self):
         return type(self).__name__
