@@ -994,7 +994,8 @@ Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
 
 Status CoreWorker::GetWithIndex(const ObjectID &id, const int64_t index,
                                 std::shared_ptr<RayObject> &result) {
-  // TODO
+  // TODO 1. Resolve the object offsets by RPC to the owner of the object
+  // TODO 2. Fetch the object data from a node with the object via GetObjectRangeData
   return Status::OK();
 }
 
