@@ -1,4 +1,3 @@
-import time
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
@@ -25,6 +24,7 @@ class ComputeStrategy:
 def _map_block_split(block: Block, fn: Any,
                      input_files: List[str]) -> BlockPartition:
     output = []
+    stats = BlockExecStats.builder()
     for new_block in fn(block):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
@@ -32,25 +32,23 @@ def _map_block_split(block: Block, fn: Any,
             size_bytes=accessor.size_bytes(),
             schema=accessor.schema(),
             input_files=input_files,
-            exec_stats=BlockExecStats.TODO)
+            exec_stats=stats.build())
         owner = DatasetContext.get_current().block_owner
         output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
     return output
 
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
-    start_time, start_cpu = time.perf_counter(), time.process_time()
-    exec_stats = BlockExecStats()
+    stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    exec_stats.cpu_time_s = time.process_time() - start_cpu
-    exec_stats.wall_time_s = time.perf_counter() - start_time
     return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=exec_stats)
+        input_files=input_files, exec_stats=stats.build())
 
 
 class TaskPool(ComputeStrategy):

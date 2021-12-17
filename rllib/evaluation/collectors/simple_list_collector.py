@@ -558,13 +558,12 @@ class SimpleListCollector(SampleCollector):
         agent_key = (episode.episode_id, agent_id)
         self.agent_key_to_policy_id[agent_key] = policy_id
         policy = self.policy_map[policy_id]
-        view_reqs = policy.model.view_requirements if \
-            getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
-        self.agent_collectors[agent_key] = _AgentCollector(view_reqs, policy)
+        self.agent_collectors[agent_key] = _AgentCollector(
+            policy.view_requirements, policy)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
