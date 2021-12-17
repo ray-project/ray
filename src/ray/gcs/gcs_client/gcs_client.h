@@ -210,14 +210,16 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param type The type of GCS service failure.
   void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
 
-  /// Reconnect to GCS RPC server.
-  void ReconnectGcsServer();
+  /// Reconnect to GCS RPC server asynchronously.
+  void ReconnectGcsServerAsync(const std::function<void()> callback);
 
   ///
-  void DoReconnect(absl::Time start);
+  void DoReconnect(absl::Time start, const std::function<void()> callback);
 
   ///
-  void OnReconnected(const Status &status, absl::Time start, std::pair<std::string, int> address);
+  void OnReconnected(const Status &status, absl::Time start,
+                     std::pair<std::string, int> address,
+                     const std::function<void()> callback);
 
   std::shared_ptr<RedisClient> redis_client_;
 

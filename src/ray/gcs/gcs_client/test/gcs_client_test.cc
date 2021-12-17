@@ -78,7 +78,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     while (!gcs_server_->IsStarted()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    RAY_LOG(INFO) << "GCS service, port = " << gcs_server_->GetPort();
 
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
@@ -99,16 +98,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     TestSetupUtil::FlushAllRedisServers();
   }
 
-  void StopGcsServer() {
+  void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
     server_io_service_->stop();
     server_io_service_thread_->join();
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
-  }
 
-  void StartGcsServer() {
     server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
@@ -122,12 +119,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     while (gcs_server_->GetPort() == 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    RAY_LOG(INFO) << "GCS service started, port = " << gcs_server_->GetPort();
-  }
-
-  void RestartGcsServer() {
-    StopGcsServer();
-    StartGcsServer();
     RAY_LOG(INFO) << "GCS service restarted, port = " << gcs_server_->GetPort();
   }
 
@@ -527,26 +518,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 };
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientTest, testing::Bool());
-
-TEST_P(GcsClientTest, TestReconnect) {
-  StopGcsServer();
-  StartGcsServer();
-
-  sleep(1000);
-  JobID add_job_id = JobID::FromInt(1);
-  auto job_table_data = Mocker::GenJobTableData(add_job_id);
-
-  // Subscribe to all jobs.
-  std::atomic<int> job_updates(0);
-  auto on_subscribe = [&job_updates](const JobID &job_id, const gcs::JobTableData &data) {
-    job_updates++;
-  };
-  ASSERT_TRUE(SubscribeToAllJobs(on_subscribe));
-
-  ASSERT_TRUE(AddJob(job_table_data));
-  ASSERT_TRUE(MarkJobFinished(add_job_id));
-  WaitForExpectedCount(job_updates, 2);
-}
 
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
@@ -1248,9 +1219,6 @@ TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  for (int i = 0; i < argc; i++) {
-    RAY_LOG(INFO) << "arg: " << i << " " << argv[i];
-  }
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

@@ -167,12 +167,13 @@ class TestGrpcServerClientFixture : public ::testing::Test {
 };
 
 TEST_F(TestGrpcServerClientFixture, TestBasic) {
+  ShutdownServer();
   // Send request
   PingRequest request;
   std::atomic<bool> done(false);
   Ping(request, [&done](const Status &status, const PingReply &reply) {
     RAY_LOG(INFO) << "replied, status=" << status;
-    done = true;
+    // done = true;
   });
   while (!done) {
     RAY_LOG(INFO) << "waiting";
@@ -283,6 +284,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
 }
 
 TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
+  ShutdownServer();
   // Make sure the timeout value in the macro works as expected.
   test_service_handler_.frozen = true;
   // Send request.
@@ -291,8 +293,8 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
   PingTimeout(request,
               [&call_timed_out](const Status &status, const PingTimeoutReply &reply) {
                 RAY_LOG(INFO) << "Replied, status=" << status;
-                ASSERT_TRUE(status.IsTimedOut());
-                call_timed_out = true;
+                // ASSERT_TRUE(status.IsTimedOut());
+                // call_timed_out = true;
               });
   // Wait for clinet call timed out.
   while (!call_timed_out) {

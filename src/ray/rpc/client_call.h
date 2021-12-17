@@ -74,6 +74,7 @@ class ClientCallImpl : public ClientCall {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
+      // RAY_LOG(INFO) << "ClientCallImpl timeout_ms " << timeout_ms;
       context_.set_deadline(deadline);
     }
   }
@@ -270,6 +271,7 @@ class ClientCallManager {
       auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
+      // RAY_LOG(INFO) << "PollEventsFromCompletionQueue 1 status: " << status;
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
@@ -288,6 +290,7 @@ class ClientCallManager {
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
+          // RAY_LOG(INFO) << "PollEventsFromCompletionQueue status: " << status;
           main_service_.post(
               [tag]() {
                 tag->GetCall()->OnReplyReceived();
