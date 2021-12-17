@@ -143,12 +143,12 @@ class Cluster:
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
+        assert self.redis_address is not None
         assert not self.connected
         output_info = ray.init(
             namespace=namespace,
             ignore_reinit_error=True,
-            address=self.gcs_address
-            if self.redis_address is None else self.redis_address,
+            address=self.redis_address,
             _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
