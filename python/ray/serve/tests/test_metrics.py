@@ -12,7 +12,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.utils import block_until_http_ready
 
 
-def test_serve_metrics(serve_instance):
+def test_serve_metrics_for_successful_connection(serve_instance):
     @serve.deployment(name="metrics")
     async def f(request):
         return "hello"
@@ -43,8 +43,9 @@ def test_serve_metrics(serve_instance):
             "deployment_processing_latency_ms_bucket",
             "deployment_processing_latency_ms_count",
             "deployment_processing_latency_ms_sum",
+            "serve_deployment_processing_latency_ms",
             # gauge
-            "replica_processing_queries",
+            "serve_replica_processing_queries",
             # handle
             "serve_handle_request_counter"
         ]
