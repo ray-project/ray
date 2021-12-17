@@ -778,9 +778,41 @@ void ObjectManager::HandleGetObjectRange(const rpc::GetObjectRangeRequest &reque
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(ERROR) << "Received range request for object [" << object_id << "].";
 
-  // TODO fill out response with range data.
+  if (local_objects_.count(object_id) != 0) {
+    const ObjectInfo &object_info = local_objects_[object_id].object_info;
+    uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
 
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+    if (request.offset() < 0 || request.offset() + request.size() > data_size) {
+      RAY_LOG(ERROR) << "Bad range read, returning empty.";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+      return;
+    }
+
+    // TODO(ekl) deduplicate this with PushLocalObject logic.
+    rpc::Address owner_address;
+    owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+    owner_address.set_ip_address(object_info.owner_ip_address);
+    owner_address.set_port(object_info.owner_port);
+    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+    std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
+        buffer_pool_.CreateObjectReader(object_id, owner_address);
+    Status status = reader_status.second;
+    if (!status.ok()) {
+      RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+          << "Ignoring stale read request for already deleted object: " << object_id;
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+      return;
+    }
+    auto object_reader = std::move(reader_status.first);
+    RAY_CHECK(object_reader) << "object_reader can't be null";
+    auto buffer = reply->mutable_data();
+    buffer->resize(request.size());
+    RAY_CHECK(object_reader->ReadFromDataSection(request.offset(), request.size(),
+                                                 buffer->data()));
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    RAY_CHECK(false) << "NotImplemented: non-local object get";
+  }
 }
 
 void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
