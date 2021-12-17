@@ -109,7 +109,8 @@ class LogMonitor:
         else:
             self.redis_client = None
         self.publisher = None
-        self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
+        if gcs_pubsub.gcs_pubsub_enabled():
+            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
