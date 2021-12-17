@@ -299,7 +299,7 @@ def find_gcs_address():
     Returns:
         Set of detected Redis instances.
     """
-    # Currently, this extracts the --gcs_address flag from the command
+    # Currently, this extracts the --gcs-address flag from the command
     # that launched the raylet running on this node, if any. Anyone looking to
     # edit this function should be warned that these commands look like, for
     # example:
@@ -329,12 +329,12 @@ def find_gcs_address():
     #         --object_store_memory=5037192806 --plasma_directory=/tmp
     # Longer arguments are elided with ... but all arguments from this instance
     # are included, to provide a sense of what is in these.
-    # Indeed, we had to pull --gcs_address to the front of each call to make
+    # Indeed, we had to pull --gcs-address to the front of each call to make
     # this readable.
     # As you can see, this is very long and complex, which is why we can't
     # simply extract all the the arguments using regular expressions and
     # present a dict as if we never lost track of these arguments, for
-    # example. Picking out --gcs_address below looks like it might grab the
+    # example. Picking out --gcs-address below looks like it might grab the
     # wrong thing, but double-checking that we're finding the correct process
     # by checking that the contents look like we expect would probably be prone
     # to choking in unexpected ways.
@@ -360,7 +360,7 @@ def find_gcs_address():
                     # every argument on spaces for now.
                     for arg in arglist.split(" "):
                         # TODO(ekl): Find a robust solution for locating Redis.
-                        if arg.startswith("--gcs_address="):
+                        if arg.startswith("--gcs-address="):
                             proc_addr = arg.split("=")[1]
                             gcs_addresses.add(proc_addr)
         except psutil.AccessDenied:
@@ -2092,6 +2092,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  gcs_address,
                   logs_dir,
                   stdout_file=None,
                   stderr_file=None,
@@ -2126,6 +2127,7 @@ def start_monitor(redis_address,
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",
+        f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}"
     ]

@@ -133,7 +133,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         if gcs_pubsub_enabled():
             gcs_addr = await self._dashboard_head.get_gcs_address()
-            logger.info(f">>>>>>>>>>>>>>>>>>> {gcs_addr}")
             subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
             await subscriber.subscribe()
 

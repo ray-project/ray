@@ -139,8 +139,19 @@ class Node:
         assert self.max_bytes >= 0
         assert self.backup_count >= 0
 
+        # Default num_redis_shards.
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
+
+        # Initialize webui url
+        if head:
+            self._webui_url = None
+        else:
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
+
+        self._gcs_address = None
+        if head:
             gcs_server_port = os.getenv(
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
@@ -148,7 +159,6 @@ class Node:
             if use_gcs_for_bootstrap():
                 ray_params.update_if_absent(
                     gcs_server_port=ray_constants.GCS_DEFAULT_PORT)
-            self._webui_url = None
             if use_gcs_for_bootstrap():
                 self._gcs_address = (
                     f"{socket.gethostbyname(socket.gethostname())}:"
@@ -158,8 +168,6 @@ class Node:
                 self._gcs_address = self._ray_params.gcs_server_address
                 assert self._gcs_address is not None
             self.get_gcs_client()
-            self._webui_url = \
-                ray._private.services.get_webui_url_from_internal_kv()
 
         # Register the temp dir.
         if head:
@@ -473,12 +481,8 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    if use_gcs_for_bootstrap():
-                        self._gcs_client = GcsClient(
-                            address=self.get_gcs_address())
-                    else:
-                        self._gcs_client = GcsClient.create_from_redis(
-                            self.create_redis_client())
+                    self._gcs_client = GcsClient(
+                        address=self.get_gcs_address())
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -513,8 +517,11 @@ class Node:
         if use_gcs_for_bootstrap():
             # TODO (iycheng) Pass gcs address from the front
             return self._gcs_address
-        else:
-            return get_gcs_address_from_redis(self.create_redis_client())
+
+        if self._gcs_address is None:
+            self._gcs_address = get_gcs_address_from_redis(
+                self.create_redis_client())
+        return self._gcs_address
 
     def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
@@ -896,6 +903,7 @@ class Node:
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
+            self.get_gcs_address(),
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
