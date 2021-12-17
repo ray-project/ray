@@ -1357,14 +1357,16 @@ cdef class CoreWorker:
                     raise Exception(
                         "cannot put data into memory store directly"
                         " and assign owner at the same time")
-                print("\nIn the nested if-statement within not object_already_exists check.\n")
+                print("\nIn the nested if-statement within not"
+                      "object_already_exists check.\n")
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
                         CRayObject(data, metadata, contained_object_refs),
                         contained_object_ids, c_object_id))
             else:
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
-                print("\nIn the nested else-statement within not object_already_exists check.\n")
+                print("\nIn the nested else-statement within not"
+                      "object_already_exists check.\n")
                 with nogil:
                     if object_ref is None:
                         check_status(

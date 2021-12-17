@@ -843,6 +843,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
+  std::cout << "\nCalled core_worker's put\n";
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
@@ -951,6 +952,7 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
+  std::cout << "\nIn SealOwned function.\n";
   bool owned_by_us = owner_address != nullptr
                          ? WorkerID::FromBinary(owner_address->worker_id()) ==
                                WorkerID::FromBinary(rpc_address_.worker_id())
@@ -967,6 +969,7 @@ Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
                                 const std::unique_ptr<rpc::Address> &owner_address) {
+  std::cout << "\nIn SealExisting function.\n";
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
