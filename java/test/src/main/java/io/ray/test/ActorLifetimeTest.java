@@ -58,7 +58,7 @@ public class ActorLifetimeTest {
   private static void startDriver(Class<?> driverClass) throws IOException, InterruptedException {
     Process driver = null;
     try {
-      ProcessBuilder builder = TestUtils.buildDriver(driverClass, null, false);
+      ProcessBuilder builder = TestUtils.buildDriver(driverClass, null);
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       driver = builder.start();
       // Wait for driver to start.
