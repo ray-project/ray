@@ -59,7 +59,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 21.01.21
+                imageVersion: latest
 
     ray.worker.gpu:
         # The minimum number of nodes of this type to launch.
@@ -78,7 +78,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 21.01.21
+                imageVersion: latest
                 # optionally set priority to use Spot instances
                 priority: Spot
                 # set a maximum price for spot instances if desired
@@ -109,7 +109,7 @@ initialization_commands:
 # List of shell commands to run to set up nodes.
 # NOTE: rayproject/ray-ml:latest has ray latest bundled
 setup_commands: []
-#     - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+#     - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 # NOTE: rayproject/ray-ml:latest has azure packages bundled
