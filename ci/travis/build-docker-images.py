@@ -222,6 +222,7 @@ def _build_docker_image(image_name: str,
             tag=tagged_name,
             nocache=no_cache,
             labels=labels,
+            squash=True,
             buildargs=build_args)
 
         cmd_output = []
