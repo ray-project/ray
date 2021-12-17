@@ -85,9 +85,12 @@ class Node:
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
-        elif ray_params.redis_address:
+        elif ray_params.redis_address and not use_gcs_for_bootstrap():
             node_ip_address = ray.util.get_node_ip_address(
                 ray_params.redis_address)
+        elif ray_params.gcs_server_address and use_gcs_for_bootstrap():
+            node_ip_address = ray.util.get_node_ip_address(
+                ray_params.gcs_server_address)
         else:
             node_ip_address = ray.util.get_node_ip_address()
         self._node_ip_address = node_ip_address
@@ -925,6 +928,7 @@ class Node:
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
             self._redis_address,
+            self.get_gcs_address(),
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,

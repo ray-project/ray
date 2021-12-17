@@ -29,7 +29,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 from ray._private.utils import (detect_fate_sharing_support,
                                 check_dashboard_dependencies_installed)
 
@@ -109,12 +109,14 @@ def _match_running_client_server(command: List[str]) -> bool:
 class ProxyManager():
     def __init__(self,
                  redis_address: Optional[str],
+                 gcs_address: Optional[str],
                  *,
                  session_dir: Optional[str] = None,
                  redis_password: Optional[str] = None,
                  runtime_env_agent_port: int = 0):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
+        self._gcs_address = gcs_address
         self._redis_address = redis_address
         self._redis_password = redis_password
         self._free_ports: List[int] = list(
@@ -152,6 +154,21 @@ class ProxyManager():
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
     @property
+    def gcs_address(self) -> str:
+        """
+        Returns the provided Ray gcs address, or creates a new cluster.
+        """
+        if self._gcs_address:
+            return self._gcs_address
+        # Start a new, locally scoped cluster.
+        connection_tuple = ray.init()
+        self._redis_address = connection_tuple["redis_address"]
+        self._session_dir = connection_tuple["session_dir"]
+        self._gcs_address = connection_tuple["gcs_server_address"]
+        return self._gcs_address
+
+
+    @property
     def redis_address(self) -> str:
         """
         Returns the provided Ray Redis address, or creates a new cluster.
@@ -162,6 +179,7 @@ class ProxyManager():
         connection_tuple = ray.init()
         self._redis_address = connection_tuple["redis_address"]
         self._session_dir = connection_tuple["session_dir"]
+        self._gcs_address = connection_tuple["gcs_server_address"]
         return self._redis_address
 
     @property
@@ -172,7 +190,8 @@ class ProxyManager():
         if self._node:
             return self._node
 
-        ray_params = RayParams(redis_address=self.redis_address)
+        ray_params = RayParams(redis_address=self.redis_address,
+                               gcs_server_address=self.gcs_address)
         if self._redis_password:
             ray_params.redis_password = self._redis_password
 
@@ -283,6 +302,7 @@ class ProxyManager():
 
         proc = start_ray_client_server(
             self.redis_address,
+            self.gcs_address,
             self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
@@ -737,6 +757,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 def serve_proxier(connection_str: str,
                   redis_address: Optional[str],
+                  gcs_address: Optional[str],
                   *,
                   redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None,
@@ -745,9 +766,16 @@ def serve_proxier(connection_str: str,
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if redis_address is not None and redis_password is not None:
-        gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
-            redis_address, redis_password)
+    gcs_cli = None
+    if not use_gcs_for_bootstrap():
+        if redis_address is not None and redis_password is not None:
+            gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
+                redis_address, redis_password)
+    else:
+        if gcs_address is not None:
+            gcs_cli = GcsClient(address=gcs_address)
+
+    if gcs_cli is not None:
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
@@ -755,6 +783,7 @@ def serve_proxier(connection_str: str,
         options=GRPC_OPTIONS)
     proxy_manager = ProxyManager(
         redis_address,
+        gcs_address,
         session_dir=session_dir,
         redis_password=redis_password,
         runtime_env_agent_port=runtime_env_agent_port)

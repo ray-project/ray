@@ -33,6 +33,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.tls_utils import add_port_to_grpc_server
@@ -771,12 +772,17 @@ def main():
         "--redis-address",
         required=False,
         type=str,
-        help="Address to use to connect to Ray")
+        help="Redis address to connect to.")
+    parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="GCS address to connect to.")
     parser.add_argument(
         "--redis-password",
         required=False,
         type=str,
-        help="Password for connecting to Redis")
+        help="Password for connecting to Redis.")
     parser.add_argument(
         "--worker-shim-pid",
         required=False,
@@ -792,11 +798,6 @@ def main():
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
-    # This redis client is used for health checking. We can't use `internal_kv`
-    # because it requires `ray.init` to be called, which only connect handlers
-    # should do.
-    redis_client = None
-
     ray_connect_handler = create_ray_handler(args.redis_address,
                                              args.redis_password)
 
@@ -806,6 +807,7 @@ def main():
         server = serve_proxier(
             hostport,
             args.redis_address,
+            args.gcs_address,
             redis_password=args.redis_password,
             runtime_env_agent_port=args.metrics_agent_port)
     else:
@@ -819,12 +821,14 @@ def main():
             }
 
             try:
-                if not redis_client:
-                    redis_client = try_create_redis_client(
-                        args.redis_address, args.redis_password)
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    gcs_client = (ray._private.gcs_utils.GcsClient.
-                                  create_from_redis(redis_client))
+                    if use_gcs_for_bootstrap():
+                        gcs_client = ray._private.gcs_utils.GcsClient(address=args.gcs_address)
+                    else:
+                        redis_client = try_create_redis_client(
+                            args.redis_address, args.redis_password)
+                        gcs_client = (ray._private.gcs_utils.GcsClient.
+                                      create_from_redis(redis_client))
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(

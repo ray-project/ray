@@ -2153,6 +2153,7 @@ def start_monitor(redis_address,
 
 def start_ray_client_server(
         redis_address,
+        gcs_address,
         ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
@@ -2166,6 +2167,7 @@ def start_ray_client_server(
 
     Args:
         redis_address: The address of the redis server.
+        redis_address: The address of the gcs server.
         ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
