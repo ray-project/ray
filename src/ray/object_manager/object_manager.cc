@@ -58,7 +58,7 @@ ObjectManager::ObjectManager(
     AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
     const std::function<void(const ObjectID &)> fail_pull_request,
-    std::function<void(const ObjectID &)> object_transferred_callback)
+    std::function<void(const ObjectID &)> object_pushed_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -96,14 +96,15 @@ ObjectManager::ObjectManager(
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(get_spilled_object_url),
-      object_transferred_callback_(object_transferred_callback),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
-  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      static_cast<int64_t>(1L),
-      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
+  push_manager_.reset(new PushManager(
+      /* max_chunks_in_flight= */ std::max(
+          static_cast<int64_t>(1L),
+          static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size)),
+      /* object_pushed_callback= */ object_pushed_callback));
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
@@ -437,8 +438,6 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &
   RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
                  << ", number of chunks: " << chunk_reader->GetNumChunks()
                  << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
-
-  object_transferred_callback_(object_id);
 
   auto push_id = UniqueID::FromRandom();
   push_manager_->StartPush(

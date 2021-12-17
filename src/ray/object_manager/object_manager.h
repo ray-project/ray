@@ -172,7 +172,7 @@ class ObjectManager : public ObjectManagerInterface,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       const std::function<void(const ObjectID &)> fail_pull_request,
-      std::function<void(const ObjectID &)> object_transferred_callback);
+      std::function<void(const ObjectID &)> object_pushed_callback);
 
   ~ObjectManager();
 
@@ -488,8 +488,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Callback to get the URL of a locally spilled object.
   /// This returns the empty string if the object was not spilled locally.
   std::function<std::string(const ObjectID &)> get_spilled_object_url_;
-
-  std::function<void(const ObjectID &)> object_transferred_callback_;
 
   /// Pull manager retry timer .
   boost::asio::deadline_timer pull_retry_timer_;

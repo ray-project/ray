@@ -262,7 +262,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             MarkObjectsAsFailed(rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref},
                                 JobID::Nil());
           },
-          /*object_transferred_callback=*/
+          /*object_pushed_callback=*/
           [this](const ObjectID &object_id) {
             RAY_LOG(DEBUG) << "@lsf Unpin because transferred " << object_id;
             local_object_manager_.ReleaseFreedObject(object_id);

@@ -32,8 +32,10 @@ class PushManager {
   ///
   /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
   ///                             from this PushManager (this raylet).
-  PushManager(int64_t max_chunks_in_flight)
-      : max_chunks_in_flight_(max_chunks_in_flight) {
+  PushManager(int64_t max_chunks_in_flight,
+              std::function<void(const ObjectID &)> object_pushed_callback)
+      : max_chunks_in_flight_(max_chunks_in_flight),
+        object_pushed_callback_(object_pushed_callback) {
     RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
   };
 
@@ -105,6 +107,8 @@ class PushManager {
 
   /// Tracks all pushes with chunk transfers in flight.
   absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
+
+  std::function<void(const ObjectID &)> object_pushed_callback_;
 };
 
 }  // namespace ray
