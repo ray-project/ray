@@ -1015,7 +1015,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
-  if (index > 0) {
+  if (index >= 0) {
     RAY_LOG(ERROR) << "Get With Index " << index;
     RAY_CHECK(ids.size() == 1);
     return GetWithIndex(ids[0], index, (*results)[0]);
