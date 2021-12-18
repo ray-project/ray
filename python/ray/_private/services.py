@@ -1439,6 +1439,7 @@ def start_gcs_server(redis_address,
 
 
 def start_raylet(redis_address,
+                 gcs_address,
                  node_ip_address,
                  node_manager_port,
                  raylet_name,
@@ -1477,6 +1478,7 @@ def start_raylet(redis_address,
 
     Args:
         redis_address (str): The address of the primary Redis server.
+        gcs_address (str): The address of cluster.
         node_ip_address (str): The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1639,6 +1641,7 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
+        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
