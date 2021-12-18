@@ -1341,7 +1341,6 @@ cdef class CoreWorker:
         if offsets is not None:
             for offset in offsets:
                 c_offsets.push_back(offset)
-        print(c_offsets)
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
