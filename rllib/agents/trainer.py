@@ -917,7 +917,7 @@ class Trainer(Trainable):
     #  directly and call super().setup() from within it if you would like the
     #  default setup behavior plus some own setup logic.
     #  If you don't need the env/workers/config/etc.. setup for you by super,
-    #  simply do not call super().setup() from your overridden setup.
+    #  simply do not call super().setup() from your overridden method.
     def _init(self, config: TrainerConfigDict,
               env_creator: Callable[[EnvContext], EnvType]) -> None:
         raise NotImplementedError
@@ -954,13 +954,13 @@ class Trainer(Trainable):
             The results dict with stats/infos on sampling, training,
             and - if required - evaluation.
         """
-        step_results = None
+        step_attempt_results = None
 
         with self._step_context() as step_ctx:
-            while not step_ctx.should_stop(step_results):
+            while not step_ctx.should_stop(step_attempt_results):
                 # Try to train one step.
                 try:
-                    step_results = self.step_attempt()
+                    step_attempt_results = self.step_attempt()
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
@@ -981,7 +981,7 @@ class Trainer(Trainable):
                     time.sleep(0.5)
                     raise e
 
-        result = step_results
+        result = step_attempt_results
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
@@ -989,9 +989,9 @@ class Trainer(Trainable):
 
             # Collect worker metrics.
             if self.config["_disable_execution_plan_api"]:
-                result = self._compile_results(
+                result = self._compile_step_results(
                     step_ctx=step_ctx,
-                    learner_results=step_results,
+                    step_attempt_results=step_attempt_results,
                 )
 
         return result
@@ -1035,6 +1035,8 @@ class Trainer(Trainable):
             self.config["evaluation_interval"] and \
             (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
+        step_results = {}
+
         # No evaluation necessary, just run the next training iteration.
         if not evaluate_this_iter:
             step_results = self._exec_plan_or_training_iteration_fn()
@@ -1054,22 +1056,24 @@ class Trainer(Trainable):
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
-                        self.evaluate(
-                            duration_fn=functools.partial(
-                                auto_duration_fn, unit, self.config[
-                                    "evaluation_num_workers"], self.config[
-                                        "evaluation_config"]))
+                        step_results.update(
+                            self.evaluate(
+                                duration_fn=functools.partial(
+                                    auto_duration_fn, unit, self.config[
+                                        "evaluation_num_workers"], self.config[
+                                            "evaluation_config"])))
                     else:
-                        self.evaluate()
+                        step_results.update(self.evaluate())
                     # Collect the training results from the future.
-                    step_results = train_future.result()
+                    step_results.update(train_future.result())
             # Sequential: train (already done above), then eval.
             else:
-                self.evaluate()
+                step_results.update(self.evaluate())
 
-        if (evaluate_this_iter
-                or self.config["always_attach_evaluation_results"]):
-            # Attach latest available evaluation results to train results.
+        # Attach latest available evaluation results to train results,
+        # if necessary.
+        if (not evaluate_this_iter
+                and self.config["always_attach_evaluation_results"]):
             assert isinstance(self.evaluation_metrics, dict), \
                 "Trainer.evaluate() needs to return a dict."
             step_results.update(self.evaluation_metrics)
@@ -2649,11 +2653,23 @@ class Trainer(Trainable):
 
         return StepCtx()
 
-    def _compile_results(self, *, step_ctx, learner_results=None):
-        learner_results = learner_results or {}
+    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
+        # Return dict.
+        results: ResultDict = {}
+        step_attempt_results = step_attempt_results or {}
 
-        results = {}
-        results["info"] = {LEARNER_INFO: learner_results}
+        # Evaluation results.
+        if "evaluation" in step_attempt_results:
+            results["evaluation"] = step_attempt_results.pop("evaluation")
+
+        # Custom metrics and episode media.
+        results["custom_metrics"] = step_attempt_results.pop(
+            "custom_metrics", {})
+        results["episode_media"] = step_attempt_results.pop(
+            "episode_media", {})
+
+        # Learner info.
+        results["info"] = {LEARNER_INFO: step_attempt_results}
 
         # Collect rollout worker metrics.
         episodes, self._episodes_to_be_collected = collect_episodes(
@@ -2718,8 +2734,6 @@ class Trainer(Trainable):
         # TODO: Backward compatibility.
         results["info"].update(counters)
 
-        results["custom_metrics"] = learner_results.get("custom_metrics", {})
-        results["episode_media"] = learner_results.get("episode_media", {})
         return results
 
     def __repr__(self):
