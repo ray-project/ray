@@ -482,11 +482,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() { std::cout << "Reference constructor 1.\n"; }
+    Reference() {}
     Reference(std::string call_site, const int64_t object_size)
-        : call_site(call_site), object_size(object_size) {
-      std::cout << "Reference constructor 2.\n";
-    }
+        : call_site(call_site), object_size(object_size) {}
     /// Constructor for a reference that we created.
     Reference(const rpc::Address &owner_address, std::string call_site,
               const int64_t object_size, bool is_reconstructable,
@@ -498,9 +496,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
           is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_raylet_id.has_value()) {
-      std::cout << "Reference constructor 3.\n";
-    }
+          pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.

@@ -802,7 +802,6 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
-  std::cout << "In Put() call 1.\n";
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
@@ -845,7 +844,6 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
-  std::cout << "\nCalled core_worker's put\n";
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
@@ -875,7 +873,6 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
   if (owned_by_us) {
-    std::cout << "In create owned.\n";
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
@@ -957,7 +954,6 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  std::cout << "\nIn SealOwned function.\n";
   bool owned_by_us = owner_address != nullptr
                          ? WorkerID::FromBinary(owner_address->worker_id()) ==
                                WorkerID::FromBinary(rpc_address_.worker_id())
@@ -974,7 +970,6 @@ Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
 
 Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
                                 const std::unique_ptr<rpc::Address> &owner_address) {
-  std::cout << "\nIn SealExisting function.\n";
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
@@ -2308,7 +2303,6 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   if (task_spec.IsActorTask()) {
     num_returns--;
   }
-  std::cout << "In ExecuteTaskLocalMode() call.\n";
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
@@ -3066,7 +3060,6 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   for (const auto &id_binary : request.contained_object_ids()) {
     contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
   }
-  std::cout << "In HandleAssignObjectOwner() call.\n";
   reference_counter_->AddOwnedObject(
       object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
       /*is_reconstructable=*/false,

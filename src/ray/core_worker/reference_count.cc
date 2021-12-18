@@ -171,7 +171,6 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const int64_t object_size, bool is_reconstructable,
                                       const absl::optional<NodeID> &pinned_at_raylet_id,
                                       const std::vector<int64_t> *offsets) {
-  std::cout << "Adding owned object.\n";
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)

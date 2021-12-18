@@ -1338,7 +1338,6 @@ cdef class CoreWorker:
             c_vector[CObjectReference] contained_object_refs
             c_vector[int64_t] c_offsets
 
-        print("\nNow serializing an object\n")
         if offsets is not None:
             for offset in offsets:
                 c_offsets.push_back(offset)
@@ -1360,7 +1359,6 @@ cdef class CoreWorker:
 
         if not object_already_exists:
             if total_bytes > 0:
-                print("\nTotal bytes is greater than 0!\n")
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
@@ -1372,16 +1370,12 @@ cdef class CoreWorker:
                     raise Exception(
                         "cannot put data into memory store directly"
                         " and assign owner at the same time")
-                print("\nIn the nested if-statement within not"
-                      "object_already_exists check.\n")
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
                         CRayObject(data, metadata, contained_object_refs),
                         contained_object_ids, c_object_id))
             else:
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
-                print("\nIn the nested else-statement within not"
-                      "object_already_exists check.\n")
                 with nogil:
                     if object_ref is None:
                         check_status(
