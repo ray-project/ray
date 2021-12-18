@@ -347,6 +347,7 @@ class SerializationContext:
                 packet = MessagePackSerializer.dumps(v, _python_serializer)
                 offsets.append(data_serialized)
                 data_serialized += len(packet)
+            offsets.append(data_serialized)
             msgpack_data = "".join(msgpack_data)
         else:
             msgpack_data = MessagePackSerializer.dumps(value,
