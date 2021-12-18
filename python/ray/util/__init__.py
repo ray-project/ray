@@ -1,3 +1,4 @@
+import asyncio
 from typing import List
 
 import ray
@@ -45,9 +46,8 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
         return [name for _, name in actors]
 
 
-async def execute(parent_actor, coro):
+async def execute(coro):
     while True:
-        import pdb; pdb.set_trace()
         try:
             fut = coro.send(None)
         except StopIteration as val:
@@ -64,7 +64,19 @@ async def execute(parent_actor, coro):
                                                                       object_ref)
                 return result
 
-        # fut.get_loop().run_until_complete(fut)
+        assert asyncio.get_running_loop() is fut.get_loop()
+
+        # Chain Future instead of Event to handle cancellations?
+        event = asyncio.Event()
+
+        def future_done(f):
+            event.set()
+
+        fut.add_done_callback(future_done)
+        await event.wait()
+
+        # new_future = loop.create_future()
+        # asyncio._chain_future(fut, new_future)
         # yield
 
 

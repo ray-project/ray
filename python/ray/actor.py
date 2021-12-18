@@ -1328,7 +1328,7 @@ def modify_class(cls):
                 ray.actor.exit_actor()
 
         async def __ray_execute_coroutine__(self, coro, ref):
-            return await ray.util.execute(self, coro)
+            return await ray.util.execute(coro)
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

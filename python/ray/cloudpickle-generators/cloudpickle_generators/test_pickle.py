@@ -97,13 +97,25 @@ c = StepC.remote()
 
 
 async def flow():
+    await asyncio.sleep(1)
+
     data = await a.PreProcess.remote()
+    print("Finished StepA")
+    await asyncio.sleep(1)
+
     value = await b.Compute.remote(data)
+    print("Finished StepB")
+    await asyncio.sleep(1)
+
     result = await c.Store.remote(value)
+    print("Finished StepC")
+    await asyncio.sleep(1)
+
     return result
 
+print(f"local result={asyncio.run(flow())}")
 
-print(f"result={asyncio.run(ray.util.execute(None, flow()))}")
+print(f"coroutine result={asyncio.run(ray.util.execute(flow()))}")
 
 
 # coro = g()
