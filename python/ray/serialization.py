@@ -400,7 +400,7 @@ class SerializationContext:
         # (See serialize() function above)
         for value in values:
             assert isinstance(value, bytes)
-        
+
         msgpack_data = []
         offsets = []
         data_serialized = 0
