@@ -164,7 +164,7 @@ void ObjectManager::StopRpcService() {
 void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
   const ObjectID &object_id = object_info.object_id;
-  RAY_LOG(DEBUG) << "Object added " << object_id;
+  RAY_LOG(ERROR) << "Object added " << object_id << ", size=" << object_info.data_size;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;

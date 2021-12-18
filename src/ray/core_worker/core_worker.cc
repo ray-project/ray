@@ -1006,9 +1006,9 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   int64_t range_size = location->RangeSize();
   RAY_CHECK(range_size > 0) << "Expected range data " << range_size;
   RAY_CHECK(range_offset >= 0) << "Expected range data " << range_offset;
-  RAY_LOG(ERROR) << "Sending range request " << range_size << " " << range_offset;
+  RAY_LOG(ERROR) << "Sending range request " << range_offset << " " << range_size;
   // TODO(ekl) pick raylet from locations, assuming single node for now.
-  auto buffer = local_raylet_client_->GetObjectRange(object_id, range_size, range_offset);
+  auto buffer = local_raylet_client_->GetObjectRange(object_id, range_offset, range_size);
   RAY_CHECK(buffer != nullptr) << "Range request failed";
   // TODO fill in this properly.
   std::string metadata_str = "RAW";

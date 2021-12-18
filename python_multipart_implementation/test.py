@@ -1,6 +1,7 @@
 import ray
 
 ref = ray.put([b"hello", b"goodbye", b"hi"], multipart=True)
+print("Created ref", ref)
 
 print(ray.get(ref, index=0))
 print(ray.get(ref, index=1))
