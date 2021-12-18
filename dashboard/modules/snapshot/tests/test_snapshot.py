@@ -34,15 +34,15 @@ ray.get(a.ping.remote())
     """
 
     detached_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
+        address=ray_start_with_dashboard["bootstrap_address"],
         lifetime="'detached'",
         name="'abc'")
     named_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
+        address=ray_start_with_dashboard["bootstrap_address"],
         lifetime="None",
         name="'xyz'")
     unnamed_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
+        address=ray_start_with_dashboard["bootstrap_address"],
         lifetime="None",
         name="None")
 
@@ -90,7 +90,7 @@ import ray
 from ray import serve
 
 ray.init(
-    address="{ray_start_with_dashboard['redis_address']}",
+    address="{ray_start_with_dashboard['bootstrap_address']}",
     namespace="serve")
 
 serve.start(detached=True)
