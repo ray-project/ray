@@ -1358,7 +1358,8 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_pending_creation(it->second.pending_creation);
   if (index >= 0) {
     object_info->set_range_offset(it->second.offsets[index]);
-    object_info->set_range_size(it->second.offsets[index + 1] - it->second.offsets[index]);
+    object_info->set_range_size(it->second.offsets[index + 1] -
+                                it->second.offsets[index]);
   } else {
     object_info->set_range_offset(-1);
     object_info->set_range_size(-1);

@@ -326,8 +326,8 @@ std::shared_ptr<Buffer> raylet::RayletClient::GetObjectRange(const ObjectID &obj
   request.set_offset(range_offset);
   request.set_size(range_size);
   grpc_client_->GetObjectRange(
-      request, [&promise, &buffer](const Status &status,
-                                         const rpc::GetObjectRangeReply &reply) {
+      request,
+      [&promise, &buffer](const Status &status, const rpc::GetObjectRangeReply &reply) {
         auto data = reply.data();
         buffer.reset(new LocalMemoryBuffer(reinterpret_cast<uint8_t *>(data.data()),
                                            data.size(), /*copy_data=*/true));
