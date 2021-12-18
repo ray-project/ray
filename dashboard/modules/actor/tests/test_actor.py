@@ -16,10 +16,15 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 logger = logging.getLogger(__name__)
 
 
+# TODO(Chong-Li): "requiredResources" is wrapped in "taskSpec" with
+# gcs-based scheduler enabled. Try to make it consistent with
+# raylet-based scheduler.
 def test_actor_groups(ray_start_with_dashboard):
     @ray.remote
     class Foo:
@@ -51,6 +56,7 @@ def test_actor_groups(ray_start_with_dashboard):
             actor_groups_resp = response.json()
             assert actor_groups_resp["result"] is True, actor_groups_resp[
                 "msg"]
+            print(actor_groups_resp)
             actor_groups = actor_groups_resp["data"]["actorGroups"]
             assert "Foo" in actor_groups
             summary = actor_groups["Foo"]["summary"]
@@ -70,8 +76,13 @@ def test_actor_groups(ray_start_with_dashboard):
             assert "InfeasibleActor" in actor_groups
 
             entries = actor_groups["InfeasibleActor"]["entries"]
-            assert "requiredResources" in entries[0]
-            assert "GPU" in entries[0]["requiredResources"]
+            if gcs_actor_scheduling_enabled():
+                assert "taskSpec" in entries[0]
+                assert "requiredResources" in entries[0]["taskSpec"]
+                assert "GPU" in entries[0]["taskSpec"]["requiredResources"]
+            else:
+                assert "requiredResources" in entries[0]
+                assert "GPU" in entries[0]["requiredResources"]
             break
         except Exception as ex:
             last_ex = ex

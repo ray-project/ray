@@ -218,6 +218,7 @@ def test_for_each_concur_async(ray_start_regular_shared):
         it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
     result_list = ray.get(list_promise)
     assert set(result_list) == set(range(10, 18))
+    ray.shutdown()
 
 
 def test_for_each_concur_sync(ray_start_regular_shared):
