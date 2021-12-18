@@ -1013,7 +1013,7 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   std::string metadata_str = "PYTHON";
   std::shared_ptr<Buffer> metadata_ptr;
   metadata_ptr.reset(new LocalMemoryBuffer(
-      reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size()));
+      reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size(), true));
   result.reset(new RayObject(buffer, metadata_ptr, {}));
   return Status::OK();
 }
