@@ -398,5 +398,18 @@ class SerializationContext:
 
         # TODO: Handle special case when values is an array of Byte objects
         # (See serialize() function above)
+        for value in values:
+            assert isinstance(value, bytes)
+        
+        msgpack_data = []
+        offsets = []
+        data_serialized = 0
+        for value in values:
+            offsets.append(data_serialized)
+            data_serialized += len(value)
+        offsets.append(data_serialized)
+        msgpack_data = "".join(msgpack_data)
 
-        return self._serialize_to_msgpack(values, multipart=True)
+        return msgpack_data, offsets
+
+        # return self._serialize_to_msgpack(values, multipart=True)
