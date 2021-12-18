@@ -801,6 +801,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
+  std::cout << "In Put() call 1.\n";
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
@@ -861,7 +862,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
                                bool created_by_worker,
                                const std::unique_ptr<rpc::Address> &owner_address,
-                               bool inline_small_object) {
+                               bool inline_small_object,
+                               const std::vector<int64_t> *offsets) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -872,10 +874,12 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
   if (owned_by_us) {
+    std::cout << "In create owned.\n";
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
-                                       NodeID::FromBinary(rpc_address_.raylet_id()));
+                                       NodeID::FromBinary(rpc_address_.raylet_id()),
+                                       offsets);
   } else {
     // Because in the remote worker's `HandleAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
@@ -2286,6 +2290,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   if (task_spec.IsActorTask()) {
     num_returns--;
   }
+  std::cout << "In ExecuteTaskLocalMode() call.\n";
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
@@ -3042,6 +3047,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   for (const auto &id_binary : request.contained_object_ids()) {
     contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
   }
+  std::cout << "In HandleAssignObjectOwner() call.\n";
   reference_counter_->AddOwnedObject(
       object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
       /*is_reconstructable=*/false,

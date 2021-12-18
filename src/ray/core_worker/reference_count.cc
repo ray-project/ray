@@ -169,7 +169,9 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
                                       const int64_t object_size, bool is_reconstructable,
-                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
+                                      const absl::optional<NodeID> &pinned_at_raylet_id,
+                                      const std::vector<int64_t> *offsets) {
+  std::cout << "Adding owned object.\n";
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
@@ -179,9 +181,17 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // in the frontend language, incrementing the reference count.
   // TODO(swang): Objects that are not reconstructable should not increment
   // their arguments' lineage ref counts.
+  Reference ref = Reference(owner_address, call_site, object_size,
+                            is_reconstructable, pinned_at_raylet_id);
+  if (offsets) {
+    ref.offsets = *offsets;
+  }
+  for (int i = 0; i < ref.offsets.size(); i++){
+    std::cout << ref.offsets[i];
+    std::cout << "\n";
+  }
   auto it = object_id_refs_
-                .emplace(object_id, Reference(owner_address, call_site, object_size,
-                                              is_reconstructable, pinned_at_raylet_id))
+                .emplace(object_id, ref)
                 .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC

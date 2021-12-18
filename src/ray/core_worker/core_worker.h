@@ -270,7 +270,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
                      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-                     bool inline_small_object = true);
+                     bool inline_small_object = true,
+                     const std::vector<int64_t> *offsets = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the

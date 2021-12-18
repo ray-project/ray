@@ -1212,20 +1212,32 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
                             owner_address=None,
-                            c_bool inline_small_object=True):
+                            c_bool inline_small_object=True,
+                            c_vector[int64_t] *offsets=NULL):
         cdef:
             unique_ptr[CAddress] c_owner_address
 
         c_owner_address = move(self._convert_python_address(owner_address))
 
         if object_ref is None:
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
-                             metadata, data_size, contained_ids,
-                             c_object_id, data, created_by_worker,
-                             move(c_owner_address),
-                             inline_small_object))
+            if offsets == NULL:
+                with nogil:
+                    check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                                metadata, data_size, contained_ids,
+                                c_object_id, data, created_by_worker,
+                                move(c_owner_address),
+                                inline_small_object,
+                                NULL))
+            else:
+                with nogil:
+                    check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                                metadata, data_size, contained_ids,
+                                c_object_id, data, created_by_worker,
+                                move(c_owner_address),
+                                inline_small_object,
+                                offsets))
         else:
+            # TODO: Add multipart support for pre-existing object_refs.
             c_object_id[0] = object_ref.native()
             if owner_address is None:
                 c_owner_address = make_unique[CAddress]()
@@ -1341,7 +1353,8 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object)
+            &c_object_id, &data, True, owner_address, inline_small_object,
+            &c_offsets)
 
         if not object_already_exists:
             if total_bytes > 0:
