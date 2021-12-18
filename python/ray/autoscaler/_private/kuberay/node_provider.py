@@ -23,7 +23,7 @@ from ray.autoscaler.node_provider import NodeProvider
 
 ## Design:
 
-# Each modification the autoscaler wants to make is posted to the API scaler goal state
+# Each modification the autoscaler wants to make is posted to the API server goal state
 # (e.g. if the autoscaler wants to scale up, it increases the number of
 # replicas of the worker group it wants to scale, if it wants to scale down
 # it decreases the number of replicas and adds the exact pods that should be
