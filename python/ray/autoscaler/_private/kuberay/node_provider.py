@@ -2,6 +2,7 @@ import json
 import logging
 import requests
 import threading
+import time
 from typing import Any, Dict, List, Union
 
 import kubernetes
@@ -9,12 +10,25 @@ from kubernetes.config.config_exception import ConfigException
 
 from ray.autoscaler.node_provider import NodeProvider
 
+# Terminology:
+# We call the Kuberay labels "labels" and the Ray autoscaler tags "tags".
+# The labes are prefixed by "ray.io". Tags are prefixed by "ray-".
+# We convert between the two but do not mix them.
+
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
 
 provider_exists = False
 
+
+def to_label_selector(tags):
+    label_selector = ""
+    for k, v in tags.items():
+        if label_selector != "":
+            label_selector += ","
+        label_selector += "{}={}".format(k, v)
+    return label_selector
 
 def status_tag(pod: Dict[str, Any]):
     if "containerStatuses" not in pod["status"]:
@@ -80,30 +94,72 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
         super().__init__(provider_config, cluster_name)
 
+    def _get(self, path):
+        result = requests.get("https://kubernetes.default:443" + path, headers=self.headers, verify=self.verify)
+        assert result.status_code == 200
+        return result.json()
 
-    def create_node(
-        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
-    ) -> Dict[str, Dict[str, str]]:
-        """Creates a number of nodes within the namespace.
-        Returns a mapping from created node ids to node metadata.
-        """
+    def _patch(self, path, payload):
+        result = requests.patch(
+            "https://kubernetes.default:443" + path,
+            json.dumps(payload),
+            headers={**self.headers, "Content-type": "application/json-patch+json"},
+            verify=self.verify
+        )
+        assert result.status_code == 200
+        return result.json()
+
+
+    def _modify_nodes(self, node_config: Dict[str, Any], tags: Dict[str, str], count: int, node_ids: List[str]):
+        "Create or terminate nodes, if count > 0 nodes are created and if count < 0 they are deleted."
+        # Check arguments for consistency
+        if count >= 0:
+            assert len(node_ids) == 0
+        else:
+            assert len(node_ids) == -count
         # Get the current number of replicas
-        url = "https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
-        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        url = "/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
+        data = self._get(url)
         old_replicas = data["spec"]["workerGroupSpecs"][0]["replicas"]
         # Compute the new number of replicas
         new_replicas = old_replicas + count
         # Update the number of replicas
         path = "/spec/workerGroupSpecs/0/replicas"
-        # TODO: Add retry loop if test and set fails
-        command = [{"op": "test", "path": path, "value": old_replicas}, {"op": "replace", "path": path, "value": new_replicas}]
-        data = requests.patch(url, json.dumps(command), headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
+        payload = [
+            {"op": "test", "path": path, "value": old_replicas},
+            {"op": "replace", "path": path, "value": new_replicas}
+        ]
+        if node_ids != []:
+            payload.append(
+                {"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete": node_ids}}
+            )
+        self._patch(url, payload)
 
-        return data
+        # Wait for new pods to be added to API server by the Kuberay reconciliator
+        group_name = data["spec"]["workerGroupSpecs"][0]["groupName"]
+        label_filters = to_label_selector({"ray.io/cluster": self.cluster_name, "ray.io/group": group_name})
+        while True:
+            pods = self._get("/api/v1/namespaces/default/pods?labelSelector=" + requests.utils.quote(label_filters))
+            logger.info("Currently have {} replicas of group {}, requested {}.".format(len(pods["items"]), group_name, new_replicas))
+            if len(pods["items"]) == new_replicas:
+                if node_ids != []:
+                    # Clean up workersToDelete (Kuberay doesn't seem to be doing it)
+                    self._path(url, [{"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete": []}}])
+                break
+            else:
+                logger.info("Still waiting for reconciler, number of replicas is {}, expected {}.".format(len(pods["items"]), new_replicas))
+                time.sleep(10.0)
+
+
+    def create_node(
+        self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
+    ) -> Dict[str, Dict[str, str]]:
+        """Creates a number of nodes within the namespace."""
+        self._modify_nodes(node_config, tags, count, [])
+        return {}
 
     def internal_ip(self, node_id: str) -> str:
-        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
-        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        data = self._get("/api/v1/namespaces/default/pods/{}".format(node_id))
         return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
@@ -143,24 +199,5 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         self.terminate_nodes([node_id])
 
     def terminate_nodes(self, node_ids: List[str]) -> Dict[str, Dict[str, str]]:
-        """Terminates a set of nodes.
-        Returns map of deleted node ids to node metadata.
-        """
-        # Get the current number of replicas
-        url = "https://kubernetes.default:443/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
-        data = requests.get(url, headers=self.headers, verify=self.verify).json()
-        old_replicas = data["spec"]["workerGroupSpecs"][0]["replicas"]
-        # Compute the new number of replicas
-        new_replicas = old_replicas - len(node_ids)
-        # Update the number of replicas
-        path = "/spec/workerGroupSpecs/0/replicas"
-        # TODO: Add retry loop if test and set fails
-        command = [
-            {"op": "test", "path": path, "value": old_replicas},
-            {"op": "replace", "path": path, "value": new_replicas},
-            # {"op": "add", "path": "/spec/workerGroupSpecs/0/scaleStrategy/workersToDelete", "value": node_ids}
-            {"op": "replace", "path": "/spec/workerGroupSpecs/0/scaleStrategy", "value": {"workersToDelete": node_ids}},
-        ]
-        result = requests.patch(url, json.dumps(command), headers={**self.headers, "Content-type": "application/json-patch+json"}, verify=self.verify).json()
-        logger.info("result from terminate_nodes = {}".format(result))
+        self._modify_nodes({}, {}, -len(node_ids), node_ids)
         return {}
