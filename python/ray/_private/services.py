@@ -189,7 +189,7 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
     return port
 
 
-def find_redis_address():
+def find_redis_address(address=None):
     """
     Attempts to find all valid Ray redis addresses on this node.
 
@@ -266,6 +266,8 @@ def find_redis_address():
                         # TODO(ekl): Find a robust solution for locating Redis.
                         if arg.startswith("--redis-address="):
                             proc_addr = arg.split("=")[1]
+                            if address is not None and address != proc_addr:
+                                continue
                             redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
@@ -274,11 +276,19 @@ def find_redis_address():
     return redis_addresses
 
 
-def _find_redis_address_or_die():
-    """Find one Redis address unambiguously, or raise an error.
-
-    Callers outside of this module should use get_ray_address_to_use_or_die()
+def get_ray_address_to_use_or_die():
     """
+    Attempts to find an address for an existing Ray cluster if it is not
+    already specified as an environment variable.
+    Returns:
+        A string to pass into `ray.init(address=...)`
+    """
+    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                          find_redis_address_or_die())
+
+
+def find_redis_address_or_die():
+
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -486,33 +496,32 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
-def validate_bootstrap_address(addr):
-    """Validates address parameter, and extract the host and IP.
+def validate_redis_address(address):
+    """Validates address parameter.
 
     Returns:
-        bootstrap_address: string containing the full <host:port> address for
-            bootstrapping.
-        ip: string representing the host portion of the address.
-        port: integer representing the port portion of the address.
+        redis_address: string containing the full <host:port> address.
+        redis_ip: string representing the host portion of the address.
+        redis_port: integer representing the port portion of the address.
     """
 
-    if addr == "auto":
-        addr = get_ray_address_to_use_or_die()
-    bootstrap_address = address_to_ip(addr)
+    if address == "auto":
+        address = find_redis_address_or_die()
+    redis_address = address_to_ip(address)
 
-    address_parts = bootstrap_address.split(":")
-    if len(address_parts) != 2:
+    redis_address_parts = redis_address.split(":")
+    if len(redis_address_parts) != 2:
         raise ValueError("Malformed address. Expected '<host>:<port>'.")
-    ip = address_parts[0]
+    redis_ip = redis_address_parts[0]
     try:
-        port = int(address_parts[1])
+        redis_port = int(redis_address_parts[1])
     except ValueError:
         raise ValueError("Malformed address port. Must be an integer.")
-    if port < 1024 or port > 65535:
-        raise ValueError("Invalid address port. Must be between 1024 and "
-                         "65535 (inclusive).")
+    if redis_port < 1024 or redis_port > 65535:
+        raise ValueError("Invalid address port. Must "
+                         "be between 1024 and 65535.")
 
-    return bootstrap_address, ip, port
+    return redis_address, redis_ip, redis_port
 
 
 def address_to_ip(address):
@@ -601,7 +610,7 @@ def create_redis_client(redis_address, password=None):
             except Exception:
                 create_redis_client.instances.pop(redis_address)
 
-    _, redis_ip_address, redis_port = validate_bootstrap_address(redis_address)
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
     create_redis_client.instances[redis_address] = redis.StrictRedis(
