@@ -173,17 +173,14 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
-        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/{}".format(node_id)
-        data = requests.get(url, headers=self.headers, verify=self.verify).json()
-        labels = data["metadata"]["labels"]
-        return make_node_tags(labels, status_tag(data))
+        data = self._get("/api/v1/namespaces/default/pods/{}".format(node_id))
+        return make_node_tags(data["metadata"]["labels"], status_tag(data))
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
         Also updates caches of ips and tags.
         """
-        url = "https://kubernetes.default:443/api/v1/namespaces/default/pods/"
-        data = requests.get(url, headers=self.headers, verify=self.verify).json()
+        data = self._get("/api/v1/namespaces/default/pods/")
 
         logger.info("Called non_terminated_nodes with tag_filters {}".format(tag_filters))
 
