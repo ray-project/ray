@@ -39,7 +39,7 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
-  /// Constructor of GcsClientOptions.
+  /// Constructor of GcsClientOptions from redis.
   ///
   /// \param ip GCS service ip.
   /// \param port GCS service port.
