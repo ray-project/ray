@@ -31,6 +31,7 @@ class RequestMetadata:
     http_arg_is_pickled: bool = False
 
     version: str = ""
+    prev_version: str = ""
 
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
@@ -119,8 +120,10 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
 
-            logger.info(f"Assigned query {query.metadata.request_id} "
-                         f"to replica {replica.replica_tag} with version {replica.version}")
+            logger.info(
+                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version} "
+                f"to replica {replica.replica_tag} with version {replica.version}"
+            )
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
@@ -142,7 +145,6 @@ class ReplicaSet:
 
     async def assign_replica(
         self,
-        request_meta: RequestMetadata,
         query: Query
     ) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
@@ -185,8 +187,8 @@ class Router:
             self,
             controller_handle: ActorHandle,
             deployment_name: str,
-            version: str = "",
-            prev_version: str = "",
+            version: Optional[str] = None,
+            prev_version: Optional[str] = None,
             event_loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: assign a replica.
@@ -229,7 +231,6 @@ class Router:
 
         self.num_router_requests.inc()
         return await self._replica_set.assign_replica(
-            request_meta,
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,

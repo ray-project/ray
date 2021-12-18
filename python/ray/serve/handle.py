@@ -66,8 +66,8 @@ class RayServeHandle:
             self,
             controller_handle: ActorHandle,
             endpoint_name: EndpointTag,
-            version: Optional[str] = None,
-            prev_version: Optional[str] = None,
+            version: str,
+            prev_version: Optional[str],
             handle_options: Optional[HandleOptions] = None,
             *,
             _router: Optional[Router] = None,
@@ -89,8 +89,9 @@ class RayServeHandle:
             "endpoint": self.endpoint_name
         })
 
-        self._version = version
-        self._prev_version = prev_version
+        self.version = version
+        self.prev_version = prev_version
+        print(f"[===Handle===] self.version in init: {self.version}")
 
         self.router: Router = _router or self._make_router()
 
@@ -98,8 +99,8 @@ class RayServeHandle:
         return Router(
             self.controller_handle,
             self.endpoint_name,
-            version=self._version,
-            prev_version=self._prev_version,
+            version=self.version,
+            prev_version=self.prev_version,
             event_loop=asyncio.get_event_loop(),
         )
 
@@ -146,23 +147,27 @@ class RayServeHandle:
         return self.__class__(
             self.controller_handle,
             self.endpoint_name,
+            self.version,
+            self.prev_version,
             new_options,
             _router=self.router,
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def _remote(self, endpoint_name, handle_options, args,
+    def _remote(self, endpoint_name, version, prev_version, handle_options, args,
                 kwargs) -> Coroutine:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             endpoint_name,
+            version=version,
+            prev_version=prev_version,
             call_method=handle_options.method_name,
             shard_key=handle_options.shard_key,
             http_method=handle_options.http_method,
             http_headers=handle_options.http_headers,
             http_arg_is_pickled=self._pickled_http_request,
-            version=self._version
         )
+        print(f"[===Handle===] request_metadata: {request_metadata}")
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
@@ -182,19 +187,24 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        return await self._remote(self.endpoint_name, self.handle_options,
+        print(f"[===Handle===] self.version in remote(): {self.version}")
+        return await self._remote(
+            self.endpoint_name, self.version, self.prev_version, self.handle_options,
                                   args, kwargs)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
+        return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}'(version={self.version}))"
 
     def __reduce__(self):
         serialized_data = {
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
+            "version": self.version,
+            "prev_version": self.prev_version,
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
+
         return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
 
     def __getattr__(self, name):
@@ -213,8 +223,8 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.endpoint_name,
-            version=self._version,
-            prev_version=self._prev_version,
+            version=self.version,
+            prev_version=self.prev_version,
             event_loop=create_or_get_async_loop_in_thread(),
         )
 
@@ -236,7 +246,7 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.endpoint_name, self.handle_options, args,
+        coro = self._remote(self.endpoint_name, self.version, self.prev_version, self.handle_options, args,
                             kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop)
@@ -246,6 +256,8 @@ class RayServeSyncHandle(RayServeHandle):
         serialized_data = {
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
+            "version": self.version,
+            "prev_version": self.prev_version,
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
