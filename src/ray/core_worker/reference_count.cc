@@ -186,10 +186,6 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   if (offsets) {
     ref.offsets = *offsets;
   }
-  for (int i = 0; i < ref.offsets.size(); i++) {
-    std::cout << ref.offsets[i];
-    std::cout << "\n";
-  }
   auto it = object_id_refs_.emplace(object_id, ref).first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
