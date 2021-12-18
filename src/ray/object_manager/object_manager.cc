@@ -776,7 +776,7 @@ void ObjectManager::HandleGetObjectRange(const rpc::GetObjectRangeRequest &reque
                                          rpc::GetObjectRangeReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(ERROR) << "Received range request for object [" << object_id << "].";
+  RAY_LOG(DEBUG) << "Received range request for object [" << object_id << "].";
 
   if (local_objects_.count(object_id) != 0) {
     const ObjectInfo &object_info = local_objects_[object_id].object_info;

@@ -410,7 +410,6 @@ class SerializationContext:
             msgpack_data.append(value)
         offsets.append(data_serialized)
         msgpack_data = b"".join(msgpack_data)
-        print("OBJECT SIZE", len(msgpack_data))
 
         return RawSerializedObject(msgpack_data), offsets
 

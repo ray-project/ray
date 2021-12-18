@@ -439,7 +439,6 @@ cdef class Pickle5SerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-        printf("\nIn the write_to function that takes in a buffer!\n")
         self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS)
 
 

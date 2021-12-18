@@ -1001,7 +1001,7 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   int64_t range_size = location->RangeSize();
   RAY_CHECK(range_size > 0) << "Expected range data " << range_size;
   RAY_CHECK(range_offset >= 0) << "Expected range data " << range_offset;
-  RAY_LOG(ERROR) << "Sending range request " << range_offset << " " << range_size;
+  RAY_LOG(DEBUG) << "Sending range request " << range_offset << " " << range_size;
   // TODO(ekl) pick raylet from locations, assuming single node for now.
   auto buffer = local_raylet_client_->GetObjectRange(object_id, range_offset, range_size);
   RAY_CHECK(buffer != nullptr) << "Range request failed";
@@ -1010,7 +1010,6 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   std::shared_ptr<Buffer> metadata_ptr;
   metadata_ptr.reset(new LocalMemoryBuffer(
       reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size(), true));
-  RAY_LOG(ERROR) << "Buffer info " << buffer->Size();
   result.reset(new RayObject(buffer, metadata_ptr, {}));
   return Status::OK();
 }
@@ -1021,7 +1020,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   results->resize(ids.size(), nullptr);
 
   if (index >= 0) {
-    RAY_LOG(ERROR) << "Get With Index " << index;
     RAY_CHECK(ids.size() == 1);
     return GetWithIndex(ids[0], index, (*results)[0]);
   }
