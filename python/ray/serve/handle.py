@@ -161,6 +161,7 @@ class RayServeHandle:
             http_method=handle_options.http_method,
             http_headers=handle_options.http_headers,
             http_arg_is_pickled=self._pickled_http_request,
+            version=self._version
         )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro

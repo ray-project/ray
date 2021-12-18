@@ -25,25 +25,26 @@ from ray.serve.constants import (
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
-from ray.serve.version import DeploymentVersion
+# from ray.serve.version import DeploymentVersion
 from ray.serve.utils import wrap_to_ray_error
 
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
+def create_replica_wrapper(name: str, serialized_deployment_def: bytes, deployment_version: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
     serialized_deployment_def = serialized_deployment_def
+    deployment_version = deployment_version
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, deployment_name, replica_tag, init_args,
                            init_kwargs, deployment_config_proto_bytes: bytes,
-                           version: DeploymentVersion, controller_name: str,
+                           version: str, controller_name: str,
                            detached: bool):
             deployment_def = cloudpickle.loads(serialized_deployment_def)
             deployment_config = DeploymentConfig.from_proto_bytes(
@@ -99,7 +100,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
                 self.replica = RayServeReplica(
                     _callable, deployment_name, replica_tag, deployment_config,
-                    deployment_config.user_config, version, is_function,
+                    deployment_config.user_config, deployment_version, is_function,
                     controller_handle)
 
             # Is it fine that replica is None here?
@@ -138,7 +139,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             pass
 
         async def reconfigure(self, user_config: Optional[Any] = None
-                              ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+                              ) -> Tuple[DeploymentConfig, str]:
             if self.replica is None:
                 await self._initialize_replica()
             if user_config is not None:
@@ -146,7 +147,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
             return self.get_metadata()
 
-        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
+        def get_metadata(self) -> Tuple[DeploymentConfig, str]:
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
@@ -166,7 +167,7 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, deployment_name: str,
                  replica_tag: ReplicaTag, deployment_config: DeploymentConfig,
-                 user_config: Any, version: DeploymentVersion,
+                 user_config: Any, version: str,
                  is_function: bool, controller_handle: ActorHandle) -> None:
         self.deployment_config = deployment_config
         self.deployment_name = deployment_name
@@ -337,8 +338,8 @@ class RayServeReplica:
     async def reconfigure(self, user_config: Any):
         async with self.rwlock.writer_lock:
             self.user_config = user_config
-            self.version = DeploymentVersion(
-                self.version.code_version, user_config=user_config)
+            # self.version = DeploymentVersion(
+            #     self.version.code_version, user_config=user_config)
             if self.is_function:
                 raise ValueError(
                     "deployment_def must be a class to use user_config")

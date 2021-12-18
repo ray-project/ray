@@ -30,6 +30,8 @@ class RequestMetadata:
     # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
 
+    version: str = ""
+
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
         self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
@@ -89,10 +91,12 @@ class ReplicaSet:
             self.in_flight_queries.keys(), running_replicas)
 
         for new_replica in added:
+            logger.info(f"\n$$$$$ new_replica: {new_replica.deployment_name}, version: {new_replica.version}")
             self.in_flight_queries[new_replica] = set()
 
         for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
+            logger.info(f"\n$$$$$ removed_replica: {removed_replica.deployment_name}, version: {removed_replica.version}")
             del self.in_flight_queries[removed_replica]
 
         if len(added) > 0 or len(removed) > 0:
@@ -100,7 +104,7 @@ class ReplicaSet:
             replicas = list(self.in_flight_queries.keys())
             random.shuffle(replicas)
             self.replica_iterator = itertools.cycle(replicas)
-            logger.debug(
+            logger.info(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
@@ -115,8 +119,8 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
 
-            logger.debug(f"Assigned query {query.metadata.request_id} "
-                         f"to replica {replica.replica_tag}.")
+            logger.info(f"Assigned query {query.metadata.request_id} "
+                         f"to replica {replica.replica_tag} with version {replica.version}")
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
@@ -136,7 +140,11 @@ class ReplicaSet:
             replica_in_flight_queries.difference_update(done)
         return len(done)
 
-    async def assign_replica(self, query: Query) -> ray.ObjectRef:
+    async def assign_replica(
+        self,
+        request_meta: RequestMetadata,
+        query: Query
+    ) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
         This method will keep track of the in flight queries for each replicas
         and only send a query to available replicas (determined by the
@@ -221,6 +229,7 @@ class Router:
 
         self.num_router_requests.inc()
         return await self._replica_set.assign_replica(
+            request_meta,
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,

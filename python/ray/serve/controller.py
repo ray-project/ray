@@ -256,9 +256,8 @@ class ServeController:
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
                     replica_version = ("None"
-                                       if (replica.version is None
-                                           or replica.version.unversioned) else
-                                       replica.version.code_version)
+                                       if (replica.version is None) else
+                                       replica.version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
@@ -302,10 +301,7 @@ class ServeController:
                prev_version: Optional[str],
                route_prefix: Optional[str],
                deployer_job_id: "Optional[ray._raylet.JobID]" = None,
-               pipeline_dag: Optional[Any] = None,
-               pipeline_name: Optional[Any] = None
             ) -> Tuple[Optional[GoalId], bool]:
-        logger.info(f">>>>>>> Calling controller deploy(), pipeline name: {pipeline_name}")
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 

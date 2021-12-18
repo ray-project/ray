@@ -164,7 +164,7 @@ class ActorReplicaWrapper:
         return self._placement_group
 
     def start(self, deployment_info: DeploymentInfo,
-              version: DeploymentVersion):
+              version: str):
         """
         Start a new actor for current DeploymentReplica instance.
         """
@@ -359,7 +359,7 @@ class DeploymentReplica(VersionedReplica):
 
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, deployment_name: str,
-                 version: DeploymentVersion):
+                 version: str):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}", detached,
             controller_name, replica_tag, deployment_name)
@@ -376,6 +376,7 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
+            version=self._version
         )
         return self._actor.get_running_replica_info()
 
@@ -396,7 +397,7 @@ class DeploymentReplica(VersionedReplica):
         return self._actor.actor_handle
 
     def start(self, deployment_info: DeploymentInfo,
-              version: DeploymentVersion):
+              version: str):
         """
         Start a new actor for current DeploymentReplica instance.
         """
@@ -411,6 +412,7 @@ class DeploymentReplica(VersionedReplica):
         DeploymentReplica instance.
         """
         self._actor.update_user_config(user_config)
+        # SHOULD NOT BE CALLED
         self._version = DeploymentVersion(
             self._version.code_version, user_config=user_config)
 
@@ -540,7 +542,7 @@ class ReplicaStateContainer:
         return sum((self._replicas[state] for state in states), [])
 
     def pop(self,
-            exclude_version: Optional[DeploymentVersion] = None,
+            exclude_version: Optional[str] = None,
             states: Optional[List[ReplicaState]] = None,
             max_replicas: Optional[int] = math.inf) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
@@ -560,7 +562,7 @@ class ReplicaStateContainer:
             states = ALL_REPLICA_STATES
 
         assert (exclude_version is None
-                or isinstance(exclude_version, DeploymentVersion))
+                or isinstance(exclude_version, str))
         assert isinstance(states, list)
 
         replicas = []
@@ -581,8 +583,8 @@ class ReplicaStateContainer:
         return replicas
 
     def count(self,
-              exclude_version: Optional[DeploymentVersion] = None,
-              version: Optional[DeploymentVersion] = None,
+              exclude_version: Optional[str] = None,
+              version: Optional[str] = None,
               states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
@@ -597,9 +599,9 @@ class ReplicaStateContainer:
         if states is None:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
-        assert (exclude_version is None
-                or isinstance(exclude_version, DeploymentVersion))
-        assert version is None or isinstance(version, DeploymentVersion)
+        # logger.info(f"  ***** type(exclude_version): {type(exclude_version)}, {exclude_version}")
+        assert (exclude_version is None or isinstance(exclude_version, str))
+        assert version is None or isinstance(version, str)
         if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
         elif exclude_version is None and version is not None:
@@ -647,7 +649,7 @@ class DeploymentState:
         self._rollback_info: DeploymentInfo = None
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
-        self._target_version: DeploymentVersion = None
+        self._target_version: str = None
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
@@ -668,29 +670,29 @@ class DeploymentState:
         (self._target_info, self._target_replicas,
          self._target_version) = target_state_checkpoint
 
-    def recover_current_state_from_replica_actor_names(
-            self, replica_actor_names: List[str]):
-        assert (
-            self._target_info is not None and self._target_replicas != -1
-            and self._target_version is not None), (
-                "Target state should be recovered successfully first before "
-                "recovering current state from replica actor names.")
+    # def recover_current_state_from_replica_actor_names(
+    #         self, replica_actor_names: List[str]):
+    #     assert (
+    #         self._target_info is not None and self._target_replicas != -1
+    #         and self._target_version is not None), (
+    #             "Target state should be recovered successfully first before "
+    #             "recovering current state from replica actor names.")
 
-        logger.debug("Recovering current state for deployment "
-                     f"{self._name} from {len(replica_actor_names)} actors in "
-                     "current ray cluster..")
-        # All current states use default value, only attach running replicas.
-        for replica_actor_name in replica_actor_names:
-            replica_name: ReplicaName = ReplicaName.from_str(
-                replica_actor_name)
-            new_deployment_replica = DeploymentReplica(
-                self._controller_name, self._detached,
-                replica_name.replica_tag, replica_name.deployment_tag, None)
-            new_deployment_replica.recover()
-            self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
-            logger.debug(
-                f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
-                f"deployment: {self._name}.")
+    #     logger.debug("Recovering current state for deployment "
+    #                  f"{self._name} from {len(replica_actor_names)} actors in "
+    #                  "current ray cluster..")
+    #     # All current states use default value, only attach running replicas.
+    #     for replica_actor_name in replica_actor_names:
+    #         replica_name: ReplicaName = ReplicaName.from_str(
+    #             replica_actor_name)
+    #         new_deployment_replica = DeploymentReplica(
+    #             self._controller_name, self._detached,
+    #             replica_name.replica_tag, replica_name.deployment_tag, None)
+    #         new_deployment_replica.recover()
+    #         self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
+    #         logger.debug(
+    #             f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
+    #             f"deployment: {self._name}.")
 
         # TODO(jiaodong): this currently halts all traffic in the cluster
         # briefly because we will broadcast a replica update with everything in
@@ -731,15 +733,15 @@ class DeploymentState:
         new_goal_id = self._goal_manager.create_goal()
 
         if deployment_info is not None:
+            logger.info(f" **** deployment_info.version: {deployment_info.version}")
             self._target_info = deployment_info
             self._target_replicas = (
                 deployment_info.deployment_config.num_replicas)
 
-            self._target_version = DeploymentVersion(
-                deployment_info.version,
-                user_config=deployment_info.deployment_config.user_config)
+            self._target_version = deployment_info.version
 
         else:
+            logger.info(f" **** deployment_info is None for clean up")
             self._target_replicas = 0
 
         self._curr_goal = new_goal_id
@@ -817,7 +819,7 @@ class DeploymentState:
         # because if there are replicas still pending startup, we may as well
         # terminate them and start new version replicas instead.
         old_running_replicas = self._replicas.count(
-            exclude_version=self._target_version,
+            exclude_version=self._target_version, # str
             states=[
                 ReplicaState.STARTING, ReplicaState.UPDATING,
                 ReplicaState.RUNNING
@@ -859,24 +861,23 @@ class DeploymentState:
             # If the code version is a mismatch, we stop the replica. A new one
             # with the correct version will be started later as part of the
             # normal scale-up process.
-            if (replica.version.code_version !=
-                    self._target_version.code_version):
+            if (replica.version != self._target_version):
                 code_version_changes += 1
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
                 replicas_stopped = True
             # If only the user_config is a mismatch, we update it dynamically
             # without restarting the replica.
-            elif (replica.version.user_config_hash !=
-                  self._target_version.user_config_hash):
-                user_config_changes += 1
-                replica.update_user_config(self._target_version.user_config)
-                self._replicas.add(ReplicaState.UPDATING, replica)
-                logger.debug(
-                    "Adding UPDATING to replica_tag: "
-                    f"{replica.replica_tag}, deployment_name: {self._name}")
-            else:
-                assert False, "Update must be code version or user config."
+            # elif (replica.version.user_config_hash !=
+            #       self._target_version.user_config_hash):
+            #     user_config_changes += 1
+            #     replica.update_user_config(self._target_version.user_config)
+            #     self._replicas.add(ReplicaState.UPDATING, replica)
+            #     logger.debug(
+            #         "Adding UPDATING to replica_tag: "
+            #         f"{replica.replica_tag}, deployment_name: {self._name}")
+            # else:
+            #     assert False, "Update must be code version or user config."
 
         if code_version_changes > 0:
             logger.info(f"Stopping {code_version_changes} replicas of "
@@ -931,8 +932,8 @@ class DeploymentState:
 
                 self._replicas.add(ReplicaState.STARTING,
                                    new_deployment_replica)
-                logger.debug("Adding STARTING to replica_tag: "
-                             f"{replica_name}, deployment_name: {self._name}")
+                logger.info("Adding STARTING to replica_tag: "
+                             f"{replica_name}, deployment_name: {self._name}, version: {self._target_version}")
 
         elif delta_replicas < 0:
             replicas_stopped = True

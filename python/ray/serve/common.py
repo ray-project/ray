@@ -28,6 +28,7 @@ class DeploymentInfo:
                  actor_name: Optional[str] = None,
                  serialized_deployment_def: Optional[bytes] = None,
                  version: Optional[str] = None,
+                 prev_version: Optional[str] = None,
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None,
                  end_time_ms: Optional[int] = None,
                  autoscaling_policy: Optional[AutoscalingPolicy] = None):
@@ -38,6 +39,7 @@ class DeploymentInfo:
         self.actor_name = actor_name
         self.serialized_deployment_def = serialized_deployment_def
         self.version = version
+        self.prev_version = prev_version
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
@@ -64,7 +66,8 @@ class DeploymentInfo:
             assert self.serialized_deployment_def is not None
             self._cached_actor_def = ray.remote(
                 create_replica_wrapper(self.actor_name,
-                                       self.serialized_deployment_def))
+                                       self.serialized_deployment_def,
+                                       self.version))
         return self._cached_actor_def
 
 
@@ -107,3 +110,4 @@ class RunningReplicaInfo:
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
+    version: str = ""

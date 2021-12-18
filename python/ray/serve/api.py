@@ -222,8 +222,6 @@ class Client:
             route_prefix: Optional[str] = None,
             url: Optional[str] = None,
             _blocking: Optional[bool] = True,
-            pipeline_dag: Optional[Any] = None,
-            pipeline_name: Optional[Any] = None
         ) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -258,8 +256,6 @@ class Client:
                 replica_config, version,
                 prev_version, route_prefix,
                 deployer_job_id=ray.get_runtime_context().job_id,
-                pipeline_dag=pipeline_dag,
-                pipeline_name=pipeline_name
             )
         )
 
@@ -687,8 +683,6 @@ class Deployment:
                  route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
                  ray_actor_options: Optional[Dict] = None,
                  _internal=False,
-                 pipeline_dag=None,
-                 pipeline_name=None,
         ) -> None:
         """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
@@ -750,9 +744,6 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
-
-        self._pipeline_dag = pipeline_dag
-        self._pipeline_name = pipeline_name
 
     @property
     def name(self) -> str:
@@ -846,6 +837,8 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
+        logger.info(f"*** Calling .deploy() with version: {self._version} and prev_version: {self._prev_version}")
+
         return _get_global_client().deploy(
             self._name,
             self._func_or_class,
@@ -858,8 +851,6 @@ class Deployment:
             route_prefix=self.route_prefix,
             url=self.url,
             _blocking=_blocking,
-            pipeline_dag=self._pipeline_dag,
-            pipeline_name=self._pipeline_name
         )
 
     @PublicAPI
