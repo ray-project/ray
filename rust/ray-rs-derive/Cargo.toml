@@ -1,0 +1,15 @@
+[package]
+name = "ray-rs-derive"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-crate = "0.1"
+proc-macro2 = "1.0.18"
+quote = "1.0.6"
+syn = { version = "1.0.30", features = ["full", "extra-traits"] }

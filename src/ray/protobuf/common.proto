@@ -26,6 +26,7 @@ enum Language {
   PYTHON = 0;
   JAVA = 1;
   CPP = 2;
+  RUST = 3;
 }
 
 // Type of a worker.
@@ -79,12 +80,19 @@ message CppFunctionDescriptor {
   string function_name = 1;
 }
 
+/// Function descriptor for Rust.
+message RustFunctionDescriptor {
+  /// Remote function name.
+  string function_name = 1;
+}
+
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
     JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
     CppFunctionDescriptor cpp_function_descriptor = 3;
+    RustFunctionDescriptor rust_function_descriptor = 4;
   }
 }
 

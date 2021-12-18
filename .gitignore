@@ -166,6 +166,11 @@ java/runtime/native_dependencies/
 # Cpp
 cpp/example/thirdparty/
 
+# Rust
+rust/ray-rs/target/
+rust/ray-rs-derive/target/
+rust/ray-rs-sys/target/
+
 # streaming/python
 streaming/python/generated/
 streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/

@@ -1,4 +1,6 @@
 #include "ray/api.h"
+#include "ray/core_worker/core_worker_options.h"
+#include <msgpack.hpp>
 
 namespace ray {
   void InitAsLocal() {
@@ -31,6 +33,18 @@ namespace ray {
 
   std::shared_ptr<std::string> GetString(const std::unique_ptr<StringObjectRef> obj_ref) {
     return Get<std::string>(*obj_ref);
+  }
+
+  struct Config {
+    std::string my_string;
+    uint64_t my_int;
+    MSGPACK_DEFINE(my_string, my_int);
+  };
+
+  void PutAndGetConfig() {
+    Config config = { "hello", 42ULL };
+    auto ref = Put(config);
+    Get(ref);
   }
 
 }

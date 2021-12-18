@@ -26,7 +26,9 @@ rust_cxx_bridge(
 
 cc_library(
     name = "ray_rs_sys",
-    srcs = [],
+    srcs = [
+      "cpp/tasks.h",
+    ],
     copts = ["-std=c++17"],
     deps = [
         ":bridge/include",
@@ -38,6 +40,9 @@ cc_library(
 
 cc_library(
     name = "ray_rs_include",
-    hdrs = ["include/wrapper.h"],
+    hdrs = [
+      "cpp/wrapper.h",
+      "cpp/tasks.h",
+    ],
     deps = ["@cxx.rs//:core"],
 )

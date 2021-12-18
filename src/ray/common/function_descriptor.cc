@@ -51,6 +51,13 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(const std::string &functi
   return ray::FunctionDescriptor(new CppFunctionDescriptor(std::move(descriptor)));
 }
 
+FunctionDescriptor FunctionDescriptorBuilder::BuildRust(const std::string &function_name) {
+  rpc::FunctionDescriptor descriptor;
+  auto typed_descriptor = descriptor.mutable_rust_function_descriptor();
+  typed_descriptor->set_function_name(function_name);
+  return ray::FunctionDescriptor(new RustFunctionDescriptor(std::move(descriptor)));
+}
+
 FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor message) {
   switch (message.function_descriptor_case()) {
   case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
@@ -59,6 +66,8 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
     return ray::FunctionDescriptor(new ray::PythonFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kCppFunctionDescriptor:
     return ray::FunctionDescriptor(new ray::CppFunctionDescriptor(std::move(message)));
+  case ray::FunctionDescriptorType::kRustFunctionDescriptor:
+    return ray::FunctionDescriptor(new ray::RustFunctionDescriptor(std::move(message)));
   default:
     break;
   }
@@ -87,6 +96,11 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
   } else if (language == rpc::Language::CPP) {
     RAY_CHECK(function_descriptor_list.size() == 1);
     return FunctionDescriptorBuilder::BuildCpp(
+        function_descriptor_list[0]  // function name
+    );
+  } else if (language == rpc::Language::RUST) {
+    RAY_CHECK(function_descriptor_list.size() == 1);
+    return FunctionDescriptorBuilder::BuildRust(
         function_descriptor_list[0]  // function name
     );
   } else {

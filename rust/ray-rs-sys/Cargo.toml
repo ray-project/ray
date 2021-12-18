@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 cxx = "1.0"
+serde = "1.0.132"
 
 [build-dependencies]
 cxx-build = "1.0"

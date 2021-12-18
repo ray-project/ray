@@ -259,6 +259,50 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::CppFunctionDescriptor *typed_message_;
 };
 
+class RustFunctionDescriptor : public FunctionDescriptorInterface {
+ public:
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit RustFunctionDescriptor(rpc::FunctionDescriptor message)
+      : FunctionDescriptorInterface(std::move(message)) {
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kRustFunctionDescriptor);
+    typed_message_ = &(message_->rust_function_descriptor());
+  }
+
+  virtual size_t Hash() const {
+    return std::hash<int>()(ray::FunctionDescriptorType::kRustFunctionDescriptor) ^
+           std::hash<std::string>()(typed_message_->function_name());
+  }
+
+  inline bool operator==(const RustFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->FunctionName() == other.FunctionName();
+  }
+
+  inline bool operator!=(const RustFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
+  virtual std::string ToString() const {
+    return "{type=RustFunctionDescriptor, function_name=" +
+           typed_message_->function_name() + "}";
+  }
+
+  virtual std::string CallString() const { return typed_message_->function_name(); }
+
+  virtual std::string DefaultTaskName() const { return CallString(); }
+
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
+
+ private:
+  const rpc::RustFunctionDescriptor *typed_message_;
+};
+
 typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
@@ -284,6 +328,9 @@ inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor 
   case ray::FunctionDescriptorType::kCppFunctionDescriptor:
     return static_cast<const CppFunctionDescriptor &>(*left) ==
            static_cast<const CppFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kRustFunctionDescriptor:
+    return static_cast<const RustFunctionDescriptor &>(*left) ==
+           static_cast<const RustFunctionDescriptor &>(*right);
   default:
     RAY_LOG(FATAL) << "Unknown function descriptor type: " << left->Type();
     return false;
@@ -321,6 +368,12 @@ class FunctionDescriptorBuilder {
   ///
   /// \return a ray::CppFunctionDescriptor
   static FunctionDescriptor BuildCpp(const std::string &function_name);
+
+
+  /// Build a RustFunctionDescriptor.
+  ///
+  /// \return a ray::RustFunctionDescriptor
+  static FunctionDescriptor BuildRust(const std::string &function_name);
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///
