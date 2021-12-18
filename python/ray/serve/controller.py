@@ -132,6 +132,9 @@ class ServeController:
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
 
+    def check_complete(self, goal_id: GoalId) -> bool:
+        return self.goal_manager.check_complete(goal_id)
+
     async def _num_pending_goals(self) -> int:
         return self.goal_manager.num_pending_goals()
 

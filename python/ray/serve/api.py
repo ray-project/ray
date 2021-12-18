@@ -280,6 +280,7 @@ class Client:
             logger.info(
                 f"Deployment '{name}{':'+version if version else ''}' is ready"
                 f"{url_part}. {tag}")
+            return goal_id
         else:
             return goal_id
 
