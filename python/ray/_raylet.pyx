@@ -1222,20 +1222,22 @@ cdef class CoreWorker:
         if object_ref is None:
             if offsets == NULL:
                 with nogil:
-                    check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
-                                metadata, data_size, contained_ids,
-                                c_object_id, data, created_by_worker,
-                                move(c_owner_address),
-                                inline_small_object,
-                                NULL))
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                            metadata, data_size, contained_ids,
+                            c_object_id, data, created_by_worker,
+                            move(c_owner_address),
+                            inline_small_object,
+                            NULL))
             else:
                 with nogil:
-                    check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
-                                metadata, data_size, contained_ids,
-                                c_object_id, data, created_by_worker,
-                                move(c_owner_address),
-                                inline_small_object,
-                                offsets))
+                    check_status(
+                        CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                            metadata, data_size, contained_ids,
+                            c_object_id, data, created_by_worker,
+                            move(c_owner_address),
+                            inline_small_object,
+                            offsets))
         else:
             # TODO: Add multipart support for pre-existing object_refs.
             c_object_id[0] = object_ref.native()

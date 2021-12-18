@@ -783,7 +783,8 @@ void ObjectManager::HandleGetObjectRange(const rpc::GetObjectRangeRequest &reque
     uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
 
     if (request.offset() < 0 || request.offset() + request.size() > data_size) {
-      RAY_LOG(ERROR) << "Bad range read, returning empty.";
+      RAY_LOG(ERROR) << "Bad range read, returning empty: offset=" << request.offset()
+                     << ", size=" << request.size() << ", data_size=" << data_size;
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }

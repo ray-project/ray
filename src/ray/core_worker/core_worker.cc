@@ -1010,7 +1010,8 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   // TODO(ekl) pick raylet from locations, assuming single node for now.
   auto buffer = local_raylet_client_->GetObjectRange(object_id, range_size, range_offset);
   RAY_CHECK(buffer != nullptr) << "Range request failed";
-  std::string metadata_str = "PYTHON";
+  // TODO fill in this properly.
+  std::string metadata_str = "RAW";
   std::shared_ptr<Buffer> metadata_ptr;
   metadata_ptr.reset(new LocalMemoryBuffer(
       reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size(), true));
