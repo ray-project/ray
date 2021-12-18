@@ -1014,6 +1014,7 @@ Status CoreWorker::GetWithIndex(const ObjectID &object_id, const int64_t index,
   std::shared_ptr<Buffer> metadata_ptr;
   metadata_ptr.reset(new LocalMemoryBuffer(
       reinterpret_cast<uint8_t *>(metadata_str.data()), metadata_str.size(), true));
+  RAY_LOG(ERROR) << "Buffer info " << buffer->Size();
   result.reset(new RayObject(buffer, metadata_ptr, {}));
   return Status::OK();
 }
