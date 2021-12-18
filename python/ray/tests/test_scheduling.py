@@ -681,6 +681,31 @@ def test_scheduling_class_depth(ray_start_regular):
     wait_for_condition(make_condition(4))
 
 
+def test_resource_based_anti_affinity(ray_start_cluster):
+    n = 4
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=n, num_gpus=1)
+    non_gpu_node = cluster.add_node(num_cpus=n)
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor1:
+        def __init__(self):
+            pass
+
+        def get_location(self):
+            return ray.worker.global_worker.node.unique_id
+
+    actors = [Actor1.options(num_gpus=-1).remote() for _ in range(n)]
+    actor_locations = ray.get(
+        [actor.get_location.remote() for actor in actors])
+    for loc in actor_locations:
+        assert loc == non_gpu_node.unique_id, \
+            "expected actors to be scheduled on non-GPU node"
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

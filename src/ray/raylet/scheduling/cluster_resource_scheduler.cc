@@ -188,6 +188,9 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
       // A hard constraint has been violated, so we cannot schedule
       // this resource request.
       return false;
+    } else if (resource_request.predefined_resources[i] < 0 &&
+               resources.predefined_resources[i].total > 0) {
+      return false;
     }
   }
 
@@ -202,6 +205,8 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
     } else {
       if (task_req_custom_resource.second > it->second.available) {
         // Resource constraint is violated.
+        return false;
+      } else if (task_req_custom_resource.second < 0 && it->second.total > 0) {
         return false;
       }
     }

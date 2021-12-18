@@ -2167,11 +2167,17 @@ def remote(*args, **kwargs):
             the remote function invocation.
         num_cpus (float): The quantity of CPU cores to reserve
             for this task or for the lifetime of the actor.
+            If negative, this task or actor will not be scheduled onto nodes
+            that have CPUs (anti-affinity).
         num_gpus (int): The quantity of GPUs to reserve
             for this task or for the lifetime of the actor.
+            If negative, this task or actor will not be scheduled onto nodes
+            that have GPUs (anti-affinity).
         resources (Dict[str, float]): The quantity of various custom resources
             to reserve for this task or for the lifetime of the actor.
             This is a dictionary mapping strings (resource names) to floats.
+            If negative, this task or actor will not be scheduled onto nodes
+            that have the corresponding resource (anti-affinity).
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.

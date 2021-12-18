@@ -227,7 +227,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
-      if (resource_request.predefined_resources[i] != 0) {
+      if (resource_request.predefined_resources[i] > 0) {
         return false;
       }
       continue;
@@ -239,6 +239,8 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     if (resource < demand) {
       RAY_LOG(DEBUG) << "At resource capacity";
       return false;
+    } else if (demand < 0 && this->predefined_resources[i].total > 0) {
+      return false;
     }
   }
 
@@ -248,6 +250,8 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     if (it == this->custom_resources.end()) {
       return false;
     } else if (resource_req_custom_resource.second > it->second.available) {
+      return false;
+    } else if (resource_req_custom_resource.second < 0 && it->second.total > 0) {
       return false;
     }
   }
@@ -259,7 +263,7 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
-      if (resource_request.predefined_resources[i] != 0) {
+      if (resource_request.predefined_resources[i] > 0) {
         return false;
       }
       continue;
@@ -268,6 +272,8 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
     const auto &demand = resource_request.predefined_resources[i];
 
     if (resource < demand) {
+      return false;
+    } else if (demand < 0 && resource > 0) {
       return false;
     }
   }
@@ -278,6 +284,8 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
     if (it == this->custom_resources.end()) {
       return false;
     } else if (resource_req_custom_resource.second > it->second.total) {
+      return false;
+    } else if (resource_req_custom_resource.second < 0 && it->second.total > 0) {
       return false;
     }
   }
