@@ -377,6 +377,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of object locations.
   /// \return Status.
   Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                              int64_t index,
                               std::vector<std::shared_ptr<ObjectLocation>> *results);
 
   /// Trigger garbage collection on each worker in the cluster.

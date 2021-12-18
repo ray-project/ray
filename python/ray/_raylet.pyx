@@ -1437,7 +1437,7 @@ cdef class CoreWorker:
         with nogil:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
-                    lookup_ids, timeout_ms, &results))
+                    lookup_ids, timeout_ms, -1, &results))
 
         object_locations = {}
         for i in range(results.size()):

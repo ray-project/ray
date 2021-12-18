@@ -117,6 +117,8 @@ message WorkerObjectLocationsPubMessage {
   // there are no locations and this is set, the subscriber should wait for the
   // new location to appear.
   bool pending_creation = 8;
+  int64 range_offset = 9;
+  int64 range_size = 10;
 }
 
 /// Indicating the subscriber needs to handle failure callback.

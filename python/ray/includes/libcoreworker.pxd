@@ -236,6 +236,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus GetLocationFromOwner(
                 const c_vector[CObjectID] &object_ids,
                 int64_t timeout_ms,
+                int64_t index,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()

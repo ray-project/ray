@@ -46,20 +46,6 @@ message PullRequest {
   bytes object_id = 2;
 }
 
-message GetObjectRangeRequest {
-  // Requested ObjectID.
-  bytes object_id = 1;
-  // Offset in bytes of the read.
-  uint64 offset = 2;
-  // Size in bytes of the range of data to send.
-  uint64 size = 3;
-}
-
-message GetObjectRangeReply {
-  // Response data, empty on error.
-  bytes data = 1;
-}
-
 message FreeObjectsRequest {
   repeated bytes object_ids = 1;
 }
@@ -77,8 +63,6 @@ service ObjectManagerService {
   rpc Push(PushRequest) returns (PushReply);
   // Try to pull object from remote object manager
   rpc Pull(PullRequest) returns (PullReply);
-  // Try to get a range of data from an object.
-  rpc GetObjectRange(GetObjectRangeRequest) returns (GetObjectRangeReply);
   // Tell remote object manager to free some objects
   rpc FreeObjects(FreeObjectsRequest) returns (FreeObjectsReply);
 }

@@ -176,13 +176,15 @@ class ObjectLocation {
  public:
   ObjectLocation(NodeID primary_node_id, uint64_t object_size,
                  std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
-                 NodeID spilled_node_id)
+                 NodeID spilled_node_id, int64_t range_offset, int64_t range_size)
       : primary_node_id_(primary_node_id),
         object_size_(object_size),
         node_ids_(std::move(node_ids)),
         is_spilled_(is_spilled),
         spilled_url_(std::move(spilled_url)),
-        spilled_node_id_(spilled_node_id) {}
+        spilled_node_id_(spilled_node_id),
+        range_offset_(range_offset),
+        range_size_(range_size) {}
 
   const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
@@ -195,6 +197,9 @@ class ObjectLocation {
   const std::string &GetSpilledURL() const { return spilled_url_; }
 
   const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
+
+  const int64_t RangeOffset() const { return range_offset_; }
+  const int64_t RangeSize() const { return range_size_; }
 
  private:
   /// The ID of the node has the primary copy of the object.
@@ -211,6 +216,8 @@ class ObjectLocation {
   /// If spilled, the ID of the node that spilled the object. Nil if the object was
   /// spilled to distributed external storage.
   const NodeID spilled_node_id_;
+  const int64_t range_offset_ = -1;
+  const int64_t range_size_ = -1;
 };
 
 }  // namespace core

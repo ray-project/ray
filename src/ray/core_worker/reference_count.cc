@@ -1324,13 +1324,14 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
   auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
-  FillObjectInformationInternal(it, object_locations_msg);
+  FillObjectInformationInternal(it, -1, object_locations_msg);
 
   object_info_publisher_->Publish(pub_message);
 }
 
 Status ReferenceCounter::FillObjectInformation(
-    const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
+    const ObjectID &object_id, int64_t index,
+    rpc::WorkerObjectLocationsPubMessage *object_info) {
   RAY_CHECK(object_info != nullptr);
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1340,13 +1341,14 @@ Status ReferenceCounter::FillObjectInformation(
                         "reference counting protocol.";
     object_info->set_ref_removed(true);
   } else {
-    FillObjectInformationInternal(it, object_info);
+    FillObjectInformationInternal(it, index, object_info);
   }
   return Status::OK();
 }
 
 void ReferenceCounter::FillObjectInformationInternal(
-    ReferenceTable::iterator it, rpc::WorkerObjectLocationsPubMessage *object_info) {
+    ReferenceTable::iterator it, int64_t index,
+    rpc::WorkerObjectLocationsPubMessage *object_info) {
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
@@ -1356,6 +1358,12 @@ void ReferenceCounter::FillObjectInformationInternal(
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
   object_info->set_pending_creation(it->second.pending_creation);
+  if (index >= 0) {
+    RAY_CHECK(false) << "TODO(shreyas) fill this out with the offset table information";
+  } else {
+    object_info->set_range_offset(-1);
+    object_info->set_range_size(-1);
+  }
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {

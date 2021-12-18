@@ -103,6 +103,9 @@ class NodeManagerWorkerClient
   VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetObjectRange, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Request prepare resources for an atomic placement group creation.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_,
                          /*method_timeout_ms*/ -1, )

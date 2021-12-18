@@ -415,7 +415,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \return OK status if object information is filled. Non OK status otherwise.
   /// It can return non-OK status, for example, if the object for the object id
   /// doesn't exist.
-  Status FillObjectInformation(const ObjectID &object_id,
+  Status FillObjectInformation(const ObjectID &object_id, int64_t index,
                                rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
@@ -802,7 +802,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Fill up the object information for the given iterator.
-  void FillObjectInformationInternal(ReferenceTable::iterator it,
+  void FillObjectInformationInternal(ReferenceTable::iterator it, int64_t index,
                                      rpc::WorkerObjectLocationsPubMessage *object_info)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
