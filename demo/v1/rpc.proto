@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package demo;
+
+message Request {
+    int32 age = 1;
+}
+message Response {
+    bool drink_ok = 1;
+}

@@ -213,10 +213,11 @@ class SerializationContext:
 
                 pb_pool = Default()
                 try:
+                    # TODO: handle empty package
                     message_name = f"{proto_wrapper.descriptor_package}.{proto_wrapper.name}"
                     msg_desc = pb_pool.FindMessageTypeByName(message_name)
                     cls = MakeClass(msg_desc)
-                    logger.error(f"Importing protobuf {message_name}")
+                    # logger.error(f"Importing protobuf {message_name}")
                 except KeyError:
                     file_desc = FileDescriptor(
                         proto_wrapper.descriptor_name,
@@ -224,9 +225,9 @@ class SerializationContext:
                         serialized_pb=proto_wrapper.descriptor_serialize_pb)
                     cls = MakeClass(
                         file_desc.message_types_by_name[proto_wrapper.name])
-                    logger.error(
-                        f"Can't find protobuf {proto_wrapper.name} in pool, "
-                        "creating dynamic class from the file descriptor.")
+                    # logger.error(
+                    #     f"Can't find protobuf {proto_wrapper.name} in pool, "
+                    #     "creating dynamic class from the file descriptor.")
                 obj = cls()
                 obj.ParseFromString(proto_wrapper.serialized_data)
                 return obj
@@ -369,7 +370,7 @@ class SerializationContext:
             proto_wrapper.descriptor_package = file_desc.package
             proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
 
-            print(proto_wrapper)
+            # print(proto_wrapper)
 
             value = proto_wrapper.SerializeToString()
             metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
