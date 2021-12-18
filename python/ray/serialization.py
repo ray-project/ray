@@ -408,8 +408,8 @@ class SerializationContext:
             offsets.append(data_serialized)
             data_serialized += len(value)
         offsets.append(data_serialized)
-        msgpack_data = "".join(msgpack_data)
+        msgpack_data = b"".join(msgpack_data)
 
-        return msgpack_data, offsets
+        return RawSerializedObject(msgpack_data), offsets
 
         # return self._serialize_to_msgpack(values, multipart=True)
