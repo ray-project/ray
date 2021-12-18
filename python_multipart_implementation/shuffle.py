@@ -1,11 +1,14 @@
 import ray
+import os
 import time
 
-
-n = 500
+# Num partitions.
+n = 1000
 ray.init()
 
 
+# Disable inline optimization (otherwise gets don't even happen).
+os.environ["RAY_max_direct_call_object_size"] = "0"
 
 
 start = time.time()
