@@ -181,18 +181,16 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // in the frontend language, incrementing the reference count.
   // TODO(swang): Objects that are not reconstructable should not increment
   // their arguments' lineage ref counts.
-  Reference ref = Reference(owner_address, call_site, object_size,
-                            is_reconstructable, pinned_at_raylet_id);
+  Reference ref = Reference(owner_address, call_site, object_size, is_reconstructable,
+                            pinned_at_raylet_id);
   if (offsets) {
     ref.offsets = *offsets;
   }
-  for (int i = 0; i < ref.offsets.size(); i++){
+  for (int i = 0; i < ref.offsets.size(); i++) {
     std::cout << ref.offsets[i];
     std::cout << "\n";
   }
-  auto it = object_id_refs_
-                .emplace(object_id, ref)
-                .first;
+  auto it = object_id_refs_.emplace(object_id, ref).first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.

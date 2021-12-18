@@ -44,7 +44,7 @@ class ReferenceCounterInterface {
       const rpc::Address &owner_address, const std::string &call_site,
       const int64_t object_size, bool is_reconstructable,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>(),
-      const std::vector<int64_t> *offsets=nullptr) = 0;
+      const std::vector<int64_t> *offsets = nullptr) = 0;
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
@@ -173,8 +173,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const rpc::Address &owner_address, const std::string &call_site,
       const int64_t object_size, bool is_reconstructable,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>(),
-      const std::vector<int64_t> *offsets=nullptr)
-      LOCKS_EXCLUDED(mutex_);
+      const std::vector<int64_t> *offsets = nullptr) LOCKS_EXCLUDED(mutex_);
 
   /// Remove reference for an object that we own. The reference will only be
   /// removed if the object's ref count is 0. This should only be used when
@@ -483,9 +482,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() {std::cout<<"Reference constructor 1.\n";}
+    Reference() { std::cout << "Reference constructor 1.\n"; }
     Reference(std::string call_site, const int64_t object_size)
-        : call_site(call_site), object_size(object_size) {std::cout<<"Reference constructor 2.\n";}
+        : call_site(call_site), object_size(object_size) {
+      std::cout << "Reference constructor 2.\n";
+    }
     /// Constructor for a reference that we created.
     Reference(const rpc::Address &owner_address, std::string call_site,
               const int64_t object_size, bool is_reconstructable,
@@ -497,7 +498,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
           is_reconstructable(is_reconstructable),
-          pending_creation(!pinned_at_raylet_id.has_value()) {std::cout<<"Reference constructor 3.\n";}
+          pending_creation(!pinned_at_raylet_id.has_value()) {
+      std::cout << "Reference constructor 3.\n";
+    }
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
