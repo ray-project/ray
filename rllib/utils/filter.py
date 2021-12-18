@@ -1,6 +1,11 @@
 import logging
 import numpy as np
 import threading
+import tree  # pip install dm_tree
+
+from ray.rllib.utils.numpy import SMALL_NUMBER
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.typing import TensorStructType
 
 logger = logging.getLogger(__name__)
 
@@ -8,11 +13,11 @@ logger = logging.getLogger(__name__)
 class Filter:
     """Processes input, possibly statefully."""
 
-    def apply_changes(self, other, *args, **kwargs):
+    def apply_changes(self, other: "Filter", *args, **kwargs) -> None:
         """Updates self with "new state" from other filter."""
         raise NotImplementedError
 
-    def copy(self):
+    def copy(self) -> "Filter":
         """Creates a new object with same state as self.
 
         Returns:
@@ -20,22 +25,26 @@ class Filter:
         """
         raise NotImplementedError
 
-    def sync(self, other):
+    def sync(self, other: "Filter") -> None:
         """Copies all state from other filter to self."""
         raise NotImplementedError
 
-    def clear_buffer(self):
-        """Creates copy of current state and clears accumulated state"""
+    def reset_buffer(self) -> None:
+        """Creates copy of current state and resets accumulated state"""
         raise NotImplementedError
 
-    def as_serializable(self):
+    def as_serializable(self) -> "Filter":
         raise NotImplementedError
+
+    @Deprecated(new="Filter.reset_buffer()", error=False)
+    def clear_buffer(self):
+        return self.reset_buffer()
 
 
 class NoFilter(Filter):
     is_concurrent = True
 
-    def __call__(self, x, update=True):
+    def __call__(self, x: TensorStructType, update=True):
         # Process no further if already np.ndarray, dict, or tuple.
         if isinstance(x, (np.ndarray, dict, tuple)):
             return x
@@ -45,19 +54,19 @@ class NoFilter(Filter):
         except Exception:
             raise ValueError("Failed to convert to array", x)
 
-    def apply_changes(self, other, *args, **kwargs):
+    def apply_changes(self, other: "NoFilter", *args, **kwargs) -> None:
         pass
 
-    def copy(self):
+    def copy(self) -> "NoFilter":
         return self
 
-    def sync(self, other):
+    def sync(self, other: "NoFilter") -> None:
         pass
 
-    def clear_buffer(self):
+    def reset_buffer(self) -> None:
         pass
 
-    def as_serializable(self):
+    def as_serializable(self) -> "NoFilter":
         return self
 
 
@@ -137,25 +146,43 @@ class MeanStdFilter(Filter):
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
+        # We don't have a preprocessor, if shape is None (Discrete) or
+        # flat_shape is Tuple[np.ndarray] or Dict[str, np.ndarray]
+        # (complex inputs).
+        flat_shape = tree.flatten(self.shape)
+        self.no_preprocessor = shape is None or (
+            isinstance(self.shape, (dict, tuple)) and len(flat_shape) > 0
+            and isinstance(flat_shape[0], np.ndarray))
+        # If preprocessing (flattning dicts/tuples), make sure shape
+        # is an np.ndarray so we don't confuse it with a complex Tuple
+        # space's shape structure (which is a Tuple[np.ndarray]).
+        if not self.no_preprocessor:
+            self.shape = np.array(self.shape)
         self.demean = demean
         self.destd = destd
         self.clip = clip
-        self.rs = RunningStat(shape)
+        # Running stats.
+        self.rs = tree.map_structure(lambda s: RunningStat(s), self.shape)
+
         # In distributed rollouts, each worker sees different states.
         # The buffer is used to keep track of deltas amongst all the
         # observation filters.
+        self.buffer = None
+        self.reset_buffer()
 
-        self.buffer = RunningStat(shape)
+    def reset_buffer(self) -> None:
+        self.buffer = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
-    def clear_buffer(self):
-        self.buffer = RunningStat(self.shape)
-
-    def apply_changes(self, other, with_buffer=False):
+    def apply_changes(self,
+                      other: "MeanStdFilter",
+                      with_buffer: bool = False,
+                      *args,
+                      **kwargs) -> None:
         """Applies updates from the buffer of another filter.
 
-        Params:
-            other (MeanStdFilter): Other filter to apply info from
-            with_buffer (bool): Flag for specifying if the buffer should be
+        Args:
+            other: Other filter to apply info from
+            with_buffer: Flag for specifying if the buffer should be
                 copied from other.
 
         Examples:
@@ -173,20 +200,21 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [4, 5.75, 1]
         """
-        self.rs.update(other.buffer)
+        tree.map_structure(lambda rs, other_rs: rs.update(other_rs), self.rs,
+                           other.buffer)
         if with_buffer:
-            self.buffer = other.buffer.copy()
+            self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
-    def copy(self):
-        """Returns a copy of Filter."""
+    def copy(self) -> "MeanStdFilter":
+        """Returns a copy of `self`."""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def as_serializable(self):
+    def as_serializable(self) -> "MeanStdFilter":
         return self.copy()
 
-    def sync(self, other):
+    def sync(self, other: "MeanStdFilter") -> None:
         """Syncs all fields together from other filter.
 
         Examples:
@@ -203,34 +231,52 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [1, array(10.0), 1]
         """
-        assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        self.rs = other.rs.copy()
-        self.buffer = other.buffer.copy()
+        self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
+        self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
-    def __call__(self, x, update=True):
-        x = np.asarray(x)
-        if update:
-            if len(x.shape) == len(self.rs.shape) + 1:
-                # The vectorized case.
-                for i in range(x.shape[0]):
-                    self.rs.push(x[i])
-                    self.buffer.push(x[i])
-            else:
-                # The unvectorized case.
-                self.rs.push(x)
-                self.buffer.push(x)
-        if self.demean:
-            x = x - self.rs.mean
-        if self.destd:
-            x = x / (self.rs.std + 1e-8)
-        if self.clip:
-            x = np.clip(x, -self.clip, self.clip)
-        return x
+    def __call__(self, x: TensorStructType, update: bool = True) -> \
+            TensorStructType:
+        if self.no_preprocessor:
+            x = tree.map_structure(lambda x_: np.asarray(x_), x)
+        else:
+            x = np.asarray(x)
 
-    def __repr__(self):
+        def _helper(x, rs, buffer, shape):
+            # Discrete|MultiDiscrete spaces -> No normalization.
+            if shape is None:
+                return x
+
+            # Keep dtype as is througout this filter.
+            orig_dtype = x.dtype
+
+            if update:
+                if len(x.shape) == len(rs.shape) + 1:
+                    # The vectorized case.
+                    for i in range(x.shape[0]):
+                        rs.push(x[i])
+                        buffer.push(x[i])
+                else:
+                    # The unvectorized case.
+                    rs.push(x)
+                    buffer.push(x)
+            if self.demean:
+                x = x - rs.mean
+            if self.destd:
+                x = x / (rs.std + SMALL_NUMBER)
+            if self.clip:
+                x = np.clip(x, -self.clip, self.clip)
+            return x.astype(orig_dtype)
+
+        if self.no_preprocessor:
+            return tree.map_structure_up_to(x, _helper, x, self.rs,
+                                            self.buffer, self.shape)
+        else:
+            return _helper(x, self.rs, self.buffer, self.shape)
+
+    def __repr__(self) -> str:
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)
@@ -252,19 +298,19 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
         self.__getattribute__ = lock_wrap(self.__getattribute__)
 
-    def as_serializable(self):
+    def as_serializable(self) -> "MeanStdFilter":
         """Returns non-concurrent version of current class"""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def copy(self):
+    def copy(self) -> "ConcurrentMeanStdFilter":
         """Returns a copy of Filter."""
         other = ConcurrentMeanStdFilter(self.shape)
         other.sync(self)
         return other
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
             self.shape, self.demean, self.destd, self.clip, self.rs,
             self.buffer)

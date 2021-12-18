@@ -17,7 +17,7 @@ pendulum-sac-fake-gpus:
           fcnet_hiddens: [256, 256]
         tau: 0.005
         target_entropy: auto
-        n_step: 3
+        n_step: 1
         rollout_fragment_length: 1
         prioritized_replay: true
         target_network_update_freq: 1

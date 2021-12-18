@@ -48,6 +48,8 @@ struct GcsServerConfig {
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
   std::string log_dir;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
@@ -84,6 +86,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
@@ -142,14 +147,14 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
-  void CollectStats();
-
   /// Print debug info periodically.
   std::string GetDebugState() const;
 
   /// Dump the debug info to debug_state_gcs.txt.
   void DumpDebugStateToFile() const;
+
+  /// Collect stats from each module.
+  void RecordMetrics() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();

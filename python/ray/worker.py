@@ -1273,9 +1273,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()
@@ -1377,7 +1374,8 @@ def connect(node,
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+        ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1452,11 +1450,15 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
+    # As the synchronous and the asynchronous context of redis client is not
+    # used in this gcs client. We would not open connection for it by setting
+    # `enable_sync_conn` and `enable_async_conn` as false.
+    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+        node.redis_address,
         node.redis_password,
-    )
+        enable_sync_conn=False,
+        enable_async_conn=False,
+        enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2208,14 +2210,15 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (SchedulingStrategy): Strategy about how to
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
             will either be the PlacementGroupSchedulingStrategy using parent's
             placement group if parent has one and has
             placement_group_capture_child_tasks set to true,
-            or the DefaultSchedulingStrategy;
+            or "DEFAULT";
             "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """

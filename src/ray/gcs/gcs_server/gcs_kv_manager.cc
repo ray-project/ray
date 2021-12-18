@@ -19,6 +19,16 @@
 namespace ray {
 namespace gcs {
 
+RedisInternalKV::RedisInternalKV(const RedisClientOptions &redis_options)
+    : redis_options_(redis_options), work_(io_service_) {
+  io_thread_ = std::make_unique<std::thread>([this] {
+    SetThreadName("InternalKV");
+    io_service_.run();
+  });
+  redis_client_ = std::make_unique<RedisClient>(redis_options_);
+  RAY_CHECK_OK(redis_client_->Connect(io_service_));
+}
+
 void RedisInternalKV::Get(const std::string &key,
                           std::function<void(std::optional<std::string>)> callback) {
   std::vector<std::string> cmd = {"HGET", key, "value"};

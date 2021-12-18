@@ -51,6 +51,15 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
+    def build_multistage(
+            self, stages: Dict[str, List[BlockMetadata]]) -> "DatasetStats":
+        stats = DatasetStats(
+            stages={self.stage_name + "_" + k: v
+                    for k, v in stages.items()},
+            parent=self.parent)
+        stats.time_total_s = time.perf_counter() - self.start_time
+        return stats
+
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
             stages={self.stage_name: final_blocks.get_metadata()},
@@ -170,7 +179,12 @@ class DatasetStats:
         if self.parent:
             out += self.parent.summary_string(already_printed)
             out += "\n"
-        for stage_name, metadata in self.stages.items():
+        first = True
+        for stage_name, metadata in sorted(self.stages.items()):
+            if first:
+                first = False
+            else:
+                out += "\n"
             out += "Stage {} {}: ".format(self.number, stage_name)
             if already_printed and self.dataset_uuid in already_printed:
                 out += "[execution cached]"

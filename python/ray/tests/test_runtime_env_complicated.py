@@ -431,10 +431,17 @@ def test_pip_task(shutdown_only, pip_as_str, tmp_path):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
-def test_pip_ray_serve(shutdown_only):
-    """Tests that ray[serve] can be included as a pip dependency."""
+@pytest.mark.parametrize("option", ["conda", "pip"])
+def test_conda_pip_extras_ray_serve(shutdown_only, option):
+    """Tests that ray[extras] can be included as a conda/pip dependency."""
     ray.init()
-    runtime_env = {"pip": ["pip-install-test==0.5", "ray[serve]"]}
+    pip = ["pip-install-test==0.5", "ray[serve]"]
+    if option == "conda":
+        runtime_env = {"conda": {"dependencies": ["pip", {"pip": pip}]}}
+    elif option == "pip":
+        runtime_env = {"pip": pip}
+    else:
+        assert False, f"Unknown option: {option}"
 
     @ray.remote
     def f():
@@ -661,7 +668,7 @@ def test_env_installation_nonblocking(shutdown_only):
             # Env installation takes around 10 to 60 seconds.  If we fail the
             # below assert, we can be pretty sure an env installation blocked
             # the task.
-            assert time.time() - start < 1.0
+            assert time.time() - start < 2.0
             time.sleep(gap_s)
 
     assert_tasks_finish_quickly()
@@ -775,7 +782,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         "ray[serve, tune]",
         "texthero",
         "PyGithub",
-        "xgboost_ray",
+        "xgboost_ray",  # has Ray as a dependency
         "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
         "typer",
         "aiofiles",

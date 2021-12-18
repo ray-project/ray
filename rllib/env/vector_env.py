@@ -1,7 +1,7 @@
 import logging
 import gym
 import numpy as np
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
@@ -265,13 +265,13 @@ class VectorEnvWrapper(BaseEnv):
 
     def __init__(self, vector_env: VectorEnv):
         self.vector_env = vector_env
-        self.action_space = vector_env.action_space
-        self.observation_space = vector_env.observation_space
         self.num_envs = vector_env.num_envs
         self.new_obs = None  # lazily initialized
         self.cur_rewards = [None for _ in range(self.num_envs)]
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
+        self._observation_space = vector_env.observation_space
+        self._action_space = vector_env.action_space
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
@@ -312,10 +312,51 @@ class VectorEnvWrapper(BaseEnv):
         }
 
     @override(BaseEnv)
-    def get_sub_environments(self) -> List[EnvType]:
-        return self.vector_env.get_sub_environments()
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
+        if not as_dict:
+            return self.vector_env.get_sub_environments()
+        else:
+            return {
+                _id: env
+                for _id, env in enumerate(
+                    self.vector_env.get_sub_environments())
+            }
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         assert env_id is None or isinstance(env_id, int)
         return self.vector_env.try_render_at(env_id)
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space(self) -> gym.spaces.Dict:
+        return self._observation_space
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space(self) -> gym.Space:
+        return self._action_space
+
+    @staticmethod
+    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if the given space contains the observations of x.
+
+        Args:
+            space: The space to if x's observations are contained in.
+            x: The observations to check.
+
+        Note: With vector envs, we can process the raw observations
+            and ignore the agent ids and env ids, since vector envs'
+            sub environements are guaranteed to be the same
+
+        Returns:
+            True if the observations of x are contained in space.
+        """
+        for _, multi_agent_dict in x.items():
+            for _, element in multi_agent_dict.items():
+                if not space.contains(element):
+                    return False
+        return True
