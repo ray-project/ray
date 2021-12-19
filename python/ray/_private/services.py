@@ -1543,7 +1543,9 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    # TODO (iycheng): remove redis_ip_address after redis removal
+    gcs_ip_address, gcs_port = gcs_server_address.split(":")
+    redis_ip_address, redis_port = redis_address.split(":")
 
     has_java_command = False
     if shutil.which("java") is not None:
