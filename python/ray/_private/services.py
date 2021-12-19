@@ -22,7 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -1640,6 +1640,7 @@ def start_raylet(redis_address,
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
         ]
 
         if redis_password is not None and len(redis_password) != 0:
