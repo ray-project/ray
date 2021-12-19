@@ -212,13 +212,6 @@ class Client:
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
-        if config.autoscaling_config is not None and \
-            config.max_concurrent_queries < \
-            config.autoscaling_config.target_num_ongoing_requests_per_replica:
-            logger.warning("Autoscaling will never happen, "
-                           "because 'max_concurrent_queries' is less than "
-                           "'target_num_ongoing_requests_per_replica' now.")
-
         replica_config = ReplicaConfig(
             deployment_def,
             init_args=init_args,
@@ -232,6 +225,13 @@ class Client:
         else:
             raise TypeError(
                 "config must be a DeploymentConfig or a dictionary.")
+
+        if deployment_config.autoscaling_config is not None and \
+            deployment_config.max_concurrent_queries < deployment_config. \
+                autoscaling_config.target_num_ongoing_requests_per_replica:
+            logger.warning("Autoscaling will never happen, "
+                           "because 'max_concurrent_queries' is less than "
+                           "'target_num_ongoing_requests_per_replica' now.")
 
         goal_id, updating = ray.get(
             self._controller.deploy.remote(name,
