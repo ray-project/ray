@@ -338,6 +338,7 @@ class ServeController:
             actor_name=name,
             serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
+            prev_version=prev_version,
             deployment_config=deployment_config,
             replica_config=replica_config,
             deployer_job_id=deployer_job_id,

@@ -6,6 +6,7 @@ from collections import defaultdict, OrderedDict
 from enum import Enum
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from click.core import Option
 
 import ray
 from ray import ObjectRef
@@ -359,7 +360,7 @@ class DeploymentReplica(VersionedReplica):
 
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, deployment_name: str,
-                 version: str):
+                 version: str, prev_version: Optional[str]):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}", detached,
             controller_name, replica_tag, deployment_name)
@@ -367,6 +368,7 @@ class DeploymentReplica(VersionedReplica):
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
         self._version = version
+        self._prev_version = prev_version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
 
@@ -376,7 +378,8 @@ class DeploymentReplica(VersionedReplica):
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
-            version=self._version
+            version=self._version,
+            prev_version=self._prev_version,
         )
         return self._actor.get_running_replica_info()
 
@@ -391,6 +394,10 @@ class DeploymentReplica(VersionedReplica):
     @property
     def version(self):
         return self._version
+
+    @property
+    def prev_version(self):
+        return self._prev_version
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -733,7 +740,7 @@ class DeploymentState:
         new_goal_id = self._goal_manager.create_goal()
 
         if deployment_info is not None:
-            logger.info(f" **** deployment_info.version: {deployment_info.version}")
+            logger.info(f" **** deployment_info.version: {deployment_info.version}, deployment_info.prev_version: {deployment_info.prev_version}")
             self._target_info = deployment_info
             self._target_replicas = (
                 deployment_info.deployment_config.num_replicas)
@@ -926,14 +933,16 @@ class DeploymentState:
                 new_deployment_replica = DeploymentReplica(
                     self._controller_name, self._detached,
                     replica_name.replica_tag, replica_name.deployment_tag,
-                    self._target_version)
+                    self._target_version, self._target_info.prev_version)
                 new_deployment_replica.start(self._target_info,
                                              self._target_version)
 
                 self._replicas.add(ReplicaState.STARTING,
                                    new_deployment_replica)
-                logger.info("Adding STARTING to replica_tag: "
-                             f"{replica_name}, deployment_name: {self._name}, version: {self._target_version}")
+                logger.info(
+                    "Adding STARTING to replica_tag: "
+                    f"{replica_name}, deployment_name: {self._name}, "
+                    f"version: {self._target_version}, prev_version: {self._target_info.prev_version}")
 
         elif delta_replicas < 0:
             replicas_stopped = True
@@ -949,8 +958,10 @@ class DeploymentState:
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
-                logger.debug(f"Adding STOPPING to replica_tag: {replica}, "
-                             f"deployment_name: {self._name}")
+                logger.info(
+                    f"Adding STOPPING to replica_tag: {replica}, "
+                    f"deployment_name: {self._name}"
+                    f"version: {replica.version}, prev_version: {replica.prev_version}")
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
 

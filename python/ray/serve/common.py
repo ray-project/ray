@@ -67,7 +67,9 @@ class DeploymentInfo:
             self._cached_actor_def = ray.remote(
                 create_replica_wrapper(self.actor_name,
                                        self.serialized_deployment_def,
-                                       self.version))
+                                       self.version,
+                                       self.prev_version
+                                       ))
         return self._cached_actor_def
 
 
@@ -111,3 +113,4 @@ class RunningReplicaInfo:
     actor_handle: ActorHandle
     max_concurrent_queries: int
     version: str = ""
+    prev_version: str = ""

@@ -31,7 +31,7 @@ from ray.serve.utils import wrap_to_ray_error
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_deployment_def: bytes, deployment_version: str):
+def create_replica_wrapper(name: str, serialized_deployment_def: bytes, deployment_version: str, prev_deployment_version: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -39,6 +39,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes, deployme
     """
     serialized_deployment_def = serialized_deployment_def
     deployment_version = deployment_version
+    prev_deployment_version = prev_deployment_version
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -100,7 +101,8 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes, deployme
 
                 self.replica = RayServeReplica(
                     _callable, deployment_name, replica_tag, deployment_config,
-                    deployment_config.user_config, deployment_version, is_function,
+                    deployment_config.user_config,
+                    deployment_version, prev_deployment_version, is_function,
                     controller_handle)
 
             # Is it fine that replica is None here?
@@ -167,7 +169,7 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, deployment_name: str,
                  replica_tag: ReplicaTag, deployment_config: DeploymentConfig,
-                 user_config: Any, version: str,
+                 user_config: Any, version: str, prev_version: str,
                  is_function: bool, controller_handle: ActorHandle) -> None:
         self.deployment_config = deployment_config
         self.deployment_name = deployment_name
@@ -176,6 +178,7 @@ class RayServeReplica:
         self.is_function = is_function
         self.user_config = user_config
         self.version = version
+        self.prev_version = prev_version
         self.rwlock = aiorwlock.RWLock()
 
         self.num_ongoing_requests = 0

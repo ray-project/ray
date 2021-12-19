@@ -92,18 +92,19 @@ class ReplicaSet:
             self.in_flight_queries.keys(), running_replicas)
 
         for new_replica in added:
-            logger.info(f"\n$$$$$ new_replica: {new_replica.deployment_name}, version: {new_replica.version}")
+            logger.info(f"\n$$$$$ new_replica: {new_replica.deployment_name}, version: {new_replica.version}, prev_version: {new_replica.prev_version}")
             self.in_flight_queries[new_replica] = set()
 
         for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
-            logger.info(f"\n$$$$$ removed_replica: {removed_replica.deployment_name}, version: {removed_replica.version}")
+            logger.info(f"\n$$$$$ removed_replica: {removed_replica.deployment_name}, version: {removed_replica.version}, prev_version: {removed_replica.prev_version}")
             del self.in_flight_queries[removed_replica]
 
         if len(added) > 0 or len(removed) > 0:
             # Shuffle the keys to avoid synchronization across clients.
             replicas = list(self.in_flight_queries.keys())
             random.shuffle(replicas)
+
             self.replica_iterator = itertools.cycle(replicas)
             logger.info(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
@@ -114,6 +115,14 @@ class ReplicaSet:
         or return None if it can't assign this query to any replicas.
         """
         for _ in range(len(self.in_flight_queries.keys())):
+            all_replica_version = set()
+            replicas = list(self.in_flight_queries.keys())
+            for replica in replicas:
+                all_replica_version.add(replica.version)
+            if len(all_replica_version) > 1:
+                logger.info(f"\n\n\n !!!!! Got replicas of two versions: {all_replica_version} \n\n\n")
+
+
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]
                    ) >= replica.max_concurrent_queries:
@@ -121,8 +130,8 @@ class ReplicaSet:
                 continue
 
             logger.info(
-                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version} "
-                f"to replica {replica.replica_tag} with version {replica.version}"
+                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
+                f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
             )
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(

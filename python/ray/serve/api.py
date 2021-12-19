@@ -328,11 +328,11 @@ class Client:
             RayServeHandle
         """
         logger.info(f"\n>>>>> Calling get_handle with endpoint_name: {endpoint_name}, version: {version}, prev_version: {prev_version} \n")
-        # cache_key = (endpoint_name, missing_ok, sync)
-        # if cache_key in self.handle_cache:
-        #     cached_handle = self.handle_cache[cache_key]
-        #     if cached_handle.is_polling and cached_handle.is_same_loop:
-        #         return cached_handle
+        cache_key = (endpoint_name, missing_ok, sync)
+        if cache_key in self.handle_cache:
+            cached_handle = self.handle_cache[cache_key]
+            if cached_handle.is_polling and cached_handle.is_same_loop:
+                return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and endpoint_name not in all_endpoints:
@@ -380,23 +380,23 @@ class Client:
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
-        # self.handle_cache[cache_key] = handle
-        # if cache_key in self._evicted_handle_keys:
-        #     logger.warning(
-        #         "You just got a ServeHandle that was evicted from internal "
-        #         "cache. This means you are getting too many ServeHandles in "
-        #         "the same process, this will bring down Serve's performance. "
-        #         "Please post a github issue at "
-        #         "https://github.com/ray-project/ray/issues to let the Serve "
-        #         "team to find workaround for your use case.")
+        self.handle_cache[cache_key] = handle
+        if cache_key in self._evicted_handle_keys:
+            logger.warning(
+                "You just got a ServeHandle that was evicted from internal "
+                "cache. This means you are getting too many ServeHandles in "
+                "the same process, this will bring down Serve's performance. "
+                "Please post a github issue at "
+                "https://github.com/ray-project/ray/issues to let the Serve "
+                "team to find workaround for your use case.")
 
-        # if len(self.handle_cache) > MAX_CACHED_HANDLES:
-        #     # Perform random eviction to keep the handle cache from growing
-        #     # infinitely. We used use WeakValueDictionary but hit
-        #     # https://github.com/ray-project/ray/issues/18980.
-        #     evict_key = random.choice(list(self.handle_cache.keys()))
-        #     self._evicted_handle_keys.add(evict_key)
-        #     self.handle_cache.pop(evict_key)
+        if len(self.handle_cache) > MAX_CACHED_HANDLES:
+            # Perform random eviction to keep the handle cache from growing
+            # infinitely. We used use WeakValueDictionary but hit
+            # https://github.com/ray-project/ray/issues/18980.
+            evict_key = random.choice(list(self.handle_cache.keys()))
+            self._evicted_handle_keys.add(evict_key)
+            self.handle_cache.pop(evict_key)
 
         return handle
 
