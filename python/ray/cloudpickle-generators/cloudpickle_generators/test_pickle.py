@@ -1,7 +1,7 @@
 import asyncio
 import ray
 from ray import cloudpickle
-from pprint import pprint
+import ray.experimental.aio as rayaio
 
 
 def f(a, b):
@@ -115,7 +115,7 @@ async def flow():
 
 print(f"local result={asyncio.run(flow())}")
 
-print(f"coroutine result={asyncio.run(ray.util.execute(flow()))}")
+print(f"coroutine result={asyncio.run(rayaio.run(flow()))}")
 
 
 # coro = g()

@@ -66,7 +66,10 @@ async def execute(coro):
 
         assert asyncio.get_running_loop() is fut.get_loop()
 
-        # Chain Future instead of Event to handle cancellations?
+        # TODO: Chain Future instead of Event, to handle cancellations?
+        # new_future = loop.create_future()
+        # asyncio._chain_future(fut, new_future)
+        # yield
         event = asyncio.Event()
 
         def future_done(f):
@@ -75,9 +78,13 @@ async def execute(coro):
         fut.add_done_callback(future_done)
         await event.wait()
 
-        # new_future = loop.create_future()
-        # asyncio._chain_future(fut, new_future)
-        # yield
+
+def run_flow(coro):
+    asyncio.run(execute(coro))
+
+
+def queue_work(coro):
+    asyncio.run(execute(coro))
 
 
 __all__ = [
