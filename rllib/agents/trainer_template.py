@@ -64,7 +64,8 @@ def build_trainer(
         mixins: Optional[List[type]] = None,
         execution_plan: Optional[Callable[[
             WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan) -> Type[Trainer]:
+        ], Iterable[ResultDict]]] = default_execution_plan,
+        allow_unknown_subkeys: Optional[List[str]] =  None) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -112,6 +113,8 @@ def build_trainer(
 
     original_kwargs = locals().copy()
     base = add_mixins(Trainer, mixins)
+    if allow_unknown_subkeys:
+        Trainer._allow_unknown_subkeys += allow_unknown_subkeys
 
     class trainer_cls(base):
         _name = name

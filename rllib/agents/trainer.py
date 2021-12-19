@@ -1174,7 +1174,8 @@ class Trainer(Trainable):
     def merge_trainer_configs(cls,
                               config1: TrainerConfigDict,
                               config2: PartialTrainerConfigDict,
-                              _allow_unknown_configs: Optional[bool] = None
+                              _allow_unknown_configs: Optional[bool] = None,
+                              _allow_unknown_subkeys: Optional[List[str]] = None,
                               ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
@@ -1188,8 +1189,10 @@ class Trainer(Trainable):
             config2["callbacks"] = make_callbacks
         if _allow_unknown_configs is None:
             _allow_unknown_configs = cls._allow_unknown_configs
+        if _allow_unknown_subkeys is None:
+            _allow_unknown_subkeys = []
         return deep_update(config1, config2, _allow_unknown_configs,
-                           cls._allow_unknown_subkeys,
+                           cls._allow_unknown_subkeys + _allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod

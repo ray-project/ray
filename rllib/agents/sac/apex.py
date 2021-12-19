@@ -36,7 +36,10 @@ APEX_SAC_DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
         # This only applies if async mode is used (above config setting).
         # Controls the max number of async requests in flight per actor
         "parallel_rollouts_num_async": 2,
+        "custom_resources_per_replay_buffer": {},
     },
+    _allow_unknown_configs=True,
+    _allow_unknown_subkeys=["custom_resources_per_replay_buffer"],
 )
 
 
@@ -48,4 +51,5 @@ ApexSACTrainer = SACTrainer.with_updates(
     name="APEX_SAC",
     default_config=APEX_SAC_DEFAULT_CONFIG,
     execution_plan=apex_execution_plan,
+    allow_unknown_subkeys=["custom_resources_per_replay_buffer"]
 )

@@ -40,7 +40,7 @@ from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
-APEX_DEFAULT_CONFIG = merge_dicts(
+APEX_DEFAULT_CONFIG = DQNTrainer.merge_trainer_configs(
     DQN_CONFIG,  # see also the options in dqn.py, which are also supported
     {
         "optimizer": merge_dicts(
@@ -75,7 +75,10 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # we report metrics from the workers with the lowest
         # 1/worker_amount_to_collect_metrics_from of epsilons
         "worker_amount_to_collect_metrics_from": 3,
+        "custom_resources_per_replay_buffer": {},
     },
+    _allow_unknown_configs=True,
+    _allow_unknown_subkeys=["custom_resources_per_replay_buffer"],
 )
 # __sphinx_doc_end__
 # yapf: enable
@@ -154,19 +157,36 @@ def apex_execution_plan(workers: WorkerSet,
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actor_cls = ReplayActor if config[
         "prioritized_replay"] else VanillaReplayActor
-    replay_actors = create_colocated(
-        replay_actor_cls,
-        [
-            num_replay_buffer_shards,
-            config["learning_starts"],
-            config["buffer_size"],
-            config["train_batch_size"],
-            config["prioritized_replay_alpha"],
-            config["prioritized_replay_beta"],
-            config["prioritized_replay_eps"],
-            config["multiagent"]["replay_mode"],
-            config.get("replay_sequence_length", 1),
-        ], num_replay_buffer_shards)
+    custom_resources = config.get("custom_resources_per_replay_buffer")
+    if custom_resources:
+        replay_actors = [
+            replay_actor_cls.options(resources=custom_resources).remote(
+                num_replay_buffer_shards,
+                config["learning_starts"],
+                config["buffer_size"],
+                config["train_batch_size"],
+                config["prioritized_replay_alpha"],
+                config["prioritized_replay_beta"],
+                config["prioritized_replay_eps"],
+                config["multiagent"]["replay_mode"],
+                config.get("replay_sequence_length", 1),
+            )
+            for _ in range(num_replay_buffer_shards)
+        ]
+    else:
+        replay_actors = create_colocated(
+            replay_actor_cls,
+            [
+                num_replay_buffer_shards,
+                config["learning_starts"],
+                config["buffer_size"],
+                config["train_batch_size"],
+                config["prioritized_replay_alpha"],
+                config["prioritized_replay_beta"],
+                config["prioritized_replay_eps"],
+                config["multiagent"]["replay_mode"],
+                config.get("replay_sequence_length", 1),
+            ], num_replay_buffer_shards)
 
     # Start the learner thread.
     learner_thread = LearnerThread(workers.local_worker())
@@ -285,4 +305,5 @@ ApexTrainer = DQNTrainer.with_updates(
     validate_config=apex_validate_config,
     execution_plan=apex_execution_plan,
     mixins=[OverrideDefaultResourceRequest],
+    allow_unknown_subkeys=["custom_resources_per_replay_buffer"]
 )
