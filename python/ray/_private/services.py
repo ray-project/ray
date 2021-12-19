@@ -1549,7 +1549,8 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    # TODO (iycheng): remove redis_ip_address after redis removal
+    redis_ip_address, redis_port = redis_address.split(":")
 
     has_java_command = False
     if shutil.which("java") is not None:
@@ -1654,8 +1655,8 @@ def start_raylet(redis_address,
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
-        f"--redis_address={gcs_ip_address}",
-        f"--redis_port={gcs_port}",
+        f"--redis_address={redis_ip_address}",
+        f"--redis_port={redis_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
