@@ -15,8 +15,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
-from ray.ray_constants import (
-    gcs_actor_scheduling_enabled, )
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -310,11 +308,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    import pytest
-
-    @pytest.mark.skipif(
-        gcs_actor_scheduling_enabled(),
-        reason="Test time out with gcs-based scheduler enabled.")
     def testPermutationContinuation(self):
         """
         Tests continuation of runs after permutation.
@@ -378,9 +371,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             name="testPermutationContinuation",
             stop={"training_iteration": 3})
 
-    @pytest.mark.skipif(
-        gcs_actor_scheduling_enabled(),
-        reason="Test time out with gcs-based scheduler enabled.")
     def testPermutationContinuationFunc(self):
         def MockTrainingFunc(config, checkpoint_dir=None):
             iter = 0
