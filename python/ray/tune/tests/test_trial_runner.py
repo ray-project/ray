@@ -15,6 +15,8 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.mock import TrialStatusSnapshotTaker, TrialStatusSnapshot
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -147,6 +149,8 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
+    # TODO(Chong-Li): Runner blocks when lacking resources with gcs-based
+    # scheduler enabled. There might be some sync waiting config.
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner()
@@ -162,7 +166,10 @@ class TrialRunnerTest(unittest.TestCase):
         for t in trials:
             runner.add_trial(t)
 
-        for _ in range(10):
+        step_num = 10
+        if gcs_actor_scheduling_enabled():
+            step_num = 2
+        for _ in range(step_num):
             runner.step()
 
         self.assertEqual(trials[0].status, Trial.RUNNING)

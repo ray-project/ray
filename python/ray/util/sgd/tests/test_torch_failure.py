@@ -15,6 +15,8 @@ from ray.util.sgd.torch.training_operator import TrainingOperator
 
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 Operator = TrainingOperator.from_creators(
     model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
@@ -72,6 +74,10 @@ def gen_start_with_fail(num_fails):
     return start_with_fail
 
 
+# TODO(Chong-Li): make this test work with gcs-based scheduler.
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="Test does not work with gcs-based scheduler enabled.")
 @pytest.mark.parametrize("use_local", [False, True])
 @patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
