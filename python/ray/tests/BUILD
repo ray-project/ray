@@ -209,8 +209,10 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_runtime_env_conda.py",
-    "test_runtime_env_complicated.py",
+    "test_runtime_env_conda_and_pip.py",
+    "test_runtime_env_conda_and_pip_2.py",
+    "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,

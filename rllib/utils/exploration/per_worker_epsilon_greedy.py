@@ -19,11 +19,11 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
         """Create a PerWorkerEpsilonGreedy exploration class.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            num_workers (Optional[int]): The overall number of workers used.
-            worker_index (Optional[int]): The index of the Worker using this
+            action_space: The gym action space used by the environment.
+            num_workers: The overall number of workers used.
+            worker_index: The index of the Worker using this
                 Exploration.
-            framework (Optional[str]): One of None, "tf", "torch".
+            framework: One of None, "tf", "torch".
         """
         epsilon_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.

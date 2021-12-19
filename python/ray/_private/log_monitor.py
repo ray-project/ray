@@ -298,6 +298,7 @@ class LogMonitor:
                         break
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
+
                     if next_line.startswith(
                             ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
