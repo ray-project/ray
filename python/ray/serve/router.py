@@ -5,6 +5,7 @@ import itertools
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import random
+import os
 
 from ray.actor import ActorHandle
 from ray.serve.common import str, ReplicaTag, RunningReplicaInfo
@@ -110,19 +111,130 @@ class ReplicaSet:
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
+    def _try_assign_replica_pipeline_aware(
+        self,
+        query: Query,
+        my_router_version: str,
+        my_router_prev_version: Optional[str]
+    ) -> Optional[ray.ObjectRef]:
+        """
+        Pipeline aware replica assignment.
+
+        Ideally we should do random assignment to 2 running replica versions
+        while ensuring A->B and A'->B' only communication while getting
+        requests randomly assigned from upstream to {A, A'}.
+
+        For simplicity of demo, this tracks version of each replica as well as
+        most up-to-date deployment handle / router version history, and only
+        assign to latest replica when applicable.
+
+        """
+
+        # upstream_router_version = query.metadata.version
+        # upstream_router_prev_version = query.metadata.prev_version
+
+        # Slow and dirty stuff for hackathon demo
+        replica_versions = set()
+        replica_prev_versions = set()
+        replicas = list(self.in_flight_queries.keys())
+        for replica in replicas:
+            replica_versions.add(replica.version)
+            replica_prev_versions.add(replica.prev_version)
+
+        # older_version, newer_version = None, None
+
+        # if len(replica_versions) == 2:
+        #     for ele in replica_versions:
+        #         if newer_version is None:
+        #             newer_version = ele
+        #         if older_version is None:
+        #             older_version = ele
+        #         if int(ele.split("_")[-1]) > int(newer_version.split("_")[-1]):
+        #             newer_version = ele
+
+        #     older_replicas = []
+        #     newer_replicas = []
+        #     for replica in replicas:
+        #         if replica.version == older_version:
+        #             older_replicas.append(replica)
+        #         else:
+        #             newer_replicas.append(replica)
+
+        #     logger.info(f"\n\n\n # of old: {len(older_replicas)}, # of new: {len(newer_replicas)} \n\n\n")
+
+        #     for replica in newer_replicas:
+        #         logger.info(
+        #             f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
+        #             f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
+        #         )
+        #         # Directly passing args because it might contain an ObjectRef.
+        #         tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+        #             pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        #         self.in_flight_queries[replica].add(tracker_ref)
+        #         return user_ref
+        #     return None
+
+        # else:
+        #     # just pick
+        #     return self._try_assign_replica(query)
+
+
+        logger.info(f"# cur versions: {len(replica_versions)}")
+        logger.info(f"# prev versions: {len(replica_prev_versions)}")
+
+        for _ in range(len(self.in_flight_queries.keys())):
+            replica = next(self.replica_iterator)
+            if len(self.in_flight_queries[replica]
+                   ) >= replica.max_concurrent_queries:
+                # This replica is overloaded, try next one
+                continue
+
+            if len(replica_versions) == 2:
+                if replica.prev_version is None:
+                    logger.info("===[handle]=== Avoiding old version replica.")
+                    continue
+
+            logger.info(
+                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
+                f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
+            )
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs)
+            self.in_flight_queries[replica].add(tracker_ref)
+            return user_ref
+        return None
+
+        # if upstream_router_prev_version is None:
+        #     # R1, LoadTest -> Ensemble
+        #     if my_router_version is not None and my_router_prev_version is not None:
+        #         # Currnet layer has two version of replicas, always assign to larger group.
+
+        #     else:
+
+        #     logger.info("==[R1]== Only one version of upstream router in pipeline, doing round robin to next deployment replicas.")
+        #     return self._try_assign_replica(query)
+        # else:
+        #     logger.info("Two versions of upstream routers available.")
+
+        #     # R3, only one downstream replica version available, just send
+
+        #     if len(replica_versions) < 2:
+        #         logger.info("==[R3]== Only ony version of downstream replica version available, just send.")
+        #         return self._try_assign_replica(query)
+
+        #     # R2 (a), old ensemble router -> old obj router
+
+
+        #     # R2 (b), new ensemble router -> new obj router
+
+
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
+
         for _ in range(len(self.in_flight_queries.keys())):
-            all_replica_version = set()
-            replicas = list(self.in_flight_queries.keys())
-            for replica in replicas:
-                all_replica_version.add(replica.version)
-            if len(all_replica_version) > 1:
-                logger.info(f"\n\n\n !!!!! Got replicas of two versions: {all_replica_version} \n\n\n")
-
-
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]
                    ) >= replica.max_concurrent_queries:
@@ -154,6 +266,8 @@ class ReplicaSet:
 
     async def assign_replica(
         self,
+        router_version: str,
+        router_prev_version: Optional[str],
         query: Query
     ) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
@@ -165,7 +279,11 @@ class ReplicaSet:
         self.num_queued_queries += 1
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
-        assigned_ref = self._try_assign_replica(query)
+
+        # if os.environ.get("PIPELINE_AWARE_ROUTING", "0") == "1":
+        assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
+        # else:
+            # assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
                          f"query {query.metadata.request_id}")
@@ -184,7 +302,10 @@ class ReplicaSet:
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
-            assigned_ref = self._try_assign_replica(query)
+            # if os.environ.get("PIPELINE_AWARE_ROUTING", "0") == "1":
+            assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
+            # else:
+                # assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
@@ -240,6 +361,8 @@ class Router:
 
         self.num_router_requests.inc()
         return await self._replica_set.assign_replica(
+            self._version,
+            self._prev_version,
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,

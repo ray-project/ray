@@ -91,7 +91,7 @@ class RayServeHandle:
 
         self.version = version
         self.prev_version = prev_version
-        print(f"[===Handle===] self.version in init: {self.version}, self.prev_version: {self.prev_version}")
+        # print(f"[===Handle===] self.version in init: {self.version}, self.prev_version: {self.prev_version}")
 
         self.router: Router = _router or self._make_router()
 
@@ -167,7 +167,7 @@ class RayServeHandle:
             http_headers=handle_options.http_headers,
             http_arg_is_pickled=self._pickled_http_request,
         )
-        print(f"[===Handle===] request_metadata: {request_metadata}")
+        # print(f"[===Handle===] request_metadata: {request_metadata}")
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
@@ -187,7 +187,7 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        print(f"[===Handle===] self.version in remote(): {self.version}, self.prev_version: {self.prev_version}")
+        # print(f"[===Handle===] self.version in remote(): {self.version}, self.prev_version: {self.prev_version}")
         return await self._remote(
             self.endpoint_name, self.version, self.prev_version, self.handle_options,
                                   args, kwargs)
