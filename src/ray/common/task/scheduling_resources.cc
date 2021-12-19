@@ -277,7 +277,6 @@ const ResourceSet &SchedulingResources::GetTotalResources() const {
 }
 
 void SchedulingResources::SetTotalResources(ResourceSet &&newset) {
-  RAY_LOG(INFO) << "Now SetTotal: " << newset.ToString();
   resources_total_ = newset;
 }
 
@@ -310,7 +309,6 @@ void SchedulingResources::AddResource(const ResourceSet &resources) {
 
 void SchedulingResources::UpdateResourceCapacity(const std::string &resource_name,
                                                  double capacity) {
-  RAY_LOG(INFO) << "Now UpdateCap: " << resource_name << " " << capacity;
   const FixedPoint new_capacity = FixedPoint(capacity);
   const FixedPoint &current_capacity = resources_total_.GetResource(resource_name);
   if (current_capacity > 0) {
@@ -332,7 +330,6 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
 }
 
 void SchedulingResources::DeleteResource(const std::string &resource_name) {
-  RAY_LOG(INFO) << "Now Delete: " << resource_name;
   resources_total_.DeleteResource(resource_name);
   resources_available_.DeleteResource(resource_name);
   resources_load_.DeleteResource(resource_name);
