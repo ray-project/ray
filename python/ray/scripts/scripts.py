@@ -19,7 +19,6 @@ import psutil
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,

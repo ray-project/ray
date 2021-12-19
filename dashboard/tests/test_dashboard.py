@@ -644,8 +644,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
-@pytest.mark.skipif(
-    use_gcs_for_bootstrap(), reason="Not working right now.")
+@pytest.mark.skipif(use_gcs_for_bootstrap(), reason="Not working right now.")
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
