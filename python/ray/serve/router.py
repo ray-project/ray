@@ -13,6 +13,7 @@ from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
 import ray
+import ray.experimental.internal_kv as internal_kv
 from ray.util import metrics
 
 
@@ -130,8 +131,8 @@ class ReplicaSet:
 
         """
 
-        # upstream_router_version = query.metadata.version
-        # upstream_router_prev_version = query.metadata.prev_version
+        upstream_router_version = query.metadata.version
+        upstream_router_prev_version = query.metadata.prev_version
 
         # Slow and dirty stuff for hackathon demo
         replica_versions = set()
@@ -179,8 +180,8 @@ class ReplicaSet:
         #     return self._try_assign_replica(query)
 
 
-        logger.info(f"# cur versions: {len(replica_versions)}")
-        logger.info(f"# prev versions: {len(replica_prev_versions)}")
+        # logger.info(f"# cur versions: {len(replica_versions)}")
+        # logger.info(f"# prev versions: {len(replica_prev_versions)}")
 
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
@@ -194,10 +195,10 @@ class ReplicaSet:
                     logger.info("===[handle]=== Avoiding old version replica.")
                     continue
 
-            logger.info(
-                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
-                f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
-            )
+            # logger.info(
+            #     f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
+            #     f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
+            # )
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
@@ -241,10 +242,10 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
 
-            logger.info(
-                f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
-                f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
-            )
+            # logger.info(
+            #     f"Assigned query {query.metadata.request_id} from router client version {query.metadata.version}, router client prev version {query.metadata.prev_version}"
+            #     f"to replica {replica.replica_tag} with replica version {replica.version}, replica prev_version {replica.prev_version}"
+            # )
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs)
@@ -280,10 +281,11 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
 
-        # if os.environ.get("PIPELINE_AWARE_ROUTING", "0") == "1":
-        assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
-        # else:
-            # assigned_ref = self._try_assign_replica(query)
+        if internal_kv._internal_kv_get("PIPELINE_AWARE_ROUTING") == b"1":
+            # logger.info(f"\n\n ==== Use pipeline aware routing ==== \n\n")
+            assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
+        else:
+            assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
                          f"query {query.metadata.request_id}")
@@ -302,10 +304,11 @@ class ReplicaSet:
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
-            # if os.environ.get("PIPELINE_AWARE_ROUTING", "0") == "1":
-            assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
-            # else:
-                # assigned_ref = self._try_assign_replica(query)
+            if internal_kv._internal_kv_get("PIPELINE_AWARE_ROUTING") == b"1":
+                # logger.info(f"\n\n ==== Use pipeline aware routing ==== \n\n")
+                assigned_ref = self._try_assign_replica_pipeline_aware(query, router_version, router_prev_version)
+            else:
+                assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})

@@ -1,8 +1,10 @@
+import ray
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Union, Coroutine
 import threading
+import traceback
 
 from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
@@ -188,9 +190,20 @@ class RayServeHandle:
         """
         self.request_counter.inc()
         # print(f"[===Handle===] self.version in remote(): {self.version}, self.prev_version: {self.prev_version}")
-        return await self._remote(
-            self.endpoint_name, self.version, self.prev_version, self.handle_options,
-                                  args, kwargs)
+        try:
+            return await self._remote(
+                self.endpoint_name, self.version, self.prev_version, self.handle_options,
+                                    args, kwargs)
+        except Exception as e:
+            traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+
+            with open("/tmp/failure/log", "w") as file:
+                file.write(traceback_str)
+                file.write("\n")
+                file.write(e)
+
+            raise e
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}'(version={self.version}))"

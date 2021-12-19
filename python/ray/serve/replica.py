@@ -331,6 +331,9 @@ class RayServeReplica:
             if method_to_call is not None:
                 function_name = method_to_call.__name__
             result = wrap_to_ray_error(function_name, e)
+            with open("/tmp/failure/log", "w") as file:
+                file.write(result)
+                file.write("\n")
             self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
