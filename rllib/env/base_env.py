@@ -340,16 +340,13 @@ class BaseEnv:
         # this removes the agent_id key and inner dicts
         # in MultiEnvDicts
         agents = set(self.get_agent_ids())
-        ret = True
-        for _, multi_agent_dict in x.items():
+        for multi_agent_dict in x.values():
             for agent_id, obs in multi_agent_dict:
-                if agent_id != _DUMMY_AGENT_ID:
-                    if agent_id not in agents:
-                        return False
-                    if not space[agent_id].contains(obs):
-                        return False
+                if (agent_id not in agents) or (
+                        not space[agent_id].contains(obs)):
+                    return False
 
-        return ret
+        return True
 
 
 # Fixed agent identifier when there is only the single agent in the env
