@@ -165,7 +165,6 @@ while True:
             lambda: len(ray._private.services.find_gcs_address()) == 4,
             retry_interval_ms=1000)
 
-
     p1.kill()
     p2.kill()
     p3.kill()

@@ -472,9 +472,8 @@ class Node:
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
-            "bootstrap_address": (self.gcs_address
-                                  if use_gcs_for_bootstrap() else
-                                  self._redis_address)
+            "bootstrap_address": (self.gcs_address if use_gcs_for_bootstrap()
+                                  else self._redis_address),
             "gcs_address": self.gcs_address,
         }
 
