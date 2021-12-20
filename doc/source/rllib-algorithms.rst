@@ -917,7 +917,7 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
     	"type": "RE3",
          # the dimensionality of the observation embedding vectors in latent space.
          "embeds_dim": 128, 
-	 "rho": 0.1, # Beta decay factor, used for on-policy algorithm.
+         "rho": 0.1, # Beta decay factor, used for on-policy algorithm.
          "k_nn": 50, # Number of neighbours to set for K-NN entropy estimation.
          # Configuration for the encoder network, producing embedding vectors from observations.
          # This can be used to configure fcnet- or conv_net setups to properly process any
@@ -926,7 +926,7 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
              "fcnet_hiddens": [],
              "fcnet_activation": "relu",
          },
-         # Hyperparameter to choose between exploration and exploitation. A higher value of beta add
+         # Hyperparameter to choose between exploration and exploitation. A higher value of beta adds
          # more importance to the intrinsic reward, as per the following equation 
          # `reward = r + beta * intrinsic_reward`
          "beta": 0.2,
