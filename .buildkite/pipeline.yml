@@ -383,6 +383,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     # no TUNE_TESTING=1 on purpose
-    - pip install -Y optuna
+    - pip install optuna
     - ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
