@@ -872,6 +872,7 @@ class Node:
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
+            self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,

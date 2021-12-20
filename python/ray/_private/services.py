@@ -1604,6 +1604,7 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1960,6 +1961,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  gcs_address,
                   logs_dir,
                   stdout_file=None,
                   stderr_file=None,
@@ -1995,7 +1997,8 @@ def start_monitor(redis_address,
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
