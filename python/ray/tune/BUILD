@@ -313,8 +313,6 @@ py_test(
 py_test(
     name = "test_trial_scheduler_pbt",
     size = "large",
-    # This may be a bit exaggerated but just to see if tests pass
-    timeout = "eternal",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
