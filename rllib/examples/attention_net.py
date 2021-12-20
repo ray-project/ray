@@ -185,8 +185,10 @@ if __name__ == "__main__":
             # start with all zeros as state
             num_transformers = config["model"][
                 "attention_num_transformer_units"]
+            attention_dim = config["model"]["attention_dim"]
+            memory = config["model"]["attention_memory_inference"]
             init_state = state = [
-                np.zeros([100, 32], np.float32)
+                np.zeros([memory, attention_dim], np.float32)
                 for _ in range(num_transformers)
             ]
             # run one iteration until done

@@ -57,6 +57,7 @@ python/.eggs
 *.so
 *.dylib
 *.dll
+python/ray/_raylet.pyd
 
 # Incremental linking files
 *.ilk
@@ -214,3 +215,6 @@ test_state.json
 
 # workflow storage
 workflow_data/
+
+# vscode java extention generated
+.factorypath

@@ -127,12 +127,7 @@ class MemoryMonitor:
     def get_memory_usage(self):
         psutil_mem = psutil.virtual_memory()
         total_gb = psutil_mem.total / (1024**3)
-        used_gb = total_gb - psutil_mem.available / (1024**3)
-
-        # Linux, BSD has cached memory, which should
-        # also be considered as unused memory
-        if hasattr(psutil_mem, "cached"):
-            used_gb -= psutil_mem.cached / (1024**3)
+        used_gb = psutil_mem.used / (1024**3)
 
         if self.cgroup_memory_limit_gb < total_gb:
             total_gb = self.cgroup_memory_limit_gb

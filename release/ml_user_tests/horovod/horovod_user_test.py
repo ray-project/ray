@@ -18,7 +18,7 @@ if __name__ == "__main__":
     main(
         num_workers=6,
         use_gpu=True,
-        placement_group_timeout_s=900,
+        placement_group_timeout_s=2000,
         kwargs={"num_epochs": 20})
 
     taken = time.time() - start

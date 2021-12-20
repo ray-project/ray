@@ -106,9 +106,11 @@ class ClusterTaskManagerInterface {
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(const RayTask &task,
+  virtual void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
                                     rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
@@ -126,8 +128,8 @@ class ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   virtual std::string DebugStr() const = 0;
 
-  /// Report high frequency scheduling metrics.
-  virtual void RecordMetrics() = 0;
+  /// Record the internal metrics.
+  virtual void RecordMetrics() const = 0;
 
   /// Check if there are enough available resources for the given input.
   virtual bool IsLocallySchedulable(const RayTask &task) const = 0;

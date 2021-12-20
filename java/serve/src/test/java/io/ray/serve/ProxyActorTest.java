@@ -1,12 +1,12 @@
 package io.ray.serve;
 
+import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.DeploymentConfig;
-import io.ray.serve.generated.DeploymentVersion;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
@@ -50,26 +50,31 @@ public class ProxyActorTest {
       controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       // Replica
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setDeploymentConfig(DeploymentConfig.newBuilder().build().toByteArray());
-      deploymentInfo.setDeploymentVersion(
-          DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig(DummyBackendReplica.class.getName(), null, new HashMap<>()));
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setName(deploymentName)
+              .setDeploymentConfig(
+                  new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber()))
+              .setDeploymentVersion(new DeploymentVersion(version))
+              .setDeploymentDef(DummyReplica.class.getName());
 
       ActorHandle<RayServeWrappedReplica> replica =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentName,
-                  replicaTag,
                   deploymentInfo,
-                  controllerName)
+                  replicaTag,
+                  controllerName,
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .setName(replicaTag)
               .remote();
-      replica.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
-      ProxyActor proxyActor = new ProxyActor(controllerName, null);
+      ProxyActor proxyActor =
+          new ProxyActor(
+              controllerName, ImmutableMap.of(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Assert.assertTrue(proxyActor.ready());
+
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
       proxyActor
           .getProxyRouter()

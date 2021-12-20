@@ -6,6 +6,7 @@
   - Get rid of the badges in the top
   - Get rid of the references section at the bottom
   - Be sure not to delete the API reference section in the bottom of this file.
+  - add `.. _lightgbm-ray-tuning:` before the "Hyperparameter Tuning" section
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
@@ -216,6 +217,8 @@ Example loading multiple parquet files:
        label="passenger_count",  # Will select this column as the label
        columns=columns,
        filetype=RayFileType.PARQUET)
+
+.. _lightgbm-ray-tuning:
 
 Hyperparameter Tuning
 ---------------------

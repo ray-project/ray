@@ -5,6 +5,7 @@ import numpy as np
 from ray.rllib.examples.models.custom_model_api import DuelingQModel, \
     TorchDuelingQModel, ContActionQModel, TorchContActionQModel
 from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
@@ -51,10 +52,7 @@ if __name__ == "__main__":
     if args.framework == "torch":
         input_ = torch.from_numpy(input_)
 
-    input_dict = {
-        "obs": input_,
-        "is_training": False,
-    }
+    input_dict = SampleBatch(obs=input_, _is_training=False)
     out, state_outs = my_dueling_model(input_dict=input_dict)
     assert out.shape == (10, 256)
     # Pass `out` into `get_q_values`
@@ -90,10 +88,7 @@ if __name__ == "__main__":
     if args.framework == "torch":
         input_ = torch.from_numpy(input_)
 
-    input_dict = {
-        "obs": input_,
-        "is_training": False,
-    }
+    input_dict = SampleBatch(obs=input_, _is_training=False)
     # Note that for PyTorch, you will have to provide torch tensors here.
     out, state_outs = my_cont_action_q_model(input_dict=input_dict)
     assert out.shape == (10, 256)

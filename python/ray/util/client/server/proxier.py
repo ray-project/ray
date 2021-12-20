@@ -121,7 +121,7 @@ class ProxyManager():
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
         self._runtime_env_channel = ray._private.utils.init_grpc_channel(
-            f"localhost:{runtime_env_agent_port}")
+            f"127.0.0.1:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
 
@@ -198,7 +198,7 @@ class ProxyManager():
                 port=port,
                 process_handle_future=futures.Future(),
                 channel=ray._private.utils.init_grpc_channel(
-                    f"localhost:{port}", options=GRPC_OPTIONS))
+                    f"127.0.0.1:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = server
             return server
 
@@ -283,6 +283,7 @@ class ProxyManager():
 
         proc = start_ray_client_server(
             self.redis_address,
+            self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
             stderr_file=error,

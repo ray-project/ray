@@ -159,7 +159,7 @@ def train_main(args, splits):
 
     print(f"Starting training on worker {rank}.")
     batch_wait_times = []
-    for epoch, split_ds in enumerate(splits[rank].iter_datasets()):
+    for epoch, split_ds in enumerate(splits[rank].iter_epochs()):
         train_dataset = create_torch_iterator(split_ds, args.batch_size, rank)
         new_batch_times = _train(epoch, train_dataset)
         new_batch_times.pop(0)

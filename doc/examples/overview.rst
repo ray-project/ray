@@ -105,7 +105,7 @@ Machine Learning Examples
 Reinforcement Learning Examples
 -------------------------------
 
-These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/master/rllib.html>`__.
+These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
 
 .. raw:: html
 

@@ -2,7 +2,7 @@ import os
 import argparse
 from ray import tune
 from ray.tune import run
-from ray.tune.utils._mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
 
 if __name__ == "__main__":

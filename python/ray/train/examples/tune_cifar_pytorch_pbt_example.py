@@ -5,8 +5,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DataLoader, DistributedSampler, Subset
+from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
 
 import ray
@@ -18,11 +17,9 @@ from ray.tune.schedulers import PopulationBasedTraining
 from ray.util.sgd.torch.resnet import ResNet18
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer, device):
+def train_epoch(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
     for batch, (X, y) in enumerate(dataloader):
-        X, y = X.to(device), y.to(device)
-
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -37,14 +34,13 @@ def train_epoch(dataloader, model, loss_fn, optimizer, device):
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def validate_epoch(dataloader, model, loss_fn, device):
+def validate_epoch(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
     with torch.no_grad():
         for X, y in dataloader:
-            X, y = X.to(device), y.to(device)
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
@@ -57,15 +53,9 @@ def validate_epoch(dataloader, model, loss_fn, device):
 
 
 def train_func(config):
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-
     epochs = config.pop("epochs", 3)
     model = ResNet18(config)
-    model = model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[device.index] if torch.cuda.is_available() else None)
+    model = train.torch.prepare_model(model)
 
     # Create optimizer.
     optimizer = torch.optim.SGD(
@@ -104,14 +94,12 @@ def train_func(config):
         train_dataset = Subset(train_dataset, list(range(64)))
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=config["batch_size"],
-        sampler=DistributedSampler(train_dataset))
+    train_loader = DataLoader(train_dataset, batch_size=config["batch_size"])
     validation_loader = DataLoader(
-        validation_dataset,
-        batch_size=config["batch_size"],
-        sampler=DistributedSampler(validation_dataset))
+        validation_dataset, batch_size=config["batch_size"])
+
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
 
     # Create loss.
     criterion = nn.CrossEntropyLoss()
@@ -119,8 +107,8 @@ def train_func(config):
     results = []
 
     for _ in range(epochs):
-        train_epoch(train_loader, model, criterion, optimizer, device)
-        result = validate_epoch(validation_loader, model, criterion, device)
+        train_epoch(train_loader, model, criterion, optimizer)
+        result = validate_epoch(validation_loader, model, criterion)
         train.report(**result)
         results.append(result)
 

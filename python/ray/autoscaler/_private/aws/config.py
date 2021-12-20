@@ -20,6 +20,8 @@ from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
+from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import \
+    CloudwatchHelper as cwh
 
 logger = logging.getLogger(__name__)
 
@@ -250,16 +252,20 @@ def _configure_iam_role(config):
         return config
     _set_config_info(head_instance_profile_src="default")
 
-    profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
+    instance_profile_name = cwh.resolve_instance_profile_name(
+        config["provider"],
+        DEFAULT_RAY_INSTANCE_PROFILE,
+    )
+    profile = _get_instance_profile(instance_profile_name, config)
 
     if profile is None:
         cli_logger.verbose(
             "Creating new IAM instance profile {} for use as the default.",
-            cf.bold(DEFAULT_RAY_INSTANCE_PROFILE))
+            cf.bold(instance_profile_name))
         client = _client("iam", config)
         client.create_instance_profile(
-            InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
-        profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
+            InstanceProfileName=instance_profile_name)
+        profile = _get_instance_profile(instance_profile_name, config)
         time.sleep(15)  # wait for propagation
 
     cli_logger.doassert(profile is not None,
@@ -267,35 +273,43 @@ def _configure_iam_role(config):
     assert profile is not None, "Failed to create instance profile"
 
     if not profile.roles:
-        role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
+        role_name = cwh.resolve_iam_role_name(config["provider"],
+                                              DEFAULT_RAY_IAM_ROLE)
+        role = _get_role(role_name, config)
         if role is None:
             cli_logger.verbose(
                 "Creating new IAM role {} for "
-                "use as the default instance role.",
-                cf.bold(DEFAULT_RAY_IAM_ROLE))
+                "use as the default instance role.", cf.bold(role_name))
             iam = _resource("iam", config)
-            iam.create_role(
-                RoleName=DEFAULT_RAY_IAM_ROLE,
-                AssumeRolePolicyDocument=json.dumps({
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {
-                                "Service": "ec2.amazonaws.com"
-                            },
-                            "Action": "sts:AssumeRole",
+            policy_doc = {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "ec2.amazonaws.com"
                         },
-                    ],
-                }))
-            role = _get_role(DEFAULT_RAY_IAM_ROLE, config)
+                        "Action": "sts:AssumeRole",
+                    },
+                ]
+            }
+            attach_policy_arns = cwh.resolve_policy_arns(
+                config["provider"], iam, [
+                    "arn:aws:iam::aws:policy/AmazonEC2FullAccess",
+                    "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+                ])
 
+            iam.create_role(
+                RoleName=role_name,
+                AssumeRolePolicyDocument=json.dumps(policy_doc))
+            role = _get_role(role_name, config)
             cli_logger.doassert(role is not None,
                                 "Failed to create role.")  # todo: err msg
+
             assert role is not None, "Failed to create role"
-        role.attach_policy(
-            PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
-        role.attach_policy(
-            PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
+
+            for policy_arn in attach_policy_arns:
+                role.attach_policy(PolicyArn=policy_arn)
+
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
     # Add IAM role to "head_node" field so that it is applied only to

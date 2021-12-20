@@ -6,7 +6,7 @@ import ray.train as train
 from ray import tune, cloudpickle
 from ray.tune import TuneError
 from ray.train import Trainer
-from ray.train.backends.backend import Backend, BackendConfig
+from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME
 from ray.train.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func

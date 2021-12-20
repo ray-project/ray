@@ -1,7 +1,10 @@
-from typing import TypeVar, Any, Union, Callable, List
+from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    BlockPartition, BlockExecStats
+from ray.data.context import DatasetContext
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -18,48 +21,71 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block: Block, fn: Any,
-               input_files: List[str]) -> (Block, BlockMetadata):
-    new_block = fn(block)
+def _map_block_split(block: Block, fn: Any,
+                     input_files: List[str]) -> BlockPartition:
+    output = []
+    stats = BlockExecStats.builder()
+    for new_block in fn(block):
+        accessor = BlockAccessor.for_block(new_block)
+        new_meta = BlockMetadata(
+            num_rows=accessor.num_rows(),
+            size_bytes=accessor.size_bytes(),
+            schema=accessor.schema(),
+            input_files=input_files,
+            exec_stats=stats.build())
+        owner = DatasetContext.get_current().block_owner
+        output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
+    return output
+
+
+def _map_block_nosplit(block: Block, fn: Any,
+                       input_files: List[str]) -> Tuple[Block, BlockMetadata]:
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    new_meta = BlockMetadata(
-        num_rows=accessor.num_rows(),
-        size_bytes=accessor.size_bytes(),
-        schema=accessor.schema(),
-        input_files=input_files)
-    return new_block, new_meta
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build())
 
 
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
+        context = DatasetContext.get_current()
+
         # Handle empty datasets.
         if blocks.initial_num_blocks() == 0:
             return blocks
 
-        blocks = list(blocks.iter_blocks_with_metadata())
+        blocks = blocks.get_blocks_with_metadata()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        kwargs = remote_args.copy()
-        kwargs["num_returns"] = 2
+        if context.block_splitting_enabled:
+            map_block = cached_remote_fn(_map_block_split).options(
+                **remote_args)
+            refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+        else:
+            map_block = cached_remote_fn(_map_block_nosplit).options(
+                **dict(remote_args, num_returns=2))
+            all_refs = [
+                map_block.remote(b, fn, m.input_files) for b, m in blocks
+            ]
+            data_refs = [r[0] for r in all_refs]
+            refs = [r[1] for r in all_refs]
 
-        map_block = cached_remote_fn(_map_block)
-        refs = [
-            map_block.options(**kwargs).remote(b, fn, m.input_files)
-            for b, m in blocks
-        ]
-        new_blocks, new_metadata = zip(*refs)
-
-        new_metadata = list(new_metadata)
+        # Common wait for non-data refs.
         try:
-            new_metadata = map_bar.fetch_until_complete(new_metadata)
+            results = map_bar.fetch_until_complete(refs)
         except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
             # One or more mapper tasks failed, or we received a SIGINT signal
             # while waiting; either way, we cancel all map tasks.
-            for ref in new_metadata:
+            for ref in refs:
                 ray.cancel(ref)
             # Wait until all tasks have failed or been cancelled.
-            for ref in new_metadata:
+            for ref in refs:
                 try:
                     ray.get(ref)
                 except (ray.exceptions.RayTaskError,
@@ -67,6 +93,17 @@ class TaskPool(ComputeStrategy):
                     pass
             # Reraise the original task failure exception.
             raise e from None
+
+        new_blocks, new_metadata = [], []
+        if context.block_splitting_enabled:
+            for result in results:
+                for block, metadata in result:
+                    new_blocks.append(block)
+                    new_metadata.append(metadata)
+        else:
+            for block, metadata in zip(data_refs, results):
+                new_blocks.append(block)
+                new_metadata.append(metadata)
         return BlockList(list(new_blocks), list(new_metadata))
 
 
@@ -80,27 +117,25 @@ class ActorPool(ComputeStrategy):
 
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
+        context = DatasetContext.get_current()
 
-        blocks_in = list(blocks.iter_blocks_with_metadata())
+        blocks_in = blocks.get_blocks_with_metadata()
         orig_num_blocks = len(blocks_in)
-        blocks_out = []
+        results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
                 return "ok"
 
+            def map_block_split(self, block: Block,
+                                input_files: List[str]) -> BlockPartition:
+                return _map_block_split(block, fn, input_files)
+
             @ray.method(num_returns=2)
-            def process_block(self, block: Block, input_files: List[str]
-                              ) -> (Block, BlockMetadata):
-                new_block = fn(block)
-                accessor = BlockAccessor.for_block(new_block)
-                new_metadata = BlockMetadata(
-                    num_rows=accessor.num_rows(),
-                    size_bytes=accessor.size_bytes(),
-                    schema=accessor.schema(),
-                    input_files=input_files)
-                return new_block, new_metadata
+            def map_block_nosplit(self, block: Block, input_files: List[str]
+                                  ) -> Tuple[Block, BlockMetadata]:
+                return _map_block_nosplit(block, fn, input_files)
 
         if not remote_args:
             remote_args["num_cpus"] = 1
@@ -108,11 +143,11 @@ class ActorPool(ComputeStrategy):
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         self.workers = [BlockWorker.remote()]
-        metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
+        metadata_mapping = {}
         ready_workers = set()
 
-        while len(blocks_out) < orig_num_blocks:
+        while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
@@ -132,7 +167,7 @@ class ActorPool(ComputeStrategy):
 
             # Process task result.
             if worker in ready_workers:
-                blocks_out.append(obj_id)
+                results.append(obj_id)
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
@@ -140,14 +175,27 @@ class ActorPool(ComputeStrategy):
             # Schedule a new task.
             if blocks_in:
                 block, meta = blocks_in.pop()
-                block_ref, meta_ref = worker.process_block.remote(
-                    block, meta.input_files)
-                metadata_mapping[block_ref] = meta_ref
-                tasks[block_ref] = worker
+                if context.block_splitting_enabled:
+                    ref = worker.map_block_split.remote(
+                        block, meta.input_files)
+                else:
+                    ref, meta_ref = worker.map_block_nosplit.remote(
+                        block, meta.input_files)
+                    metadata_mapping[ref] = meta_ref
+                tasks[ref] = worker
 
-        new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
-        return BlockList(blocks_out, new_metadata)
+        new_blocks, new_metadata = [], []
+        if context.block_splitting_enabled:
+            for result in ray.get(results):
+                for block, metadata in result:
+                    new_blocks.append(block)
+                    new_metadata.append(metadata)
+        else:
+            for block in results:
+                new_blocks.append(block)
+                new_metadata.append(metadata_mapping[block])
+        return BlockList(new_blocks, new_metadata)
 
 
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]

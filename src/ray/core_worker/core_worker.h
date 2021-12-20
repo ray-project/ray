@@ -23,6 +23,8 @@
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
@@ -55,304 +57,6 @@
 
 namespace ray {
 namespace core {
-
-class CoreWorker;
-
-// If you change this options's definition, you must change the options used in
-// other files. Please take a global search and modify them !!!
-struct CoreWorkerOptions {
-  // Callback that must be implemented and provided by the language-specific worker
-  // frontend to execute tasks and return their results.
-  using TaskExecutionCallback = std::function<Status(
-      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<rpc::ObjectReference> &arg_refs,
-      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results,
-      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error,
-      // The following 2 parameters `defined_concurrency_groups` and
-      // `name_of_concurrency_group_to_execute` are used for Python
-      // asyncio actor only.
-      //
-      // Defined concurrency groups of this actor. Note this is only
-      // used for actor creation task.
-      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
-      const std::string name_of_concurrency_group_to_execute)>;
-
-  CoreWorkerOptions()
-      : store_socket(""),
-        raylet_socket(""),
-        enable_logging(false),
-        log_dir(""),
-        install_failure_signal_handler(false),
-        interactive(false),
-        node_ip_address(""),
-        node_manager_port(0),
-        raylet_ip_address(""),
-        driver_name(""),
-        stdout_file(""),
-        stderr_file(""),
-        task_execution_callback(nullptr),
-        check_signals(nullptr),
-        gc_collect(nullptr),
-        spill_objects(nullptr),
-        restore_spilled_objects(nullptr),
-        delete_spilled_objects(nullptr),
-        unhandled_exception_handler(nullptr),
-        get_lang_stack(nullptr),
-        kill_main(nullptr),
-        is_local_mode(false),
-        num_workers(0),
-        terminate_asyncio_thread(nullptr),
-        serialized_job_config(""),
-        metrics_agent_port(-1),
-        connect_on_start(true),
-        runtime_env_hash(0),
-        worker_shim_pid(0) {}
-
-  /// Type of this worker (i.e., DRIVER or WORKER).
-  WorkerType worker_type;
-  /// Application language of this worker (i.e., PYTHON or JAVA).
-  Language language;
-  /// Object store socket to connect to.
-  std::string store_socket;
-  /// Raylet socket to connect to.
-  std::string raylet_socket;
-  /// Job ID of this worker.
-  JobID job_id;
-  /// Options for the GCS client.
-  gcs::GcsClientOptions gcs_options;
-  /// Initialize logging if true. Otherwise, it must be initialized and cleaned up by the
-  /// caller.
-  bool enable_logging;
-  /// Directory to write logs to. If this is empty, logs won't be written to a file.
-  std::string log_dir;
-  /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
-  bool install_failure_signal_handler;
-  /// Whether this worker is running in a tty.
-  bool interactive;
-  /// IP address of the node.
-  std::string node_ip_address;
-  /// Port of the local raylet.
-  int node_manager_port;
-  /// IP address of the raylet.
-  std::string raylet_ip_address;
-  /// The name of the driver.
-  std::string driver_name;
-  /// The stdout file of this process.
-  std::string stdout_file;
-  /// The stderr file of this process.
-  std::string stderr_file;
-  /// Language worker callback to execute tasks.
-  TaskExecutionCallback task_execution_callback;
-  /// The callback to be called when shutting down a `CoreWorker` instance.
-  std::function<void(const WorkerID &)> on_worker_shutdown;
-  /// Application-language callback to check for signals that have been received
-  /// since calling into C++. This will be called periodically (at least every
-  /// 1s) during long-running operations. If the function returns anything but StatusOK,
-  /// any long-running operations in the core worker will short circuit and return that
-  /// status.
-  std::function<Status()> check_signals;
-  /// Application-language callback to trigger garbage collection in the language
-  /// runtime. This is required to free distributed references that may otherwise
-  /// be held up in garbage objects.
-  std::function<void()> gc_collect;
-  /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<rpc::ObjectReference> &)>
-      spill_objects;
-  /// Application-language callback to restore objects from external storage.
-  std::function<int64_t(const std::vector<rpc::ObjectReference> &,
-                        const std::vector<std::string> &)>
-      restore_spilled_objects;
-  /// Application-language callback to delete objects from external storage.
-  std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
-      delete_spilled_objects;
-  /// Function to call on error objects never retrieved.
-  std::function<void(const RayObject &error)> unhandled_exception_handler;
-  /// Language worker callback to get the current call stack.
-  std::function<void(std::string *)> get_lang_stack;
-  // Function that tries to interrupt the currently running Python thread.
-  std::function<bool()> kill_main;
-  /// Is local mode being used.
-  bool is_local_mode;
-  /// The number of workers to be started in the current process.
-  int num_workers;
-  /// The function to destroy asyncio event and loops.
-  std::function<void()> terminate_asyncio_thread;
-  /// Serialized representation of JobConfig.
-  std::string serialized_job_config;
-  /// The port number of a metrics agent that imports metrics from core workers.
-  /// -1 means there's no such agent.
-  int metrics_agent_port;
-  /// If false, the constructor won't connect and notify raylets that it is
-  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
-  /// TODO(sang): Use this method for Java and cpp frontend too.
-  bool connect_on_start;
-  /// The hash of the runtime env for this worker.
-  int runtime_env_hash;
-  /// The PID of the process for setup worker runtime env.
-  pid_t worker_shim_pid;
-  /// The startup token of the process assigned to it
-  /// during startup via command line arguments.
-  /// This is needed because the actual core worker process
-  /// may not have the same pid as the process the worker pool
-  /// starts (due to shim processes).
-  StartupToken startup_token{0};
-};
-
-/// Lifecycle management of one or more `CoreWorker` instances in a process.
-///
-/// To start a driver in the current process:
-///     CoreWorkerOptions options = {
-///         WorkerType::DRIVER,             // worker_type
-///         ...,                            // other arguments
-///         1,                              // num_workers
-///     };
-///     CoreWorkerProcess::Initialize(options);
-///
-/// To shutdown a driver in the current process:
-///     CoreWorkerProcess::Shutdown();
-///
-/// To start one or more workers in the current process:
-///     CoreWorkerOptions options = {
-///         WorkerType::WORKER,             // worker_type
-///         ...,                            // other arguments
-///         num_workers,                    // num_workers
-///     };
-///     CoreWorkerProcess::Initialize(options);
-///     ...                                 // Do other stuff
-///     CoreWorkerProcess::RunTaskExecutionLoop();
-///
-/// To shutdown a worker in the current process, return a system exit status (with status
-/// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
-/// callback.
-///
-/// If more than 1 worker is started, only the threads which invoke the
-/// `task_execution_callback` will be automatically associated with the corresponding
-/// worker. If you started your own threads and you want to use core worker APIs in these
-/// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
-/// once in the new thread before calling core worker APIs, to associate the current
-/// thread with a worker. You can obtain the worker ID via
-/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
-/// starts multiple workers by default, but can be configured to start only 1 worker by
-/// speicifying `num_java_workers_per_process` in the job config.
-///
-/// If only 1 worker is started (either because the worker type is driver, or the
-/// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
-/// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
-/// your own threads. Currently a Python worker process starts only 1 worker.
-class CoreWorkerProcess {
- public:
-  ///
-  /// Public methods used in both DRIVER and WORKER mode.
-  ///
-
-  /// Initialize core workers at the process level.
-  ///
-  /// \param[in] options The various initialization options.
-  static void Initialize(const CoreWorkerOptions &options);
-
-  /// Get the core worker associated with the current thread.
-  /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
-  /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
-  static CoreWorker &GetCoreWorker();
-
-  /// Try to get the `CoreWorker` instance by worker ID.
-  /// If the current thread is not associated with a core worker, returns a null pointer.
-  ///
-  /// \param[in] workerId The worker ID.
-  /// \return The `CoreWorker` instance.
-  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
-
-  /// Set the core worker associated with the current thread by worker ID.
-  /// Currently used by Java worker only.
-  ///
-  /// \param worker_id The worker ID of the core worker instance.
-  static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
-
-  /// Whether the current process has been initialized for core worker.
-  static bool IsInitialized();
-
-  ///
-  /// Public methods used in DRIVER mode only.
-  ///
-
-  /// Shutdown the driver completely at the process level.
-  static void Shutdown();
-
-  ///
-  /// Public methods used in WORKER mode only.
-  ///
-
-  /// Start receiving and executing tasks.
-  static void RunTaskExecutionLoop();
-
-  // The destructor is not to be used as a public API, but it's required by smart
-  // pointers.
-  ~CoreWorkerProcess();
-
- private:
-  /// Create an `CoreWorkerProcess` with proper options.
-  ///
-  /// \param[in] options The various initialization options.
-  CoreWorkerProcess(const CoreWorkerOptions &options);
-
-  /// Check that the core worker environment is initialized for this process.
-  ///
-  /// \param[in] quick_exit If set to true, quick exit if uninitialized without
-  /// crash.
-  /// \return Void.
-  static void EnsureInitialized(bool quick_exit);
-
-  static void HandleAtExit();
-
-  void InitializeSystemConfig();
-
-  /// Check that if the global worker should be created on construction.
-  bool ShouldCreateGlobalWorkerOnConstruction() const;
-
-  /// Get the `CoreWorker` instance by worker ID.
-  ///
-  /// \param[in] workerId The worker ID.
-  /// \return The `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Create a new `CoreWorker` instance.
-  ///
-  /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
-
-  /// Remove an existing `CoreWorker` instance.
-  ///
-  /// \param[in] The existing `CoreWorker` instance.
-  /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
-
-  /// Get the `GlobalWorker` instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
-
-  /// The various options.
-  const CoreWorkerOptions options_;
-
-  /// The core worker instance associated with the current thread.
-  /// Use weak_ptr here to avoid memory leak due to multi-threading.
-  static thread_local std::weak_ptr<CoreWorker> current_core_worker_;
-
-  /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
-
-  /// The worker ID of the global worker, if the number of workers is 1.
-  const WorkerID global_worker_id_;
-
-  /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
-
-  /// To protect access to workers_ and global_worker_
-  mutable absl::Mutex mutex_;
-};
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
@@ -707,8 +411,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retires max number of retry when the task fails.
-  /// \param[in] placement_options placement group options.
-  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
@@ -716,7 +419,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-      BundleID placement_options, bool placement_group_capture_child_tasks,
+      const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint);
 
   /// Create an actor.
@@ -773,7 +476,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> SubmitActorTask(
+  std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
       const ActorID &actor_id, const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
 
@@ -864,7 +567,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              int64_t &task_output_inlined_bytes,
+                              int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -875,6 +578,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object);
+
+  /// Pin the local copy of the return object, if one exists.
+  ///
+  /// \param[in] return_id ObjectID of the return value.
+  /// \param[out] return_object The object that was pinned.
+  /// \return success if the object still existed and was pinned. Note that
+  /// pinning is done asynchronously.
+  bool PinExistingReturnObject(const ObjectID &return_id,
+                               std::shared_ptr<RayObject> *return_object);
 
   /// Get a handle to an actor.
   ///
@@ -1056,6 +768,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  static rpc::RuntimeEnv OverrideRuntimeEnv(
+      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+
+  /// The following tests will use `OverrideRuntimeEnv` function.
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestPyModulesInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverridePyModules);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  std::string OverrideTaskOrActorRuntimeEnv(
+      const std::string &serialized_runtime_env,
+      std::vector<std::string> *runtime_env_uris /* output */);
+
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
       const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -1063,10 +791,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
-      const std::vector<std::string> &runtime_env_uris,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -1084,8 +810,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
 
-  /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
+  void ExitIfParentRayletDies();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -1447,6 +1173,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::unique_ptr<rpc::JobConfig> job_config_;
 
+  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
+
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.
   struct TaskCounter {
@@ -1478,6 +1206,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   };
   TaskCounter task_counter_;
+
+  /// Used to guarantee that submitting actor task is thread safe.
+  /// NOTE(MissiontoMars,scv119): In particular, without this mutex,
+  /// the checking and increasing of backpressure pending calls counter
+  /// is not atomic, which may lead to under counting or over counting.
+  absl::Mutex actor_task_mutex_;
 };
 
 }  // namespace core

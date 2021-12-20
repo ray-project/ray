@@ -55,6 +55,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
   Python 3.9 support is currently experimental.
 
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
+
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
@@ -154,14 +159,32 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
 .. _apple-silcon-supprt:
 
-Apple Silicon Support
----------------------
+M1 Mac (Apple Silicon) Support
+------------------------------
 
 Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
 
-1. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
-2. Ensure that the ``grpcio`` package is installed via forge and **not pypi**: ``pip uninstall grpcio; conda install grpcio``.
-3. Install Ray as you normally would: ``pip install ray``.
+#. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+
+   * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
+   
+   * ``bash Miniforge3-MacOSX-arm64.sh``
+   
+   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   
+#. Ensure you're using the miniforge environment (you should see (base) in your terminal).
+   
+   * ``source ~/.bash_profile``
+   
+   * ``conda activate``
+   
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
+   
+   * ``pip uninstall grpcio; conda install grpcio``.
+
+#. Install Ray as you normally would.
+
+   * ``pip install ray``
 
 .. note::
 

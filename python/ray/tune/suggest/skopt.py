@@ -249,9 +249,6 @@ class SkOptSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
         if self._initial_points:
             suggested_config = self._initial_points.pop(0)
             skopt_config = [suggested_config[par] for par in self._parameters]

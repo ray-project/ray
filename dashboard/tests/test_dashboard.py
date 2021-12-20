@@ -75,6 +75,8 @@ def test_basic(ray_start_with_dashboard):
         host=address[0],
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     all_processes = ray.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
@@ -147,13 +149,17 @@ def test_basic(ray_start_with_dashboard):
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
-    dashboard_address = client.get(ray_constants.REDIS_KEY_DASHBOARD)
+    dashboard_address = ray.experimental.internal_kv._internal_kv_get(
+        ray_constants.REDIS_KEY_DASHBOARD,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_address is not None
-    dashboard_rpc_address = client.get(
-        dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
+    dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
+        dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = client.get(key)
+    agent_ports = ray.experimental.internal_kv._internal_kv_get(
+        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert agent_ports is not None
 
 
@@ -470,9 +476,12 @@ def test_get_cluster_status(ray_start_with_dashboard):
         host=address[0],
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
-    client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    ray.experimental.internal_kv._internal_kv_put(
+        DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
+    ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR,
+                                                  "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
     response.raise_for_status()
@@ -606,7 +615,8 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         host=address[0],
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
     log_dir = "/tmp/ray/session_latest/logs"
@@ -628,7 +638,9 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            dashboard_url = client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)

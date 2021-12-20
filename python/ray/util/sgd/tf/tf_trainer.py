@@ -5,14 +5,14 @@ import pickle
 import ray
 
 from ray.tune import Trainable
-from ray.tune.resources import Resources
-from ray.util.annotations import PublicAPI
+from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util.annotations import Deprecated
 from ray.util.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TFTrainer:
     def __init__(self,
                  model_creator,
@@ -164,11 +164,10 @@ class TFTrainer:
 class TFTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
-        return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_replicas"],
-            extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
+        return PlacementGroupFactory([{}] + [{
+            "CPU": 1,
+            "GPU": int(config["use_gpu"])
+        }] * config["num_replicas"])
 
     def setup(self, config):
         self._trainer = TFTrainer(

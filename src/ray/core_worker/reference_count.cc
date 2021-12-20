@@ -177,6 +177,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
+  // TODO(swang): Objects that are not reconstructable should not increment
+  // their arguments' lineage ref counts.
   auto it = object_id_refs_
                 .emplace(object_id, Reference(owner_address, call_site, object_size,
                                               is_reconstructable, pinned_at_raylet_id))
@@ -190,6 +192,11 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     // We eagerly add the pinned location to the set of object locations.
     AddObjectLocationInternal(it, pinned_at_raylet_id.value());
   }
+
+  reconstructable_owned_objects_.emplace_back(object_id);
+  auto back_it = reconstructable_owned_objects_.end();
+  back_it--;
+  RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
@@ -247,12 +254,31 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
   }
 }
 
+void ReferenceCounter::ReleaseAllLocalReferences() {
+  absl::MutexLock lock(&mutex_);
+  std::vector<ObjectID> refs_to_remove;
+  for (auto &ref : object_id_refs_) {
+    for (int i = ref.second.local_ref_count; i > 0; --i) {
+      refs_to_remove.push_back(ref.first);
+    }
+  }
+  for (const auto &object_id_to_remove : refs_to_remove) {
+    RemoveLocalReferenceInternal(object_id_to_remove, nullptr);
+  }
+}
+
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
   if (object_id.IsNil()) {
     return;
   }
   absl::MutexLock lock(&mutex_);
+  RemoveLocalReferenceInternal(object_id, deleted);
+}
+
+void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                                    std::vector<ObjectID> *deleted) {
+  RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -270,14 +296,19 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
     DeleteReferenceInternal(it, deleted);
+  } else {
+    PRINT_REF_COUNT(it);
   }
-  PRINT_REF_COUNT(it);
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
+    const std::vector<ObjectID> return_ids,
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, true);
+  }
   for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
@@ -302,8 +333,11 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, true);
+  }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -316,10 +350,13 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> &argument_ids, bool release_lineage,
-    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
-    std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids,
+    bool release_lineage, const rpc::Address &worker_addr,
+    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreation(return_id, false);
+  }
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the
@@ -335,37 +372,43 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
 }
 
-void ReferenceCounter::ReleaseLineageReferences(
-    const std::vector<ObjectID> &argument_ids) {
-  absl::MutexLock lock(&mutex_);
-  ReleaseLineageReferencesInternal(argument_ids);
-}
+int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref) {
+  int64_t lineage_bytes_evicted = 0;
+  std::vector<ObjectID> argument_ids;
+  if (on_lineage_released_ && ref->second.owned_by_us) {
+    RAY_LOG(DEBUG) << "Releasing lineage for object " << ref->first;
+    lineage_bytes_evicted += on_lineage_released_(ref->first, &argument_ids);
+    // The object is still in scope by the application and it was
+    // reconstructable with lineage. Mark that its lineage has been evicted so
+    // we can return the right error during reconstruction.
+    if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
+        ref->second.is_reconstructable) {
+      ref->second.lineage_evicted = true;
+      ref->second.is_reconstructable = false;
+    }
+  }
 
-void ReferenceCounter::ReleaseLineageReferencesInternal(
-    const std::vector<ObjectID> &argument_ids) {
   for (const ObjectID &argument_id : argument_ids) {
-    auto it = object_id_refs_.find(argument_id);
-    if (it == object_id_refs_.end()) {
-      // References can get evicted early when lineage pinning is disabled.
-      RAY_CHECK(!lineage_pinning_enabled_);
+    auto arg_it = object_id_refs_.find(argument_id);
+    if (arg_it == object_id_refs_.end()) {
       continue;
     }
 
-    if (it->second.lineage_ref_count == 0) {
-      // References can get evicted early when lineage pinning is disabled.
-      RAY_CHECK(!lineage_pinning_enabled_);
+    if (arg_it->second.lineage_ref_count == 0) {
       continue;
     }
 
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
-    it->second.lineage_ref_count--;
-    if (it->second.lineage_ref_count == 0) {
-      // Don't have to pass in a deleted vector here because the reference
-      // cannot have gone out of scope here since we are only modifying the
-      // lineage ref count.
-      DeleteReferenceInternal(it, nullptr);
+    arg_it->second.lineage_ref_count--;
+    if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
+      // We only decremented the lineage ref count, so the argument value
+      // should already be released.
+      RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
+      lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
+      EraseReference(arg_it);
     }
   }
+  return lineage_bytes_evicted;
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
@@ -384,9 +427,6 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     if (release_lineage) {
       if (it->second.lineage_ref_count > 0) {
         it->second.lineage_ref_count--;
-      } else {
-        // References can get evicted early when lineage pinning is disabled.
-        RAY_CHECK(!lineage_pinning_enabled_);
       }
     }
     if (it->second.RefCount() == 0) {
@@ -482,13 +522,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.
-  bool should_delete_value = false;
-  bool should_delete_ref = true;
-
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
-    // If distributed ref counting is enabled, then delete the object once its
-    // ref count across all processes is 0.
-    should_delete_value = true;
     for (const auto &inner_id : it->second.contains) {
       auto inner_it = object_id_refs_.find(inner_id);
       if (inner_it != object_id_refs_.end()) {
@@ -504,29 +538,58 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
-  }
-
-  // Perform the deletion.
-  if (should_delete_value) {
+    // Perform the deletion.
     ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
     }
+
+    auto index_it = reconstructable_owned_objects_index_.find(id);
+    if (index_it != reconstructable_owned_objects_index_.end()) {
+      reconstructable_owned_objects_.erase(index_it->second);
+      reconstructable_owned_objects_index_.erase(index_it);
+    }
   }
-  if (it->second.ShouldDelete(lineage_pinning_enabled_) && should_delete_ref) {
+
+  if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;
     // TODO(swang): Update lineage_ref_count for nested objects?
-    if (on_lineage_released_ && it->second.owned_by_us) {
-      RAY_LOG(DEBUG) << "Releasing lineage for object " << id;
-      std::vector<ObjectID> ids_to_release;
-      on_lineage_released_(id, &ids_to_release);
-      ReleaseLineageReferencesInternal(ids_to_release);
-    }
-
-    freed_objects_.erase(id);
-    object_id_refs_.erase(it);
-    ShutdownIfNeeded();
+    ReleaseLineageReferences(it);
+    EraseReference(it);
   }
+}
+
+void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
+  // NOTE(swang): We have to publish failure to subscribers in case they
+  // subscribe after the ref is already deleted.
+  object_info_publisher_->PublishFailure(
+      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+
+  RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
+  auto index_it = reconstructable_owned_objects_index_.find(it->first);
+  if (index_it != reconstructable_owned_objects_index_.end()) {
+    reconstructable_owned_objects_.erase(index_it->second);
+    reconstructable_owned_objects_index_.erase(index_it);
+  }
+  freed_objects_.erase(it->first);
+  object_id_refs_.erase(it);
+  ShutdownIfNeeded();
+}
+
+int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
+  absl::MutexLock lock(&mutex_);
+  int64_t lineage_bytes_evicted = 0;
+  while (!reconstructable_owned_objects_.empty() &&
+         lineage_bytes_evicted < min_bytes_to_evict) {
+    ObjectID object_id = std::move(reconstructable_owned_objects_.front());
+    reconstructable_owned_objects_.pop_front();
+    reconstructable_owned_objects_index_.erase(object_id);
+
+    auto it = object_id_refs_.find(object_id);
+    RAY_CHECK(it != object_id_refs_.end());
+    lineage_bytes_evicted += ReleaseLineageReferences(it);
+  }
+  return lineage_bytes_evicted;
 }
 
 void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
@@ -1068,6 +1131,19 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   return true;
 }
 
+void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
+                                                   bool pending_creation) {
+  auto it = object_id_refs_.find(object_id);
+  bool push = false;
+  if (it != object_id_refs_.end()) {
+    push = (it->second.pending_creation != pending_creation);
+    it->second.pending_creation = pending_creation;
+  }
+  if (push) {
+    PushToLocationSubscribers(it);
+  }
+}
+
 absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
@@ -1197,7 +1273,8 @@ void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const {
+bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
+                                               bool *lineage_evicted) const {
   if (!lineage_pinning_enabled_) {
     return false;
   }
@@ -1206,7 +1283,17 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id) const 
   if (it == object_id_refs_.end()) {
     return false;
   }
+  *lineage_evicted = it->second.lineage_evicted;
   return it->second.is_reconstructable;
+}
+
+bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.pending_creation;
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
@@ -1221,7 +1308,8 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
                  << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id;
+                 << ", and primary node ID: " << primary_node_id << ", pending creation? "
+                 << it->second.pending_creation;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
@@ -1257,6 +1345,7 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
+  object_info->set_pending_creation(it->second.pending_creation);
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {

@@ -1,10 +1,13 @@
 import sys
 import tempfile
+import os
+import psutil
 
 import pytest
 
 from ray.serve import pipeline
 from ray.serve.pipeline.test_utils import enable_local_execution_mode_only
+from ray._private.test_utils import wait_for_condition
 
 ALL_EXECUTION_MODES = list(pipeline.ExecutionMode)
 
@@ -143,6 +146,19 @@ def test_mix_classes_and_functions(execution_mode, shared_ray_instance):
         GreeterStep1("Howdy")(pipeline.INPUT),
         greeter_step_2(pipeline.INPUT)).deploy()
     assert greeter.call("Teddy") == "Howdy Teddy!|How's it hanging, Teddy?"
+
+
+def test_cleanup_and_destory(shared_ray_instance):
+    @pipeline.step(execution_mode="actors")
+    class A:
+        def __call__(self, _input):
+            return os.getpid()
+
+    p = A()(pipeline.INPUT).deploy()
+    actor_pid = p.call(None)
+    assert psutil.pid_exists(actor_pid)
+    del p
+    wait_for_condition(lambda: not psutil.pid_exists(actor_pid))
 
 
 if __name__ == "__main__":

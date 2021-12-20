@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _deployment-guide:
 
 Ray Deployment Guide
@@ -26,7 +28,7 @@ any cloud. It will:
 
 * provision a new instance/machine using the cloud provider's SDK.
 * execute shell commands to set up Ray with the provided options.
-* (optionally) run any custom, user defined setup commands.  (To dynamically set up environments after the cluster has been deployed, you can use :ref:`Runtime Environments<runtime-environments>`.)
+* (optionally) run any custom, user defined setup commands.  This can be useful for setting environment variables and installing packages.  (To dynamically set up environments after the cluster has been deployed, you can use :ref:`Runtime Environments<runtime-environments>`.)
 * Initialize the Ray cluster.
 * Deploy an autoscaler process.
 

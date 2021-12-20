@@ -66,7 +66,7 @@ def train_func(config):
         multi_worker_model = build_and_compile_model(config)
 
     dataset_pipeline = train.get_dataset_shard()
-    dataset_iterator = dataset_pipeline.iter_datasets()
+    dataset_iterator = dataset_pipeline.iter_epochs()
 
     results = []
     for _ in range(epochs):

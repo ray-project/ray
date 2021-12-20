@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _aws-cluster:
 
 AWS Configurations

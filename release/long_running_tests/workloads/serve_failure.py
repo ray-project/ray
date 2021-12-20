@@ -24,6 +24,8 @@ NUM_NODES = 4
 # RandomTest setup constants
 CPUS_PER_NODE = 10
 
+IS_SMOKE_TEST = "IS_SMOKE_TEST" in os.environ
+
 
 def update_progress(result):
     """
@@ -54,7 +56,8 @@ ray.init(
     namespace="serve_failure_test",
     address=cluster.address,
     dashboard_host="0.0.0.0",
-    log_to_driver=False)
+    log_to_driver=True,
+)
 serve.start(detached=True)
 
 
@@ -76,8 +79,9 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(
-                random.choice(self._get_all_serve_actors()), no_restart=False)
+            chosen = random.choice(self._get_all_serve_actors())
+            print(f"Killing {chosen}")
+            ray.kill(chosen, no_restart=False)
             time.sleep(self.kill_period_s)
 
 
@@ -123,9 +127,11 @@ class RandomTest:
         start_time = time.time()
         previous_time = start_time
         while True:
-            for _ in range(100):
+            for _ in range(20):
                 actions, weights = zip(*self.weighted_actions)
-                random.choices(actions, weights=weights)[0]()
+                action_chosen = random.choices(actions, weights=weights)[0]
+                print(f"Executing {action_chosen}")
+                action_chosen()
 
             new_time = time.time()
             print("Iteration {}:\n"
@@ -143,7 +149,11 @@ class RandomTest:
             previous_time = new_time
             iteration += 1
 
+            if IS_SMOKE_TEST:
+                break
 
+
+tester = RandomTest(max_deployments=NUM_NODES * CPUS_PER_NODE)
 random_killer = RandomKiller.remote()
 random_killer.run.remote()
-RandomTest(max_deployments=NUM_NODES * CPUS_PER_NODE).run()
+tester.run()

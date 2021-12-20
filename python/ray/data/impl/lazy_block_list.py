@@ -5,8 +5,9 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockPartition, \
-    BlockPartitionMetadata
+from ray.data.block import Block, BlockMetadata, BlockPartitionMetadata, \
+    MaybeBlockPartition
+from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
 
@@ -18,10 +19,11 @@ class LazyBlockList(BlockList):
     .take() the first few rows or view the schema).
     """
 
-    def __init__(self,
-                 calls: Callable[[], ObjectRef[BlockPartition]],
-                 metadata: List[BlockPartitionMetadata],
-                 block_partitions: List[ObjectRef[BlockPartition]] = None):
+    def __init__(
+            self,
+            calls: Callable[[], ObjectRef[MaybeBlockPartition]],
+            metadata: List[BlockPartitionMetadata],
+            block_partitions: List[ObjectRef[MaybeBlockPartition]] = None):
         self._calls = calls
         self._num_blocks = len(self._calls)
         self._metadata = metadata
@@ -72,8 +74,14 @@ class LazyBlockList(BlockList):
                               self._block_partitions[part_idx:])
         return left, right
 
+    def get_blocks(self) -> List[ObjectRef[Block]]:
+        # Force bulk evaluation of all block partitions futures.
+        list(self._iter_block_partitions())
+        return list(self.iter_blocks())
+
     def iter_blocks_with_metadata(
             self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+        context = DatasetContext.get_current()
         self._check_if_cleared()
         outer = self
 
@@ -87,14 +95,20 @@ class LazyBlockList(BlockList):
 
             def __next__(self):
                 while not self._buffer:
-                    partition = ray.get(next(self._base_iter))
+                    if context.block_splitting_enabled:
+                        part_ref, _ = next(self._base_iter)
+                        partition = ray.get(part_ref)
+                    else:
+                        block, metadata = next(self._base_iter)
+                        partition = [(block, metadata)]
                     for ref, metadata in partition:
                         self._buffer.append((ref, metadata))
                 return self._buffer.pop(0)
 
         return Iter()
 
-    def _iter_block_partitions(self) -> Iterator[ObjectRef[BlockPartition]]:
+    def _iter_block_partitions(self) -> Iterator[Tuple[ObjectRef[
+            MaybeBlockPartition], BlockPartitionMetadata]]:
         self._check_if_cleared()
         outer = self
 
@@ -108,12 +122,13 @@ class LazyBlockList(BlockList):
             def __next__(self):
                 self._pos += 1
                 if self._pos < len(outer._calls):
-                    return outer._get_or_compute(self._pos)
+                    return (outer._get_or_compute(self._pos),
+                            outer._metadata[self._pos])
                 raise StopIteration
 
         return Iter()
 
-    def _get_or_compute(self, i: int) -> ObjectRef[BlockPartition]:
+    def _get_or_compute(self, i: int) -> ObjectRef[MaybeBlockPartition]:
         self._check_if_cleared()
         assert i < len(self._calls), i
         # Check if we need to compute more block_partitions.

@@ -158,14 +158,16 @@ def run(args, parser):
                 "keep_checkpoints_num": args.keep_checkpoints_num,
                 "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
-                "resources_per_trial": (
-                    args.resources_per_trial and
-                    resources_to_json(args.resources_per_trial)),
+                "resources_per_trial": (args.resources_per_trial
+                                        and resources_to_json(
+                                            args.resources_per_trial)),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,
                 "num_samples": args.num_samples,
-                "upload_dir": args.upload_dir,
+                "sync_config": {
+                    "upload_dir": args.upload_dir,
+                }
             }
         }
 

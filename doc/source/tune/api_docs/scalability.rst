@@ -184,8 +184,8 @@ In this experiment, we ran a number of trials on a cluster. Each trial was run o
 varied the number of concurrent trials (and nodes) to see how much network communication affects
 total runtime.
 
-**Main insight**: When running many concurrent trials in a distributed setup, consider using a
-:ref:`ray.tune.durable <tune-durable-trainable>` for checkpoint synchronization instead. Another option would
+**Main insight**: When running many concurrent trials in a distributed setup, consider using
+:ref:`cloud checkpointing <tune-cloud-checkpointing>` for checkpoint synchronization instead. Another option would
 be to use a shared storage and disable syncing to driver. The best practices are described
 :ref:`here for Kubernetes setups <tune-kubernetes>` but is applicable for any kind of setup.
 
