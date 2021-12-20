@@ -451,7 +451,7 @@ Example usage on how to log intermediate results to MLflow and Tensorboard:
     trainer.shutdown()
 
 
-3. Navigate to the :ref:`run dir <train-log-dir> and then visualize the logs.
+3. Navigate to the :ref:`run dir <train-log-dir>` and then visualize the logs.
 
 .. code-block:: bash
 
