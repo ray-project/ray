@@ -249,7 +249,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
-                     unordered_map[c_string, double] &resources)
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
