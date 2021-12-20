@@ -44,21 +44,28 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password,
-                   bool enable_sync_conn = true, bool enable_async_conn = true,
-                   bool enable_subscribe_conn = true)
-      : server_ip_(ip),
-        server_port_(port),
+  GcsClientOptions(const std::string &redis_ip, int redis_port,
+                   const std::string &password, bool enable_sync_conn = true,
+                   bool enable_async_conn = true, bool enable_subscribe_conn = true)
+      : redis_ip_(redis_ip),
+        redis_port_(redis_port),
         password_(password),
         enable_sync_conn_(enable_sync_conn),
         enable_async_conn_(enable_async_conn),
         enable_subscribe_conn_(enable_subscribe_conn) {}
 
+  GcsClientOptions(const std::string &gcs_address, int gcs_port)
+      : gcs_address_(gcs_address), gcs_port_(gcs_port){};
+
   GcsClientOptions() {}
 
-  // GCS server address
-  std::string server_ip_;
-  int server_port_;
+  // Gcs address
+  std::string gcs_address_;
+  int gcs_port_ = 0;
+
+  // redis server address
+  std::string redis_ip_;
+  int redis_port_ = 0;
 
   // Password of GCS server.
   std::string password_;
@@ -83,7 +90,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param get_gcs_server_address_func Function to get GCS server address.
   explicit GcsClient(const GcsClientOptions &options,
                      std::function<bool(std::pair<std::string, int> *)>
-                         get_gcs_server_address_func = {});
+                         get_gcs_server_address_func = nullptr);
 
   virtual ~GcsClient() = default;
 
@@ -231,6 +238,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::pair<std::string, int> current_gcs_server_address_;
   int64_t last_reconnect_timestamp_ms_;
   std::pair<std::string, int> last_reconnect_address_;
+
+  /// Retry interval to reconnect to a GCS server.
+  const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 };
 
 }  // namespace gcs

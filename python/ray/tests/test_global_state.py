@@ -10,7 +10,7 @@ import ray.ray_constants
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, convert_actor_state
 
-from ray._raylet import GlobalStateAccessor
+from ray._raylet import GlobalStateAccessor, GcsClientOptions
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
@@ -156,7 +156,10 @@ def test_load_report(shutdown_only, max_shapes):
             "max_resource_shapes_per_load_report": max_shapes,
         })
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
+
     global_state_accessor.connect()
 
     @ray.remote
@@ -217,7 +220,8 @@ def test_placement_group_load_report(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     global_state_accessor = GlobalStateAccessor(
-        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     class PgLoadChecker:
@@ -286,7 +290,9 @@ def test_backlog_report(shutdown_only):
             "max_pending_lease_requests_per_scheduling_category": 1
         })
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     @ray.remote(num_cpus=1)
@@ -330,7 +336,9 @@ def test_backlog_report(shutdown_only):
 def test_heartbeat_ip(shutdown_only):
     cluster = ray.init(num_cpus=1)
     global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+        GcsClientOptions.from_redis_address(
+            cluster["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     global_state_accessor.connect()
 
     self_ip = ray.util.get_node_ip_address()

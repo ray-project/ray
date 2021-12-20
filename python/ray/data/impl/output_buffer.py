@@ -1,7 +1,7 @@
 from typing import Callable, Any, Optional
 
-from ray.data.block import Block
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.block import Block, BlockAccessor
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 
 class BlockOutputBuffer(object):
@@ -29,10 +29,9 @@ class BlockOutputBuffer(object):
 
     def __init__(self, block_udf: Optional[Callable[[Block], Block]],
                  target_max_block_size: int):
-        from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
         self._target_max_block_size = target_max_block_size
         self._block_udf = block_udf
-        self._buffer = DelegatingArrowBlockBuilder()
+        self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False
         self._finalized = False
 
@@ -64,8 +63,9 @@ class BlockOutputBuffer(object):
         """Returns the next complete output block."""
         assert self.has_next()
         block = self._buffer.build()
-        if self._block_udf and block.num_rows > 0:
+        accessor = BlockAccessor.for_block(block)
+        if self._block_udf and accessor.num_rows() > 0:
             block = self._block_udf(block)
-        self._buffer = DelegatingArrowBlockBuilder()
+        self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = True
         return block
