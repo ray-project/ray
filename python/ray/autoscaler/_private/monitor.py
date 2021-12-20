@@ -34,8 +34,8 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
-from ray._private.gcs_utils import (
-    GcsClient, get_gcs_address_from_redis, use_gcs_for_bootstrap)
+from ray._private.gcs_utils import (GcsClient, get_gcs_address_from_redis,
+                                    use_gcs_for_bootstrap)
 from ray.experimental.internal_kv import _initialize_internal_kv, \
     _internal_kv_put, _internal_kv_initialized, _internal_kv_get, \
     _internal_kv_del
