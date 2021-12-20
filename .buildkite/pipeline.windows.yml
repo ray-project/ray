@@ -1,7 +1,6 @@
 steps:
 - label: "Compile Ray"
   commands:
-    - cd C:\\workdir
     - mkdir ray
     - cd ray
     - git config --global core.symlinks true
