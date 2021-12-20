@@ -9,7 +9,6 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.tf_utils import one_hot as one_hot_tf
-from ray.rllib.utils.torch_utils import one_hot as one_hot_torch
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()

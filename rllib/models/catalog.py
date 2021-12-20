@@ -81,7 +81,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     #   additional Dense layers.
     # - FullyConnectedNetworks will have this additional FCStack as well
     #   (that's why it's empty by default).
-    "post_fcnet_hiddens": [256, 256],
+    "post_fcnet_hiddens": [],
     "post_fcnet_activation": "relu",
 
     # For DiagGaussian action distributions, make the second half of the model

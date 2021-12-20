@@ -48,7 +48,7 @@ DEFAULT_CONFIG = with_common_config({
     # specifying the `custom_model` sub-key in below dict (just like you would
     # do in the top-level `model` dict.
     "Q_model": {
-        "fcnet_hiddens": [256, 256],
+        "fcnet_hiddens": [],
         "fcnet_activation": "relu",
         "post_fcnet_hiddens": [256, 256],
         "post_fcnet_activation": "relu",
@@ -59,7 +59,7 @@ DEFAULT_CONFIG = with_common_config({
     # The difference to `Q_model` above is that no action concat'ing is
     # performed before the post_fcnet stack.
     "policy_model": {
-        "fcnet_hiddens": [256, 256],
+        "fcnet_hiddens": [],
         "fcnet_activation": "relu",
         "post_fcnet_hiddens": [256, 256],
         "post_fcnet_activation": "relu",
