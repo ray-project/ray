@@ -1442,9 +1442,6 @@ class AutoscalingTest(unittest.TestCase):
         assert mock_metrics.worker_create_node_time.observe.call_count == 5
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
-    def testMissingIpDuringScaleDown(self):
-        pass
-
     # Parameterization functionality in the unittest module is not great.
     # To test scale-down behavior, we parameterize the DynamicScaling test
     # manually over outcomes for the DrainNode RPC call.
