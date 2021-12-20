@@ -13,7 +13,6 @@ import urllib
 import urllib.parse
 import yaml
 from socket import socket
-import re
 
 import ray
 import psutil
@@ -478,12 +477,6 @@ def debug(address):
     default=False,
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
-@click.option(
-    "--external-kv-storage-config",
-    required=False,
-    type=str,
-    help="The configured external redis address, using a format like:"
-    "redis:host1:port1,host2:port2")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -495,17 +488,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           system_config, enable_object_reconstruction, metrics_export_port,
-          no_monitor, tracing_startup_hook, ray_debugger_external,
-          external_kv_storage_config, log_style, log_color, verbose):
+          no_monitor, tracing_startup_hook, ray_debugger_external, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
-
-    if external_kv_storage_config and not head:
-        raise ValueError("--external-kv-storage-config can be only assigned"
-                         "when you specify --head.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -583,30 +572,17 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if address is not None or external_kv_storage_config is not None:
+        address_env = os.environ.get("RAY_REDIS_ADDRESS")
+        underlying_address = \
+            address_env if address_env is not None else address
+        if underlying_address is not None:
             cli_logger.print(
-                "Will use value of `{}` as remote Redis server address(es). "
+                "Will use value of environment variable `{}`"
+                "as remote Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.", cf.bold("--external-kv-storage-config"),
+                "with `{}` in local.", cf.bold("RAY_REDIS_ADDRESS"),
                 cf.bold("--port"))
-            external_addresses = []
-            if external_kv_storage_config is not None:
-                re_obj = re.match(r"(redis):(.*)", external_kv_storage_config,
-                                  re.M | re.I)
-                if re_obj is None:
-                    raise ValueError(
-                        "--external-kv-storage-config"
-                        "using a format like: redis:host1:port1,host2:port2")
-                else:
-                    external_addresses = re_obj.group(2).split(",")
-            elif address is not None:
-                cli_logger.warning(
-                    "Using --address on head node is deprecated."
-                    "If you are starting a node to connect to a Ray cluster,"
-                    "please remove the --head option. Otherwise if you want"
-                    "to specify an external Redis address for storage,"
-                    "please use --external-kv-storage-config=redis:...")
-                external_addresses = address.split(",")
+            external_addresses = underlying_address.split(",")
 
             # We reuse primary redis as sharding when there's only one
             # instance provided.
