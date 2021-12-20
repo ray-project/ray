@@ -52,7 +52,7 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(address_info):
-    addr = address_info["bootstrap_address"]
+    addr = address_info["address"]
     if not gcs_utils.use_gcs_for_bootstrap():
         gcs_options = GcsClientOptions.from_redis_address(
             addr, ray.ray_constants.REDIS_DEFAULT_PASSWORD)

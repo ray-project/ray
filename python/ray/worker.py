@@ -1389,7 +1389,7 @@ def connect(node,
         worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
         ray.state.state._initialize_global_state(
             ray._raylet.GcsClientOptions.from_gcs_address(
-                node.get_gcs_address()))
+                node.gcs_address))
 
     _initialize_internal_kv(worker.gcs_client)
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
@@ -1477,7 +1477,7 @@ def connect(node,
             enable_subscribe_conn=True)
     else:
         gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
-            node.get_gcs_address())
+            node.gcs_address)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 

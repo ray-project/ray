@@ -1158,7 +1158,6 @@ def test_kill_pending_actor_with_no_restart_true():
 
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
-
     global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)

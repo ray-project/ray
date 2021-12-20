@@ -457,7 +457,7 @@ def wait_for_node(redis_address,
 
 
 def get_node_to_connect_for_driver(redis_address,
-                                   gcs_server_address,
+                                   gcs_address,
                                    node_ip_address,
                                    redis_password=None):
     # Get node table from global state accessor.

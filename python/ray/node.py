@@ -21,6 +21,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 from ray._private.resource_spec import ResourceSpec
 from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
                                     get_gcs_address_from_redis)
@@ -475,6 +476,8 @@ class Node:
             "bootstrap_address": (self.gcs_address if use_gcs_for_bootstrap()
                                   else self._redis_address),
             "gcs_address": self.gcs_address,
+            "address": (self.gcs_address if use_gcs_for_bootstrap() \
+                        else self._redis_address)
         }
 
         return info
@@ -493,7 +496,7 @@ class Node:
             for i in range(num_retries):
                 try:
                     self._gcs_client = GcsClient(
-                        address=self.get_gcs_address())
+                        address=self.gcs_address)
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -983,7 +986,7 @@ class Node:
                     self.redis_address, self.redis_password)
             else:
                 gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
-                    self.get_gcs_address())
+                    self.gcs_address)
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()
