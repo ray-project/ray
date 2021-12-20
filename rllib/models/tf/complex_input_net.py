@@ -266,7 +266,7 @@ class ComplexInputNetwork(TFModelV2):
                 one_hot_out, _ = one_hot[i](SampleBatch(one_hot_in))
                 outs.append(one_hot_out)
             else:
-                input_dim = component.obs_space.shape[0]
+                input_dim = flatten[i].obs_space.shape[0]
                 nn_out, _ = flatten[i](SampleBatch({
                     SampleBatch.OBS: tf.cast(
                         tf.reshape(component, [-1, input_dim]), tf.float32)

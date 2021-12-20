@@ -1,7 +1,7 @@
 from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Tuple
+from typing import Dict, Tuple
 
 # TODO (sven): add IMPALA-style option.
 # from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
@@ -16,6 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.torch_utils import one_hot as one_hot_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -248,21 +249,32 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
         return one_hot, cnns, flatten, concat_size, post_fc_stack
 
-    def _forward(self, one_hot, cnns, flatten, post_fc_stack):
-        """Runs a forward pass through a given stack.
+    def _forward(self,
+                 one_hot: Dict[int, ModelV2],
+                 cnns: Dict[int, ModelV2],
+                 flatten: Dict[int, ModelV2],
+                 post_fc_stack: ModelV2) -> TensorType:
+        """Runs a forward pass through a given stack using `self.orig_obs`.
 
-        Stack is defined by one-hot, CNN, and flatten components, as well as
-        the post fully-connected (FC) stack.
+        Stack is defined by one-hot, CNN, and flatten sub-components,
+        processing the different input components, as well as
+        the post-concatenation fully-connected (FC) stack.
 
         Args:
-            one_hot:
-            cnns:
-            flatten:
-            post_fc_stack:
+            one_hot: Dict mapping the input component index to a FCNet, which
+                processes already one-hot'd int inputs.
+            cnns: Dict mapping the input component index to a VisionNet,
+                which processes image inputs.
+            flatten: Dict mapping the input component index to a FCNet, which
+                processes already flattened Box (non-images) inputs.
+            post_fc_stack: FCNet processing the concatenated outputs of all
+                the sub-components' processing networks.
 
         Returns:
-
+            The output tensor (w/o empty state outputs) of the
+            given post_fc_stack.
         """
+
         # Push observations through the different components
         # (CNNs, one-hot + FC, etc..).
         outs = []
@@ -271,7 +283,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 cnn_out, _ = cnns[i](SampleBatch({SampleBatch.OBS: component}))
                 outs.append(cnn_out)
             elif i in one_hot:
-                if component.dtype in [torch.int32, torch.int64, torch.uint8]:
+                if "int" in str(component.dtype):
                     one_hot_in = {
                         SampleBatch.OBS: one_hot_torch(
                             component, self.flattened_input_space[i])
@@ -281,7 +293,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 one_hot_out, _ = one_hot[i](SampleBatch(one_hot_in))
                 outs.append(one_hot_out)
             else:
-                input_dim = component.obs_space.shape[0]
+                input_dim = flatten[i].obs_space.shape[0]
                 nn_out, _ = flatten[i](SampleBatch({
                     SampleBatch.OBS: torch.reshape(component, [-1, input_dim])
                 }))
