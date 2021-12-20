@@ -19,7 +19,7 @@ namespace gcs {
 
 void GcsPingManager::HandlePing(const rpc::PingRequest &request, rpc::PingReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "GcsPingManager::HandlePing called";
+  RAY_LOG(DEBUG) << "GcsPingManager HandlePing";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

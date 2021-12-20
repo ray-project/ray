@@ -208,10 +208,17 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// service failure is detected.
   ///
   /// \param type The type of GCS service failure.
+  /// \param callback The callback function called after reconnected to gcs successfully.
+  /// \return Returns true if the reconnect request is accepted, false if the client is
+  // in reconnecting process and the reconnect request is rejected.
   bool GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
-                                 const std::function<void()> callback);
+                                 const std::function<void()> callback = nullptr);
 
   /// Reconnect to GCS RPC server asynchronously.
+  ///
+  /// \param callback The callback function called after reconnected to gcs successfully.
+  /// \return Returns true if the reconnect request is accepted, false if the client is
+  // in reconnecting process and the reconnect request is rejected.
   bool ReconnectGcsServerAsync(const std::function<void()> callback);
 
   ///
@@ -245,11 +252,15 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 
   // A flag to indicate whether reconnecting to gcs is in progress or not.
+  // If false, reconnecting will be triggerd. If true, the current reconnect
+  // request should be ignored.
   std::atomic<bool> reconnect_in_progress_ = false;
 
+  // Protect the `callbacks_` list.
   mutable absl::Mutex reconnect_callbacks_mutex_;
+  // Stash the reconnecting request callback functions, erased and called after
+  // reconnecting successfully.
   std::list<std::function<void()>> callbacks_ GUARDED_BY(reconnect_callbacks_mutex_);
-  ;
 };
 
 }  // namespace gcs

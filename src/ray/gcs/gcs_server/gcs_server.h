@@ -134,7 +134,7 @@ class GcsServer {
   /// Initialize resource report broadcasting.
   void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
 
-  ///
+  /// Init Ping manager
   void InitPingManager();
 
   /// Install event listeners.

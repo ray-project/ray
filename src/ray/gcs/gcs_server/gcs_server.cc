@@ -503,7 +503,6 @@ void GcsServer::InitGcsWorkerManager() {
 void GcsServer::InitPingManager() {
   gcs_ping_manager_ = std::make_unique<GcsPingManager>();
 
-  // Register service.
   ping_service_ =
       std::make_unique<rpc::PingGrpcService>(main_service_, *gcs_ping_manager_);
   rpc_server_.RegisterService(*ping_service_);
