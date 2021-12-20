@@ -773,7 +773,7 @@ class Node:
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
-            self.get_gcs_address(),
+            self.gcs_address,
             self._logs_dir,
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
