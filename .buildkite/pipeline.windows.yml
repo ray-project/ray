@@ -1,0 +1,5 @@
+- label: "Compile Ray"
+  commands:
+    - certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
+    - . ./ci/travis/ci.sh init
+    - . ./ci/travis/ci.sh build
