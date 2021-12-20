@@ -84,7 +84,6 @@ class Executor {
   void METHOD(const METHOD##Request &request,                                          \
               const ClientCallback<METHOD##Reply> &callback,                           \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                    \
-    RAY_LOG(INFO) << "METHOD: " << #METHOD;                                            \
     auto executor = new Executor(this);                                                \
     auto operation_callback = [this, request, callback, executor](                     \
                                   const ray::Status &status,                           \

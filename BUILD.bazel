@@ -2498,7 +2498,7 @@ genrule(
     name = "ray_pkg",
     srcs = [
         ":cp_raylet_so",
-        ":cp_streaming",
+        # ":cp_streaming",
         ":python_sources",
         ":install_py_proto",
         ":cp_redis",

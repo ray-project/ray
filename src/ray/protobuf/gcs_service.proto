@@ -658,14 +658,13 @@ service NodeInfoGcsService {
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
-message PingRequest {
-}
+message PingRequest {}
 
 message PingReply {
   GcsStatus status = 1;
 }
 
-// Service for 
+// Service for checking gcs server alive.
 service PingGcsService {
   rpc Ping(PingRequest) returns (PingReply);
 }
