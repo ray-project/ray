@@ -214,7 +214,7 @@ ray.shutdown()
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s, {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s, {finished}"
 
     assert running["StartTime"] > 0
     assert running["EndTime"] == 0
@@ -233,7 +233,7 @@ ray.shutdown()
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
     assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s {finished}"
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
 
