@@ -142,7 +142,7 @@ class MLflowLoggerUtil:
 
     def start_run(self, tags: Optional[Dict] = None,
                   set_active: bool = False) -> "Run":
-        """Starts a new run.
+        """Starts a new run if there is no run already active.
 
         Args:
             tags (Optional[Dict]): Tags to set for the new run.
@@ -152,8 +152,13 @@ class MLflowLoggerUtil:
         Returns:
             The newly created MLflow run.
         """
+        active_run = self._mlflow.active_run()
+        if active_run:
+            return active_run
+
         client = self._get_client()
         run = client.create_run(experiment_id=self.experiment_id, tags=tags)
+
         if set_active:
             self._mlflow.start_run(run_id=run.info.run_id)
         return run
