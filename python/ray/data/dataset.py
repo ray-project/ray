@@ -1948,9 +1948,10 @@ class Dataset(Generic[T]):
           key.
 
         If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,). ``label_column``
-        can also be specifed as None for prediction (note that it will be
-        still present in the tuple yielded by the generator).
+        of shape (N, 1). Otherwise, it will be of shape (N,). 
+        If ``label_column`` is specified as ``None``, then no column from the 
+        ``Dataset`` will be treated as the label, and the output label tensor 
+        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -2002,6 +2003,7 @@ Dict[str, List[str]]]): The names of the columns
                                            isinstance(feature_columns[0],
                                                       (list, tuple)))
 
+       # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
             feature_columns = None
 
@@ -2020,7 +2022,7 @@ Dict[str, List[str]]]): The names of the columns
             elif isinstance(feature_columns[0], (list, tuple)):
                 if not isinstance(feature_column_dtypes, (list, tuple)):
                     raise TypeError(
-                        "If `feature_columns` is a dict, "
+                        "If `feature_columns` is a list of lists, "
                         "`feature_column_dtypes` must be None, `torch.dtype`,"
                         f" or a sequence, got {type(feature_column_dtypes)}.")
                 if len(feature_columns) != len(feature_column_dtypes):
