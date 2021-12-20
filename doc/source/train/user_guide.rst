@@ -317,7 +317,7 @@ Log directories are exposed through the following attributes:
 
 Logs will be written by:
 
-1. :ref:`Logging Callbacks <train-logging-callbacks>`
+1. :ref:`Callbacks <train-callbacks>`
 2. :ref:`Checkpoints <train-checkpointing>`
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
@@ -326,6 +326,11 @@ Logs will be written by:
 
 Logging, Monitoring, and Callbacks
 ----------------------------------
+
+Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
+and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, printing, etc.).
+You can use either the :ref:`built-in callbacks <train-builtin-callbacks>` that Ray Train provides,
+or implement a :ref:`custom callback <train-custom-callbacks>` for your use case.
 
 Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -433,6 +438,7 @@ Example usage on how to log intermediate results to MLflow and Tensorboard
 
     trainer.shutdown()
 
+.. _train-custom-callbacks:
 
 Custom Callbacks
 ++++++++++++++++
