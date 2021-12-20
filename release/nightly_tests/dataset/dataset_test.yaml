@@ -1,4 +1,5 @@
 - name: inference
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -13,6 +14,7 @@
     script: python inference.py
   
 - name: shuffle_data_loader
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -26,6 +28,7 @@
     script: python dataset_shuffle_data_loader.py
 
 - name: pipelined_training_50_gb
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -40,6 +43,7 @@
     script: python pipelined_training.py --epochs 1
 
 - name: pipelined_ingestion_1500_gb_15_windows
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -54,6 +58,7 @@
     script: python pipelined_training.py --epochs 2 --num-windows 15  --num-files 915 --debug
 
 - name: datasets_ingest_train_infer
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -80,6 +85,7 @@
       script: python ray_sgd_training.py --address auto --use-s3 --num-workers 8 --use-gpu
 
 - name: datasets_preprocess_ingest
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -96,6 +102,7 @@
   stable: false
 
 - name: datasets_ingest_400G
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"

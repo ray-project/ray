@@ -1,4 +1,5 @@
 - name: dask_xgboost_test
+  team: ml
   owner:
     mail: "antoni@anyscale.com"
     slack: "@team_ml"
@@ -20,6 +21,7 @@
       ]
 
 - name: modin_xgboost_test
+  team: ml
   owner:
     mail: "antoni@anyscale.com"
     slack: "@team_ml"
@@ -41,6 +43,7 @@
       ]
 
 - name: torch_tune_serve_test
+  team: ml
   owner:
     mail: "matt@anyscale.com"
     slack: "@team_ml"

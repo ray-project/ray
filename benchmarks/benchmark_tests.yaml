@@ -1,4 +1,5 @@
 - name: single_node
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -13,6 +14,7 @@
     script: python single_node/test_single_node.py
 
 - name: object_store
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -27,6 +29,7 @@
     script: python object_store/test_object_store.py
 
 - name: many_actors
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -41,6 +44,7 @@
     script: python distributed/test_many_actors.py
 
 - name: many_actors_smoke_test
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -55,6 +59,7 @@
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
 
 - name: many_tasks
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -69,6 +74,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
 
 - name: many_tasks_smoke_test
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -83,6 +89,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=100
 
 - name: many_pgs
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -97,6 +104,7 @@
     script: python distributed/test_many_pgs.py
 
 - name: many_pgs_smoke_test
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -112,6 +120,7 @@
 
 # NOTE: No smoke test since this shares a script with the many_tasks_smoke_test
 - name: many_nodes
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Alex Wu"
@@ -126,6 +135,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
 
 - name: many_tasks_redis_ha
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Yi Cheng"
@@ -146,6 +156,7 @@
   stable: false
 
 - name: many_actors_redis_ha
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Yi Cheng"
@@ -166,6 +177,7 @@
   stable: false
 
 - name: many_nodes_redis_ha
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Yi Cheng"
@@ -186,6 +198,7 @@
   stable: false
 
 - name: many_pgs_redis_ha
+  team: core
   owner:
     mail: "core@anyscale.com"
     slack: "@Yi Cheng"
