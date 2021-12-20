@@ -299,13 +299,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      runtime_env_manager_(
-          /*deleter=*/[this](const std::string &uri, std::function<void(bool)> cb) {
-            if (RayConfig::instance().runtime_env_skip_local_gc()) {
-              return cb(true);
-            }
-            return agent_manager_->DeleteURIs({uri}, cb);
-          }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -554,11 +547,6 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
                 << job_data.driver_pid() << " is dead: " << job_data.is_dead()
                 << " driver address: " << job_data.driver_ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
-  // increment the ref count multiple times. This is fine because
-  // `HandleJobFinisehd` will also decrement the ref count multiple times.
-  runtime_env_manager_.AddURIReference(job_id.Hex(),
-                                       job_data.config().runtime_env_info());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -569,7 +557,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
-  runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
 void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data) {
@@ -1271,10 +1258,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
-      if (worker->IsDetachedActor()) {
-        runtime_env_manager_.RemoveURIReference(actor_id.Hex());
-      }
-
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
@@ -1952,8 +1935,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                         task.GetTaskSpecification().RuntimeEnvInfo());
   }
 }
 
@@ -2170,9 +2151,9 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
     return;
   }
-  local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
   // Wait for the object to be freed by the owner, which keeps the ref count.
-  local_object_manager_.WaitForObjectFree(owner_address, object_ids);
+  local_object_manager_.PinObjectsAndWaitForFree(object_ids, std::move(results),
+                                                 owner_address);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2467,7 +2448,7 @@ void NodeManager::RecordMetrics() {
 
   cluster_task_manager_->RecordMetrics();
   object_manager_.RecordMetrics();
-  local_object_manager_.RecordObjectSpillingStats();
+  local_object_manager_.RecordMetrics();
 
   uint64_t current_time = current_time_ms();
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;

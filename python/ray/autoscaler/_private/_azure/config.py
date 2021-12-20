@@ -2,9 +2,10 @@ import json
 import logging
 from pathlib import Path
 import random
+from typing import Any, Callable
 
-from azure.common.client_factory import get_client_from_cli_profile
-from azure.common.credentials import get_azure_cli_credentials
+from azure.common.credentials import get_cli_profile
+from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
@@ -17,31 +18,39 @@ VNET_NAME = "ray-vnet"
 logger = logging.getLogger(__name__)
 
 
+def get_azure_sdk_function(client: Any, function_name: str) -> Callable:
+    """Retrieve a callable function from Azure SDK client object.
+
+       Newer versions of the various client SDKs renamed function names to
+       have a begin_ prefix. This function supports both the old and new
+       versions of the SDK by first trying the old name and falling back to
+       the prefixed new name.
+    """
+    func = getattr(client, function_name,
+                   getattr(client, f"begin_{function_name}"))
+    if func is None:
+        raise AttributeError(
+            "'{obj}' object has no {func} or begin_{func} attribute".format(
+                obj={client.__name__}, func=function_name))
+    return func
+
+
 def bootstrap_azure(config):
     config = _configure_key_pair(config)
     config = _configure_resource_group(config)
     return config
 
 
-def _get_client(client_class, config):
-    kwargs = {}
-    if "subscription_id" in config["provider"]:
-        kwargs["subscription_id"] = config["provider"]["subscription_id"]
-
-    return get_client_from_cli_profile(client_class=client_class, **kwargs)
-
-
 def _configure_resource_group(config):
     # TODO: look at availability sets
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
-    resource_client = _get_client(ResourceManagementClient, config)
-
-    _, cli_subscription_id = get_azure_cli_credentials(
-        resource=ResourceManagementClient)
-    subscription_id = config["provider"].get("subscription_id",
-                                             cli_subscription_id)
-    logger.info("Using subscription id: %s", subscription_id)
+    subscription_id = config["provider"].get("subscription_id")
+    if subscription_id is None:
+        subscription_id = get_cli_profile().get_subscription_id()
+    resource_client = ResourceManagementClient(AzureCliCredential(),
+                                               subscription_id)
     config["provider"]["subscription_id"] = subscription_id
+    logger.info("Using subscription id: %s", subscription_id)
 
     assert "resource_group" in config["provider"], (
         "Provider config must include resource_group field")
@@ -80,10 +89,8 @@ def _configure_resource_group(config):
         }
     }
 
-    if hasattr(resource_client.deployments, "create_or_update"):
-        create_or_update = resource_client.deployments.create_or_update
-    else:
-        create_or_update = resource_client.deployments.begin_create_or_update
+    create_or_update = get_azure_sdk_function(
+        client=resource_client.deployments, function_name="create_or_update")
     create_or_update(
         resource_group_name=resource_group,
         deployment_name="ray-config",

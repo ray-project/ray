@@ -1006,7 +1006,8 @@ class TFPolicy(Policy):
                 builder.add_feed_dict(
                     dict(zip(self._state_inputs, state_batches)))
 
-            if "state_in_0" in input_dict:
+            if "state_in_0" in input_dict and \
+                    SampleBatch.SEQ_LENS not in input_dict:
                 builder.add_feed_dict({
                     self._seq_lens: np.ones(len(input_dict["state_in_0"]))
                 })

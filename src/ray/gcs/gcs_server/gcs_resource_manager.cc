@@ -85,7 +85,7 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
                     start](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
-      ray::stats::STATS_new_resource_creation_latency_ms.Record(
+      ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;

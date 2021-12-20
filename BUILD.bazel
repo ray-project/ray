@@ -1384,6 +1384,22 @@ cc_test(
 )
 
 cc_test(
+    name = "pubsub_integration_test",
+    timeout = "short",
+    srcs = ["src/ray/pubsub/test/integration_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":pubsub_cc_grpc",
+        ":pubsub_lib",
+        "//src/ray/protobuf:pubsub_cc_proto",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "publisher_test",
     size = "small",
     srcs = ["src/ray/pubsub/test/publisher_test.cc"],

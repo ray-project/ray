@@ -8,6 +8,8 @@ from aioredis.pubsub import Receiver
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsAioResourceUsageSubscriber
 import ray._private.services
 import ray._private.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
@@ -129,23 +131,41 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        # TODO: redis-removal pubsub
         aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
 
-        reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-        await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-        logger.info(f"Subscribed to {reporter_key}")
+        if gcs_pubsub_enabled():
+            gcs_addr = await aioredis_client.get("GcsServerAddress")
+            subscriber = GcsAioResourceUsageSubscriber(
+                address=gcs_addr.decode())
+            await subscriber.subscribe()
 
-        async for sender, msg in receiver.iter():
-            try:
-                # The key is b'RAY_REPORTER:{node id hex}',
-                # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
-                key, data = msg
-                data = json.loads(ray._private.utils.decode(data))
-                key = key.decode("utf-8")
-                node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = data
-            except Exception:
-                logger.exception(
-                    "Error receiving node physical stats from reporter agent.")
+            while True:
+                try:
+                    # The key is b'RAY_REPORTER:{node id hex}',
+                    # e.g. b'RAY_REPORTER:2b4fbd...'
+                    key, data = await subscriber.poll()
+                    if key is None:
+                        continue
+                    data = json.loads(data)
+                    node_id = key.split(":")[-1]
+                    DataSource.node_physical_stats[node_id] = data
+                except Exception:
+                    logger.exception("Error receiving node physical stats "
+                                     "from reporter agent.")
+
+        else:
+            receiver = Receiver()
+            reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
+            await aioredis_client.psubscribe(receiver.pattern(reporter_key))
+            logger.info(f"Subscribed to {reporter_key}")
+
+            async for sender, msg in receiver.iter():
+                try:
+                    key, data = msg
+                    data = json.loads(ray._private.utils.decode(data))
+                    key = key.decode("utf-8")
+                    node_id = key.split(":")[-1]
+                    DataSource.node_physical_stats[node_id] = data
+                except Exception:
+                    logger.exception("Error receiving node physical stats "
+                                     "from reporter agent.")
