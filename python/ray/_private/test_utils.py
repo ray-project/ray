@@ -957,7 +957,8 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 def get_and_run_node_killer(node_kill_interval_s,
                             namespace=None,
                             lifetime=None,
-                            no_start=False):
+                            no_start=False,
+                            max_nodes_to_kill=2):
     assert ray.is_initialized(), (
         "The API is only available when Ray is initialized.")
 
@@ -1058,7 +1059,9 @@ def get_and_run_node_killer(node_kill_interval_s,
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime).remote(
-            head_node_id, node_kill_interval_s=node_kill_interval_s)
+            head_node_id,
+            node_kill_interval_s=node_kill_interval_s,
+            max_nodes_to_kill=max_nodes_to_kill)
     print("Waiting for node killer actor to be ready...")
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
@@ -1073,3 +1076,46 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+def check_local_files_gced(cluster):
+    for node in cluster.list_all_nodes():
+        for subdir in [
+                "conda", "pip", "working_dir_files", "py_modules_files"
+        ]:
+            all_files = os.listdir(
+                os.path.join(node.get_runtime_env_dir_path(), subdir))
+            # Check that there are no files remaining except for .lock files
+            # and generated requirements.txt files.
+            # TODO(architkulkarni): these files should get cleaned up too!
+            if len(
+                    list(
+                        filter(lambda f: not f.endswith((".lock", ".txt")),
+                               all_files))) > 0:
+                print(str(all_files))
+                return False
+
+    return True
+
+
+def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
+    if pip_list is None:
+        pip_list = ["pip-install-test==0.5"]
+    if field == "conda":
+        conda_dict = {"dependencies": ["pip", {"pip": pip_list}]}
+        if spec_format == "file":
+            conda_file = tmp_path / f"environment-{hash(str(pip_list))}.yml"
+            conda_file.write_text(yaml.dump(conda_dict))
+            conda = str(conda_file)
+        elif spec_format == "python_object":
+            conda = conda_dict
+        runtime_env = {"conda": conda}
+    elif field == "pip":
+        if spec_format == "file":
+            pip_file = tmp_path / f"requirements-{hash(str(pip_list))}.txt"
+            pip_file.write_text("\n".join(pip_list))
+            pip = str(pip_file)
+        elif spec_format == "python_object":
+            pip = pip_list
+        runtime_env = {"pip": pip}
+    return runtime_env

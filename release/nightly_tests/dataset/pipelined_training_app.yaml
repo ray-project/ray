@@ -6,9 +6,7 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y numpy ray || true
-  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
-  - pip install numpy || true
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip install -U git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
   - pip install ray[default]

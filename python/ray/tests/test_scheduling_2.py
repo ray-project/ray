@@ -6,8 +6,10 @@ import time
 
 import ray
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
-    DefaultSchedulingStrategy,
+    DEFAULT_SCHEDULING_STRATEGY,
+    SPREAD_SCHEDULING_STRATEGY,
     PlacementGroupSchedulingStrategy,
 )
 
@@ -81,7 +83,7 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
 
-        @ray.remote(scheduling_strategy="DEFAULT")
+        @ray.remote(scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
         def get_node_id_1():
             return ray.worker.global_worker.current_node_id
 
@@ -105,20 +107,11 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         assert ray.get(
             get_node_id_2.options(
-                scheduling_strategy="DEFAULT").remote()) == head_node_id
-        assert ray.get(
-            get_node_id_2.options(
-                scheduling_strategy=DefaultSchedulingStrategy())
+                scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
             .remote()) == head_node_id
 
-        @ray.remote(scheduling_strategy=DefaultSchedulingStrategy())
-        def get_node_id_3():
-            return ray.worker.global_worker.current_node_id
-
-        assert ray.get(get_node_id_3.remote()) == head_node_id
-
         @ray.remote
-        def get_node_id_4():
+        def get_node_id_3():
             return ray.worker.global_worker.current_node_id
 
         @ray.remote(
@@ -130,10 +123,11 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
                 return [
                     ray.worker.global_worker.current_node_id,
                     # Use parent's placement group
-                    ray.get(get_node_id_4.remote()),
+                    ray.get(get_node_id_3.remote()),
                     ray.get(
-                        get_node_id_4.options(
-                            scheduling_strategy="DEFAULT").remote())
+                        get_node_id_3.options(
+                            scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
+                        .remote())
                 ]
 
         actor1 = Actor1.remote()
@@ -161,7 +155,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster,
 
     with connect_to_client_or_not(connect_to_client):
 
-        @ray.remote(scheduling_strategy="DEFAULT")
+        @ray.remote(scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY)
         def get_node_id_1():
             return ray.worker.global_worker.current_node_id
 
@@ -233,6 +227,86 @@ def test_placement_group_scheduling_strategy(ray_start_cluster,
         func.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=None)).remote()
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
+    cluster = ray_start_cluster
+    # Create a head node
+    cluster.add_node(
+        num_cpus=0, _system_config={
+            "scheduler_spread_threshold": 1,
+        })
+    for i in range(2):
+        cluster.add_node(num_cpus=8, resources={f"foo:{i}": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    with connect_to_client_or_not(connect_to_client):
+
+        @ray.remote
+        def get_node_id():
+            return ray.worker.global_worker.current_node_id
+
+        worker_node_ids = {
+            ray.get(get_node_id.options(resources={
+                f"foo:{i}": 1
+            }).remote())
+            for i in range(2)
+        }
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+
+        @ray.remote(scheduling_strategy=SPREAD_SCHEDULING_STRATEGY)
+        def task1():
+            internal_kv._internal_kv_put("test_task1", "task1")
+            while internal_kv._internal_kv_exists("test_task1"):
+                time.sleep(0.1)
+            return ray.worker.global_worker.current_node_id
+
+        @ray.remote
+        def task2():
+            internal_kv._internal_kv_put("test_task2", "task2")
+            return ray.worker.global_worker.current_node_id
+
+        locations = []
+        locations.append(task1.remote())
+        while not internal_kv._internal_kv_exists("test_task1"):
+            time.sleep(0.1)
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+        locations.append(
+            task2.options(
+                scheduling_strategy=SPREAD_SCHEDULING_STRATEGY).remote())
+        while not internal_kv._internal_kv_exists("test_task2"):
+            time.sleep(0.1)
+        internal_kv._internal_kv_del("test_task1")
+        internal_kv._internal_kv_del("test_task2")
+        assert set(ray.get(locations)) == worker_node_ids
+
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+
+        @ray.remote(scheduling_strategy=SPREAD_SCHEDULING_STRATEGY, num_cpus=1)
+        class Actor1():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        @ray.remote(num_cpus=1)
+        class Actor2():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        locations = []
+        actor1 = Actor1.remote()
+        locations.append(ray.get(actor1.get_node_id.remote()))
+        # Wait for updating driver raylet's resource view.
+        time.sleep(5)
+        actor2 = Actor2.options(
+            scheduling_strategy=SPREAD_SCHEDULING_STRATEGY).remote()
+        locations.append(ray.get(actor2.get_node_id.remote()))
+        assert set(locations) == worker_node_ids
 
 
 if __name__ == "__main__":

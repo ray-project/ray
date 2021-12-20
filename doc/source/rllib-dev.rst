@@ -11,11 +11,17 @@ You can develop RLlib locally without needing to compile Ray by using the `setup
 API Stability
 -------------
 
-Objects and methods annotated with ``@PublicAPI`` or ``@DeveloperAPI`` have the following API compatibility guarantees:
+Objects and methods annotated with ``@PublicAPI``, ``@DeveloperAPI``, or ``@ExperimentalAPI``
+have the following API compatibility guarantees:
 
 .. autofunction:: ray.rllib.utils.annotations.PublicAPI
+    :noindex:
 
 .. autofunction:: ray.rllib.utils.annotations.DeveloperAPI
+    :noindex:
+
+.. autofunction:: ray.rllib.utils.annotations.ExperimentalAPI
+    :noindex:
 
 Features
 --------

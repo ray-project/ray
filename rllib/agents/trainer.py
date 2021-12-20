@@ -321,6 +321,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The Trainer guarantees all eval workers have the latest policy state
     # before this function is called.
     "custom_eval_function": None,
+    # Make sure the latest available evaluation results are always attached to
+    # a step result dict.
+    # This may be useful if Tune or some other meta controller needs access
+    # to evaluation metrics all the time.
+    "always_attach_evaluation_results": False,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -364,7 +369,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
-    "metrics_smoothing_episodes": 100,
+    "metrics_num_episodes_for_smoothing": 100,
     # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
@@ -425,7 +430,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     #    "s3://bucket/2.json"]).
     #  - A dict with string keys and sampling probabilities as values (e.g.,
     #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - A callable that returns a ray.rllib.offline.InputReader.
+    #  - A callable that takes an `IOContext` object as only arg and returns a
+    #    ray.rllib.offline.InputReader.
     #  - A string key that indexes a callable with tune.registry.register_input
     "input": "sampler",
     # Arguments accessible from the IOContext for configuring custom input
@@ -517,6 +523,14 @@ COMMON_CONFIG: TrainerConfigDict = {
     # observations will arrive in model as they are returned by the env.
     # In the future, the default for this will be True.
     "_disable_preprocessor_api": False,
+    # Experimental flag.
+    # If True, RLlib will no longer flatten the policy-computed actions into
+    # a single tensor (for storage in SampleCollectors/output files/etc..),
+    # but leave (possibly nested) actions as-is. Disabling flattening affects:
+    # - SampleCollectors: Have to store possibly nested action structs.
+    # - Models that have the previous action(s) as part of their input.
+    # - Algorithms reading from offline files (incl. action information).
+    "_disable_action_flattening": False,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
@@ -530,6 +544,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
+    # Use `metrics_num_episodes_for_smoothing` instead.
+    "metrics_smoothing_episodes": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -975,7 +991,6 @@ class Trainer(Trainable):
             # No parallelism.
             if not self.config["evaluation_parallel_to_training"]:
                 step_results = next(self.train_exec_impl)
-
             # Kick off evaluation-loop (and parallel train() call,
             # if requested).
             # Parallel eval + training.
@@ -986,24 +1001,25 @@ class Trainer(Trainable):
                     # Automatically determine duration of the evaluation.
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
-
-                        evaluation_metrics = self.evaluate(
+                        self.evaluate(
                             duration_fn=functools.partial(
                                 auto_duration_fn, unit, self.config[
                                     "evaluation_num_workers"], self.config[
                                         "evaluation_config"]))
                     else:
-                        evaluation_metrics = self.evaluate()
+                        self.evaluate()
                     # Collect the training results from the future.
                     step_results = train_future.result()
             # Sequential: train (already done above), then eval.
             else:
-                evaluation_metrics = self.evaluate()
+                self.evaluate()
 
-            # Add evaluation results to train results.
-            assert isinstance(evaluation_metrics, dict), \
+        if (evaluate_this_iter
+                or self.config["always_attach_evaluation_results"]):
+            # Attach latest available evaluation results to train results.
+            assert isinstance(self.evaluation_metrics, dict), \
                 "Trainer.evaluate() needs to return a dict."
-            step_results.update(evaluation_metrics)
+            step_results.update(self.evaluation_metrics)
 
         # Check `env_task_fn` for possible update of the env's task.
         if self.config["env_task_fn"] is not None:
@@ -1165,9 +1181,13 @@ class Trainer(Trainable):
                     self.evaluation_workers.remote_workers())
             metrics["timesteps_this_iter"] = num_ts_run
 
-        self.evaluation_metrics = metrics
+        # Evaluation does not run for every step.
+        # Save evaluation metrics on trainer, so it can be attached to
+        # subsequent step results as latest evaluation result.
+        self.evaluation_metrics = {"evaluation": metrics}
 
-        return {"evaluation": metrics}
+        # Also return the results here for convenience.
+        return self.evaluation_metrics
 
     @DeveloperAPI
     @staticmethod
@@ -1692,7 +1712,7 @@ class Trainer(Trainable):
         """
         return self.optimizer.collect_metrics(
             self.config["collect_metrics_timeout"],
-            min_history=self.config["metrics_smoothing_episodes"],
+            min_history=self.config["metrics_num_episodes_for_smoothing"],
             selected_workers=selected_workers)
 
     @override(Trainable)
@@ -2086,6 +2106,16 @@ class Trainer(Trainable):
             raise ValueError(
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
+
+        # Metrics settings.
+        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="metrics_smoothing_episodes",
+                new="metrics_num_episodes_for_smoothing",
+                error=False,
+            )
+            config["metrics_num_episodes_for_smoothing"] = \
+                config["metrics_smoothing_episodes"]
 
         # Evaluation settings.
 

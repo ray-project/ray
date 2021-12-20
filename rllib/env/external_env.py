@@ -337,11 +337,11 @@ class ExternalEnvWrapper(BaseEnv):
         self.external_env = external_env
         self.prep = preprocessor
         self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
-        self.action_space = external_env.action_space
+        self._action_space = external_env.action_space
         if preprocessor:
-            self.observation_space = preprocessor.observation_space
+            self._observation_space = preprocessor.observation_space
         else:
-            self.observation_space = external_env.observation_space
+            self._observation_space = external_env.observation_space
         external_env.start()
 
     @override(BaseEnv)
@@ -413,3 +413,15 @@ class ExternalEnvWrapper(BaseEnv):
                 with_dummy_agent_id(all_dones, "__all__"), \
                 with_dummy_agent_id(all_infos), \
                 with_dummy_agent_id(off_policy_actions)
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space(self) -> gym.spaces.Dict:
+        return self._observation_space
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space(self) -> gym.Space:
+        return self._action_space

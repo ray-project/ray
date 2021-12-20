@@ -48,6 +48,8 @@ struct GcsServerConfig {
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
   std::string log_dir;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
@@ -84,6 +86,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
@@ -109,9 +114,6 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
-
-  /// Initialize task info handler.
-  void InitTaskInfoHandler();
 
   /// Initialize stats handler.
   void InitStatsHandler();
@@ -142,14 +144,14 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
-  void CollectStats();
-
   /// Print debug info periodically.
   std::string GetDebugState() const;
 
   /// Dump the debug info to debug_state_gcs.txt.
   void DumpDebugStateToFile() const;
+
+  /// Collect stats from each module.
+  void RecordMetrics() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -192,9 +194,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Task info handler and service.
-  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
-  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
