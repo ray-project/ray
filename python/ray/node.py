@@ -476,8 +476,8 @@ class Node:
             "bootstrap_address": (self.gcs_address if use_gcs_for_bootstrap()
                                   else self._redis_address),
             "gcs_address": self.gcs_address,
-            "address": (self.gcs_address if use_gcs_for_bootstrap() \
-                        else self._redis_address)
+            "address": (self.gcs_address
+                        if use_gcs_for_bootstrap() else self._redis_address)
         }
 
         return info

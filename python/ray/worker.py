@@ -1389,10 +1389,7 @@ def connect(node,
             gcs_address=node.get_gcs_address())
         worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
         ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_gcs_address(
-                node.gcs_address))
-
-    _initialize_internal_kv(worker.gcs_client)
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
