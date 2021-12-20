@@ -74,10 +74,6 @@ def gen_start_with_fail(num_fails):
     return start_with_fail
 
 
-# TODO(Chong-Li): make this test work with gcs-based scheduler.
-@pytest.mark.skipif(
-    gcs_actor_scheduling_enabled(),
-    reason="Test does not work with gcs-based scheduler enabled.")
 @pytest.mark.parametrize("use_local", [False, True])
 @patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
@@ -123,6 +119,11 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
 
         # wait for free resource
         wait_for_condition(is_placement_group_removed)
+
+        # We have to stop here for a moment, otherwise the resize opportunity
+        # maybe missed.
+        if gcs_actor_scheduling_enabled() and use_local is False:
+            time.sleep(30)
 
         # trigger scale up
         trainer1.train()
