@@ -188,10 +188,13 @@ class Cluster:
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-
-                self.global_state._initialize_global_state(
-                    GcsClientOptions.from_redis_address(
-                        self.redis_address, self.redis_password))
+                if use_gcs_for_bootstrap():
+                    gcs_options = GcsClientOptions.from_gcs_address(
+                        node.gcs_address)
+                else:
+                    gcs_options = GcsClientOptions.from_redis_address(
+                        self.redis_address, self.redis_password)
+                self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 # We only need one log monitor per physical node.
