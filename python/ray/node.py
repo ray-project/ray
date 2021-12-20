@@ -448,8 +448,8 @@ class Node:
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
-            "address": (self.gcs_address if use_gcs_for_bootstrap()
-                        else self._redis_address)
+            "address": (self.gcs_address
+                        if use_gcs_for_bootstrap() else self._redis_address)
         }
 
     def is_head(self):
