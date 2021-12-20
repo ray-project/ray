@@ -926,8 +926,11 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
              "fcnet_hiddens": [],
              "fcnet_activation": "relu",
          },
-         "beta": 0.2 # Hyperparameter to choose between exploration and exploitation.
-         # Schedule to use for beta decay, one of "constant" or "linear_decay".
+         # Hyperparameter to choose between exploration and exploitation. A higher value of beta add
+         # more importance to the intrinsic reward, as per the following equation 
+         # `reward = r + beta * intrinsic_reward`
+         "beta": 0.2,
+         # Schedule to use for beta decay, one of constant" or "linear_decay".
          "beta_schedule": 'constant', 
          # Specify, which exploration sub-type to use (usually, the algo's "default"
          # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
