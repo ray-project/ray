@@ -285,7 +285,7 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
               (override));
   MOCK_METHOD(Status, SyncRemovePlacementGroup,
               (const PlacementGroupID &placement_group_id), (override));
-  MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id, ),
+  MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id),
               (override));
 };
 
