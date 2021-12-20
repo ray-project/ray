@@ -16,10 +16,10 @@ mod ray_ffi {
     }
 }
 
-use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr};
+use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 #[cxx::bridge(namespace = "ray")]
-mod ray_api_ffi {
+pub mod ray_api_ffi {
     unsafe extern "C++" {
         include!("ray/api.h");
         include!("rust/ray-rs-sys/cpp/wrapper.h");
@@ -27,11 +27,15 @@ mod ray_api_ffi {
 
         type Uint64ObjectRef;
         type StringObjectRef;
+        type TaskArgs;
+        type ObjectID;
 
         fn InitAsLocal();
         fn Init();
         fn IsInitialized() -> bool;
         fn Shutdown();
+
+        fn Submit(name: &CxxString, args: UniquePtr<CxxVector<TaskArgs>>) -> UniquePtr<ObjectID>;
 
         fn PutUint64(obj: u64) -> UniquePtr<Uint64ObjectRef>;
         fn GetUint64(obj_ref: UniquePtr<Uint64ObjectRef>) -> SharedPtr<u64>;
@@ -46,29 +50,6 @@ mod ray_api_ffi {
     }
 }
 
-fn main() {
-    use ray_api_ffi::*;
-
-    println!("{}", IsInitialized());
-    Init();
-    // InitAsLocal();
-    println!("{}", IsInitialized());
-
-    println!("\nPutting Uint64!");
-    let x = PutUint64(1u64 << 20);
-    println!("Uint64 ObjectID: {:x?}", x.ID().as_bytes());
-    let int = *GetUint64(x);
-    println!("Our integer: {}", int);
-
-    println!("\nPutting string!");
-    let_cxx_string!(string = "Rust is now on Ray!");
-    let s = PutString(&string);
-    println!("String data len: {}", string.len());
-    println!("String ObjectID: {:x?}", s.ID().as_bytes());
-    println!("Yipee! {}\n", *GetString(s));
-
-    PutAndGetConfig();
-
-    Shutdown();
-    println!("{}", IsInitialized());
-}
+// struct ObjectRef<T> {
+//     _type: PhantomData<T>
+// }

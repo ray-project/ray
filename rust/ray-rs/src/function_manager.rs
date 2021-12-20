@@ -1,6 +1,7 @@
-use std::collections::{HashMap, };
+use std::collections::{HashMap};
+use uniffi::ffi::RustBuffer;
 
-type InvokerFunction = extern "C" fn(u64, *const u8) -> CBuffer;
+type InvokerFunction = extern "C" fn(u64, *const u8) -> RustBuffer;
 
 #[derive(Default)]
 pub struct FunctionManager {
@@ -21,20 +22,3 @@ impl FunctionManager {
 //     [pub(crate)] static ref global_function_manager: Arc<Mutex<FunctionManager>> =
 //
 // }
-
-#[repr(C)]
-pub struct CBuffer {
-    vec: Vec<u8>
-}
-
-impl CBuffer {
-    pub fn as_slice<'a>(&'a self) -> &'a [u8] {
-        self.vec.as_slice()
-    }
-
-    pub fn from_vec(vec: Vec<u8>) -> Self {
-        Self {
-            vec
-        }
-    }
-}

@@ -1,5 +1,5 @@
 [package]
-name = "demo"
+name = "ray-rs-sys"
 version = "0.0.0"
 authors = ["Jonathan Chuang"]
 license = "MIT OR Apache-2.0"
@@ -7,8 +7,8 @@ edition = "2018"
 publish = false
 
 [dependencies]
-cxx = "1.0"
-serde = "1.0.132"
+# cxx = "1.0"
+uniffi = "0.16.0"
 
-[build-dependencies]
-cxx-build = "1.0"
+# [build-dependencies]
+# cxx-build = "1.0"

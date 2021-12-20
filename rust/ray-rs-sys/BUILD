@@ -1,13 +1,26 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_rust//rust:defs.bzl", "rust_binary")
-load("@cxx.rs//tools/bazel:rust_cxx_bridge.bzl", "rust_cxx_bridge")
+package(default_visibility = ["//visibility:public"])
 
-rust_binary(
-    name = "demo",
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@cxx.rs//tools/bazel:rust_cxx_bridge.bzl", "rust_cxx_bridge")
+load("@ray-rs-toml//:defs.bzl", "crates_from")
+
+rust_test(
+    name = "test",
+    srcs = ["src/test.rs"],
+    deps = [
+      ":ray_rs_sys",
+      "@cxx.rs//:cxx",
+    ],
+    env = {"RUST_TEST_NOCAPTURE": "1"},
+)
+
+rust_library(
+    name = "ray_rs_sys",
     srcs = glob(["src/**/*.rs"]),
     deps = [
         ":bridge",
-        ":ray_rs_sys",
+        ":ray_rs_c",
         "@cxx.rs//:cxx",
         "//:core_worker_lib",
         "//cpp:ray_api",
@@ -16,16 +29,16 @@ rust_binary(
 
 rust_cxx_bridge(
     name = "bridge",
-    src = "src/main.rs",
+    src = "src/lib.rs",
     deps = [
       ":ray_rs_include",
       "//:core_worker_lib",
       "//cpp:ray_api",
-    ],
+    ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
 )
 
 cc_library(
-    name = "ray_rs_sys",
+    name = "ray_rs_c",
     srcs = [
       "cpp/tasks.h",
     ],
