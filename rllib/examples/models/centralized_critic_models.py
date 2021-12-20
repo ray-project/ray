@@ -74,22 +74,36 @@ class YetAnotherCentralizedCriticModel(TFModelV2):
             obs_space, action_space, num_outputs, model_config, name)
 
         self.action_model = FullyConnectedNetwork(
-            # One-hot encoded Discrete.
-            Box(low=0, high=1, shape=(self.obs_space.n, )),
+            # One-hot encoded Discrete(6) own observation.
+            Box(low=0, high=1, shape=(6, )),
             action_space,
             num_outputs,
             model_config,
             name + "_action")
 
-        self.value_model = FullyConnectedNetwork(obs_space, action_space, 1,
-                                                 model_config, name + "_vf")
+        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred.
+        input_size = 6 + 6 + 2  # obs + opp_obs + opp_act
+        self.value_model = FullyConnectedNetwork(
+            Box(low=0, high=1, shape=(input_size, )), action_space, 1,
+            model_config, name + "_vf")
 
     def forward(self, input_dict, state, seq_lens):
+        central_input = tf.concat(
+            [
+                one_hot_tf(input_dict["obs"]["own_obs"],
+                           self.obs_space["own_obs"]),
+                one_hot_tf(input_dict["obs"]["opponent_obs"],
+                           self.obs_space["opponent_obs"]),
+                one_hot_tf(input_dict["obs"]["opponent_action"],
+                           self.obs_space["opponent_action"]),
+            ],
+            axis=-1)
         self._value_out, _ = self.value_model({
-            "obs": input_dict["obs_flat"]
+            "obs": central_input
         }, state, seq_lens)
         return self.action_model({
-            "obs": one_hot_tf(input_dict["obs"]["own_obs"], self.obs_space)
+            "obs": one_hot_tf(input_dict["obs"]["own_obs"],
+                              self.obs_space["own_obs"])
         }, state, seq_lens)
 
     def value_function(self):
@@ -106,10 +120,11 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         # Base of the model
-        self.model = TorchFC(obs_space, action_space, num_outputs,
-                             model_config, name)
+        self.model = TorchFC(
+            Box(low=0, high=1, shape=(6, )), action_space, num_outputs,
+            model_config, name)
 
-        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
+        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred.
         input_size = 6 + 6 + 2  # obs + opp_obs + opp_act
         self.central_vf = nn.Sequential(
             SlimFC(input_size, 16, activation_fn=nn.Tanh),
@@ -160,8 +175,11 @@ class YetAnotherTorchCentralizedCriticModel(TorchModelV2, nn.Module):
             model_config,
             name + "_action")
 
-        self.value_model = TorchFC(obs_space, action_space, 1, model_config,
-                                   name + "_vf")
+        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred.
+        input_size = 6 + 6 + 2  # obs + opp_obs + opp_act
+        self.value_model = TorchFC(
+            Box(-1.0, 1.0, (input_size, )), action_space, 1, model_config,
+            name + "_vf")
         self._model_in = None
 
     def forward(self, input_dict, state, seq_lens):

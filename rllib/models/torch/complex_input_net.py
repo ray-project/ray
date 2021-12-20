@@ -249,9 +249,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
         return one_hot, cnns, flatten, concat_size, post_fc_stack
 
-    def _forward(self,
-                 one_hot: Dict[int, ModelV2],
-                 cnns: Dict[int, ModelV2],
+    def _forward(self, one_hot: Dict[int, ModelV2], cnns: Dict[int, ModelV2],
                  flatten: Dict[int, ModelV2],
                  post_fc_stack: ModelV2) -> TensorType:
         """Runs a forward pass through a given stack using `self.orig_obs`.

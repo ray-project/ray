@@ -9,11 +9,11 @@ See also: centralized_critic.py for an alternative approach that instead
 modifies the policy to add a centralized value function.
 """
 
-import numpy as np
 from gym.spaces import Dict, Discrete
 import argparse
 import os
 
+import ray
 from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.examples.models.centralized_critic_models import \
@@ -59,15 +59,10 @@ class FillInActions(DefaultCallbacks):
                                   original_batches, **kwargs):
         to_update = postprocessed_batch[SampleBatch.CUR_OBS]
         other_id = 1 if agent_id == 0 else 0
-        action_encoder = ModelCatalog.get_preprocessor_for_space(Discrete(2))
 
         # set the opponent actions into the observation
         _, opponent_batch = original_batches[other_id]
-        opponent_actions = np.array([
-            action_encoder.transform(a)
-            for a in opponent_batch[SampleBatch.ACTIONS]
-        ])
-        to_update[:, -2:] = opponent_actions
+        to_update["opponent_action"] = opponent_batch[SampleBatch.ACTIONS]
 
 
 def central_critic_observer(agent_obs, **kw):
@@ -90,6 +85,8 @@ def central_critic_observer(agent_obs, **kw):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init()
 
     ModelCatalog.register_custom_model(
         "cc_model", YetAnotherTorchCentralizedCriticModel
