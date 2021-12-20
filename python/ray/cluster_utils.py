@@ -9,6 +9,7 @@ import time
 
 import ray
 import ray._private.services
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
 from ray._raylet import GcsClientOptions

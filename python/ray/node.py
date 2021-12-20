@@ -448,7 +448,7 @@ class Node:
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
-            "address": (self.gcs_address if use_gcs_for_bootstrap() \
+            "address": (self.gcs_address if use_gcs_for_bootstrap()
                         else self._redis_address)
         }
 
@@ -466,7 +466,7 @@ class Node:
             for i in range(num_retries):
                 try:
                     self._gcs_client = GcsClient.create_from_redis(
-                            self.create_redis_client())
+                        self.create_redis_client())
                     break
                 except Exception as e:
                     time.sleep(1)
