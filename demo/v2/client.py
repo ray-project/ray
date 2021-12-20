@@ -3,7 +3,6 @@ from rpc_pb2 import Request, Response
 
 ray.init(address="auto", namespace="demo")
 actor = ray.get_actor("ServerActor")
-
 for name, age in zip(["Alice", "Bob"], [10, 22]):
     print("Asking about age", age, "name", name)
     ref = actor.handle_request.remote(Request(age=age, name=name))
