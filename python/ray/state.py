@@ -20,9 +20,6 @@ logger = logging.getLogger(__name__)
 class GlobalState:
     """A class used to interface with the Ray control state.
 
-    # TODO(zongheng): In the future move this to use Ray's redis module in the
-    # backend to cut down on # of request RPCs.
-
     Attributes:
         global_state_accessor: The client used to query gcs table from gcs
             server.
@@ -31,8 +28,7 @@ class GlobalState:
     def __init__(self):
         """Create a GlobalState object."""
         # Args used for lazy init of this object.
-        self.redis_address = None
-        self.redis_password = None
+        self.gcs_options = None
         self.global_state_accessor = None
 
     def _check_connected(self):
@@ -44,7 +40,7 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if (self.redis_address is not None
+        if (self.gcs_options is not None
                 and self.global_state_accessor is None):
             self._really_init_global_state()
 
@@ -56,32 +52,28 @@ class GlobalState:
 
     def disconnect(self):
         """Disconnect global state from GCS."""
-        self.redis_address = None
-        self.redis_password = None
+        self.gcs_options = None
         if self.global_state_accessor is not None:
             self.global_state_accessor.disconnect()
             self.global_state_accessor = None
 
-    def _initialize_global_state(self, redis_address, redis_password=None):
+    def _initialize_global_state(self, gcs_options):
         """Set args for lazily initialization of the GlobalState object.
 
-        It's possible that certain keys in Redis may not have been fully
+        It's possible that certain keys in gcs kv may not have been fully
         populated yet. In this case, we will retry this method until they have
         been populated or we exceed a timeout.
 
         Args:
-            redis_address: The Redis address to connect.
-            redis_password: The password of the redis server.
+            gcs_options: The client options for gcs
         """
 
         # Save args for lazy init of global state. This avoids opening extra
-        # redis connections from each worker until needed.
-        self.redis_address = redis_address
-        self.redis_password = redis_password
+        # gcs connections from each worker until needed.
+        self.gcs_options = gcs_options
 
-    def _really_init_global_state(self, timeout=20):
-        self.global_state_accessor = GlobalStateAccessor(
-            self.redis_address, self.redis_password)
+    def _really_init_global_state(self):
+        self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
         self.global_state_accessor.connect()
 
     def actor_table(self, actor_id):
@@ -205,7 +197,7 @@ class GlobalState:
         return results
 
     def job_table(self):
-        """Fetch and parse the Redis job table.
+        """Fetch and parse the gcs job table.
 
         Returns:
             Information about the Ray jobs in the cluster,

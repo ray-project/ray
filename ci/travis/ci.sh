@@ -139,13 +139,8 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # runtime_env unsupported on Windows
-      -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
-      -python/ray/serve:test_cli # cli
-      -python/ray/serve:test_router # timeout
-      -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
-      -python/ray/serve:test_controller_crashes # timeout
       -python/ray/serve:test_standalone # timeout
+      -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows

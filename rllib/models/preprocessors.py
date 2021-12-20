@@ -316,7 +316,7 @@ class RepeatedValuesPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray,
               offset: int) -> None:
-        if not isinstance(observation, list):
+        if not isinstance(observation, (list, np.ndarray)):
             raise ValueError("Input for {} must be list type, got {}".format(
                 self, observation))
         elif len(observation) > self._obs_space.max_len:

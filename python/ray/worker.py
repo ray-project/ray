@@ -1374,7 +1374,8 @@ def connect(node,
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+        ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1449,11 +1450,15 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
+    # As the synchronous and the asynchronous context of redis client is not
+    # used in this gcs client. We would not open connection for it by setting
+    # `enable_sync_conn` and `enable_async_conn` as false.
+    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+        node.redis_address,
         node.redis_password,
-    )
+        enable_sync_conn=False,
+        enable_async_conn=False,
+        enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
