@@ -26,7 +26,7 @@ from serve_test_cluster_utils import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment_state import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
-from typing import Optional
+from typing import Optional, Callable
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_MIN_REPLICA = 1
@@ -38,15 +38,21 @@ DEFAULT_FULL_TEST_MAX_REPLICA = 1000
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "5m"
 
-DEPLOYMENT_NAME = "echo"
 
-def get_num_running_replicas(controller: ServeController,
-                             deployment_name: str) -> int:
-    """ Get the amount of replicas currently running for given deployment """
-    replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_name))
-    running_replicas = replicas.get([ReplicaState.RUNNING])
-    return len(running_replicas)
+def make_get_num_running_replicas(controller: ServeController,
+                                  deployment_name: str) -> Callable[[], int]:
+    def get_num_running_replicas() -> int:
+        """
+        Get the amount of replicas currently running for given deployment.
+        """
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(
+                deployment_name))
+        running_replicas = replicas.get([ReplicaState.RUNNING])
+        return len(running_replicas)
+
+    return get_num_running_replicas
+
 
 def convert_duration_to_seconds(duration_string: str) -> float:
     """
@@ -62,13 +68,7 @@ def convert_duration_to_seconds(duration_string: str) -> float:
         raise ValueError("duration_string should be wrk duration formatted "
                          "string with a numeric duration and time units.")
 
-    unit_multipliers = {
-        "us": 0.000001,
-        "ms": 0.001,
-        "s": 1,
-        "m": 60,
-        "h": 360
-    }
+    unit_multipliers = {"us": 0.000001, "ms": 0.001, "s": 1, "m": 60, "h": 360}
 
     duration, unit = None, None
 
@@ -76,24 +76,22 @@ def convert_duration_to_seconds(duration_string: str) -> float:
         duration, unit = float(duration_string[:-2]), duration_string[-2:]
     else:
         duration, unit = float(duration_string[:-1]), duration_string[-1:]
-    
+
     return duration * unit_multipliers[unit]
-    
 
-def deploy_replicas(min_replicas: int,
-                    max_replicas: int,
-                    trial_length: str,
-                    signal: SignalActor):
 
-    @serve.deployment(name=DEPLOYMENT_NAME,
-            _graceful_shutdown_timeout_s=convert_duration_to_seconds(trial_length),
-            _autoscaling_config={
-                "metrics_interval_s": 0.1,
-                "min_replicas": min_replicas,
-                "max_replicas": max_replicas,
-                "look_back_period_s": 0.2,
-                "downscale_delay_s": 0.2,
-                "upscale_delay_s": 0.2
+def deploy_replicas(min_replicas: int, max_replicas: int, trial_length: str,
+                    signal: SignalActor, deployment_name: str):
+    @serve.deployment(
+        name=deployment_name,
+        _graceful_shutdown_timeout_s=convert_duration_to_seconds(trial_length),
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": min_replicas,
+            "max_replicas": max_replicas,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
         },
         version="v1")
     class Echo:
@@ -128,8 +126,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         # to mock actors that requires # of nodes to be specified, but ray
         # client doesn't need to
         num_nodes = int(math.ceil(max_replicas / NUM_CPU_PER_NODE))
-        logger.info(
-            f"Setting up local ray cluster with {num_nodes} nodes.\n")
+        logger.info(f"Setting up local ray cluster with {num_nodes} nodes.\n")
         serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
         min_replicas = min_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
@@ -140,7 +137,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
             f"replicas and a maximum of {max_replicas} replicas.\n")
         logger.info("Setting up anyscale ray cluster. \n")
         serve_client = setup_anyscale_cluster()
-    
+
     signal = SignalActor.remote()
 
     http_host = str(serve_client._http_config.host)
@@ -148,25 +145,31 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     controller = serve_client._controller
+    deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    deploy_replicas(min_replicas, max_replicas, trial_length, signal)
+    deploy_replicas(min_replicas, max_replicas, trial_length, signal,
+                    deployment_name)
 
     logger.info("Warming up cluster ....\n")
-    ray.get(warm_up_one_cluster.remote(10, http_host, http_port, DEPLOYMENT_NAME, nonblocking=True))
+    ray.get(
+        warm_up_one_cluster.remote(
+            10, http_host, http_port, deployment_name, nonblocking=True))
 
     ray.get(signal.send.remote())
 
+    num_running_replicas = make_get_num_running_replicas(
+        controller, deployment_name)
+
     # Allow deployments to downscale to min_replicas
-    wait_for_condition(
-        lambda: 
-        get_num_running_replicas(controller, DEPLOYMENT_NAME) <= min_replicas)
+    wait_for_condition(num_running_replicas <= min_replicas)
 
     for _ in range(2):
 
         ray.get(signal.send.remote(clear=True))
 
-        logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
+        logger.info(
+            f"Starting wrk trial on all nodes for {trial_length} ....\n")
         # For detailed discussion, see https://github.com/wg/wrk/issues/205
         # TODO:(jiaodong) What's the best number to use here ?
         all_endpoints = list(serve.list_deployments().keys())
@@ -176,18 +179,14 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
             http_host,
             http_port,
             all_endpoints=all_endpoints)
-        
+
         # Check that deployments upscaled to max_replicas
-        wait_for_condition(
-            lambda: 
-            get_num_running_replicas(controller, DEPLOYMENT_NAME) >= max_replicas)
-        
+        wait_for_condition(num_running_replicas >= max_replicas)
+
         signal.send.remote()
 
         # Check that deployments scale back to min_replicas
-        wait_for_condition(
-            lambda: 
-            get_num_running_replicas(controller, DEPLOYMENT_NAME) <= min_replicas)
+        wait_for_condition(num_running_replicas <= min_replicas)
 
 
 if __name__ == "__main__":

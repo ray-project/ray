@@ -374,8 +374,9 @@ def test_fluctuating_ongoing_requests(delay_s):
                 assert new_num_replicas == 1, trial
 
 
-@pytest.mark.parametrize("ongoing_requests", [[7, 1, 8, 4], [8, 1, 8, 4],
-                                              [6, 1, 8, 4], [0, 1, 8, 4]])
+@pytest.mark.parametrize(
+    "ongoing_requests",
+    [[7, 1, 8, 4], [8, 1, 8, 4], [6, 1, 8, 4], [0, 1, 8, 4]])
 def test_imbalanced_replicas(ongoing_requests):
     config = AutoscalingConfig(
         min_replicas=1,
@@ -385,7 +386,7 @@ def test_imbalanced_replicas(ongoing_requests):
         downscale_delay_s=0.0)
 
     policy = BasicAutoscalingPolicy(config)
-    
+
     # Check that as long as the average number of ongoing requests equals
     # the target_num_ongoing_requests_per_replica, the number of replicas
     # stays the same
@@ -395,22 +396,23 @@ def test_imbalanced_replicas(ongoing_requests):
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4)
         assert new_num_replicas == 4
-    
+
     # Check downscaling behavior when average number of requests
     # is lower than target_num_ongoing_requests_per_replica
     elif (sum(ongoing_requests) / len(ongoing_requests) <
-            config.target_num_ongoing_requests_per_replica):
+          config.target_num_ongoing_requests_per_replica):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4)
-        
-        if config.target_num_ongoing_requests_per_replica - sum(ongoing_requests) / len(ongoing_requests) <= 1:
+
+        if config.target_num_ongoing_requests_per_replica - sum(
+                ongoing_requests) / len(ongoing_requests) <= 1:
             # Autoscaling uses a ceiling operator, which means a slightly low
             # current_num_ongoing_requests value is insufficient to downscale
             assert new_num_replicas == 4
         else:
             assert new_num_replicas == 3
-    
+
     # Check upscaling behavior when average number of requests
     # is higher than target_num_ongoing_requests_per_replica
     else:
@@ -420,8 +422,8 @@ def test_imbalanced_replicas(ongoing_requests):
         assert new_num_replicas == 5
 
 
-@pytest.mark.parametrize("ongoing_requests", [[20, 0, 0, 0], [100, 0, 0, 0],
-                                              [10, 0, 0, 0]])
+@pytest.mark.parametrize("ongoing_requests",
+                         [[20, 0, 0, 0], [100, 0, 0, 0], [10, 0, 0, 0]])
 def test_single_replica_receives_all_requests(ongoing_requests):
     target_requests = 5
 
@@ -435,8 +437,8 @@ def test_single_replica_receives_all_requests(ongoing_requests):
     policy = BasicAutoscalingPolicy(config)
 
     new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=ongoing_requests,
-            curr_target_num_replicas=4)
+        current_num_ongoing_requests=ongoing_requests,
+        curr_target_num_replicas=4)
     assert new_num_replicas == sum(ongoing_requests) / target_requests
 
 
@@ -591,7 +593,8 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     time.sleep(3)
     print("Issued 458 requests. Request routing in-progress.")
 
-    A.options(_autoscaling_config={
+    A.options(
+        _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
             "max_replicas": 20,
@@ -658,8 +661,9 @@ def test_e2e_raise_min_replicas(serve_instance):
     print("Stayed at 1 replica.")
 
     first_deployment_replicas = get_running_replica_tags(controller, A)
-    
-    A.options(_autoscaling_config={
+
+    A.options(
+        _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
             "max_replicas": 10,

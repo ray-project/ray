@@ -111,7 +111,7 @@ class ServeController:
     def _dump_replica_states_for_testing(self, deployment_name):
         return self.deployment_state_manager._deployment_states[
             deployment_name]._replicas
-    
+
     def _stop_one_running_replica_for_testing(self, deployment_name):
         self.deployment_state_manager._deployment_states[
             deployment_name]._stop_one_running_replica_for_testing()
