@@ -1184,6 +1184,7 @@ def _start_redis_instance(executable,
 
 
 def start_log_monitor(redis_address,
+                      gcs_address,
                       logs_dir,
                       stdout_file=None,
                       stderr_file=None,
@@ -1215,7 +1216,8 @@ def start_log_monitor(redis_address,
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
