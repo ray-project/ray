@@ -306,8 +306,8 @@ bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
 bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
   RAY_LOG(INFO) << "reconnect_in_progress_ " << reconnect_in_progress_;
   if (reconnect_in_progress_) {
-    // std::this_thread::sleep_for(
-    //   std::chrono::milliseconds(kGCSReconnectionRetryIntervalMs));
+    absl::MutexLock l(&reconnect_callbacks_mutex_);
+    callbacks_.emplace_back(callback);
     return false;
   }
   reconnect_in_progress_ = true;
@@ -367,6 +367,12 @@ void GcsClient::OnReconnected(const Status &status, absl::Time start,
     if (callback) {
       RAY_LOG(INFO) << "Reconnected call callback";
       callback();
+    }
+    {
+      absl::MutexLock l(&reconnect_callbacks_mutex_);
+      for (const auto &callback : callbacks_) {
+        callback();
+      }
     }
     reconnect_in_progress_ = false;
   } else {

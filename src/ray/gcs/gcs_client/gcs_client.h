@@ -246,6 +246,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   // A flag to indicate whether reconnecting to gcs is in progress or not.
   std::atomic<bool> reconnect_in_progress_ = false;
+
+  mutable absl::Mutex reconnect_callbacks_mutex_;
+  std::list<std::function<void()>> callbacks_ GUARDED_BY(reconnect_callbacks_mutex_);
+  ;
 };
 
 }  // namespace gcs
