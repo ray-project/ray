@@ -205,6 +205,13 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
+
+    if gcs_utils.use_gcs_for_bootstrap():
+        args.redis_address = None
+        args.redis_password = None
+    else:
+        args.gcs_address = None
+
     try:
         setup_component_logger(
             logging_level=args.logging_level,

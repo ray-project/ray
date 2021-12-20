@@ -33,7 +33,6 @@ DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server.");
-DEFINE_int32(gcs_port, -1, "The port of the GCS server.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,
@@ -132,7 +131,7 @@ int main(int argc, char *argv[]) {
         /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
     gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
   } else {
-    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address, FLAGS_gcs_port);
+    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
     gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
   }
 

@@ -44,7 +44,7 @@ def make_gcs_client(address_info):
             password=ray_constants.REDIS_DEFAULT_PASSWORD)
         gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
     else:
-        address = address_info["gcs_server_address"]
+        address = address_info["gcs_address"]
         gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     return gcs_client
 
@@ -616,7 +616,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--temp-dir={temp_dir}", f"--log-dir={log_dir}",
         f"--redis-address={address_info['redis_address']}",
         f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
-        f"--gcs-address={address_info['gcs_server_address']}"
+        f"--gcs-address={address_info['gcs_address']}"
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
     p = subprocess.Popen(dashboard_cmd)
@@ -644,8 +644,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
-@pytest.mark.skipif(
-    use_gcs_for_bootstrap(), reason="Killing will make it hang")
+@pytest.mark.skipif(use_gcs_for_bootstrap(), reason="Not working right now.")
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)

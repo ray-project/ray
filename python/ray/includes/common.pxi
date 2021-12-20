@@ -36,9 +36,8 @@ cdef class GcsClientOptions:
     @classmethod
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
-        gcs_ip, gcs_port = gcs_address.split(":")
         self.inner.reset(
-            new CGcsClientOptions(gcs_ip.encode("ascii"), int(gcs_port)))
+            new CGcsClientOptions(gcs_address.encode("ascii")))
         return self
 
     cdef CGcsClientOptions* native(self):

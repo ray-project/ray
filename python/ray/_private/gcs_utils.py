@@ -95,7 +95,7 @@ _GRPC_OPTIONS = [("grpc.enable_http_proxy",
 def use_gcs_for_bootstrap():
     import os
     from ray._private.gcs_pubsub import gcs_pubsub_enabled
-    ret = os.environ.get("RAY_bootstrap_with_gcs") in ("1", "true")
+    ret = os.environ.get("RAY_bootstrap_with_gcs") not in (None, "0", "false")
     if ret:
         assert gcs_pubsub_enabled()
     return ret
@@ -172,10 +172,9 @@ class GcsChannel:
 
     def connect(self):
         if self._redis_client is not None:
-            gcs_address = get_gcs_address_from_redis(self._redis_client)
-        else:
-            gcs_address = self._gcs_address
+            self._gcs_address = get_gcs_address_from_redis(self._redis_client)
 
+        gcs_address = self._gcs_address
         self._channel = create_gcs_channel(gcs_address, self._aio)
 
     def channel(self):
@@ -231,6 +230,10 @@ class GcsClient:
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel())
+
+    @property
+    def address(self):
+        return self._channel._gcs_address
 
     @_auto_reconnect
     def internal_kv_get(self, key: bytes, namespace: Optional[str]) -> bytes:

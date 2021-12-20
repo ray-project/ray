@@ -22,7 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
-from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -1367,6 +1367,7 @@ def start_log_monitor(redis_address,
 def start_dashboard(require_dashboard,
                     host,
                     redis_address,
+                    gcs_address,
                     temp_dir,
                     logdir,
                     gcs_address=None,
@@ -1384,12 +1385,13 @@ def start_dashboard(require_dashboard,
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
-        port (str): The port to bind the dashboard web server to.
-            Defaults to 8265.
         redis_address (str): The address of the Redis instance.
+        gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         logdir (str): The log directory used to generate dashboard log.
+        port (str): The port to bind the dashboard web server to.
+            Defaults to 8265.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1451,7 +1453,8 @@ def start_dashboard(require_dashboard,
             f"--port={port}", f"--port-retries={port_retries}",
             f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}"
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}"
         ]
         if gcs_address is not None:
             command += [f"--gcs-address={gcs_address}"]
@@ -1587,6 +1590,7 @@ def start_gcs_server(redis_address,
 
 
 def start_raylet(redis_address,
+                 gcs_address,
                  node_ip_address,
                  node_manager_port,
                  raylet_name,
@@ -1626,6 +1630,7 @@ def start_raylet(redis_address,
 
     Args:
         redis_address (str): The address of the primary Redis server.
+        gcs_address (str): The address of cluster.
         node_ip_address (str): The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1750,6 +1755,7 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1786,7 +1792,7 @@ def start_raylet(redis_address,
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_server_address}",
+            f"--gcs-address={gcs_address}",
         ]
 
         if redis_password is not None and len(redis_password) != 0:
@@ -1795,6 +1801,7 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
+        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
@@ -1803,8 +1810,6 @@ def start_raylet(redis_address,
         f"--node_ip_address={node_ip_address}",
         f"--redis_address={redis_ip_address}",
         f"--redis_port={redis_port}",
-        f"--gcs_address={gcs_ip_address}",
-        f"--gcs_port={gcs_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
@@ -2140,10 +2145,14 @@ def start_monitor(redis_address,
     """
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
-        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
-        f"--redis-address={redis_address}", f"--gcs-address={gcs_address}",
+        sys.executable,
+        "-u",
+        monitor_path,
+        f"--logs-dir={logs_dir}",
+        f"--redis-address={redis_address}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))

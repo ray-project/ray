@@ -394,6 +394,12 @@ class Node:
         return self._redis_address
 
     @property
+    def gcs_address(self):
+        """Get the gcs address."""
+        assert self._gcs_client is not None
+        return self._gcs_client.address
+
+    @property
     def redis_address(self):
         """Get the cluster Redis address."""
         return self._redis_address
@@ -466,10 +472,10 @@ class Node:
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
-            "gcs_server_address": self.get_gcs_address(),
-            "bootstrap_address": (self.get_gcs_address()
+            "bootstrap_address": (self.gcs_address
                                   if use_gcs_for_bootstrap() else
                                   self._redis_address)
+            "gcs_address": self.gcs_address,
         }
 
         return info
@@ -793,6 +799,7 @@ class Node:
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
+            self.gcs_address,
             self._temp_dir,
             self._logs_dir,
             gcs_address=self.get_gcs_address(),
@@ -853,6 +860,7 @@ class Node:
             "raylet", unique=True)
         process_info = ray._private.services.start_raylet(
             self._redis_address,
+            self.gcs_address,
             self._node_ip_address,
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
@@ -909,7 +917,7 @@ class Node:
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
-            self.get_gcs_address(),
+            self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,

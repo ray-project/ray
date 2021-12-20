@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -39,11 +40,11 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
-  /// Constructor of GcsClientOptions.
+  /// Constructor of GcsClientOptions from redis.
   ///
-  /// \param ip GCS service ip.
-  /// \param port GCS service port.
-  /// \param password GCS service password.
+  /// \param ip redis service ip.
+  /// \param port redis service port.
+  /// \param password redis service password.
   GcsClientOptions(const std::string &redis_ip, int redis_port,
                    const std::string &password, bool enable_sync_conn = true,
                    bool enable_async_conn = true, bool enable_subscribe_conn = true)
@@ -54,8 +55,15 @@ class GcsClientOptions {
         enable_async_conn_(enable_async_conn),
         enable_subscribe_conn_(enable_subscribe_conn) {}
 
-  GcsClientOptions(const std::string &gcs_address, int gcs_port)
-      : gcs_address_(gcs_address), gcs_port_(gcs_port){};
+  /// Constructor of GcsClientOptions from gcs address
+  ///
+  /// \param gcs_address gcs address, including port
+  GcsClientOptions(const std::string &gcs_address) {
+    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    RAY_CHECK(address.size() == 2);
+    gcs_address_ = address[0];
+    gcs_port_ = std::stoi(address[1]);
+  }
 
   GcsClientOptions() {}
 
