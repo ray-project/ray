@@ -35,7 +35,7 @@ def do_test_log_likelihood(run,
         obs_batch = np.array([0])
         # PG algos do not preprocess anymore by default.
         preprocessed_obs_batch = obs_batch if \
-            run not in [pg.PGTrainer, ppo.PPOTrainer, ppo.appo.APPOTrainer] \
+            run in [pg.PGTrainer, ppo.PPOTrainer, ppo.appo.APPOTrainer] \
             else one_hot(obs_batch, depth=16)
 
     prev_r = None if prev_a is None else np.array(0.0)
@@ -171,8 +171,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
         config["seed"] = 42
-        config["policy_model"]["fcnet_hiddens"] = [10]
-        config["policy_model"]["fcnet_activation"] = "linear"
+        config["policy_model"]["post_fcnet_hiddens"] = [10]
+        config["policy_model"]["post_fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp

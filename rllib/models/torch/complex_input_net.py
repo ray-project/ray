@@ -94,7 +94,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
             # Value head (1 output node).
             self.value_layer = SlimFC(
-                in_size=self.post_fc_stack_value.num_outputs,
+                in_size=self.post_fc_stack.num_outputs,
                 out_size=1,
                 activation_fn=None,
                 initializer=torch_normc_initializer(0.01))
