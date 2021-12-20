@@ -414,16 +414,17 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 2. :ref:`train-api-tbx-logger-callback`
 3. :ref:`train-api-mlflow-logger-callback`
 
-Example usage on how to log intermediate results to MLflow and Tensorboard:
+Example: Logging to MLflow and Tensorboard
+##########################################
 
-1. First install the needed packages
+**Step 1: Install the necessary packages**
 
 .. code-block:: bash
 
     $ pip install mlflow
     $ pip install tensorboardX
 
-2. Then run the training script
+**Step 2: Run the following training script**
 
 .. code-block:: python
 
@@ -450,8 +451,7 @@ Example usage on how to log intermediate results to MLflow and Tensorboard:
 
     trainer.shutdown()
 
-
-3. Navigate to the :ref:`run dir <train-log-dir>` and then visualize the logs.
+**Step 3: Visualize the logs**
 
 .. code-block:: bash
 
