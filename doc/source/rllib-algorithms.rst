@@ -927,7 +927,7 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
              "fcnet_activation": "relu",
          },
          "beta": 0.2 # Hyperparameter to choose between exploration and exploitation.
-         # Schedule to use for beta decay, one of constant" or "linear_decay".
+         # Schedule to use for beta decay, one of "constant" or "linear_decay".
          "beta_schedule": 'constant', 
          # Specify, which exploration sub-type to use (usually, the algo's "default"
          # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
@@ -939,9 +939,10 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
 
 **Functionality**
 RLlib's RE3 is based on `"Random Encoders for Efficient Exploration" described in this paper here <https://arxiv.org/pdf/2102.09430.pdf>`__.
-RE3 quantifies exploration based on state entropy. The entropy of a state is calculated based on its distance from K nearest neighbors states present in the replay buffer (we use train batch in this implementation) in the latent space. 
-The entropy of the state is considered as intrinsic rewards and added to the extrinsic rewards for policy optimization when external rewards are available, else used as "intrinsic rewards" for unsupervised pre-training of RL agent. RE3 allows agents to learn in sparse-reward or even no-reward environments by
-considering the state entropy as "intrinsic rewards".
+RE3 quantifies exploration based on state entropy. The entropy of a state is calculated based on its distance from K nearest neighbors states present in the replay buffer in the latent space (train batch is used in this implementation). 
+The state entropy is considered as an intrinsic reward and for policy optimization added to the extrinsic reward when available.  If the extrinsic reward is not available then the state entropy is used as "intrinsic reward" for unsupervised pre-training of the RL agent. 
+RE3 further allows agents to learn in sparse-reward or even no-reward environments by
+using the state entropy as "intrinsic rewards".
 
 This exploration objective can be used with both model-free and model-based RL algorithms. 
 RE3 uses a randomly initialized encoder to get the state’s latent representation, thus taking away the complexity of training the representation learning method. The encoder weights are fixed during the entire duration of the training process. 
