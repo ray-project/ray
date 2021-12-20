@@ -573,11 +573,11 @@ def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
     return alert
 
 
-def report_result(*, test_suite: str, test_name: str, status: str, last_logs: str,
-                  results: Dict[Any, Any], artifacts: Dict[Any, Any],
-                  category: str, team: str):
-                #   session_url: str, commit_url: str,
-                #   runtime: float, stable: bool, frequency: str, return_code: int):
+def report_result(*, test_suite: str, test_name: str, status: str,
+                  last_logs: str, results: Dict[Any, Any],
+                  artifacts: Dict[Any, Any], category: str, team: str):
+    #   session_url: str, commit_url: str,
+    #   runtime: float, stable: bool, frequency: str, return_code: int):
     """Report the test result to database."""
     now = datetime.datetime.utcnow()
     rds_data_client = boto3.client("rds-data", region_name="us-west-2")
@@ -638,10 +638,7 @@ def report_result(*, test_suite: str, test_name: str, status: str, last_logs: st
     column_str = ", ".join(columns).strip(", ")
     value_str = ", ".join(values).strip(", ")
 
-    sql = (
-        f"INSERT INTO {schema} "
-        f"({column_str}) "
-        f"VALUES ({value_str})")
+    sql = (f"INSERT INTO {schema} " f"({column_str}) " f"VALUES ({value_str})")
 
     logger.info(f"Query: {sql}")
 
@@ -2115,8 +2112,7 @@ def run_test(test_config_file: str,
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
-            team=team
-        )
+            team=team)
 
         if not has_errored(result):
             # Check if result are met if test succeeded
