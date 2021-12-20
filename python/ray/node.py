@@ -936,7 +936,7 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            if use_gcs_for_bootstrap():
+            if not use_gcs_for_bootstrap():
                 gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
                     self.redis_address, self.redis_password)
             else:
