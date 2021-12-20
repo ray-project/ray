@@ -141,6 +141,7 @@ build --repository_cache=/tmp/bazel-repo-cache
 EOF
     else
       echo "Using buildkite secret store to communicate with cache address"
+      export BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL} # in windows
       cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF

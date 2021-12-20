@@ -24,7 +24,7 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [[ -n "${BUILDKITE-}" ]]; then
+    if [[ -n "${BUILDKITE-}" ]] && [ "${OSTYPE}" != msys ]; then
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
