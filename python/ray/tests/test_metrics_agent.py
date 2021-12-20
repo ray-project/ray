@@ -48,12 +48,6 @@ _METRICS = [
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
-    "ray_placement_group_creation_latency_ms_sum",
-    "ray_placement_group_scheduling_latency_ms_sum",
-    "ray_pending_placement_group",
-    "ray_registered_placement_group",
-    "ray_infeasible_placement_group",
-    "ray_new_resource_creation_latency_ms_sum",
     "ray_grpc_server_req_process_time_ms",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
@@ -68,7 +62,7 @@ _METRICS = [
     "ray_push_manager_chunks",
     "ray_scheduler_failed_worker_startup_total",
     "ray_scheduler_tasks",
-    "ray_scheduler_unscheduleable_taskss",
+    "ray_scheduler_unscheduleable_tasks",
     "ray_spill_manager_objects",
     "ray_spill_manager_objects_bytes",
     "ray_spill_manager_request_total",
@@ -145,6 +139,9 @@ def _setup_cluster_for_test(ray_start_cluster):
 
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
+    # Infeasible task
+    b = f.options(resources={"a": 1})
+    print(b)
 
     node_info_list = ray.nodes()
     prom_addresses = []
