@@ -7,7 +7,13 @@ steps:
     - git config --global core.symlinks true
     - git config --global core.autocrlf false
     - git remote set-url origin https://github.com/ray-project/ray.git
-    - git fetch -v --prune -- origin ${BUILDKITE_COMMIT}
+    - |
+      if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then
+        export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}
+      else
+        export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head
+      fi
+    - git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
     - git checkout -f ${BUILDKITE_COMMIT}
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
