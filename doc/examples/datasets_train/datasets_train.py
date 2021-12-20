@@ -2,10 +2,15 @@
 """
 Big Data Training
 =================
+
+This notebook includes an example workflow for training a Pytorch deep learning model on tabular data using Ray Train, and handling the data ingest with Ray Datasets.
 """
 
 ###############################################################################
-# train
+# Imports
+# -------
+#
+# Let's import a few libraries we'll need. 
 ###############################################################################
 
 import argparse
@@ -29,6 +34,15 @@ from ray.train import TrainingCallback
 from ray.train.callbacks import TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 
+
+###############################################################################
+# MLflow Setup
+# ------------
+#
+# First, let's set up some boilerplate code that will allow us to track and save our
+# ML model to MLflow. This will likely be upstreamed into Ray Train soon, so you won't have
+# to define this yourself anymore. 
+#
 
 # TODO(amogkam): Upstream this into Ray Train.
 class MLflowCallback(TrainingCallback):
@@ -54,8 +68,27 @@ class MLflowCallback(TrainingCallback):
         # Save the Trainer checkpoints as artifacts to mlflow.
         mlflow.log_artifacts(self.logdir)
 
+###############################################################################
+# Generating a synthetic dataset
+# ------------------------------
+#
+# With this example, we wanted to make it easy to generate a dataset of arbitrary size
+# to allow you to increase it to your desired scale, depending on what you're trying to 
+# prove out as you prototype with Ray.
+#
+# In particular, you can specify:
+#
+# * `num_examples`: number of rows of tabular parquet data to generate
+# * `num_features`: number of columns of the data
+# * `parquet_file_chunk_size_rows`: how many rows per file
+#
+# The data is generated with `sklearn.datasets.make_classification`.
+#
+# **NOTE**: To make things more interesting and more like "real" tabular data, we're going to introduce column names, categorical columns, and turn a few randomly select cells into NULL values. Not all data is clean and purely numeric!
 
-def make_and_upload_dataset(dir_path):
+def make_and_upload_dataset(
+        dir_path, num_examples=2_000_000, num_features=20,
+        parquet_file_chunk_size_rows=50_000):
 
     import random
     import os
@@ -63,10 +96,7 @@ def make_and_upload_dataset(dir_path):
     import pandas as pd
     import sklearn.datasets
 
-    NUM_EXAMPLES = 2_000_000
-    NUM_FEATURES = 20
-    PARQUET_FILE_CHUNK_SIZE = 50_000
-    NUM_FILES = NUM_EXAMPLES // PARQUET_FILE_CHUNK_SIZE
+    num_files = num_examples // parquet_file_chunk_size_rows
 
     def create_data_chunk(n, d, seed, include_label=False):
         X, y = sklearn.datasets.make_classification(
@@ -85,6 +115,10 @@ def make_and_upload_dataset(dir_path):
             scale=1.0,
             shuffle=False,
             random_state=seed)
+
+        # NOTE: To make things more interesting and more like "real" tabular data,
+        # we're going to introduce column names, categorical columns, and turn a few
+        # randomly select cells into NULL values. Not all data is clean and purely numeric!
 
         # turn into dataframe with column names
         col_names = ["feature_%0d" % i for i in range(1, d + 1, 1)]
@@ -112,12 +146,12 @@ def make_and_upload_dataset(dir_path):
     print("Creating synthetic dataset...")
     data_path = os.path.join(dir_path, "data")
     os.makedirs(data_path, exist_ok=True)
-    for i in range(NUM_FILES):
+    for i in range(num_files):
         path = os.path.join(data_path, f"data_{i:05d}.parquet.snappy")
         if not os.path.exists(path):
             tmp_df = create_data_chunk(
-                n=PARQUET_FILE_CHUNK_SIZE,
-                d=NUM_FEATURES,
+                n=parquet_file_chunk_size_rows,
+                d=num_features,
                 seed=i,
                 include_label=True)
             tmp_df.to_parquet(path, compression="snappy", index=False)
@@ -129,12 +163,12 @@ def make_and_upload_dataset(dir_path):
     print("Creating synthetic inference dataset...")
     inference_path = os.path.join(dir_path, "inference")
     os.makedirs(inference_path, exist_ok=True)
-    for i in range(NUM_FILES):
+    for i in range(num_files):
         path = os.path.join(inference_path, f"data_{i:05d}.parquet.snappy")
         if not os.path.exists(path):
             tmp_df = create_data_chunk(
-                n=PARQUET_FILE_CHUNK_SIZE,
-                d=NUM_FEATURES,
+                n=parquet_file_chunk_size_rows,
+                d=num_features,
                 seed=i,
                 include_label=False)
             tmp_df.to_parquet(path, compression="snappy", index=False)
@@ -146,12 +180,30 @@ def make_and_upload_dataset(dir_path):
     # os.system("aws s3 sync ./data s3://cuj-big-data/data")
     # os.system("aws s3 sync ./inference s3://cuj-big-data/inference")
 
+###############################################################################
+# Reading parquet data from anywhere with Ray Datasets
+# -----------------------------------------------------
+#
+# Note that the code for reading a parquet file from S3 or a local path is identical!
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
     return ray.data.read_parquet(path, _spread_resource_prefix="node:") \
         .random_shuffle(_spread_resource_prefix="node:")
 
+###############################################################################
+# Data preprocessing with Ray and Ray Datasets
+# -----------------------------------------------------
+#
+# While we don't yet recommend Ray Datasets as a full blown ETL solution, often times data scientists will want to perform "last mile preprocessing" in a way that integrates performantly with their model training pipeline. This is Ray Datasets' sweet spot as it integrates nicely with Ray Train for models in PyTorch, Tensorflow, Horovod, or similar.
+#
+# You'll note the workhorse of batch computations for a Ray Dataset object (ds) involves:
+#
+# .. code-block:: python
+#
+#     ds = ds.map_batches(batch_transform_func, batch_format="pandas")
+#
+# This is a powerful way to map inference, transforms, or any function over a Ray Dataset object.
 
 class DataPreprocessor:
     """A Datasets-based preprocessor that fits scalers/encoders to the training
