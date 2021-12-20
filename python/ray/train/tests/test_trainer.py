@@ -298,7 +298,7 @@ def test_run_iterator(ray_start_2_cpus):
 
     count = 0
     for results in iterator:
-        assert (value["index"] == count for value in results)
+        assert all(value["index"] == count for value in results)
         count += 1
 
     assert count == 3

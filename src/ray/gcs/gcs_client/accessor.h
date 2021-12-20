@@ -63,28 +63,65 @@ class ActorInfoAccessor {
   /// \param name The name of the detached actor to look up in the GCS.
   /// \param ray_namespace The namespace to filter to.
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
   /// \return Status
-  virtual Status AsyncGetByName(
-      const std::string &name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGetByName(const std::string &name, const std::string &ray_namespace,
+                                const OptionalItemCallback<rpc::ActorTableData> &callback,
+                                int64_t timeout_ms = -1);
+
+  /// Get actor specification for a named actor from the GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param name The name of the detached actor to look up in the GCS.
+  /// \param ray_namespace The namespace to filter to.
+  /// \return Status. TimedOut status if RPC is timed out.
+  /// NotFound if the name doesn't exist.
+  virtual Status SyncGetByName(const std::string &name, const std::string &ray_namespace,
+                               rpc::ActorTableData &actor_table_data);
 
   /// List all named actors from the GCS asynchronously.
   ///
   /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
   /// \param ray_namespace The namespace to filter to if all_namespaces is false.
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status
   virtual Status AsyncListNamedActors(
       bool all_namespaces, const std::string &ray_namespace,
-      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback);
+      const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+      int64_t timeout_ms = -1);
+
+  /// List all named actors from the GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
+  /// \param ray_namespace The namespace to filter to if all_namespaces is false.
+  /// \param[out] actors The pair of list of named actors. Each pair includes the
+  /// namespace and name of the actor. \return Status. TimeOut if RPC times out.
+  virtual Status SyncListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      std::vector<std::pair<std::string, std::string>> &actors);
 
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \param timeout_ms RPC timeout ms. -1 means there's no timeout.
   /// \return Status
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const StatusCallback &callback);
+                                    const StatusCallback &callback,
+                                    int64_t timeout_ms = -1);
+
+  /// Register actor to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \return Status. Timedout if actor is not registered by the global
+  /// GCS timeout.
+  virtual Status SyncRegisterActor(const ray::TaskSpecification &task_spec);
 
   /// Kill actor via GCS asynchronously.
   ///
@@ -447,6 +484,9 @@ class NodeInfoAccessor {
   virtual Status AsyncGetInternalConfig(
       const OptionalItemCallback<std::string> &callback);
 
+  /// Add a node to accessor cache.
+  virtual void HandleNotification(const rpc::GcsNodeInfo &node_info);
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -455,8 +495,6 @@ class NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-
-  void HandleNotification(const rpc::GcsNodeInfo &node_info);
 
   GcsClient *client_impl_;
 
@@ -726,6 +764,7 @@ class PlacementGroupInfoAccessor {
   PlacementGroupInfoAccessor() = default;
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
+
   /// Create a placement group to GCS asynchronously.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
@@ -831,12 +870,16 @@ class InternalKVAccessor {
 
   /// List keys with prefix stored in internal kv
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
   virtual Status Keys(const std::string &prefix, std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param key The key of the pair
   /// \param value The value of the pair
@@ -850,6 +893,8 @@ class InternalKVAccessor {
 
   /// Retrive the value associated with a key
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param key The key to lookup
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
@@ -857,11 +902,15 @@ class InternalKVAccessor {
 
   /// Delete the key
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param key The key to delete
   /// \return Status
   virtual Status Del(const std::string &key);
 
   /// Check existence of a key in the store
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param key The key to check
   /// \param exist It's an output parameter. It'll be true if the key exists in the

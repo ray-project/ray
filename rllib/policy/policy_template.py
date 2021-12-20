@@ -14,7 +14,7 @@ from ray.rllib.utils import add_mixins, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.torch_utils import convert_to_non_torch_type
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -321,8 +321,7 @@ def build_policy_class(
         @override(parent_cls)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
-                fetches = convert_to_non_torch_type(
-                    extra_learn_fetches_fn(self))
+                fetches = convert_to_numpy(extra_learn_fetches_fn(self))
                 # Auto-add empty learner stats dict if needed.
                 return dict({LEARNER_STATS_KEY: {}}, **fetches)
             else:
@@ -352,7 +351,7 @@ def build_policy_class(
                 else:
                     stats_dict = parent_cls.extra_action_out(
                         self, input_dict, state_batches, model, action_dist)
-                return self._convert_to_non_torch_type(stats_dict)
+                return self._convert_to_numpy(stats_dict)
 
         @override(parent_cls)
         def optimizer(self):
@@ -370,16 +369,16 @@ def build_policy_class(
                 else:
                     stats_dict = self.parent_cls.extra_grad_info(
                         self, train_batch)
-                return self._convert_to_non_torch_type(stats_dict)
+                return self._convert_to_numpy(stats_dict)
 
         def _no_grad_context(self):
             if self.framework == "torch":
                 return torch.no_grad()
             return NullContextManager()
 
-        def _convert_to_non_torch_type(self, data):
+        def _convert_to_numpy(self, data):
             if self.framework == "torch":
-                return convert_to_non_torch_type(data)
+                return convert_to_numpy(data)
             return data
 
     def with_updates(**overrides):

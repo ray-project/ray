@@ -120,7 +120,6 @@ def test_limit_concurrency(shutdown_only):
     assert len(not_ready) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Times out on windows.")
 def test_zero_cpu_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -140,7 +139,8 @@ def test_zero_cpu_scheduling(shutdown_only):
     block_driver_ref = block_driver.acquire.remote()
 
     # Both tasks should be running, so the driver should be unblocked.
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    timeout_value = 5 if sys.platform == "win32" else 1
+    _, not_ready = ray.wait([block_driver_ref], timeout=timeout_value)
     assert len(not_ready) == 0
 
 
@@ -172,13 +172,15 @@ def test_exponential_wait(shutdown_only):
     start = time.time()
     results = ray.get([f.remote(i, start) for i in range(num_tasks)])
 
-    assert results[-4] > (1)
-    assert results[-3] > (1 + 2)
-    assert results[-2] > (1 + 2 + 4)
-    assert results[-1] > (1 + 2 + 4 + 8)
+    last_wait = results[-1] - results[-2]
+    second_last = results[-2] - results[-3]
+
+    # Assert that last_wwait / second_last ~= 2, with a healthy buffer since ci
+    # is noisy.
+    assert second_last < last_wait < 4 * second_last
+    assert 7 < last_wait
 
 
 if __name__ == "__main__":
-    import pytest
     os.environ["RAY_worker_cap_enabled"] = "true"
     sys.exit(pytest.main(["-v", __file__]))

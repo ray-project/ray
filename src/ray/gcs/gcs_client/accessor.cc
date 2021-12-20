@@ -18,6 +18,13 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+namespace {
+inline int64_t GetGcsTimeoutMs() {
+  return absl::ToInt64Milliseconds(
+      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
+}
+}  // namespace
+
 namespace ray {
 namespace gcs {
 
@@ -174,7 +181,7 @@ Status ActorInfoAccessor::AsyncGetAll(
 
 Status ActorInfoAccessor::AsyncGetByName(
     const std::string &name, const std::string &ray_namespace,
-    const OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const OptionalItemCallback<rpc::ActorTableData> &callback, int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
@@ -189,27 +196,70 @@ Status ActorInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
-      });
+      },
+      /*timeout_ms*/ timeout_ms);
   return Status::OK();
+}
+
+Status ActorInfoAccessor::SyncGetByName(const std::string &name,
+                                        const std::string &ray_namespace,
+                                        rpc::ActorTableData &actor_table_data) {
+  rpc::GetNamedActorInfoRequest request;
+  rpc::GetNamedActorInfoReply reply;
+  request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
+  auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
+      request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
+  if (status.ok() && reply.has_actor_table_data()) {
+    actor_table_data = reply.actor_table_data();
+  }
+  return status;
 }
 
 Status ActorInfoAccessor::AsyncListNamedActors(
     bool all_namespaces, const std::string &ray_namespace,
-    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+    const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Listing actors";
   rpc::ListNamedActorsRequest request;
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().ListNamedActors(
-      request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
-        callback(VectorFromProtobuf(reply.named_actors_list()));
+      request,
+      [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, VectorFromProtobuf(reply.named_actors_list()));
+        }
         RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
+Status ActorInfoAccessor::SyncListNamedActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    std::vector<std::pair<std::string, std::string>> &actors) {
+  rpc::ListNamedActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
+  request.set_ray_namespace(ray_namespace);
+  rpc::ListNamedActorsReply reply;
+  auto status = client_impl_->GetGcsRpcClient().SyncListNamedActors(request, &reply,
+                                                                    GetGcsTimeoutMs());
+  if (!status.ok()) {
+    return status;
+  }
+
+  for (const auto &actor_info : VectorFromProtobuf(reply.named_actors_list())) {
+    actors.push_back(std::make_pair(actor_info.ray_namespace(), actor_info.name()));
+  }
+  return status;
+}
+
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
-                                             const ray::gcs::StatusCallback &callback) {
+                                             const ray::gcs::StatusCallback &callback,
+                                             int64_t timeout_ms) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::RegisterActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
@@ -221,8 +271,19 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
         callback(status);
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_spec) {
+  RAY_CHECK(task_spec.IsActorCreationTask());
+  rpc::RegisterActorRequest request;
+  rpc::RegisterActorReply reply;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(request, &reply,
+                                                                  GetGcsTimeoutMs());
+  return status;
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id, bool force_kill,
@@ -559,11 +620,14 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   // Add the notification to our cache.
   RAY_LOG(INFO) << "Received notification for node id = " << node_id
                 << ", IsAlive = " << is_alive;
+
+  auto &node = node_cache_[node_id];
   if (is_alive) {
-    node_cache_[node_id] = node_info;
+    node = node_info;
   } else {
-    node_cache_[node_id].set_state(rpc::GcsNodeInfo::DEAD);
-    node_cache_[node_id].set_timestamp(node_info.timestamp());
+    node.set_node_id(node_info.node_id());
+    node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.set_timestamp(node_info.timestamp());
   }
 
   // If the notification is new, call registered callback.
@@ -574,7 +638,9 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
       removed_nodes_.insert(node_id);
     }
     GcsNodeInfo &cache_data = node_cache_[node_id];
-    node_change_callback_(node_id, cache_data);
+    if (node_change_callback_) {
+      node_change_callback_(node_id, cache_data);
+    }
   }
 }
 
@@ -1263,13 +1329,15 @@ Status InternalKVAccessor::AsyncInternalKVGet(
   rpc::InternalKVGetRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVGet(
-      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
         if (reply.status().code() == (int)StatusCode::NotFound) {
           callback(status, boost::none);
         } else {
           callback(status, reply.value());
         }
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1281,9 +1349,11 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &key,
   req.set_value(value);
   req.set_overwrite(overwrite);
   client_impl_->GetGcsRpcClient().InternalKVPut(
-      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
         callback(status, reply.added_num());
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1292,9 +1362,11 @@ Status InternalKVAccessor::AsyncInternalKVExists(
   rpc::InternalKVExistsRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVExists(
-      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
         callback(status, reply.exists());
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1303,9 +1375,11 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &key,
   rpc::InternalKVDelRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVDel(
-      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
         callback(status);
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1315,13 +1389,15 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
   rpc::InternalKVKeysRequest req;
   req.set_prefix(prefix);
   client_impl_->GetGcsRpcClient().InternalKVKeys(
-      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
         if (!status.ok()) {
           callback(status, boost::none);
         } else {
           callback(status, VectorFromProtobuf(reply.results()));
         }
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 

@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-
 import os
 from pathlib import Path
 import sys
@@ -11,9 +9,8 @@ from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.tests.test_runtime_env_working_dir \
-    import tmp_working_dir  # noqa: F401
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (wait_for_condition, chdir,
+                                     check_local_files_gced)
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -23,14 +20,6 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-
-
-@contextmanager
-def chdir(d: str):
-    old_dir = os.getcwd()
-    os.chdir(d)
-    yield
-    os.chdir(old_dir)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -251,20 +240,6 @@ def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
 
 
-def check_local_files_gced(cluster):
-    for node in cluster.list_all_nodes():
-        for subdir in ["working_dir_files", "py_modules_files"]:
-            all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
-            # Check that there are no files remaining except for .lock files.
-            # TODO(edoakes): the lock files should get cleaned up too!
-            if len(list(filter(lambda f: not f.endswith(".lock"),
-                               all_files))) > 0:
-                return False
-
-    return True
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
@@ -316,8 +291,6 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
-# TODO(architkulkarni): fix bug #19602 and enable test.
-@pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_actor_level_gc(start_cluster, option: str):
