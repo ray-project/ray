@@ -841,18 +841,16 @@ def init(
     raylet_ip_address = node_ip_address
 
     if address:
-        bootstrap_address, _, _ = services.validate_bootstrap_address(address)
+        redis_address, _, _ = services.validate_redis_address(address)
     else:
-        bootstrap_address = None
-    redis_address = None if services.bootstrap_with_gcs(
-    ) else bootstrap_address
+        redis_address = None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
-    if bootstrap_address is not None:
-        logger.info("Connecting to existing Ray cluster at address: "
-                    f"{bootstrap_address}")
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -875,10 +873,9 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if bootstrap_address is None:
+    if redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
-            bootstrap_address=bootstrap_address,
             redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
