@@ -83,12 +83,9 @@ class GrpcServer {
       for (auto &polling_thread : polling_threads_) {
         polling_thread.join();
       }
-      polling_threads_.clear();
       is_closed_ = true;
       RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
-      // server_.reset();
-      services_.clear();
-      server_call_factories_.clear();
+      server_.reset();
     }
   }
 

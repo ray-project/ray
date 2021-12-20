@@ -142,7 +142,6 @@ class IntegrationTest : public ::testing::Test {
     periodic_runner_ = std::make_unique<PeriodicalRunner>(*io_service_.Get());
 
     SetupServer();
-    SetupServer();
   }
 
   ~IntegrationTest() {
@@ -156,7 +155,6 @@ class IntegrationTest : public ::testing::Test {
   void SetupServer() {
     if (server_ != nullptr) {
       server_->Shutdown();
-      server_.reset();
     }
 
     auto publisher = std::make_unique<Publisher>(

@@ -82,14 +82,14 @@ void GrpcServer::Run() {
   for (auto &entry : services_) {
     builder.RegisterService(&entry.get());
   }
-  // // Get hold of the completion queue used for the asynchronous communication
-  // // with the gRPC runtime.
+  // Get hold of the completion queue used for the asynchronous communication
+  // with the gRPC runtime.
   for (int i = 0; i < num_threads_; i++) {
     cqs_[i] = builder.AddCompletionQueue();
   }
   // Build and start server.
   server_ = builder.BuildAndStart();
-  // services_.clear();
+
   RAY_CHECK(server_)
       << "Failed to start the grpc server. The specified port is " << specified_port
       << ". This means that Ray's core components will not be able to function "
