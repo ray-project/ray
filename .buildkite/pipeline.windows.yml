@@ -2,5 +2,12 @@ steps:
 - label: "Compile Ray"
   commands:
     - cd C:\\workdir
+    - mkdir ray
+    - cd ray
+    - git config --global core.symlinks true
+    - git config --global core.autocrlf false
+    - git remote set-url origin https://github.com/ray-project/ray.git
+    - git fetch -v --prune -- origin ${BUILDKITE_COMMIT}
+    - git checkout -f ${BUILDKITE_COMMIT}
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
