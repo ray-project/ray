@@ -185,8 +185,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
-        gcs_server_address=args.gcs_address
-    )
+        gcs_server_address=args.gcs_address)
 
     node = ray.node.Node(
         ray_params,
