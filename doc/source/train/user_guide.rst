@@ -414,7 +414,7 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 2. :ref:`train-api-tbx-logger-callback`
 3. :ref:`train-api-mlflow-logger-callback`
 
-Example usage on how to log intermediate results to MLflow and Tensorboard
+Example usage on how to log intermediate results to MLflow and Tensorboard:
 
 .. code-block:: python
 
