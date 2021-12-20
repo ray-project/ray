@@ -9,7 +9,7 @@ ray.init()
 
 @ray.remote
 def echo_task(n):
-    time.sleep(1)
+    time.sleep(0.5)
     return n
 
 
