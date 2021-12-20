@@ -416,12 +416,20 @@ The following ``TrainingCallback``\s are available and will log the intermediate
 
 Example usage on how to log intermediate results to MLflow and Tensorboard:
 
+1. First install the needed packages
+
+.. code-block:: bash
+
+    $ pip install mlflow
+    $ pip install tensorboardX
+
+2. Then run the training script
+
 .. code-block:: python
 
     from ray import train
     from ray.train import Trainer
     from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
-    from typing import List, Dict
 
     def train_func():
         for i in range(3):
@@ -436,7 +444,27 @@ Example usage on how to log intermediate results to MLflow and Tensorboard:
         callbacks=[MLflowLoggerCallback(experiment_name="train_experiment"), TBXLoggerCallback()]
     )
 
+    # Print the latest run directory and keep note of it.
+    # For example: /home/ray_results/train_2021-09-01_12-00-00/run_001
+    print("Run directory:", trainer.latest_run_dir)
+
     trainer.shutdown()
+
+
+3. Navigate to the :ref:`run dir <train-log-dir> and then visualize the logs.
+
+.. code-block:: bash
+
+    # Navigate to the run directory of the trainer.
+    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
+    $ cd <TRAINER_RUN_DIR>
+
+    # View the MLflow UI.
+    $ mlflow ui .
+
+    # View the tensorboard UI.
+    $ tensorboard --logdir .
+
 
 .. _train-custom-callbacks:
 
