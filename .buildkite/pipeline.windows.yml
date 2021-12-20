@@ -5,6 +5,7 @@ steps:
     - cd ray
     - git config --global core.symlinks true
     - git config --global core.autocrlf false
+    - git init
     - git remote set-url origin https://github.com/ray-project/ray.git
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}; else export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head; fi
     - git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
