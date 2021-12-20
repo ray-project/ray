@@ -308,7 +308,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
-  - Example: ``{"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}``
+  - Example: ``{"dependencies": ["pytorch", "torchvision", "pip", {"pip": ["pendulum"]}]}``
 
   - Example: ``"./environment.yml"``
 
@@ -318,6 +318,14 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+- ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
+  The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
+  The `run_options` list spec is here: https://docs.docker.com/engine/reference/run/.
+
+  - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
+
+  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`.
 
 - ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
   If set to ``False``, the runtime environment will be only installed when the first task is invoked or when the first actor is created.
