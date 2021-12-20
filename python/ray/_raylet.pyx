@@ -1666,7 +1666,9 @@ cdef class CoreWorker:
             return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                 c_actor_id,
                 ray_function,
-                args_vector, CTaskOptions(name, num_returns, c_resources, concurrency_group_name))
+                args_vector,
+                CTaskOptions(
+                    name, num_returns, c_resources, concurrency_group_name))
             if return_refs.has_value():
                 return VectorToObjectRefs(return_refs.value())
             else:

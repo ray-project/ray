@@ -1016,7 +1016,8 @@ class ActorHandle:
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
             list_args, name, num_returns, self._ray_actor_method_cpus,
-            concurrency_group_name if concurrency_group_name is not None else b"")
+            concurrency_group_name
+            if concurrency_group_name is not None else b"")
 
         if len(object_refs) == 1:
             object_refs = object_refs[0]
