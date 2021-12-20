@@ -290,7 +290,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &work = work_it->second;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
-      //TODO (Jae) NodeManager.cc
       TaskID task_id = spec.TaskId();
       if (work->status == WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
@@ -304,7 +303,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(DEBUG) << "[JAE_DEBUG] DispatchScheduledTasksToWorkers blocked task "<<task_priority;
         break;
       }
-
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);

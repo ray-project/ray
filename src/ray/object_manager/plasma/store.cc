@@ -147,7 +147,8 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                                                    PlasmaObject *object,
                                                    bool *spilling_required,
 												   bool *block_tasks_required,
-												   bool *evict_tasks_required) {
+												   bool *evict_tasks_required,
+												   ray::Priority *lowest_priority) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
@@ -166,9 +167,10 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                    << ", data_size=" << object_info.data_size
                    << ", metadata_size=" << object_info.metadata_size;
   }
-  //TODO(Jae) Erase this later
+  //TODO(Jae) Insert Priority to LocalObject at create
   const int64_t footprint_limit = allocator_.GetFootprintLimit();
   float allocated_percentage;
+  
   if(footprint_limit != 0){
 	  allocated_percentage =
 			static_cast<float>(allocator_.Allocated()) / footprint_limit;
@@ -185,6 +187,10 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
 	    *evict_tasks_required = true;
     }
   }
+  if(lowest_priority != nullptr){
+    LocalObject *lowest_pri_obj = object_lifecycle_mgr_.GetLowestPriObject();
+    lowest_priority = lowest_pri_obj->GetPriority(); 
+  }
 
   // Trigger object spilling if current usage is above the specified threshold.
   if (spilling_required != nullptr) {
@@ -200,6 +206,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   return error;
 }
 
+//TODO(Jae) You stopped here
 PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
                                       fb::ObjectSource source,
                                       const std::shared_ptr<Client> &client,
@@ -387,11 +394,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     auto handle_create = [this, client, message](
                              bool fallback_allocator, PlasmaObject *result,
                              bool *spilling_required, bool *block_tasks_required,
-							 bool *evict_tasks_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+							 bool *evict_tasks_required, ray::Priority *lowest_priority) ABSL_NO_THREAD_SAFETY_ANALYSIS {
       mutex_.AssertHeld();
       return HandleCreateObjectRequest(client, message, fallback_allocator, result,
                                        spilling_required, block_tasks_required,
-									   evict_tasks_required);
+									   evict_tasks_required, lowest_priority);
     };
 
     if (request->try_immediately()) {

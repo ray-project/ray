@@ -272,7 +272,7 @@ RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
-RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -374,20 +374,9 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 0.8)
-
-RAY_CONFIG(float, block_tasks_threshold, 1.0)
-
-RAY_CONFIG(float, evict_tasks_threshold, 1.0)
-
-// Whether to use BlockTasks 
-RAY_CONFIG(bool, enable_BlockTasks, false)
-
-// Whether to use EvictTasks when spill required
-RAY_CONFIG(bool, enable_EvictTasks, false)
-
-// Whether to use EvictTasks when spill required
-RAY_CONFIG(bool, enable_BlockandEvictTasks, false)
+RAY_CONFIG(float, object_spilling_threshold, 120.0)
+RAY_CONFIG(float, block_tasks_threshold, 120.0)
+RAY_CONFIG(float, evict_tasks_threshold, 0.8)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -503,3 +492,9 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+// Whether to use BlockTasks 
+RAY_CONFIG(bool, call_BlockTasks, true)
+
+// Whether to use EvictTasks when spill required
+RAY_CONFIG(bool, call_EvictTasks, false)

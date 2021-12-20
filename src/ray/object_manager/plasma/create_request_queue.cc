@@ -69,7 +69,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   // Immediately fulfill it using the fallback allocator.
   PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
                                       /*spilling_required=*/nullptr, 
-												nullptr, nullptr);
+												nullptr, nullptr, nullptr);
   return {result, error};
 }
 
@@ -77,10 +77,11 @@ Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
                                           std::unique_ptr<CreateRequest> &request,
                                           bool *spilling_required,
 										  bool *block_tasks_required,
-										  bool *evict_tasks_required) {
+										  bool *evict_tasks_required,
+										  ray::Priority *lowest_pri) {
   request->error =
       request->create_callback(fallback_allocator, &request->result, spilling_required,
-			  nullptr, nullptr);
+			  block_tasks_required, evict_tasks_required, lowest_pri);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else {
@@ -97,7 +98,7 @@ Status CreateRequestQueue::ProcessFirstRequest() {
     std::unique_ptr<CreateRequest> &request = queue_it->second;
     auto status =
         ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required,
-				nullptr, nullptr);
+				nullptr, nullptr, nullptr);
     if (spilling_required) {
       spill_objects_callback_();
     }
@@ -129,7 +130,7 @@ Status CreateRequestQueue::ProcessFirstRequest() {
       } else {
         // Trigger the fallback allocator.
         status = ProcessRequest(/*fallback_allocator=*/true, request,
-                                /*spilling_required=*/nullptr, nullptr, nullptr);
+                                /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
         if (!status.ok()) {
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
@@ -161,8 +162,9 @@ Status CreateRequestQueue::ProcessRequests() {
     bool block_tasks_required = false;
 	bool evict_tasks_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
+	ray::Priority lowest_pri;
     auto status = ProcessRequest(/*fallback_allocator=*/false, request,
-		   	&spilling_required, &block_tasks_required, &evict_tasks_required);
+		   	&spilling_required, &block_tasks_required, &evict_tasks_required, &lowest_pri);
 	/*
 	if(!RayConfig::instance().enable_BlockandEvictTasks()){
       if(RayConfig::instance().enable_BlockTasks() && block_tasks_required){
@@ -198,16 +200,14 @@ Status CreateRequestQueue::ProcessRequests() {
 
       if(RayConfig::instance().enable_BlockTasks()){
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
-	    << queue_it->first.first.score;
-	    on_object_creation_blocked_callback_(queue_it->first.first , true, false);
+	    << lowest_pri;
+	    on_object_creation_blocked_callback_(lowest_pri, true, false);
       }
-
 	  if(RayConfig::instance().enable_EvictTasks()){
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_evict_callback on priority "
 	    << queue_it->first.first.score;
-	    on_object_creation_blocked_callback_(queue_it->first.first , false, true);
+	    on_object_creation_blocked_callback_(queue_it->first.first, false, true);
 	  }
-
       if (!should_spill_) {
         RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
         return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
@@ -228,7 +228,7 @@ Status CreateRequestQueue::ProcessRequests() {
       } else {
         // Trigger the fallback allocator.
         status = ProcessRequest(/*fallback_allocator=*/true, request,
-                                /*spilling_required=*/nullptr, nullptr, nullptr);
+                                /*spilling_required=*/nullptr, nullptr, nullptr, nullptr);
         if (!status.ok()) {
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {

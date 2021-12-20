@@ -9,9 +9,9 @@ from time import perf_counter
 ## Argument Parse ##
 ####################
 parser = argparse.ArgumentParser()
-parser.add_argument('--WORKING_SET_RATIO', '-w', type=int, default=2)
+parser.add_argument('--WORKING_SET_RATIO', '-w', type=int, default=1)
 parser.add_argument('--OBJECT_STORE_SIZE', '-o', type=int, default=1_000_000_000)
-parser.add_argument('--OBJECT_SIZE', '-os', type=int, default=250_000_000)
+parser.add_argument('--OBJECT_SIZE', '-os', type=int, default=350_000_000)
 parser.add_argument('--NUM_STAGES', '-ns', type=int, default=1)
 parser.add_argument('--NUM_TRIAL', '-t', type=int, default=1)
 args = parser.parse_args()
@@ -23,38 +23,41 @@ WORKING_SET_RATIO = params['WORKING_SET_RATIO']
 NUM_STAGES = params['NUM_STAGES']
 NUM_TRIAL = params['NUM_TRIAL']
 
+SLEEP_TIME = 3
+
 def test_ray_pipeline():
     ray_pipeline_begin = perf_counter()
 
     @ray.remote(num_cpus=1)
-    def last_consumer(obj_ref):
-        return True
-
-    @ray.remote(num_cpus=1)
     def consumer(obj_ref):
-        return np.zeros(OBJECT_SIZE // 8)
+        return True
 
     @ray.remote(num_cpus=1) 
     def producer(): 
+        print("producer return")
         return np.zeros(OBJECT_SIZE // 8)
         
-    num_fill_object_store = (OBJECT_STORE_SIZE//OBJECT_SIZE)//NUM_STAGES
-    refs = [[] for _ in range(NUM_STAGES+1)]
-    for _ in range(WORKING_SET_RATIO*num_fill_object_store):
-        refs[0].append(producer.remote())
+    @ray.remote(num_cpus=1) 
+    def first_producer(): 
+        time.sleep(SLEEP_TIME)
+        print("sleep finished in first producer")
+        return np.zeros(OBJECT_SIZE // 8)
+        
+    a = first_producer.remote()
+    b = producer.remote()
+    c = producer.remote()
 
-    for stage in range(1, NUM_STAGES):
-        for r in refs[stage-1]:
-            refs[stage].append(consumer.remote(r))
+    time.sleep(SLEEP_TIME*3)
+    print("calling consumers")
 
-    for r in refs[NUM_STAGES-1]:
-        ref = last_consumer.remote(r)
-        print("REF", ref, "depends on", r)
-        refs[NUM_STAGES].append(ref)
+    a1 = consumer.remote(a)
+    b1 = consumer.remote(b)
+    c1 = consumer.remote(c)
 
-    for ref in refs[-1]:
-        print("GET", ref)
-        ray.get(ref)
+    print("Waiting for consuermers to finish")
+    ray.get(a1)
+    ray.get(b1)
+    ray.get(c1)
 
     ray_pipeline_end = perf_counter()
 

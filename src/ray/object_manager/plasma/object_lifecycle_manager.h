@@ -45,6 +45,12 @@ class IObjectLifecycleManager {
       const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) = 0;
 
+  /// Get object of lowest priority.
+  /// \return
+  ///   - nullptr if such object doesn't exist.
+  ///   - otherwise, pointer to the object.
+  virtual LocalObject *GetLowestPriObject() = 0;
+
   /// Get object by id.
   /// \return
   ///   - nullptr if such object doesn't exist.
@@ -105,6 +111,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
       const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) override;
+
+  LocalObject *GetLowestPriObject() override;
 
   const LocalObject *GetObject(const ObjectID &object_id) const override;
 

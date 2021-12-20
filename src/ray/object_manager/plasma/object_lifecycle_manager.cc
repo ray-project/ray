@@ -49,6 +49,10 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   return {entry, PlasmaError::OK};
 }
 
+LocalObject *ObjectLifecycleManager::GetLowestPriObject() {
+  return object_store_->GetLowestPriObject();
+}
+
 const LocalObject *ObjectLifecycleManager::GetObject(const ObjectID &object_id) const {
   return object_store_->GetObject(object_id);
 }

@@ -205,7 +205,8 @@ class PlasmaStore {
                                         bool fallback_allocator, PlasmaObject *object,
                                         bool *spilling_required,
 										bool *block_tasks_required,
-										bool *evict_tasks_required)
+										bool *evict_tasks_required,
+										ray::Priority *lowest_priority)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
