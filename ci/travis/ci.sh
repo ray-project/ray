@@ -598,6 +598,11 @@ configure_system() {
   git config --global core.askpass ""
   git config --global credential.helper ""
   git config --global credential.modalprompt false
+
+  # Requests library need root certificates.
+  if [ "${OSTYPE}" = msys ]; then
+    certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
+  fi
 }
 
 # Initializes the environment for the current job. Performs the following tasks:

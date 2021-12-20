@@ -1,10 +1,6 @@
 steps:
 - label: "Compile Ray"
   commands:
-    - certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
-    - pwd
-    - ls
     - cd C:\\workdir
-    - ls
-    - . ./ci/travis/ci.sh init
-    - . ./ci/travis/ci.sh build
+    - bash ./ci/travis/ci.sh init
+    - bash ./ci/travis/ci.sh build
