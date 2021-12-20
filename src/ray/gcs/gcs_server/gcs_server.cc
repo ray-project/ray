@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
-#include "ray/gcs/gcs_server/task_info_handler_impl.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -163,9 +162,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs worker manager.
   InitGcsWorkerManager();
-
-  // Init task info handler.
-  InitTaskInfoHandler();
 
   // Init stats handler.
   InitStatsHandler();
@@ -390,16 +386,6 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
-}
-
-void GcsServer::InitTaskInfoHandler() {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  task_info_handler_.reset(
-      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_publisher_));
-  // Register service.
-  task_info_service_.reset(
-      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
-  rpc_server_.RegisterService(*task_info_service_);
 }
 
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
