@@ -2,5 +2,5 @@ steps:
 - label: "Compile Ray"
   commands:
     - cd C:\\workdir
-    - bash ./ci/travis/ci.sh init
-    - bash ./ci/travis/ci.sh build
+    - . ./ci/travis/ci.sh init
+    - . ./ci/travis/ci.sh build
