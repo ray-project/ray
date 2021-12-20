@@ -1290,22 +1290,29 @@ class TrialRunner:
         outstanding future to be handled for the trial. If there is, the future
         would be discarded.
         """
-        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
-            return
-        elif trial.status in [Trial.PENDING, Trial.PAUSED]:
-            self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_complete(trial.trial_id)
-        elif trial.status is Trial.RUNNING:
-            # By this time trial.last_result should have been updated already.
-            self._scheduler_alg.on_trial_complete(
-                self, trial, flatten_dict(trial.last_result))
-            self._search_alg.on_trial_complete(
-                trial.trial_id, result=flatten_dict(trial.last_result))
-        self._callbacks.on_trial_complete(
-            iteration=self._iteration, trials=self._trials, trial=trial)
-        self.trial_executor.export_trial_if_needed(trial)
-        self.trial_executor.stop_trial(trial)
-        self._live_trials.discard(trial)
+        try:
+            if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+                return
+            elif trial.status in [Trial.PENDING, Trial.PAUSED]:
+                self._scheduler_alg.on_trial_remove(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id)
+            elif trial.status is Trial.RUNNING:
+                # By this time trial.last_result should have been
+                # updated already.
+                self._scheduler_alg.on_trial_complete(
+                    self, trial, flatten_dict(trial.last_result))
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, result=flatten_dict(trial.last_result))
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+            self.trial_executor.export_trial_if_needed(trial)
+            self.trial_executor.stop_trial(trial)
+            self._live_trials.discard(trial)
+        except Exception:
+            logger.exception("Trial %s: Error stopping trial.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
+            self._process_trial_failure(trial, traceback.format_exc())
 
     def cleanup_trials(self):
         self.trial_executor.cleanup(self.get_trials())
