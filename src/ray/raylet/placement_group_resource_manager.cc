@@ -94,9 +94,12 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
     RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
                       "release the requested resources before.";
     for (const auto &bundle : prepared_bundles) {
-      // `ReturnBundle` will return resource, erase from `pg_bundles_` and
-      // `bundle_spec_map_`.
       ReturnBundle(*bundle);
+      // Erase from `bundle_spec_map_`.
+      const auto &iter = bundle_spec_map_.find(bundle->BundleId());
+      if (iter != bundle_spec_map_.end()) {
+        bundle_spec_map_.erase(iter);
+      }
     }
     return false;
   }
@@ -185,11 +188,6 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     }
   }
   pg_bundles_.erase(it);
-  // Erase from `bundle_spec_map_`.
-  const auto &iter = bundle_spec_map_.find(bundle_spec.BundleId());
-  if (iter != bundle_spec_map_.end()) {
-    bundle_spec_map_.erase(iter);
-  }
   delete_resources_(deleted);
 }
 

@@ -35,15 +35,15 @@ class HandleOptions:
 
 
 class RayServeHandle:
-    """A handle to a service endpoint.
+    """A handle to a service deployment.
 
-    Invoking this endpoint with .remote is equivalent to pinging
-    an HTTP endpoint.
+    Invoking this deployment with .remote is equivalent to pinging
+    an HTTP deployment.
 
     Example:
-       >>> handle = serve_client.get_handle("my_endpoint")
+       >>> handle = serve_client.get_handle("my_deployment")
        >>> handle
-       RayServeSyncHandle(endpoint="my_endpoint")
+       RayServeSyncHandle(deployment_name="my_deployment")
        >>> handle.remote(my_request_content)
        ObjectRef(...)
        >>> ray.get(handle.remote(...))
@@ -51,9 +51,9 @@ class RayServeHandle:
        >>> ray.get(handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
 
-       >>> async_handle = serve_client.get_handle("my_endpoint", sync=False)
+       >>> async_handle = serve_client.get_handle("my_deployment", sync=False)
        >>> async_handle
-       RayServeHandle(endpoint="my_endpoint")
+       RayServeHandle(deployment="my_deployment")
        >>> await async_handle.remote(my_request_content)
        ObjectRef(...)
        >>> ray.get(await async_handle.remote(...))
@@ -65,26 +65,26 @@ class RayServeHandle:
     def __init__(
             self,
             controller_handle: ActorHandle,
-            endpoint_name: EndpointTag,
+            deployment_name: EndpointTag,
             handle_options: Optional[HandleOptions] = None,
             *,
             _router: Optional[Router] = None,
             _internal_pickled_http_request: bool = False,
     ):
         self.controller_handle = controller_handle
-        self.endpoint_name = endpoint_name
+        self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
-        self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
+        self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
         self._pickled_http_request = _internal_pickled_http_request
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
                          "made on this handle."),
-            tag_keys=("handle", "endpoint"))
+            tag_keys=("handle", "deployment"))
         self.request_counter.set_default_tags({
             "handle": self.handle_tag,
-            "endpoint": self.endpoint_name
+            "deployment": self.deployment_name
         })
 
         self.router: Router = _router or self._make_router()
@@ -92,7 +92,7 @@ class RayServeHandle:
     def _make_router(self) -> Router:
         return Router(
             self.controller_handle,
-            self.endpoint_name,
+            self.deployment_name,
             event_loop=asyncio.get_event_loop(),
         )
 
@@ -138,17 +138,17 @@ class RayServeHandle:
 
         return self.__class__(
             self.controller_handle,
-            self.endpoint_name,
+            self.deployment_name,
             new_options,
             _router=self.router,
             _internal_pickled_http_request=self._pickled_http_request,
         )
 
-    def _remote(self, endpoint_name, handle_options, args,
+    def _remote(self, deployment_name, handle_options, args,
                 kwargs) -> Coroutine:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
-            endpoint_name,
+            deployment_name,
             call_method=handle_options.method_name,
             shard_key=handle_options.shard_key,
             http_method=handle_options.http_method,
@@ -159,7 +159,7 @@ class RayServeHandle:
         return coro
 
     async def remote(self, *args, **kwargs):
-        """Issue an asynchronous request to the endpoint.
+        """Issue an asynchronous request to the deployment.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get (or ``await object_ref``), respectively.
@@ -174,16 +174,17 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        return await self._remote(self.endpoint_name, self.handle_options,
+        return await self._remote(self.deployment_name, self.handle_options,
                                   args, kwargs)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
+        return (f"{self.__class__.__name__}"
+                f"(deployment='{self.deployment_name}')")
 
     def __reduce__(self):
         serialized_data = {
             "controller_handle": self.controller_handle,
-            "endpoint_name": self.endpoint_name,
+            "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
@@ -204,12 +205,12 @@ class RayServeSyncHandle(RayServeHandle):
         # Delayed import because ray.serve.api depends on handles.
         return Router(
             self.controller_handle,
-            self.endpoint_name,
+            self.deployment_name,
             event_loop=create_or_get_async_loop_in_thread(),
         )
 
     def remote(self, *args, **kwargs):
-        """Issue an asynchronous request to the endpoint.
+        """Issue an asynchronous request to the deployment.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get (or ``await object_ref``), respectively.
@@ -226,7 +227,7 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.endpoint_name, self.handle_options, args,
+        coro = self._remote(self.deployment_name, self.handle_options, args,
                             kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._event_loop)
@@ -235,7 +236,7 @@ class RayServeSyncHandle(RayServeHandle):
     def __reduce__(self):
         serialized_data = {
             "controller_handle": self.controller_handle,
-            "endpoint_name": self.endpoint_name,
+            "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_internal_pickled_http_request": self._pickled_http_request,
         }
