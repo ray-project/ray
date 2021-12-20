@@ -74,7 +74,9 @@ class Executor {
 /// whole service, handler, and each call.
 /// The priority of timeout is each call > handler > whole service
 /// (the lower priority timeout is overwritten by the higher priority timeout).
-/// \param no_retry Indicate whether retry the rpc automatically
+/// \param no_retry Whether retry the rpc automatically after failure, default
+/// value is false. For some rpc calls such as `Ping`, used to detect the rpc
+/// server is alive or not, so do not want to be retried.
 /// \param SPECS The cpp method spec. For example, override.
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
@@ -103,10 +105,7 @@ class Executor {
           callback(status, reply);                                                     \
         } else {                                                                       \
           gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT,         \
-                                        [executor]() {                                 \
-                                          RAY_LOG(INFO) << #METHOD << " retry";        \
-                                          executor->Retry();                           \
-                                        });                                            \
+                                        [executor]() { executor->Retry(); });          \
         }                                                                              \
       }                                                                                \
     };                                                                                 \
@@ -178,6 +177,9 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<PingGcsService>>(address, port, client_call_manager);
   }
 
+  /// Reset ping client with new address and port. During the gcs client reconnection,
+  /// the address and port of gcs server may changed, so ping client need to be updated
+  /// with the updated address and port.
   void ResetPingClient(const std::string &address, const int port,
                        ClientCallManager &client_call_manager) {
     ping_grpc_client_ =

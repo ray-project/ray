@@ -123,7 +123,7 @@ test_core() {
         -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
-        -//:gcs_server_test
+        -//:gcs_client_test
         -//:gcs_server_rpc_test
       )
       ;;
