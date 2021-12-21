@@ -11,7 +11,6 @@ This notebook includes an example workflow for training a Pytorch deep learning 
 # -------
 #
 # Let's import a few libraries we'll need. 
-###############################################################################
 
 import argparse
 import collections
@@ -78,11 +77,11 @@ class MLflowCallback(TrainingCallback):
 #
 # In particular, you can specify:
 #
-# * `num_examples`: number of rows of tabular parquet data to generate
-# * `num_features`: number of columns of the data
-# * `parquet_file_chunk_size_rows`: how many rows per file
+# * ``num_examples```: number of rows of tabular parquet data to generate
+# * ``num_features```: number of columns of the data
+# * ``parquet_file_chunk_size_rows``: how many rows per file
 #
-# The data is generated with `sklearn.datasets.make_classification`.
+# The data is generated with ``sklearn.datasets.make_classification``.
 #
 # **NOTE**: To make things more interesting and more like "real" tabular data, we're going to introduce column names, categorical columns, and turn a few randomly select cells into NULL values. Not all data is clean and purely numeric!
 
@@ -195,7 +194,7 @@ def read_dataset(path: str) -> ray.data.Dataset:
 # Data preprocessing with Ray and Ray Datasets
 # -----------------------------------------------------
 #
-# While we don't yet recommend Ray Datasets as a full blown ETL solution, often times data scientists will want to perform "last mile preprocessing" in a way that integrates performantly with their model training pipeline. This is Ray Datasets' sweet spot as it integrates nicely with Ray Train for models in PyTorch, Tensorflow, Horovod, or similar.
+# While we don't yet recommend Ray Datasets as a full-blown ETL solution, often data scientists want to do "last mile preprocessing" performantly with their model training pipeline. This is Ray Datasets' sweet spot as it integrates well with Ray Train for models in PyTorch, Tensorflow, Horovod, or similar.
 #
 # You'll note the workhorse of batch computations for a Ray Dataset object (ds) involves:
 #
@@ -204,6 +203,20 @@ def read_dataset(path: str) -> ray.data.Dataset:
 #     ds = ds.map_batches(batch_transform_func, batch_format="pandas")
 #
 # This is a powerful way to map inference, transforms, or any function over a Ray Dataset object.
+#
+# ``DataPreprocessor``` wrapper class
+# -----------------------------------
+# 
+# This isn't Ray-specific, but it simplifies how we call our preprocessing logic, depending on whether we are training or inferencing.
+#
+# It includes the following methods:
+#
+# * ``_preprocess``: shared preprocessing code across training and inference
+# * ``preprocess_train_data``: includes splitting into train and test sets as well as saving mean/stddev vector
+# * ``preprocess_inference_data``: utilizes saved column-specific mean/stddev vector to prepare for inference
+#
+# Note that the ``DataPreprocessor`` has state: the mean and stddev vectors for "standard" (z-score) scaling of the columns. This scaling helps the network learn faster and better.
+#
 
 class DataPreprocessor:
     """A Datasets-based preprocessor that fits scalers/encoders to the training
@@ -340,6 +353,17 @@ class DataPreprocessor:
                 batch_standard_scaler, batch_format="pandas")
             return train_ds, test_ds
 
+###############################################################################
+# Performing inference!
+# -----------------------------------------------------
+#
+# Here we can see our model inference in action. Note the useful chaining of Ray Datasets methods:
+#
+# .. code-block:: python
+#
+#     ds.map_batches(...).write_parquet(...)
+#
+# We can also specify very granular resource allocations like CPU, GPU, and more.
 
 def inference(dataset, model_cls: type, batch_size: int, result_path: str,
               use_gpu: bool):
@@ -354,22 +378,20 @@ def inference(dataset, model_cls: type, batch_size: int, result_path: str,
             num_cpus=0) \
         .write_parquet(result_path)
 
-
-"""
-TODO: Define neural network code in pytorch
-P0:
-1. can take arguments to change size of net arbitrarily so we can stress test
-   against distributed training on cluster
-2. has a network (nn.module?), optimizer, and loss function for binary
-   classification
-3. has some semblence of regularization (ie: via dropout) so that this
-   artificially gigantic net doesn"t just overfit horrendously
-4. works well with pytorch dataset we"ll create from Ray data
-   .to_torch_dataset()
-P1:
-1. also tracks AUC for training, testing sets and records to tensorboard to
-"""
-
+###############################################################################
+# Defining a neural network in Pytorch
+# -----------------------------------------------------
+#
+# Let's define our net!
+#
+# Once again, we wanted to allow you to benchmark your model size with a few inputs like:
+#
+# * ``n_layers``: layers in your NN
+# * ``n_features``: input features -- should match dimensionality of your input data
+# * ``num_hidden``: hidden layers
+# * ``dropout_every``: every few layers, insert a dropout layer to prevent overfitting
+# * ``drop_prob``: probability in each dropout layer that a neuron will zero out input activations
+#
 
 class Net(nn.Module):
     def __init__(self, n_layers, n_features, num_hidden, dropout_every,
@@ -411,6 +433,13 @@ class Net(nn.Module):
         x = self.fc_output(x)
         return x
 
+###############################################################################
+# Training functions in Pytorch
+# -----------------------------------------------------
+#
+# Nothing special to see here -- Ray lets you bring your Pytorch code with almost no modifications.
+#
+# Here, note that the input arg, ``dataset``, is in fact a Pytorch dataset, which Ray Data nicely provides an interface to creating from raw data (in our case, parquet files).
 
 def train_epoch(dataset, model, device, criterion, optimizer):
     num_correct = 0
@@ -469,6 +498,23 @@ def test_epoch(dataset, model, device, criterion):
 
     return (running_loss, num_correct, num_total)
 
+###############################################################################
+# Our final training function with Ray Datasets input
+# ------------------------------------------------------
+#
+# Here again, you shouldn't see many surprises. Notably, we're transforming Ray Datasets into Pytorch datasets with one simple line:
+#
+# .. code-block:: python
+#
+#     train_dataset.to_torch(label_column="your_label_col_name", batch_size=1024)
+#
+# This makes it really easy to leverage Ray's nicities around application development and data at scale without needing to code up tons of Pytorch connector boilerplate.
+#
+# The **Ray Train wrapper** is also quite simple:
+#
+# .. code-block:: python
+#
+#     net = train.torch.prepare_model(net)
 
 def train_func(config):
     use_gpu = config["use_gpu"]
@@ -542,6 +588,18 @@ def train_func(config):
     if train.world_rank() == 0:
         return module.cpu()
 
+###############################################################################
+# Input parsing
+# -------------
+#
+# * ``--dir-path``:
+# * ``--use-s3``:
+# * ``--smoke-test``:
+# * ``--address``:
+# * ``--num-workers``:
+# * ``--large-dataset``:
+# * ``--use-gpu``:
+# * ``--mlflow-register-model``:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -658,13 +716,6 @@ if __name__ == "__main__":
     # remove label column and internal Arrow column.
     num_features = num_columns - 2
 
-    NUM_EPOCHS = 2
-    BATCH_SIZE = 512
-    NUM_HIDDEN = 50  # 200
-    NUM_LAYERS = 3  # 15
-    DROPOUT_EVERY = 5
-    DROPOUT_PROB = 0.2
-
     # Random global shuffle
     train_dataset_pipeline = train_dataset.repeat() \
         .random_shuffle_each_window(_spread_resource_prefix="node:")
@@ -677,12 +728,12 @@ if __name__ == "__main__":
 
     config = {
         "use_gpu": use_gpu,
-        "num_epochs": NUM_EPOCHS,
-        "batch_size": BATCH_SIZE,
-        "num_hidden": NUM_HIDDEN,
-        "num_layers": NUM_LAYERS,
-        "dropout_every": DROPOUT_EVERY,
-        "dropout_prob": DROPOUT_PROB,
+        "num_epochs": 2,
+        "batch_size": 512,
+        "num_hidden": 50,
+        "num_layers": 3,
+        "dropout_every": 5,
+        "dropout_prob": 0.2,
         "num_features": num_features
     }
 
