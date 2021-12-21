@@ -443,6 +443,9 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             for dist in self.flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
+                elif isinstance(dist, TorchMultiCategorical) and \
+                        dist.action_space is not None:
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
                     split_indices.append(dist.sample().size()[1])
             split_x = list(torch.split(x, split_indices, dim=1))
@@ -453,7 +456,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, TorchCategorical):
-                val = torch.squeeze(val, dim=-1).int()
+                val = (torch.squeeze(val, dim=-1)
+                       if len(val.shape) > 1 else val).int()
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

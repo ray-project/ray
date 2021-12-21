@@ -371,7 +371,6 @@ def test_illegal_api_calls(ray_start_regular):
 
 @pytest.mark.skipif(
     client_test_enabled(), reason="grpc interaction with releasing resources")
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
@@ -653,7 +652,6 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster):
 
 # This case tests whether gcs-based actor scheduler works properly with
 # a normal task co-existed.
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_schedule_actor_and_normal_task(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -699,7 +697,6 @@ def test_schedule_actor_and_normal_task(ray_start_cluster):
 
 # This case tests whether gcs-based actor scheduler works properly
 # in a large scale.
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     cluster = ray_start_cluster
 
@@ -742,7 +739,6 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
 # This case tests whether gcs-based actor scheduler distributes actors
 # in a balanced way. By default, it uses the `SPREAD` strategy of
 # gcs resource scheduler.
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
 def test_actor_distribution_balance(ray_start_cluster, args):
     cluster = ray_start_cluster
@@ -783,7 +779,6 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 
 # This case tests whether RequestWorkerLeaseReply carries normal task resources
 # when the request is rejected (due to resource preemption by normal tasks).
-@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(

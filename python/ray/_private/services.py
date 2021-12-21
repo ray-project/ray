@@ -21,6 +21,7 @@ import uuid
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray._raylet import GcsClientOptions
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -311,7 +312,9 @@ def wait_for_node(redis_address,
     redis_ip_address, redis_port = redis_address.split(":")
     wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
     global_state = ray.state.GlobalState()
-    global_state._initialize_global_state(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                      redis_password)
+    global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
         clients = global_state.node_table()
@@ -328,10 +331,11 @@ def wait_for_node(redis_address,
 def get_node_to_connect_for_driver(redis_address,
                                    node_ip_address,
                                    redis_password=None):
-    redis_ip_address, redis_port = redis_address.split(":")
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    global_state._initialize_global_state(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                      redis_password)
+    global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
@@ -650,6 +654,15 @@ def start_ray_process(command,
     # before the process itself is assigned to the job.
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
+    if sys.platform == "win32":
+        # CreateProcess, which underlies Popen, is limited to
+        # 32,767 characters, including the Unicode terminating null
+        # character
+        total_chrs = sum([len(x) for x in command])
+        if total_chrs > 31766:
+            raise ValueError(
+                f"command is limited to a total of 31767 characters, "
+                f"got {total_chrs}")
 
     process = ConsolePopen(
         command,
