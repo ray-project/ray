@@ -220,13 +220,15 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // in reconnecting process and the reconnect request is rejected.
   bool ReconnectGcsServerAsync(const std::function<void()> callback);
 
-  ///
-  void DoReconnect(absl::Time start, const std::function<void()> callback);
+  /// Get new Gcs server address and try to ping it.
+  void DoReconnect(absl::Time start);
 
-  ///
+  /// Called when the ping rpc call returns.
   void OnReconnected(const Status &status, absl::Time start,
-                     std::pair<std::string, int> address,
-                     const std::function<void()> callback);
+                     std::pair<std::string, int> address);
+
+  /// Execute all the pending callbacks during reconnection and clear it.
+  void ExecutePendingCallbacks();
 
   std::shared_ptr<RedisClient> redis_client_;
 
@@ -259,7 +261,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   mutable absl::Mutex reconnect_callbacks_mutex_;
   // Stash the reconnecting request callback functions, erased and called after
   // reconnecting successfully.
-  std::list<std::function<void()>> callbacks_ GUARDED_BY(reconnect_callbacks_mutex_);
+  std::list<std::function<void()>> pending_reconnect_callbacks_
+      GUARDED_BY(reconnect_callbacks_mutex_);
 };
 
 }  // namespace gcs

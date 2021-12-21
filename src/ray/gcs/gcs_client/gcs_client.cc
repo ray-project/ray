@@ -269,6 +269,8 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
   if (address != current_gcs_server_address_) {
     // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
     // callback.
+    // NOTE(wanxing): Only update `current_gcs_server_address_` when reconnection
+    // triggered.
     if (GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART)) {
       current_gcs_server_address_ = address;
     }
@@ -313,18 +315,20 @@ bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
 }
 
 bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
+  {
+    absl::MutexLock l(&reconnect_callbacks_mutex_);
+    pending_reconnect_callbacks_.emplace_back(callback);
+  }
   if (reconnect_in_progress_) {
     RAY_LOG(INFO) << "GcsClient reconnect in progress, the callback is pended.";
-    absl::MutexLock l(&reconnect_callbacks_mutex_);
-    callbacks_.emplace_back(callback);
     return false;
   }
   reconnect_in_progress_ = true;
-  DoReconnect(absl::Now(), callback);
+  DoReconnect(absl::Now());
   return true;
 }
 
-void GcsClient::DoReconnect(absl::Time start, const std::function<void()> callback) {
+void GcsClient::DoReconnect(absl::Time start) {
   if (disconnected_) {
     reconnect_in_progress_ = false;
     return;
@@ -344,7 +348,7 @@ void GcsClient::DoReconnect(absl::Time start, const std::function<void()> callba
           << "Repeated reconnection in "
           << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
           << " milliseconds, return directly.";
-      callback();
+      ExecutePendingCallbacks();
       reconnect_in_progress_ = false;
       return;
     }
@@ -354,20 +358,19 @@ void GcsClient::DoReconnect(absl::Time start, const std::function<void()> callba
     gcs_rpc_client_->ResetPingClient(address.first, address.second,
                                      *client_call_manager_);
     rpc::PingRequest ping_request;
-    gcs_rpc_client_->Ping(ping_request,
-                          [this, start, address, callback](const Status &status,
-                                                           const rpc::PingReply &reply) {
-                            RAY_LOG(INFO) << "Ping GcsService return " << status;
-                            OnReconnected(status, start, address, callback);
-                          });
+    gcs_rpc_client_->Ping(
+        ping_request,
+        [this, start, address](const Status &status, const rpc::PingReply &reply) {
+          RAY_LOG(INFO) << "Ping GcsService return " << status;
+          OnReconnected(status, start, address);
+        });
   } else {
     reconnect_in_progress_ = false;
   }
 }
 
 void GcsClient::OnReconnected(const Status &status, absl::Time start,
-                              std::pair<std::string, int> address,
-                              const std::function<void()> callback) {
+                              std::pair<std::string, int> address) {
   if (status.ok()) {
     RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
                   << address.second;
@@ -375,19 +378,8 @@ void GcsClient::OnReconnected(const Status &status, absl::Time start,
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
-    if (callback) {
-      RAY_LOG(INFO) << "Reconnected call callback";
-      callback();
-    }
-    {
-      absl::MutexLock l(&reconnect_callbacks_mutex_);
-      for (const auto &callback : callbacks_) {
-        if (callback) {
-          callback();
-        }
-      }
-      callbacks_.clear();
-    }
+    RAY_LOG(INFO) << "Reconnected call callback";
+    ExecutePendingCallbacks();
     reconnect_in_progress_ = false;
   } else {
     std::this_thread::sleep_for(
@@ -395,7 +387,7 @@ void GcsClient::OnReconnected(const Status &status, absl::Time start,
     if (absl::Now() - start <
         absl::Seconds(RayConfig::instance().gcs_rpc_server_reconnect_timeout_s())) {
       RAY_LOG(INFO) << "Retry reconnecting to GCS server";
-      DoReconnect(start, callback);
+      DoReconnect(start);
     } else {
       RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
                         "server address was "
@@ -403,6 +395,16 @@ void GcsClient::OnReconnected(const Status &status, absl::Time start,
       reconnect_in_progress_ = false;
     }
   }
+}
+
+void GcsClient::ExecutePendingCallbacks() {
+  absl::MutexLock l(&reconnect_callbacks_mutex_);
+  for (const auto &callback : pending_reconnect_callbacks_) {
+    if (callback) {
+      callback();
+    }
+  }
+  pending_reconnect_callbacks_.clear();
 }
 
 }  // namespace gcs

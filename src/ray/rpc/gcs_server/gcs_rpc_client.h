@@ -104,6 +104,9 @@ class Executor {
         if (no_retry) {                                                                \
           callback(status, reply);                                                     \
         } else {                                                                       \
+          /* NOTE(wanxing): Different from synchronous failure handling,               \
+          retry executor operation in failure handler callback under asynchronous      \
+          failure handling.*/                                                          \
           gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT,         \
                                         [executor]() { executor->Retry(); });          \
         }                                                                              \
@@ -365,7 +368,7 @@ class GcsRpcClient {
                              false, )
 
   VOID_GCS_RPC_CLIENT_METHOD(PingGcsService, Ping, ping_grpc_client_,
-                             /*method_timeout_ms*/ 111, true, )
+                             /*method_timeout_ms*/ 100, true, )
  private:
   std::function<void(GcsServiceFailureType, const std::function<void()> callback)>
       gcs_service_failure_detected_;
