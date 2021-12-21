@@ -293,12 +293,6 @@ Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
   return pubsub_->Publish(WORKER_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
-Status GcsPublisher::PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
-                                      const StatusCallback &done) {
-  return pubsub_->Publish(TASK_LEASE_CHANNEL, id.Hex(), message.SerializeAsString(),
-                          done);
-}
-
 Status GcsPublisher::PublishError(const std::string &id,
                                   const rpc::ErrorTableData &message,
                                   const StatusCallback &done) {
@@ -516,41 +510,6 @@ Status GcsSubscriber::SubscribeResourcesBatch(
     subscribe(resources_batch_data);
   };
   return pubsub_->Subscribe(RESOURCES_BATCH_CHANNEL, "", on_subscribe, done);
-}
-
-Status GcsSubscriber::SubscribeTaskLease(
-    const TaskID &id,
-    const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-    const StatusCallback &done) {
-  if (subscriber_ != nullptr) {
-    // This channel is not used.
-    // TODO (iycheng) remove legacy code
-    return Status::OK();
-  }
-  auto on_subscribe = [id, subscribe](const std::string &, const std::string &data) {
-    rpc::TaskLeaseData task_lease_data;
-    task_lease_data.ParseFromString(data);
-    subscribe(id, task_lease_data);
-  };
-  return pubsub_->Subscribe(TASK_LEASE_CHANNEL, id.Hex(), on_subscribe, done);
-}
-
-Status GcsSubscriber::UnsubscribeTaskLease(const TaskID &id) {
-  if (subscriber_ != nullptr) {
-    // This channel is not used.
-    // TODO (iycheng) remove legacy code
-    return Status::OK();
-  }
-  return pubsub_->Unsubscribe(TASK_LEASE_CHANNEL, id.Hex());
-}
-
-bool GcsSubscriber::IsTaskLeaseUnsubscribed(const TaskID &id) {
-  if (subscriber_ != nullptr) {
-    // This channel is not used.
-    // TODO (iycheng) remove legacy code
-    return true;
-  }
-  return pubsub_->IsUnsubscribed(TASK_LEASE_CHANNEL, id.Hex());
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(

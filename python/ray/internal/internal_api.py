@@ -27,8 +27,10 @@ def memory_summary(address=None,
                    stats_only=False,
                    num_entries=None):
     from ray.dashboard.memory_utils import memory_summary
-    if not address or address == "auto":
+    if not address:
         address = services.get_ray_address_to_use_or_die()
+    if address == "auto":
+        address = services.find_redis_address_or_die()
 
     state = GlobalState()
     state._initialize_global_state(
