@@ -29,20 +29,20 @@ esac
 
 # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
-# { git ls-files -s 2>/dev/null || true; } | (
-#   set +x
-#   missing_symlinks=()
-#   while read -r mode _ _ path; do
-#     if [ "${mode}" = 120000 ]; then
-#       test -L "${path}" || missing_symlinks+=("${path}")
-#     fi
-#   done
-#   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
-#     echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
-#     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
-#     false
-#   fi
-# )
+{ git ls-files -s 2>/dev/null || true; } | (
+  set +x
+  missing_symlinks=()
+  while read -r mode _ _ path; do
+    if [ "${mode}" = 120000 ]; then
+      test -L "${path}" || missing_symlinks+=("${path}")
+    fi
+  done
+  if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
+    echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
+    echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
+    false
+  fi
+)
 
 export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"

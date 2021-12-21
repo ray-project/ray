@@ -35,10 +35,12 @@ steps:
     # The next command will be sharded into $parallelism shards.
     - . ./ci/travis/ci.sh test_python
 
-- label: ":windows: Wheels"
-  commands:
-    - *prelude_commands
-    - export WINDOWS_WHEELS="1"
-    - . ./ci/travis/ci.sh init
-    - . ./ci/travis/ci.sh build
-    - *upload_wheels_if_needed
+# Doesn't quite work.
+# /c/Install/ray/ci/travis/../../python/build-wheel-windows.sh: line 75: RUNNER_TOOL_CACHE: unbound variable
+# - label: ":windows: Wheels"
+#   commands:
+#     - *prelude_commands
+#     - export WINDOWS_WHEELS="1"
+#     - . ./ci/travis/ci.sh init
+#     - . ./ci/travis/ci.sh build
+#     - *upload_wheels_if_needed

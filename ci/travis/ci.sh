@@ -197,7 +197,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./scripts/bazel-sharding.py --index ${BUILDKITE_PARALLEL_JOB} --count ${BUILDKITE_PARALLEL_JOB_COUNT} "${args[@]}")
+    test_shard_selection=$(python ./scripts/bazel-sharding.py --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
@@ -208,7 +208,7 @@ test_python() {
       --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       -- \
-      ${test_shard_selection};
+      "${test_shard_selection}";
   fi
 }
 
@@ -570,8 +570,13 @@ _check_job_triggers() {
   job_names="$1"
 
   local variable_definitions
-  # shellcheck disable=SC2031
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  if command -v python3; then
+    # shellcheck disable=SC2031
+    variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+  else
+    # shellcheck disable=SC2031
+    variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  fi
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
