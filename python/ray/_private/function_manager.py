@@ -84,6 +84,7 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
+        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -91,7 +92,6 @@ class FunctionActorManager:
         self._num_exported = 0
         # This is to protect self._num_exported when doing exporting
         self._export_lock = threading.Lock()
-        self.cv = threading.Condition(lock=self.lock)
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -398,8 +398,6 @@ class FunctionActorManager:
                                                 pickle.dumps(actor_class_info),
                                                 True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        # TODO(ekl) this isn't needed. We export it only for generating the
-        # "exported too many times" error message.
         self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
