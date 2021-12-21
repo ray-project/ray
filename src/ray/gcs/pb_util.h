@@ -144,11 +144,7 @@ inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
       {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
-      {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
-      {ContextCase::kNodeDiedContext, "NodeDiedContext"},
-      {ContextCase::kOwnerDiedContext, "OwnerDiedContext"},
-      {ContextCase::kKilledByAppContext, "KilledByAppContext"},
-      {ContextCase::kOutOfScopeContext, "OutOfScopeContext"}};
+      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"}};
   ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
   if (death_cause != nullptr) {
     death_cause_case = death_cause->context_case();

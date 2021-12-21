@@ -289,7 +289,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// owned an actor, those actors will be destroyed.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const NodeID &node_id);
+  /// \param node_ip_address The ip address of the dead node.
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -301,9 +302,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const rpc::RayException *creation_task_exception = nullptr);
 
+  /// Testing only.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
   /// Handle actor creation task failure. This should be called
@@ -461,6 +464,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param task_id The id of actor creation task to be cancelled.
   void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
                                const TaskID &task_id);
+
+  /// Get the alive or dead actor of the actor id.
+  /// NOTE: The return value is not meant to be passed to other scope.
+  /// This return value should be used only for a short-time usage.
+  ///
+  /// \param actor_id The id of the actor.
+  /// \return Actor instance. The nullptr if the actor doesn't exist.
+  ///
+  const GcsActor *GetActor(const ActorID &actor_id) const;
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
