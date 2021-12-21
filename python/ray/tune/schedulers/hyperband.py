@@ -262,7 +262,7 @@ class HyperBandScheduler(FIFOScheduler):
                                     f"encountered: {t.status}")
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
-                        self._unpause_trial(trial_runner, t)
+                        t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
@@ -341,10 +341,6 @@ class HyperBandScheduler(FIFOScheduler):
             "num_brackets": sum(len(band) for band in self._hyperbands),
             "num_stopped": self._num_stopped
         }
-
-    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner",
-                       trial: Trial):
-        trial_runner.trial_executor.unpause_trial(trial)
 
 
 class Bracket:

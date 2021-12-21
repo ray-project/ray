@@ -374,7 +374,8 @@ class MBMPOTrainer(Trainer):
 
     @staticmethod
     @override(Trainer)
-    def execution_plan(workers, config, **kwargs) -> LocalIterator[dict]:
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
         assert len(kwargs) == 0, (
             "MBMPO execution_plan does NOT take any additional parameters")
 
@@ -398,7 +399,7 @@ class MBMPOTrainer(Trainer):
         metric_collect = CollectMetrics(
             workers,
             min_history=0,
-            timeout_seconds=config["collect_metrics_timeout"])
+            timeout_seconds=config["metrics_episode_collection_timeout_s"])
 
         num_inner_steps = config["inner_adaptation_steps"]
 

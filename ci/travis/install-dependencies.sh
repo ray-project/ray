@@ -221,7 +221,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.0.1
+    "${python}" -m pip install --quiet pip==21.3.1
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -275,6 +275,9 @@ install_toolchains() {
 }
 
 download_mnist() {
+  if [ -d "${HOME}/data/MNIST" ]; then
+    return
+  fi
   mkdir -p "${HOME}/data"
   curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
   unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"

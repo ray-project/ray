@@ -3,7 +3,7 @@ import collections
 import json
 import os
 import sys
-import time
+import timeit
 from typing import Tuple
 
 import boto3
@@ -50,6 +50,7 @@ class MLflowCallback(TrainingCallback):
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
     return ray.data.read_parquet(path, _spread_resource_prefix="node:") \
+        .repartition(400) \
         .random_shuffle(_spread_resource_prefix="node:")
 
 
@@ -101,13 +102,12 @@ class DataPreprocessor:
 
         print("\nStep 2: Precalculating fruit-grouped mean for new column and "
               "for one-hot encoding (latter only uses fruit groups)\n")
-        agg_ds = ds.groupby("fruit").mean("feature_1")
         fruit_means = {
             r["fruit"]: r["mean(feature_1)"]
-            for r in agg_ds.take_all()
+            for r in ds.groupby("fruit").mean("feature_1").take_all()
         }
 
-        print("\nStep 3: create mean_by_fruit as mean of feature_1 groupby "
+        print("\nStep 3: Create mean_by_fruit as mean of feature_1 groupby "
               "fruit; one-hot encode fruit column\n")
 
         if inferencing:
@@ -117,7 +117,7 @@ class DataPreprocessor:
             self.fruits = list(fruit_means.keys())
 
         fruit_one_hots = {
-            fruit: collections.defaultdict(int, fruit=1)
+            fruit: collections.defaultdict(int, **{fruit: 1})
             for fruit in self.fruits
         }
 
@@ -407,7 +407,8 @@ class TrainingWorker:
                     training_dataset.to_torch(
                         batch_size=self.batch_size, label_column="label")):
                 if i % 10000 == 0:
-                    print(f"epoch: {epoch}, worker: {self.rank}, batch: {i}")
+                    print(f"epoch: {epoch}, worker: {self.rank},"
+                          f" processing batch: {i}")
 
 
 if __name__ == "__main__":
@@ -437,7 +438,7 @@ if __name__ == "__main__":
         "--large-dataset",
         action="store_true",
         default=False,
-        help="Use 500GB dataset")
+        help="Use 100GB dataset")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -453,6 +454,11 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Use dummy trainer to debug dataset performance")
+    parser.add_argument(
+        "--num-epochs",
+        default=2,
+        type=int,
+        help="The number of epochs to use for training")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -461,11 +467,12 @@ if __name__ == "__main__":
     use_gpu = args.use_gpu
     use_s3 = args.use_s3
     large_dataset = args.large_dataset
+    num_epochs = args.num_epochs
 
     if large_dataset:
         assert use_s3, "--large-dataset requires --use-s3 to be set."
 
-    start_time = time.time()
+    e2e_start_time = timeit.default_timer()
 
     ray.init(address=address)
 
@@ -484,24 +491,26 @@ if __name__ == "__main__":
     # exists.
     mlflow.set_experiment("cuj-big-data-training")
 
+    dir_path = os.path.dirname(os.path.realpath(__file__))
     if use_s3:
         # Check if s3 data is populated.
         BUCKET_NAME = "cuj-big-data"
-        FOLDER_NAME = "big-data/" if large_dataset else "data/"
+        FOLDER_NAME = "100GB/" if large_dataset else "data/"
         s3_resource = boto3.resource("s3")
         bucket = s3_resource.Bucket(BUCKET_NAME)
         count = bucket.objects.filter(Prefix=FOLDER_NAME)
         if len(list(count)) == 0:
             print("please run `python make_and_upload_dataset.py` first")
             sys.exit(1)
+        # cuj-big-data/big-data stats
         # 156 files, 3_120_000_000 rows and 501_748_803_387 bytes
-        data_path = ("s3://cuj-big-data/big-data/"
+        # cuj-big-data/100GB stats
+        # 33 files, 660_000_000 rows and 106_139_169_947 bytes
+        data_path = ("s3://cuj-big-data/100GB/"
                      if large_dataset else "s3://cuj-big-data/data/")
         inference_path = "s3://cuj-big-data/inference/"
         inference_output_path = "s3://cuj-big-data/output/"
     else:
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-
         data_path = os.path.join(dir_path, "data")
         inference_path = os.path.join(dir_path, "inference")
         inference_output_path = "/tmp"
@@ -521,11 +530,13 @@ if __name__ == "__main__":
     train_dataset, test_dataset = preprocessor.preprocess_train_data(
         read_dataset(data_path))
 
+    preprocessing_end_time = timeit.default_timer()
+    print("Preprocessing time (s): ", preprocessing_end_time - e2e_start_time)
+
     num_columns = len(train_dataset.schema().names)
     # remove label column and internal Arrow column.
     num_features = num_columns - 2
 
-    NUM_EPOCHS = 2
     BATCH_SIZE = 512
     NUM_HIDDEN = 50  # 200
     NUM_LAYERS = 3  # 15
@@ -533,19 +544,20 @@ if __name__ == "__main__":
     DROPOUT_PROB = 0.2
 
     if args.debug:
-        shards = train_dataset.repeat(NUM_EPOCHS) \
+        num_gpus = 1 if use_gpu else 0
+        shards = train_dataset.repeat(num_epochs) \
             .random_shuffle_each_window(_spread_resource_prefix="node:") \
             .split(num_workers)
         del train_dataset
 
-        num_gpus = 1 if use_gpu else 0
         training_workers = [
             TrainingWorker.options(num_gpus=num_gpus, num_cpus=0).remote(
                 rank, shard, BATCH_SIZE) for rank, shard in enumerate(shards)
         ]
         ray.get([worker.train.remote() for worker in training_workers])
 
-        total_time = time.time() - start_time
+        e2e_end_time = timeit.default_timer()
+        total_time = e2e_end_time - e2e_start_time
         print(f"Job finished in {total_time} seconds.")
         with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
             f.write(json.dumps({"time": total_time, "success": 1}))
@@ -563,7 +575,7 @@ if __name__ == "__main__":
 
     config = {
         "use_gpu": use_gpu,
-        "num_epochs": NUM_EPOCHS,
+        "num_epochs": num_epochs,
         "batch_size": BATCH_SIZE,
         "num_hidden": NUM_HIDDEN,
         "num_layers": NUM_LAYERS,
@@ -577,7 +589,12 @@ if __name__ == "__main__":
     # reported by ``train.report()`` will be logged to these 2 places.
     # TODO: TBXLoggerCallback should create nonexistent logdir
     #       and should also create 1 directory per file.
-    callbacks = [TBXLoggerCallback(logdir="/tmp"), MLflowCallback(config)]
+    tbx_runs_dir = os.path.join(dir_path, "runs")
+    os.makedirs(tbx_runs_dir, exist_ok=True)
+    callbacks = [
+        TBXLoggerCallback(logdir=tbx_runs_dir),
+        MLflowCallback(config)
+    ]
 
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
@@ -595,6 +612,9 @@ if __name__ == "__main__":
         dataset=datasets)
     model = results[0]
     trainer.shutdown()
+
+    training_end_time = timeit.default_timer()
+    print("Training time (s): ", training_end_time - preprocessing_end_time)
 
     if args.mlflow_register_model:
         mlflow.pytorch.log_model(
@@ -648,9 +668,11 @@ if __name__ == "__main__":
     inference(inference_dataset, BatchInferModel(load_model_func), 100,
               inference_output_path, use_gpu)
 
-    end_time = time.time()
+    e2e_end_time = timeit.default_timer()
+    print("Inference time (s): ", e2e_end_time - training_end_time)
 
-    total_time = end_time - start_time
+    total_time = e2e_end_time - e2e_start_time
+    print("Total time (s): ", e2e_end_time - e2e_start_time)
 
     print(f"Job finished in {total_time} seconds.")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:

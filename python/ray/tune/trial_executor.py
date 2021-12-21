@@ -126,11 +126,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
 
-    def unpause_trial(self, trial: Trial) -> None:
-        """Sets PAUSED trial to pending to allow scheduler to start."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.set_status(trial, Trial.PENDING)
-
     def resume_trial(self, trial: Trial) -> None:
         """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
@@ -215,10 +210,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def restore(self,
-                trial: Trial,
-                checkpoint: Optional[Checkpoint] = None,
-                block: bool = False) -> None:
+    def restore(self, trial: Trial) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -226,8 +218,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Args:
             trial (Trial): Trial to be restored.
-            checkpoint (Checkpoint): Checkpoint to restore from.
-            block (bool): Whether or not to block on restore before returning.
 
         Returns:
             False if error occurred, otherwise return True.

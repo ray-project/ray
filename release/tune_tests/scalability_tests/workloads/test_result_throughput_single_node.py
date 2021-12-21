@@ -21,6 +21,7 @@ from ray.tune.utils.release_test_util import timed_tune_run
 
 def main():
     os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"  # Tweak
+    os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1000"
 
     ray.init(address="auto")
 

@@ -2,6 +2,7 @@ import logging
 import os
 from types import ModuleType
 from typing import Any, Dict, Optional
+from pathlib import Path
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -9,6 +10,7 @@ from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
 from ray._private.runtime_env.utils import RuntimeEnv
+from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ def upload_py_modules_if_needed(
         if isinstance(module, str):
             # module_path is a local path or a URI.
             module_path = module
+        elif isinstance(module, Path):
+            module_path = str(module)
         elif isinstance(module, ModuleType):
             # NOTE(edoakes): Python allows some installed Python packages to
             # be split into multiple directories. We could probably handle
@@ -86,8 +90,7 @@ def upload_py_modules_if_needed(
 class PyModulesManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
-        if not os.path.isdir(self._resources_dir):
-            os.makedirs(self._resources_dir)
+        try_to_create_directory(self._resources_dir)
         assert _internal_kv_initialized()
 
     def delete_uri(self,
