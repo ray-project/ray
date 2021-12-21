@@ -37,7 +37,7 @@ steps:
 - label: ":windows: Wheels"
   commands:
     - *prelude_commands
-    - export WINDOWS_WHEELS="1";
+    - export WINDOWS_WHEELS="1"
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - *upload_wheels_if_needed
