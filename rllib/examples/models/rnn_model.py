@@ -26,9 +26,15 @@ class RNNModel(RecurrentNetwork):
                                        model_config, name)
         self.cell_size = cell_size
 
-        # Define input layers
-        input_layer = tf.keras.layers.Input(
-            shape=(None, obs_space.shape[0]), name="inputs")
+        # Define input layers.
+        if isinstance(obs_space, Discrete):
+            input_layer = tf.keras.layers.Input(
+                shape=(None, ), name="inputs")
+            input_layer = tf.keras.layers.CategoryEncoding(
+                num_tokens=obs_space.n)(input_layer)
+        else:
+            input_layer = tf.keras.layers.Input(
+                shape=(None, obs_space.shape[0]), name="inputs")
         state_in_h = tf.keras.layers.Input(shape=(cell_size, ), name="h")
         state_in_c = tf.keras.layers.Input(shape=(cell_size, ), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
