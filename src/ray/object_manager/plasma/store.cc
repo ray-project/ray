@@ -538,7 +538,10 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
 }
 
 void PlasmaStore::RecordMetrics() const {
-  // TODO(sang): Add metrics.
+  ray::stats::STATS_num_pending_creation_requests.Record(
+      create_request_queue_.NumPendingRequests());
+  ray::stats::STATS_num_pending_creation_bytes.Record(
+      create_request_queue_.NumPendingBytes());
   object_lifecycle_mgr_.RecordMetrics();
 }
 
