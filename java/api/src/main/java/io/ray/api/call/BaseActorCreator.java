@@ -1,6 +1,5 @@
 package io.ray.api.call;
 
-import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.Map;
@@ -14,9 +13,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   /**
-   * Set the actor name of a named actor. This named actor is only accessible from this job by this
-   * name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is
-   * accessible from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
+   * Set the actor name of a named actor.
    *
    * @param name The name of the named actor.
    * @return self

@@ -82,19 +82,6 @@ message ObjectTableData {
   bytes manager = 1;
 }
 
-message TaskReconstructionData {
-  // The ID of task.
-  bytes task_id = 1;
-  // The number of times this task has been reconstructed so far.
-  uint64 num_reconstructions = 2;
-  // The node manager that is trying to reconstruct the task.
-  bytes node_manager_id = 3;
-}
-
-message TaskTableData {
-  Task task = 1;
-}
-
 message ActorDeathCause {
   oneof context {
     CreationTaskFailureContext creation_task_failure_context = 1;
@@ -311,20 +298,6 @@ message GcsNodeInfo {
 message HeartbeatTableData {
   // Node id.
   bytes node_id = 1;
-}
-
-// Data for a lease on task execution.
-message TaskLeaseData {
-  // The task ID.
-  bytes task_id = 1;
-  // Node manager ID.
-  bytes node_manager_id = 2;
-  // The time that the lease was last acquired at. NOTE(swang): This is the
-  // system clock time according to the node that added the entry and is not
-  // synchronized with other nodes.
-  uint64 acquired_at = 3;
-  // The period that the lease is active for.
-  uint64 timeout = 4;
 }
 
 message JobConfig {
