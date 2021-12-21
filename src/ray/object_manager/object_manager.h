@@ -516,6 +516,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  std::function<void(const ObjectID &)> object_pushed_callback_;
 };
 
 }  // namespace ray

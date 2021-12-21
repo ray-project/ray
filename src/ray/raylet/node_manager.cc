@@ -265,7 +265,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*object_pushed_callback=*/
           [this](const ObjectID &object_id) {
             RAY_LOG(DEBUG) << "@lsf Unpin because transferred " << object_id;
-            local_object_manager_.ReleaseFreedObject(object_id);
+            local_object_manager_.ReleaseFreedObject(object_id, true);
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),

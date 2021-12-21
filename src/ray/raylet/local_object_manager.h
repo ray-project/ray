@@ -141,7 +141,7 @@ class LocalObjectManager {
   std::string DebugString() const;
 
   /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
+  void ReleaseFreedObject(const ObjectID &object_id, bool no_evict = false);
 
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
