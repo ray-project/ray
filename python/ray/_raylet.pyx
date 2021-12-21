@@ -1642,7 +1642,8 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
-                          double num_method_cpus):
+                          double num_method_cpus,
+                          c_string concurrency_group_name):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -1665,7 +1666,9 @@ cdef class CoreWorker:
             return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                 c_actor_id,
                 ray_function,
-                args_vector, CTaskOptions(name, num_returns, c_resources))
+                args_vector,
+                CTaskOptions(
+                    name, num_returns, c_resources, concurrency_group_name))
             if return_refs.has_value():
                 return VectorToObjectRefs(return_refs.value())
             else:
