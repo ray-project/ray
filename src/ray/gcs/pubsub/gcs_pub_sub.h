@@ -233,11 +233,6 @@ class GcsPublisher {
   Status PublishWorkerFailure(const WorkerID &id, const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  /// TODO: remove since this is unused.
-  /// Uses Redis pubsub.
-  Status PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
-                          const StatusCallback &done);
-
   /// Uses Redis pubsub.
   Status PublishError(const std::string &id, const rpc::ErrorTableData &message,
                       const StatusCallback &done);
@@ -301,15 +296,6 @@ class GcsSubscriber {
   /// Uses Redis pubsub.
   Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                                     const StatusCallback &done);
-
-  /// TODO: remove since this is unused.
-  /// Uses Redis pubsub.
-  Status SubscribeTaskLease(
-      const TaskID &id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-      const StatusCallback &done);
-  Status UnsubscribeTaskLease(const TaskID &id);
-  bool IsTaskLeaseUnsubscribed(const TaskID &id);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   /// Uses Redis pubsub.

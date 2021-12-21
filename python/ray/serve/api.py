@@ -226,6 +226,13 @@ class Client:
             raise TypeError(
                 "config must be a DeploymentConfig or a dictionary.")
 
+        if deployment_config.autoscaling_config is not None and \
+            deployment_config.max_concurrent_queries < deployment_config. \
+                autoscaling_config.target_num_ongoing_requests_per_replica:
+            logger.warning("Autoscaling will never happen, "
+                           "because 'max_concurrent_queries' is less than "
+                           "'target_num_ongoing_requests_per_replica' now.")
+
         goal_id, updating = ray.get(
             self._controller.deploy.remote(name,
                                            deployment_config.to_proto_bytes(),
