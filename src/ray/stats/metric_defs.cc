@@ -115,25 +115,37 @@ DEFINE_stats(spill_manager_throughput_mb,
 ///
 
 /// Object Lifecycle Manager.
-DEFINE_stats(plasma_num_local_objects_by_state,
-             "The number of objects per state. E.g., Spillable, In use, Evictable.",
-             ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(plasma_num_local_bytes_by_state, "The number of objects per state in bytes.",
-             ("State"), (), ray::stats::GAUGE);
+DEFINE_stats(plasma_local_spillable_objects, "The number of spillable objects.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_spillable_objects_bytes, "Spillable objects in bytes.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_evictable_objects, "The number of evictable objects.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_evictable_objects_bytes, "Evictable objects in bytes.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_in_use_objects, "The number of objects in use.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_in_use_objects_bytes, "Objects in use in bytes.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_unsealed_objects, "The number of unsealed objects.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_unsealed_objects_bytes, "Unsealed objects in bytes.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(plasma_local_objects,
+             "The total number of objects broken per source. { Priamry, Transferred, "
+             "Error, Restored }",
+             ("Source"), (), ray::stats::GAUGE);
 DEFINE_stats(
-    plasma_num_local_objects_by_type,
-    "The number of objects per type. E.g., Primary copy, Transferred, ErrorObject.",
-    ("CreationType"), (), ray::stats::GAUGE);
-DEFINE_stats(plasma_num_local_bytes_by_type, "The number of objects per type in bytes.",
-             ("CreationType"), (), ray::stats::GAUGE);
+    plasma_local_objects_bytes,
+    "Total objects broken per source in bytes. { Priamry, Transferred, Error, Restored }",
+    ("Source"), (), ray::stats::GAUGE);
 
 /// Plasma Store
-DEFINE_stats(num_pending_creation_requests,
-             "The number of pending object creation requests in the queue.", (), (),
+DEFINE_stats(plasma_pending_creation_requests,
+             "The number of pending object creation requests.", (), (),
              ray::stats::GAUGE);
-DEFINE_stats(num_pending_creation_bytes,
-             "The number of pending object creation requests in bytes.", (), (),
-             ray::stats::GAUGE);
+DEFINE_stats(plasma_pending_creation_requests_bytes,
+             "Pending object creation requests in bytes.", (), (), ray::stats::GAUGE);
 
 /// GCS Resource Manager
 DEFINE_stats(gcs_new_resource_creation_latency_ms,

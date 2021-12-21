@@ -86,16 +86,21 @@ DECLARE_stats(spill_manager_throughput_mb);
 ///
 
 /// Object Lifecycle Manager.
-/// TODO(sang): Instead of by state/type, use 2 labels instead. This requires some
-/// refactoring.
-DECLARE_stats(plasma_num_local_objects_by_state);
-DECLARE_stats(plasma_num_local_bytes_by_state);
-DECLARE_stats(plasma_num_local_objects_by_type);
-DECLARE_stats(plasma_num_local_bytes_by_type);
+/// TODO(sang): Specify source for each of metric.
+DECLARE_stats(plasma_local_spillable_objects);
+DECLARE_stats(plasma_local_spillable_objects_bytes);
+DECLARE_stats(plasma_local_evictable_objects);
+DECLARE_stats(plasma_local_evictable_objects_bytes);
+DECLARE_stats(plasma_local_in_use_objects);
+DECLARE_stats(plasma_local_in_use_objects_bytes);
+DECLARE_stats(plasma_local_unsealed_objects);
+DECLARE_stats(plasma_local_unsealed_objects_bytes);
+DECLARE_stats(plasma_local_objects);
+DECLARE_stats(plasma_local_objects_bytes);
 
 /// Plasma Store
-DECLARE_stats(num_pending_creation_requests);
-DECLARE_stats(num_pending_creation_bytes);
+DECLARE_stats(plasma_pending_creation_requests);
+DECLARE_stats(plasma_pending_creation_requests_bytes);
 
 /// GCS Resource Manager
 DECLARE_stats(gcs_new_resource_creation_latency_ms);
