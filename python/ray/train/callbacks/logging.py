@@ -12,7 +12,8 @@ from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.train.callbacks import TrainingCallback
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
-                                 TIME_TOTAL_S, TIMESTAMP, PID)
+                                 TIME_TOTAL_S, TIMESTAMP, PID,
+                                 TRAIN_CHECKPOINT_SUBDIR)
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
@@ -260,8 +261,9 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
             metrics_to_log=result, step=result[TRAINING_ITERATION])
 
     def finish_training(self, error: bool = False, **info):
-        if self.save_artifact:
-            self.mlflow_util.save_artifacts(dir=str(self.logdir))
+        checkpoint_dir = self.logdir.joinpath(TRAIN_CHECKPOINT_SUBDIR)
+        if self.save_artifact and checkpoint_dir.exists():
+            self.mlflow_util.save_artifacts(dir=str(checkpoint_dir))
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
 
