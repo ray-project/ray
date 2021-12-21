@@ -174,7 +174,7 @@ def test_running_function_on_all_workers(ray_start_regular):
 @pytest.mark.skipif(
     client_test_enabled() and use_gcs_for_bootstrap(),
     reason=("wait_for_function will miss in this mode. To be fixed after using"
-            " gcs to boostrap all component."))
+            " gcs to bootstrap all component."))
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f(delay):

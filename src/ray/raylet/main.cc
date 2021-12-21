@@ -32,7 +32,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
-DEFINE_string(gcs_address, "", "The address of the GCS server.");
+DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,
@@ -123,15 +123,15 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  if (!RayConfig::instance().bootstrap_with_gcs()) {
-    // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  } else {
+    // Async context is not used by `redis_client_` in `gcs_client`, so we set
     // `enable_async_conn` as false.
     ray::gcs::GcsClientOptions client_options(
         redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
         /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
-    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
-  } else {
-    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
     gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
   }
 
