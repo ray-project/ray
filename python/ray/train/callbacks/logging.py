@@ -1,3 +1,4 @@
+import os
 from typing import Iterable, List, Optional, Dict, Set, Tuple, Union
 import abc
 import warnings
@@ -237,8 +238,10 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
     def start_training(self, logdir: str, config: Dict, **info):
         super().start_training(logdir=logdir)
 
-        tracking_uri = self.tracking_uri or str(self.logdir)
-        registry_uri = self.registry_uri or str(self.logdir)
+        tracking_uri = self.tracking_uri or os.path.join(
+            str(self.logdir), "mlruns")
+        registry_uri = self.registry_uri or os.path.join(
+            str(self.logdir), "mlruns")
 
         self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,

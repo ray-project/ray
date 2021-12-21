@@ -142,7 +142,7 @@ class MLflowLoggerUtil:
 
     def start_run(self, tags: Optional[Dict] = None,
                   set_active: bool = False) -> "Run":
-        """Starts a new run if there is no run already active.
+        """Starts a new run.
 
         Args:
             tags (Optional[Dict]): Tags to set for the new run.
