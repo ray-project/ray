@@ -90,7 +90,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param get_gcs_server_address_func Function to get GCS server address.
   explicit GcsClient(const GcsClientOptions &options,
                      std::function<bool(std::pair<std::string, int> *)>
-                         get_gcs_server_address_func = nullptr);
+                         get_gcs_server_address_func = nullptr,
+                     std::unique_ptr<IPeriodicalRunner> periodical_runner = nullptr);
 
   virtual ~GcsClient() = default;
 
@@ -242,7 +243,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::atomic<bool> disconnected_ = false;
 
   // The runner to run function periodically.
-  std::unique_ptr<PeriodicalRunner> periodical_runner_;
+  std::unique_ptr<IPeriodicalRunner> periodical_runner_;
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void(bool)> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;
@@ -263,6 +264,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // reconnecting successfully.
   std::list<std::function<void()>> pending_reconnect_callbacks_
       GUARDED_BY(reconnect_callbacks_mutex_);
+
+  friend struct GcsClientReconnectionTest;
+  FRIEND_TEST(GcsClientReconnectionTest, Test1);
 };
 
 }  // namespace gcs

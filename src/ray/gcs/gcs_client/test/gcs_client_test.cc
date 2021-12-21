@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 
 #include "absl/strings/substitute.h"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
@@ -25,7 +26,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
-
+namespace gcs {
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
   GcsClientTest() : use_gcs_pubsub_(GetParam()) {
@@ -80,6 +81,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
+    SetUpClient();
+  }
+
+  virtual void SetUpClient() {
+    RAY_LOG(INFO) << "GcsClientTest::SetUpClient";
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
                                   config_.redis_password);
     gcs_client_.reset(new gcs::GcsClient(options));
@@ -1075,6 +1081,75 @@ TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
 
 // TODO(sang): Add tests after adding asyncAdd
 
+class MockPeriodicalRunner : public IPeriodicalRunner {
+ public:
+  MOCK_METHOD3(RunFnPeriodically, void(std::function<void()> fn, uint64_t period_ms,
+                                       const std::string name));
+};
+
+struct GcsClientReconnectionTest : public GcsClientTest {
+ public:
+  GcsClientReconnectionTest() {}
+
+ protected:
+  void SetUp() override { GcsClientTest::SetUp(); }
+
+  virtual void SetUpClient() override {
+    RAY_LOG(INFO) << "GcsClientReconnectionTest::SetUpClient";
+    gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
+                                  config_.redis_password);
+    auto mock_periodical_runner = std::make_unique<MockPeriodicalRunner>();
+    gcs_client_.reset(
+        new gcs::GcsClient(options, nullptr, std::move(mock_periodical_runner)));
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientReconnectionTest, testing::Bool());
+
+TEST_P(GcsClientReconnectionTest, Test1) {
+  /// Test reconnect normally.
+  {
+    bool callback_called = false;
+    EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
+        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+        [&callback_called]() { callback_called = true; }));
+    auto condition = [&callback_called]() { return callback_called; };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  gcs_client_.reset();
+  SetUpClient();
+  /// Test reject to reconnect when reconnection in progress.
+  {
+    EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
+        rpc::GcsServiceFailureType::GCS_SERVER_RESTART, []() {
+          /// Sleep 1000ms to block the following reconnect requests.
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        }));
+    bool callback_called = false;
+    EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
+        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+        [&callback_called]() { callback_called = true; }));
+    auto condition = [&callback_called]() { return callback_called; };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  gcs_client_.reset();
+  SetUpClient();
+  /// Test gcs client disconnected, return false and not callback called.
+  {
+    gcs_client_->Disconnect();
+    bool callback_called = false;
+    EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
+        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+        [&callback_called]() { callback_called = true; }));
+    auto condition = [&callback_called]() { return callback_called; };
+    EXPECT_FALSE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+}
+
+}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {

@@ -80,8 +80,10 @@ void GcsSubscriberClient::PubsubCommandBatch(
 
 GcsClient::GcsClient(
     const GcsClientOptions &options,
-    std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func)
+    std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func,
+    std::unique_ptr<IPeriodicalRunner> periodical_runner)
     : options_(options),
+      periodical_runner_(std::move(periodical_runner)),
       get_server_address_func_(std::move(get_gcs_server_address_func)),
       last_reconnect_timestamp_ms_(0),
       last_reconnect_address_(std::make_pair("", -1)) {}
@@ -188,7 +190,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   // Init gcs service address check timer.
-  periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
+  if (!periodical_runner_) {
+    periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
+  }
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
       RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
@@ -315,6 +319,9 @@ bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
 }
 
 bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
+  if (disconnected_) {
+    return false;
+  }
   {
     absl::MutexLock l(&reconnect_callbacks_mutex_);
     pending_reconnect_callbacks_.emplace_back(callback);
@@ -330,6 +337,7 @@ bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
 
 void GcsClient::DoReconnect(absl::Time start) {
   if (disconnected_) {
+    ExecutePendingCallbacks();
     reconnect_in_progress_ = false;
     return;
   }
@@ -365,6 +373,8 @@ void GcsClient::DoReconnect(absl::Time start) {
           OnReconnected(status, start, address);
         });
   } else {
+    RAY_LOG(WARNING) << "Can not get gcs server address.";
+    ExecutePendingCallbacks();
     reconnect_in_progress_ = false;
   }
 }

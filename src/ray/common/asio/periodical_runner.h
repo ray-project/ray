@@ -23,19 +23,28 @@
 
 namespace ray {
 
+class IPeriodicalRunner {
+ public:
+  virtual ~IPeriodicalRunner() = default;
+
+  virtual void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
+                                 const std::string name = "UNKNOWN") = 0;
+};
+
 /// \class PeriodicalRunner
 /// A periodical runner attached with an io_context.
 /// It can run functions with specified period. Each function is triggered by its timer.
 /// To run a function, call `RunFnPeriodically(fn, period_ms)`.
 /// All registered functions will stop running once this object is destructed.
-class PeriodicalRunner {
+class PeriodicalRunner : public IPeriodicalRunner {
  public:
   PeriodicalRunner(instrumented_io_context &io_service);
 
   ~PeriodicalRunner();
 
   void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
-                         const std::string name = "UNKNOWN") LOCKS_EXCLUDED(mutex_);
+                         const std::string name = "UNKNOWN") override
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   void DoRunFnPeriodically(const std::function<void()> &fn,
