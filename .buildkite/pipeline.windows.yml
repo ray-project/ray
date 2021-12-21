@@ -1,4 +1,4 @@
-prelude_commands: &prelude_commands |-
+prelude_commands: &prelude_commands >-
     set -ex;
     mkdir ray;
     cd ray;
@@ -20,7 +20,7 @@ prelude_commands: &prelude_commands |-
     export LANG="en_US.UTF-8";
     cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT;
 
-upload_wheels_if_needed: &upload_wheels_if_needed |-
+upload_wheels_if_needed: &upload_wheels_if_needed >-
     if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi;
     pip install -q docker aws_requests_auth boto3;
     python .buildkite/copy_files.py --destination branch_wheels --path ./.whl;
