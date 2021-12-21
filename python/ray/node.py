@@ -481,8 +481,7 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = GcsClient.create_from_redis(
-                        self.gcs_address)
+                    self._gcs_client = GcsClient(address=self.gcs_address)
                     break
                 except Exception as e:
                     time.sleep(1)
