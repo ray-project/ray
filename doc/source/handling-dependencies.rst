@@ -333,6 +333,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"eager_install": False}``
 
+**Garbage Collection**.  Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` folders) will be removed when they are no longer
+referenced by any actor, task or job.  To disable this (for example, for debugging purposes) set the environment variable ``RAY_runtime_env_skip_local_gc`` to ``1`` on each node in your cluster before starting Ray (e.g. with ``ray start``).
 
 Inheritance
 """""""""""
