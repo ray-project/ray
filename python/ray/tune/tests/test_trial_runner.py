@@ -8,11 +8,13 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune import TuneError, register_trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.resources import Resources
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.resources import Resources
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.utils.mock import TrialStatusSnapshotTaker, TrialStatusSnapshot
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -77,7 +79,12 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1
+            }, {
+                "CPU": 3,
+                "GPU": 1
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -98,7 +105,10 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1,
+                "a": 2
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -118,8 +128,11 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(
-                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1
+            }, {
+                "a": 2
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -133,18 +146,6 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(sum(t.status == Trial.RUNNING for t in trials) < 2)
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
-
-    def testCustomResources2(self):
-        ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner()
-        resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
-        self.assertTrue(runner.has_resources(resource1))
-        resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
-        self.assertTrue(runner.has_resources(resource2))
-        resource3 = Resources(cpu=1, gpu=0, custom_resources={"a": 3})
-        self.assertFalse(runner.has_resources(resource3))
-        resource4 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 3})
-        self.assertFalse(runner.has_resources(resource4))
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -179,7 +180,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -187,28 +187,20 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+
+        snapshot = TrialStatusSnapshot()
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.PENDING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.TERMINATED)
+        self.assertLess(snapshot.max_running_trials(), 2)
+        self.assertTrue(snapshot.all_trials_are_terminated())
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -216,24 +208,15 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        snapshot = TrialStatusSnapshot()
+        runner = TrialRunner(callbacks=[TrialStatusSnapshotTaker(snapshot)])
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertTrue(snapshot.all_trials_are_terminated())
 
     def testMultiStepRun2(self):
         """Checks that runner.step throws when overstepping."""
@@ -261,7 +244,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testChangeResources(self):
         """Checks that resource requirements can be changed on fly."""
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
         ray.init(num_cpus=2)
 
         class ChangingScheduler(FIFOScheduler):
@@ -286,13 +268,17 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._committed_resources.cpu, 1)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"),
+            1)
         self.assertRaises(
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0)))
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
+        self.assertEqual(
+            runner.trial_executor._pg_manager.occupied_resources().get("CPU"),
+            2)
 
     def testQueueFilling(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"

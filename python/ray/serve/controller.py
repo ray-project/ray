@@ -24,7 +24,6 @@ from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -181,21 +180,30 @@ class ServeController:
                 deployment_name, new_deployment_info)
 
     async def run_control_loop(self) -> None:
+        # NOTE(edoakes): we catch all exceptions here and simply log them,
+        # because an unhandled exception would cause the main control loop to
+        # halt, which should *never* happen.
         while True:
             try:
                 self.autoscale()
             except Exception:
-                logger.exception("Exception while autoscaling deployments.")
+                logger.exception("Exception in autoscaling.")
+
             async with self.write_lock:
                 try:
                     self.http_state.update()
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
+
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
                     logger.exception("Exception updating deployment state.")
-            self._put_serve_snapshot()
+
+            try:
+                self._put_serve_snapshot()
+            except Exception:
+                logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
@@ -206,16 +214,11 @@ class ServeController:
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
-            entry["ray_job_id"] = ("None"
-                                   if deployment_info.deployer_job_id is None
-                                   else deployment_info.deployer_job_id.hex())
+            entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
             entry["class_name"] = (
                 deployment_info.replica_config.func_or_class_name)
-            entry["version"] = deployment_info.version or "None"
-            # TODO(architkulkarni): When we add the feature to allow
-            # deployments with no HTTP route, update the below line.
-            # Or refactor the route_prefix logic in the Deployment class.
-            entry["http_route"] = route_prefix or f"/{deployment_name}"
+            entry["version"] = deployment_info.version
+            entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
             entry["end_time"] = deployment_info.end_time_ms or 0
             entry["status"] = ("DELETED"
@@ -233,10 +236,9 @@ class ServeController:
                         continue
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
-                    replica_version = ("None"
-                                       if (replica.version is None
-                                           or replica.version.unversioned) else
-                                       replica.version.code_version)
+                    replica_version = (None if (replica.version is None
+                                                or replica.version.unversioned)
+                                       else replica.version.code_version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
@@ -272,15 +274,16 @@ class ServeController:
 
             return goal_ids
 
-    def deploy(self,
-               name: str,
-               deployment_config_proto_bytes: bytes,
-               replica_config: ReplicaConfig,
-               version: Optional[str],
-               prev_version: Optional[str],
-               route_prefix: Optional[str],
-               deployer_job_id: "Optional[ray._raylet.JobID]" = None
-               ) -> Tuple[Optional[GoalId], bool]:
+    def deploy(
+            self,
+            name: str,
+            deployment_config_proto_bytes: bytes,
+            replica_config: ReplicaConfig,
+            version: Optional[str],
+            prev_version: Optional[str],
+            route_prefix: Optional[str],
+            deployer_job_id: "ray._raylet.JobID",
+    ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -311,9 +314,8 @@ class ServeController:
             autoscaling_policy = None
 
         deployment_info = DeploymentInfo(
-            actor_def=ray.remote(
-                create_replica_wrapper(
-                    name, replica_config.serialized_deployment_def)),
+            actor_name=name,
+            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,
@@ -326,8 +328,9 @@ class ServeController:
 
         goal_id, updating = self.deployment_state_manager.deploy(
             name, deployment_info)
-        endpoint_info = EndpointInfo(route=route_prefix)
-        self.endpoint_state.update_endpoint(name, endpoint_info)
+        if route_prefix is not None:
+            endpoint_info = EndpointInfo(route=route_prefix)
+            self.endpoint_state.update_endpoint(name, endpoint_info)
         return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

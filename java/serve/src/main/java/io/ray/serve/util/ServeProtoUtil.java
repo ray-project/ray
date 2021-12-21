@@ -1,97 +1,86 @@
 package io.ray.serve.util;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
-import com.google.gson.Gson;
+import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.Constants;
+import io.ray.serve.DeploymentConfig;
+import io.ray.serve.DeploymentVersion;
 import io.ray.serve.RayServeException;
-import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.DeploymentLanguage;
-import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
-import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.generated.UpdatedObject;
-import io.ray.serve.poll.KeyType;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
-  private static final Gson GSON = new Gson();
-
   public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
 
-    // Get a builder from DeploymentConfig(bytes) or create a new one.
-    DeploymentConfig.Builder builder = null;
+    DeploymentConfig deploymentConfig = new DeploymentConfig();
     if (deploymentConfigBytes == null) {
-      builder = DeploymentConfig.newBuilder();
-    } else {
-      DeploymentConfig deploymentConfig = null;
-      try {
-        deploymentConfig = DeploymentConfig.parseFrom(deploymentConfigBytes);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RayServeException("Failed to parse DeploymentConfig from protobuf bytes.", e);
-      }
-      if (deploymentConfig == null) {
-        builder = DeploymentConfig.newBuilder();
-      } else {
-        builder = DeploymentConfig.newBuilder(deploymentConfig);
-      }
+      return deploymentConfig;
     }
 
-    // Set default values.
-    if (builder.getNumReplicas() == 0) {
-      builder.setNumReplicas(1);
+    io.ray.serve.generated.DeploymentConfig pbDeploymentConfig = null;
+    try {
+      pbDeploymentConfig = io.ray.serve.generated.DeploymentConfig.parseFrom(deploymentConfigBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RayServeException("Failed to parse DeploymentConfig from protobuf bytes.", e);
     }
 
-    Preconditions.checkArgument(
-        builder.getMaxConcurrentQueries() >= 0, "max_concurrent_queries must be >= 0");
-    if (builder.getMaxConcurrentQueries() == 0) {
-      builder.setMaxConcurrentQueries(100);
+    if (pbDeploymentConfig == null) {
+      return deploymentConfig;
     }
 
-    if (builder.getGracefulShutdownWaitLoopS() == 0) {
-      builder.setGracefulShutdownWaitLoopS(2);
+    if (pbDeploymentConfig.getNumReplicas() != 0) {
+      deploymentConfig.setNumReplicas(pbDeploymentConfig.getNumReplicas());
     }
-
-    if (builder.getGracefulShutdownTimeoutS() == 0) {
-      builder.setGracefulShutdownTimeoutS(20);
+    if (pbDeploymentConfig.getMaxConcurrentQueries() != 0) {
+      deploymentConfig.setMaxConcurrentQueries(pbDeploymentConfig.getMaxConcurrentQueries());
     }
-
-    if (builder.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
+    if (pbDeploymentConfig.getGracefulShutdownWaitLoopS() != 0) {
+      deploymentConfig.setGracefulShutdownWaitLoopS(
+          pbDeploymentConfig.getGracefulShutdownWaitLoopS());
+    }
+    if (pbDeploymentConfig.getGracefulShutdownTimeoutS() != 0) {
+      deploymentConfig.setGracefulShutdownTimeoutS(
+          pbDeploymentConfig.getGracefulShutdownTimeoutS());
+    }
+    deploymentConfig.setCrossLanguage(pbDeploymentConfig.getIsCrossLanguage());
+    if (pbDeploymentConfig.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
-              "Unrecognized backend language {}. Backend language must be in {}.",
-              builder.getDeploymentLanguageValue(),
+              "Unrecognized deployment language {}. Deployment language must be in {}.",
+              pbDeploymentConfig.getDeploymentLanguage(),
               Lists.newArrayList(DeploymentLanguage.values())));
     }
-
-    return builder.build();
-  }
-
-  public static Object parseUserConfig(DeploymentConfig deploymentConfig) {
-    if (deploymentConfig.getUserConfig() == null || deploymentConfig.getUserConfig().size() == 0) {
-      return null;
+    deploymentConfig.setDeploymentLanguage(pbDeploymentConfig.getDeploymentLanguageValue());
+    if (pbDeploymentConfig.getUserConfig() != null
+        && pbDeploymentConfig.getUserConfig().size() != 0) {
+      deploymentConfig.setUserConfig(
+          MessagePackSerializer.decode(
+              pbDeploymentConfig.getUserConfig().toByteArray(), Object.class));
     }
-    return MessagePackSerializer.decode(
-        deploymentConfig.getUserConfig().toByteArray(), Object.class);
+    return deploymentConfig;
   }
 
-  public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)
-      throws InvalidProtocolBufferException {
+  public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes) {
 
     // Get a builder from RequestMetadata(bytes) or create a new one.
     RequestMetadata.Builder builder = null;
     if (requestMetadataBytes == null) {
       builder = RequestMetadata.newBuilder();
     } else {
-      RequestMetadata requestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
+      RequestMetadata requestMetadata = null;
+      try {
+        requestMetadata = RequestMetadata.parseFrom(requestMetadataBytes);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RayServeException("Failed to parse RequestMetadata from protobuf bytes.", e);
+      }
       if (requestMetadata == null) {
         builder = RequestMetadata.newBuilder();
       } else {
@@ -101,21 +90,25 @@ public class ServeProtoUtil {
 
     // Set default values.
     if (StringUtils.isBlank(builder.getCallMethod())) {
-      builder.setCallMethod(Constants.DEFAULT_CALL_METHOD);
+      builder.setCallMethod(Constants.CALL_METHOD);
     }
 
     return builder.build();
   }
 
-  public static RequestWrapper parseRequestWrapper(byte[] httpRequestWrapperBytes)
-      throws InvalidProtocolBufferException {
+  public static RequestWrapper parseRequestWrapper(byte[] httpRequestWrapperBytes) {
 
     // Get a builder from HTTPRequestWrapper(bytes) or create a new one.
     RequestWrapper.Builder builder = null;
     if (httpRequestWrapperBytes == null) {
       builder = RequestWrapper.newBuilder();
     } else {
-      RequestWrapper requestWrapper = RequestWrapper.parseFrom(httpRequestWrapperBytes);
+      RequestWrapper requestWrapper = null;
+      try {
+        requestWrapper = RequestWrapper.parseFrom(httpRequestWrapperBytes);
+      } catch (InvalidProtocolBufferException e) {
+        throw new RayServeException("Failed to parse RequestWrapper from protobuf bytes.", e);
+      }
       if (requestWrapper == null) {
         builder = RequestWrapper.newBuilder();
       } else {
@@ -124,22 +117,6 @@ public class ServeProtoUtil {
     }
 
     return builder.build();
-  }
-
-  public static Map<KeyType, UpdatedObject> parseUpdatedObjects(byte[] longPollResultBytes)
-      throws InvalidProtocolBufferException {
-    if (longPollResultBytes == null) {
-      return null;
-    }
-    LongPollResult longPollResult = LongPollResult.parseFrom(longPollResultBytes);
-    Map<String, UpdatedObject> updatedObjects = longPollResult.getUpdatedObjectsMap();
-    if (updatedObjects == null || updatedObjects.isEmpty()) {
-      return null;
-    }
-    Map<KeyType, UpdatedObject> udpates = new HashMap<>(updatedObjects.size());
-    updatedObjects.forEach(
-        (key, value) -> udpates.put(ServeProtoUtil.GSON.fromJson(key, KeyType.class), value));
-    return udpates;
   }
 
   public static Map<String, EndpointInfo> parseEndpointSet(byte[] endpointSetBytes) {
@@ -160,12 +137,46 @@ public class ServeProtoUtil {
 
   public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
     if (deploymentVersionBytes == null) {
-      return null;
+      return new DeploymentVersion();
     }
+
+    io.ray.serve.generated.DeploymentVersion pbDeploymentVersion = null;
     try {
-      return DeploymentVersion.parseFrom(deploymentVersionBytes);
+      pbDeploymentVersion =
+          io.ray.serve.generated.DeploymentVersion.parseFrom(deploymentVersionBytes);
     } catch (InvalidProtocolBufferException e) {
       throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
     }
+    if (pbDeploymentVersion == null) {
+      return new DeploymentVersion();
+    }
+    return new DeploymentVersion(
+        pbDeploymentVersion.getCodeVersion(),
+        pbDeploymentVersion.getUserConfig() != null
+                && pbDeploymentVersion.getUserConfig().size() != 0
+            ? new Object[] {
+              MessagePackSerializer.decode(
+                  pbDeploymentVersion.getUserConfig().toByteArray(), Object.class)
+            }
+            : null);
+  }
+
+  public static io.ray.serve.generated.DeploymentVersion toProtobuf(
+      DeploymentVersion deploymentVersion) {
+    io.ray.serve.generated.DeploymentVersion.Builder pbDeploymentVersion =
+        io.ray.serve.generated.DeploymentVersion.newBuilder();
+    if (deploymentVersion == null) {
+      return pbDeploymentVersion.build();
+    }
+
+    if (StringUtils.isNotBlank(deploymentVersion.getCodeVersion())) {
+      pbDeploymentVersion.setCodeVersion(deploymentVersion.getCodeVersion());
+    }
+    if (deploymentVersion.getUserConfig() != null) {
+      pbDeploymentVersion.setUserConfig(
+          ByteString.copyFrom(
+              MessagePackSerializer.encode(deploymentVersion.getUserConfig()).getLeft()));
+    }
+    return pbDeploymentVersion.build();
   }
 }

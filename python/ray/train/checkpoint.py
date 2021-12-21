@@ -4,7 +4,7 @@ import numbers
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict, Union, Callable
 
 from ray import cloudpickle
 from ray.train.constants import TIMESTAMP, TUNE_INSTALLED
@@ -12,6 +12,7 @@ from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, \
     TUNE_CHECKPOINT_ID
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
+from ray.util import PublicAPI
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -24,6 +25,7 @@ MIN = "min"
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class CheckpointStrategy:
     """Configurable parameters for defining the Train checkpointing strategy.
@@ -132,12 +134,18 @@ class CheckpointManager:
             checkpoint_strategy is None else checkpoint_strategy
         self.run_dir = run_dir
 
-    def _process_checkpoint(self,
-                            checkpoint_results: List[TrainingResult]) -> None:
+    def _process_checkpoint(
+            self,
+            checkpoint_results: List[TrainingResult],
+            decode_checkpoint_fn: Callable,
+    ) -> None:
         """Perform all processing for a checkpoint. """
 
         # Get checkpoint from first worker.
         checkpoint = checkpoint_results[0].data
+
+        # Decode checkpoint.
+        checkpoint = decode_checkpoint_fn(checkpoint)
 
         # Store checkpoint in memory.
         self.latest_checkpoint = checkpoint
@@ -273,6 +281,18 @@ class CheckpointManager:
             return self._best_persisted_checkpoint.path
         else:
             return None
+
+    @property
+    def latest_checkpoint_id(self) -> Optional[int]:
+        """The checkpoint id of most recently saved checkpoint.
+
+        If no checkpoint has been saved yet, then return None.
+        """
+        checkpoint_id = self._latest_checkpoint_id
+        if checkpoint_id == 0:
+            return None
+        else:
+            return checkpoint_id
 
 
 class TuneCheckpointManager(CheckpointManager):

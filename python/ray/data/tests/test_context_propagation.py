@@ -12,7 +12,11 @@ def test_read(ray_start_regular_shared):
         def prepare_read(self, parallelism: int):
             value = DatasetContext.get_current().foo
             meta = BlockMetadata(
-                num_rows=1, size_bytes=8, schema=None, input_files=None)
+                num_rows=1,
+                size_bytes=8,
+                schema=None,
+                input_files=None,
+                exec_stats=None)
             return [ReadTask(lambda: [[value]], meta)]
 
     context = DatasetContext.get_current()

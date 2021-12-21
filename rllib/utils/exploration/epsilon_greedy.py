@@ -1,3 +1,4 @@
+import gym
 import numpy as np
 import tree  # pip install dm_tree
 import random
@@ -28,7 +29,7 @@ class EpsilonGreedy(Exploration):
     """
 
     def __init__(self,
-                 action_space,
+                 action_space: gym.spaces.Space,
                  *,
                  framework: str,
                  initial_epsilon: float = 1.0,
@@ -39,11 +40,13 @@ class EpsilonGreedy(Exploration):
         """Create an EpsilonGreedy exploration class.
 
         Args:
-            initial_epsilon (float): The initial epsilon value to use.
-            final_epsilon (float): The final epsilon value to use.
-            epsilon_timesteps (int): The time step after which epsilon should
+            action_space: The action space the exploration should occur in.
+            framework: The framework specifier.
+            initial_epsilon: The initial epsilon value to use.
+            final_epsilon: The final epsilon value to use.
+            epsilon_timesteps: The time step after which epsilon should
                 always be `final_epsilon`.
-            epsilon_schedule (Optional[Schedule]): An optional Schedule object
+            epsilon_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
         assert framework is not None
@@ -85,19 +88,18 @@ class EpsilonGreedy(Exploration):
             return self._get_torch_exploration_action(action_distribution,
                                                       explore, timestep)
 
-    def _get_tf_exploration_action_op(self,
-                                      action_distribution: ActionDistribution,
-                                      explore: Union[bool, TensorType],
-                                      timestep: Union[int, TensorType]):
+    def _get_tf_exploration_action_op(
+            self, action_distribution: ActionDistribution,
+            explore: Union[bool, TensorType],
+            timestep: Union[int, TensorType]) -> "tf.Tensor":
         """TF method to produce the tf op for an epsilon exploration action.
 
         Args:
-            action_distribution (ActionDistribution): The instantiated
-                ActionDistribution object to work with when creating
-                exploration actions.
+            action_distribution: The instantiated ActionDistribution object
+                to work with when creating exploration actions.
 
         Returns:
-            tf.Tensor: The tf exploration-action op.
+            The tf exploration-action op.
         """
         # TODO: Support MultiActionDistr for tf.
         q_values = action_distribution.inputs
@@ -140,7 +142,7 @@ class EpsilonGreedy(Exploration):
 
     def _get_torch_exploration_action(
             self, action_distribution: ActionDistribution, explore: bool,
-            timestep: Union[int, TensorType]):
+            timestep: Union[int, TensorType]) -> "torch.Tensor":
         """Torch method to produce an epsilon exploration action.
 
         Args:
@@ -149,7 +151,7 @@ class EpsilonGreedy(Exploration):
                 exploration actions.
 
         Returns:
-            torch.Tensor: The exploration-action.
+            The exploration-action.
         """
         q_values = action_distribution.inputs
         self.last_timestep = timestep

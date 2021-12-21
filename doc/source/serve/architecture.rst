@@ -2,7 +2,10 @@
 
 Serve Architecture
 ==================
-This document provides an overview of how each component in Serve works.
+This section should help you:
+
+- understand an overview of how each component in Serve works
+- understand the different types of actors that make up a Serve instance
 
 .. Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 

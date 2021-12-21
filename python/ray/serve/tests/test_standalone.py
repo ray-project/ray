@@ -22,7 +22,8 @@ from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
 from ray.serve.api import _get_global_client
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import (run_string_as_driver, wait_for_condition,
+                                     convert_actor_state)
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
@@ -345,8 +346,8 @@ def test_no_http(ray_shutdown):
 
         # Only controller actor should exist
         live_actors = [
-            actor for actor in ray.state.actors().values()
-            if actor["State"] == gcs_utils.ActorTableData.ALIVE
+            actor for actor in ray.state.actors().values() if actor["State"] ==
+            convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
@@ -513,35 +514,57 @@ A.deploy()"""
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_local_store_recovery():
+def test_local_store_recovery(ray_shutdown):
     _, tmp_path = mkstemp()
 
     @serve.deployment
     def hello(_):
         return "hello"
 
-    def check():
+    # https://github.com/ray-project/ray/issues/19987
+    @serve.deployment
+    def world(_):
+        return "world"
+
+    def check(name):
         try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
+            resp = requests.get(f"http://localhost:8000/{name}")
+            assert resp.text == name
             return True
         except Exception:
             return False
 
+    # https://github.com/ray-project/ray/issues/20159
+    # https://github.com/ray-project/ray/issues/20158
+    def clean_up_leaked_processes():
+        import psutil
+        for proc in psutil.process_iter():
+            try:
+                cmdline = " ".join(proc.cmdline())
+                if "ray::" in cmdline:
+                    print(f"Kill {proc} {cmdline}")
+                    proc.kill()
+            except Exception:
+                pass
+
     def crash():
         subprocess.call(["ray", "stop", "--force"])
+        clean_up_leaked_processes()
         ray.shutdown()
         serve.shutdown()
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
-    assert check()
+    world.deploy()
+    assert check("hello")
+    assert check("world")
     crash()
 
     # Simulate a crash
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
-    wait_for_condition(check)
+    wait_for_condition(lambda: check("hello"))
+    # wait_for_condition(lambda: check("world"))
     crash()
 
 
@@ -551,7 +574,8 @@ def test_local_store_recovery():
         "num_cpus": 4
     }], indirect=True)
 def test_snapshot_always_written_to_internal_kv(
-        ray_start_with_dashboard):  # noqa: F811
+        ray_start_with_dashboard,  # noqa: F811
+        ray_shutdown):
     # https://github.com/ray-project/ray/issues/19752
     _, tmp_path = mkstemp()
 

@@ -7,8 +7,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import ppo_surrogate_loss as \
     ppo_surrogate_loss_tf
-from ray.rllib.agents.ppo.ppo_torch_policy import ppo_surrogate_loss as \
-    ppo_surrogate_loss_torch
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -272,8 +271,8 @@ class TestPPO(unittest.TestCase):
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             elif fw == "torch":
-                ppo_surrogate_loss_torch(policy, policy.model,
-                                         TorchCategorical, train_batch)
+                PPOTorchPolicy.loss(policy, policy.model, policy.dist_class,
+                                    train_batch)
 
             vars = policy.model.variables() if fw != "torch" else \
                 list(policy.model.parameters())

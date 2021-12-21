@@ -2,7 +2,8 @@ import random
 import pytest
 import numpy as np
 import os
-import pickle
+from ray import cloudpickle as pickle
+from ray import ray_constants
 try:
     import pytest_timeout
 except ImportError:
@@ -14,7 +15,6 @@ import datetime
 from ray._private.test_utils import (client_test_enabled, wait_for_condition,
                                      wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
-
 import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -273,13 +273,16 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-
-    r = ray.worker.global_worker.redis_client
-    actor_keys = r.keys("ActorClass*")
+    # TODO: redis-removal kv
+    g = ray.worker.global_worker.gcs_client
+    actor_keys = g.internal_kv_keys(b"ActorClass",
+                                    ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
     assert len(actor_keys) == 1
-    actor_class_info = r.hgetall(actor_keys[0])
-    assert actor_class_info[b"class_name"] == b"Foo"
-    assert b"test_actor" in actor_class_info[b"module"]
+    actor_class_info = pickle.loads(
+        g.internal_kv_get(actor_keys[0],
+                          ray_constants.KV_NAMESPACE_FUNCTION_TABLE))
+    assert actor_class_info["class_name"] == "Foo"
+    assert "test_actor" in actor_class_info["module"]
 
 
 def test_actor_exit_from_task(ray_start_regular_shared):

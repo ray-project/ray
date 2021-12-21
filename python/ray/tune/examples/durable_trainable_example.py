@@ -104,7 +104,6 @@ if __name__ == "__main__":
     ray.init(address=address)
 
     sync_config = tune.SyncConfig(
-        sync_to_driver=False,
         sync_on_checkpoint=False,
         upload_dir="s3://ray-tune-test/exps/",
     )

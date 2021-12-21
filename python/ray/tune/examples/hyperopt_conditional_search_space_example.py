@@ -3,7 +3,7 @@
 It also checks that it is usable with a separate scheduler.
 
 For an example of using a Tune search space, see
-:doc:`/tune/examples/optuna_example`.
+:doc:`/tune/examples/hyperopt_example`.
 """
 import time
 

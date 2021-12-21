@@ -1,11 +1,12 @@
+import logging
 import socket
 from dataclasses import dataclass
-import logging
-from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple
+from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.types import ObjectRef
+from ray.util.placement_group import PlacementGroup
 
 T = TypeVar("T")
 
@@ -105,6 +106,9 @@ class WorkerGroup:
             remote actors.
         remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
             these args will be used for the worker initialization.
+        placement_group (PlacementGroup|str): The placement group that workers
+            should be created in. Defaults to "default" which will inherit the
+            parent placement group (if child tasks should be captured).
 
 
     Example:
@@ -125,7 +129,8 @@ class WorkerGroup:
             additional_resources_per_worker: Optional[Dict[str, float]] = None,
             actor_cls: Type = None,
             actor_cls_args: Optional[Tuple] = None,
-            actor_cls_kwargs: Optional[Dict] = None):
+            actor_cls_kwargs: Optional[Dict] = None,
+            placement_group: Union[PlacementGroup, str] = "default"):
 
         if num_workers <= 0:
             raise ValueError("The provided `num_workers` must be greater "
@@ -151,6 +156,8 @@ class WorkerGroup:
 
         self._actor_cls_args = actor_cls_args or []
         self._actor_cls_kwargs = actor_cls_kwargs or {}
+
+        self._placement_group = placement_group
 
         # TODO(matt): Validate resources. Fast-fail if it is impossible to
         #  handle the request, rather than hang indefinitely.
@@ -279,6 +286,9 @@ class WorkerGroup:
     def remove_workers(self, worker_indexes: List[int]):
         """Removes the workers with the specified indexes.
 
+        The removed workers will go out of scope and their actor processes
+        will be terminated.
+
         Args:
             worker_indexes (List[int]): The indexes of the workers to remove.
         """
@@ -291,14 +301,20 @@ class WorkerGroup:
     def add_workers(self, num_workers: int):
         """Adds ``num_workers`` to this WorkerGroup.
 
+        Note: Adding workers when the cluster/placement group is at capacity
+        may lead to undefined hanging behavior. If you are attempting to
+        replace existing workers in the WorkerGroup, remove_workers() should
+        be called first.
+
         Args:
             num_workers (int): The number of workers to add.
         """
         new_actors = []
         new_actor_metadata = []
         for _ in range(num_workers):
-            actor = self._remote_cls.remote(*self._actor_cls_args,
-                                            **self._actor_cls_kwargs)
+            actor = self._remote_cls.options(
+                placement_group=self._placement_group).remote(
+                    *self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
                 actor._BaseWorkerMixin__execute.remote(construct_metadata))

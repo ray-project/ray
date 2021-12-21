@@ -18,12 +18,12 @@
 namespace ray {
 
 void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
-                                        const rpc::RuntimeEnv &runtime_env) {
-  const auto &uris = runtime_env.uris();
+                                        const rpc::RuntimeEnvInfo &runtime_env_info) {
+  const auto &uris = runtime_env_info.uris();
   for (const auto &uri : uris) {
     uri_reference_[uri]++;
     id_to_uris_[hex_id].push_back(uri);
-    RAY_LOG(DEBUG) << "Added URI Reference " << uri;
+    RAY_LOG(DEBUG) << "Added URI Reference " << uri << " for id " << hex_id;
   }
 }
 
@@ -35,6 +35,7 @@ const std::vector<std::string> &RuntimeEnvManager::GetReferences(
 }
 
 void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
+  RAY_LOG(DEBUG) << "Subtracting 1 from URI Reference for id " << hex_id;
   if (!id_to_uris_.count(hex_id)) {
     return;
   }

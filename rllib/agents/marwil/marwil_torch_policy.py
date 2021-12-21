@@ -2,7 +2,7 @@ import gym
 from typing import Dict
 
 import ray
-from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
+from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
 from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class

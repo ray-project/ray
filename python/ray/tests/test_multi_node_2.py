@@ -24,6 +24,7 @@ def test_cluster():
     g.remove_node(node2)
     g.remove_node(node)
     assert not any(n.any_processes_alive() for n in [node, node2])
+    g.shutdown()
 
 
 def test_shutdown():

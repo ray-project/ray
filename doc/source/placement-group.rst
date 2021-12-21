@@ -133,7 +133,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
     .. code-block:: c++
 
       // Wait for the placement group to be ready within the specified time(unit is seconds).
-      boll ready = pg.Wait(60);
+      bool ready = pg.Wait(60);
       assert(ready);
 
       // You can look at placement group states using this API.
@@ -610,7 +610,7 @@ See :ref:`placement-group-lifetimes` for more details.
 
     .. code-block:: java
 
-      // Create a placement group with a globally unique name.
+      // Create a placement group with a unique name.
       Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
       List<Map<String, Double>> bundles = ImmutableList.of(bundle);
 
@@ -618,7 +618,7 @@ See :ref:`placement-group-lifetimes` for more details.
         new PlacementGroupCreationOptions.Builder()
           .setBundles(bundles)
           .setStrategy(PlacementStrategy.STRICT_SPREAD)
-          .setGlobalName("global_name")
+          .setName("global_name")
           .build();
 
       PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
@@ -627,31 +627,7 @@ See :ref:`placement-group-lifetimes` for more details.
       ...
 
       // Retrieve the placement group later somewhere.
-      PlacementGroup group = PlacementGroups.getGlobalPlacementGroup("global_name");
-      Assert.assertNotNull(group);
-
-    We also support non-global named placement group in Java, which means that the placement group name is only valid within the job and cannot be accessed from another job.
-
-    .. code-block:: java
-
-      // Create a placement group with a job-scope-unique name.
-      Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
-      List<Map<String, Double>> bundles = ImmutableList.of(bundle);
-
-      PlacementGroupCreationOptions options =
-      new PlacementGroupCreationOptions.Builder()
-        .setBundles(bundles)
-        .setStrategy(PlacementStrategy.STRICT_SPREAD)
-        .setName("non_global_name")
-        .build();
-
-      PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
-      pg.wait(60);
-
-      ...
-
-      // Retrieve the placement group later somewhere in the same job.
-      PlacementGroup group = PlacementGroups.getPlacementGroup("non_global_name");
+      PlacementGroup group = PlacementGroups.getPlacementGroup("global_name");
       Assert.assertNotNull(group);
 
   .. group-tab:: C++

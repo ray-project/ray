@@ -134,12 +134,12 @@ def test_ports_assignment(ray_start_cluster):
     cluster.remove_node(head_node)
 
     # Make sure the wrong worker list will raise an exception.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="[30000, 30001, 30002, 30003]"):
         head_node = cluster.add_node(
             **pre_selected_ports, worker_port_list="30000,30001,30002,30003")
 
     # Make sure the wrong min & max worker will raise an exception
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="from 25000 to 35000"):
         head_node = cluster.add_node(
             **pre_selected_ports, min_worker_port=25000, max_worker_port=35000)
 

@@ -23,9 +23,9 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     n is truncated to fit in the traj length.
 
     Args:
-        n_step (int): The number of steps to look ahead and adjust.
-        gamma (float): The discount factor.
-        batch (SampleBatch): The SampleBatch to adjust (in place).
+        n_step: The number of steps to look ahead and adjust.
+        gamma: The discount factor.
+        batch: The SampleBatch to adjust (in place).
 
     Examples:
         n-step=3
@@ -73,21 +73,19 @@ def compute_advantages(rollout: SampleBatch,
                        lambda_: float = 1.0,
                        use_gae: bool = True,
                        use_critic: bool = True):
-    """
-    Given a rollout, compute its value targets and the advantages.
+    """Given a rollout, compute its value targets and the advantages.
 
     Args:
-        rollout (SampleBatch): SampleBatch of a single trajectory.
-        last_r (float): Value estimation for last observation.
-        gamma (float): Discount factor.
-        lambda_ (float): Parameter for GAE.
-        use_gae (bool): Using Generalized Advantage Estimation.
-        use_critic (bool): Whether to use critic (value estimates). Setting
+        rollout: SampleBatch of a single trajectory.
+        last_r: Value estimation for last observation.
+        gamma: Discount factor.
+        lambda_: Parameter for GAE.
+        use_gae: Using Generalized Advantage Estimation.
+        use_critic: Whether to use critic (value estimates). Setting
             this to False will use 0 as baseline.
 
     Returns:
-        SampleBatch (SampleBatch): Object with experience from rollout and
-            processed rewards.
+        SampleBatch with experience from rollout and processed rewards.
     """
 
     assert SampleBatch.VF_PREDS in rollout or not use_critic, \
@@ -147,17 +145,16 @@ def compute_gae_for_sample_batch(
     New columns can be added to sample_batch and existing ones may be altered.
 
     Args:
-        policy (Policy): The Policy used to generate the trajectory
-            (`sample_batch`)
-        sample_batch (SampleBatch): The SampleBatch to postprocess.
-        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
-            dict of AgentIDs mapping to other agents' trajectory data (from the
-            same episode). NOTE: The other agents use the same policy.
-        episode (Optional[Episode]): Optional multi-agent episode
-            object in which the agents operated.
+        policy: The Policy used to generate the trajectory (`sample_batch`)
+        sample_batch: The SampleBatch to postprocess.
+        other_agent_batches: Optional dict of AgentIDs mapping to other
+            agents' trajectory data (from the same episode).
+            NOTE: The other agents use the same policy.
+        episode: Optional multi-agent episode object in which the agents
+            operated.
 
     Returns:
-        SampleBatch: The postprocessed, modified SampleBatch (or a new one).
+        The postprocessed, modified SampleBatch (or a new one).
     """
 
     # Trajectory is actually complete -> last r=0.0.
@@ -193,11 +190,11 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     reversed(y)[t] - discount*reversed(y)[t-1] = reversed(x)[t]
 
     Args:
-        gamma (float): The discount factor gamma.
+        gamma: The discount factor gamma.
 
     Returns:
-        np.ndarray: The sequence containing the discounted cumulative sums
-            for each individual reward in `x` till the end of the trajectory.
+        The sequence containing the discounted cumulative sums
+        for each individual reward in `x` till the end of the trajectory.
 
     Examples:
         >>> x = np.array([0.0, 1.0, 2.0, 3.0])

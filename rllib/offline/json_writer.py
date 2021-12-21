@@ -17,6 +17,7 @@ from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
 from ray.rllib.utils.typing import FileType, SampleBatchType
+from ray.util.ml_utils.json import SafeFallbackEncoder
 from typing import Any, List
 
 logger = logging.getLogger(__name__)
@@ -121,4 +122,4 @@ def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
         out["type"] = "SampleBatch"
         for k, v in batch.items():
             out[k] = _to_jsonable(v, compress=k in compress_columns)
-    return json.dumps(out)
+    return json.dumps(out, cls=SafeFallbackEncoder)

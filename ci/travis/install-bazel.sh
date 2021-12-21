@@ -66,6 +66,7 @@ else
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
   else
     "${target}" --user > /dev/null
+    export PATH=$PATH:"$HOME/bin"
   fi
   which bazel
   rm -f "${target}"

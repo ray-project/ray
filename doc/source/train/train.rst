@@ -18,7 +18,7 @@ The main features are:
 
 .. note::
 
-  This API is in its Alpha release (as of Ray 1.7) and may be revised in
+  This API is in its Beta release (as of Ray 1.9) and may be revised in
   future Ray releases. If you encounter any bugs, please file an
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
@@ -85,10 +85,11 @@ system. Let's take following simple examples:
 
     Now let's convert this to a distributed multi-worker training function!
 
-    First, update the training function code to use PyTorch's
-    ``DistributedDataParallel``. With Ray Train, you just pass in your distributed
-    data parallel code as as you would normally run it with
-    ``torch.distributed.launch``.
+    All you have to do is use the ``ray.train.torch.prepare_model`` and
+    ``ray.train.torch.prepare_data_loader`` utility functions to
+    easily setup your model & data for distributed training.
+    This will automatically wrap your model with ``DistributedDataParallel``
+    and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
        :language: python

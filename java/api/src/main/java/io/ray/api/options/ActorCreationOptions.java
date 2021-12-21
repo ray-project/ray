@@ -10,7 +10,6 @@ import java.util.Map;
 
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
-  public final boolean global;
   public final String name;
   public final int maxRestarts;
   public final List<String> jvmOptions;
@@ -18,9 +17,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final int maxPendingCalls;
 
   private ActorCreationOptions(
-      boolean global,
       String name,
       Map<String, Double> resources,
       int maxRestarts,
@@ -28,9 +27,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups) {
+      List<ConcurrencyGroup> concurrencyGroups,
+      int maxPendingCalls) {
     super(resources);
-    this.global = global;
     this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
@@ -38,11 +37,11 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.maxPendingCalls = maxPendingCalls;
   }
 
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
-    private boolean global;
     private String name;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
@@ -51,32 +50,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private int maxPendingCalls = -1;
 
     /**
-     * Set the actor name of a named actor. This named actor is only accessible from this job by
-     * this name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that
-     * is accessible from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
+     * Set the actor name of a named actor. This named actor is accessible in this namespace by this
+     * name via {@link Ray#getActor(java.lang.String)} and in other namespaces via {@link
+     * Ray#getActor(java.lang.String, java.lang.String)}.
      *
      * @param name The name of the named actor.
      * @return self
      */
     public Builder setName(String name) {
       this.name = name;
-      this.global = false;
-      return this;
-    }
-
-    /**
-     * Set the name of this actor. This actor will be accessible from all jobs by this name via
-     * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
-     * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
-     *
-     * @param name The name of the named actor.
-     * @return self
-     */
-    public Builder setGlobalName(String name) {
-      this.name = name;
-      this.global = true;
       return this;
     }
 
@@ -152,6 +137,24 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+     * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+     * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+     *
+     * @param maxPendingCalls The maximum number of pending calls for this actor.
+     * @return self
+     */
+    public Builder setMaxPendingCalls(int maxPendingCalls) {
+      if (maxPendingCalls < -1 || maxPendingCalls == 0) {
+        throw new IllegalArgumentException(
+            "maxPendingCalls must be greater than 0, or -1 to disable.");
+      }
+
+      this.maxPendingCalls = maxPendingCalls;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -166,7 +169,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global,
           name,
           resources,
           maxRestarts,
@@ -174,7 +176,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
           maxConcurrency,
           group,
           bundleIndex,
-          concurrencyGroups);
+          concurrencyGroups,
+          maxPendingCalls);
     }
 
     /** Set the concurrency groups for this actor. */

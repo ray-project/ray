@@ -28,14 +28,19 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const MultiItemCallback<rpc::ActorTableData> &callback), (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::ActorTableData> &callback),
+               const OptionalItemCallback<rpc::ActorTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncListNamedActors,
               (bool all_namespaces, const std::string &ray_namespace,
-               const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback),
+               const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncRegisterActor,
-              (const TaskSpecification &task_spec, const StatusCallback &callback),
+              (const TaskSpecification &task_spec, const StatusCallback &callback,
+               int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status, SyncRegisterActor, (const TaskSpecification &task_spec),
               (override));
   MOCK_METHOD(Status, AsyncKillActor,
               (const ActorID &actor_id, bool force_kill, bool no_restart,
@@ -78,45 +83,6 @@ class MockJobInfoAccessor : public JobInfoAccessor {
   MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
   MOCK_METHOD(Status, AsyncGetNextJobID, (const ItemCallback<JobID> &callback),
               (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockTaskInfoAccessor : public TaskInfoAccessor {
- public:
-  MOCK_METHOD(Status, AsyncAdd,
-              (const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGet,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskTableData> &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncAddTaskLease,
-              (const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGetTaskLease,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskLeaseData> &callback),
-              (override));
-  MOCK_METHOD(
-      Status, AsyncSubscribeTaskLease,
-      (const TaskID &task_id,
-       (const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe),
-       const StatusCallback &done),
-      (override));
-  MOCK_METHOD(Status, AsyncUnsubscribeTaskLease, (const TaskID &task_id), (override));
-  MOCK_METHOD(Status, AttemptTaskReconstruction,
-              (const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
-  MOCK_METHOD(bool, IsTaskLeaseUnsubscribed, (const TaskID &task_id), (override));
 };
 
 }  // namespace gcs

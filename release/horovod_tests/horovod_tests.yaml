@@ -6,7 +6,7 @@
   run:
     timeout: 36000
     prepare: python wait_cluster.py 3 600
-    script: python workloads/horovod_test.py
+    script: python workloads/horovod_tune_test.py
     long_running: True
 
   smoke_test:

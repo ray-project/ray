@@ -174,7 +174,7 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     except Exception:
         v = None
     if v is not None:
-        assert 2 == 20
+        assert 2 == v
     assert 4 == ray.get(outer)
 
     inner = workflow.get_output("double-2", name="inner")

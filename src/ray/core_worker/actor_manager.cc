@@ -57,32 +57,22 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     // implemented using a promise that's captured in the RPC callback.
     // There should be no risk of deadlock because we don't hold any
     // locks during the call and the RPCs run on a separate thread.
-    std::shared_ptr<std::promise<void>> ready_promise =
-        std::make_shared<std::promise<void>>(std::promise<void>());
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-        name, ray_namespace,
-        [this, &actor_id, name, call_site, &caller_address, ready_promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
-          if (status.ok() && result) {
-            auto actor_handle = std::make_unique<ActorHandle>(*result);
-            actor_id = actor_handle->GetActorID();
-            AddNewActorHandle(std::move(actor_handle),
-                              GenerateCachedActorName(result.get().ray_namespace(),
-                                                      result.get().name()),
-                              call_site, caller_address,
-                              /*is_detached*/ true);
-          } else {
-            // Use a NIL actor ID to signal that the actor wasn't found.
-            RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
-            actor_id = ActorID::Nil();
-          }
-          ready_promise->set_value();
-        }));
-    // Block until the RPC completes. Set a timeout to avoid hangs if the
-    // GCS service crashes.
-    if (ready_promise->get_future().wait_for(std::chrono::seconds(
-            RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-        std::future_status::ready) {
+    rpc::ActorTableData result;
+    const auto status = gcs_client_->Actors().SyncGetByName(name, ray_namespace, result);
+    if (status.ok()) {
+      auto actor_handle = std::make_unique<ActorHandle>(result);
+      actor_id = actor_handle->GetActorID();
+      AddNewActorHandle(std::move(actor_handle),
+                        GenerateCachedActorName(result.ray_namespace(), result.name()),
+                        call_site, caller_address,
+                        /*is_detached*/ true);
+    } else {
+      // Use a NIL actor ID to signal that the actor wasn't found.
+      RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
+      actor_id = ActorID::Nil();
+    }
+
+    if (status.IsTimedOut()) {
       std::ostringstream stream;
       stream << "There was timeout in getting the actor handle, "
                 "probably because the GCS server is dead or under high load .";
@@ -96,9 +86,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     std::ostringstream stream;
     stream << "Failed to look up actor with name '" << name << "'. This could "
            << "because 1. You are trying to look up a named actor you "
-           << "didn't create. 2. The named actor died. 3. The actor hasn't "
-           << "been created because named actor creation is asynchronous. "
-           << "4. You did not use a namespace matching the namespace of the "
+           << "didn't create. 2. The named actor died. "
+           << "3. You did not use a namespace matching the namespace of the "
            << "actor.";
     auto error_msg = stream.str();
     RAY_LOG(WARNING) << error_msg;
@@ -149,7 +138,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const ObjectID &actor_creation_return_id,
                                   bool is_self) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
-  direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
+  direct_actor_submitter_->AddActorQueueIfNotExists(
+      actor_id, actor_handle->MaxPendingCalls(), actor_handle->ExecuteOutOfOrder());
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
@@ -182,6 +172,20 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   return inserted;
+}
+
+void ActorManager::OnActorKilled(const ActorID &actor_id) {
+  const auto &actor_handle = GetActorHandle(actor_id);
+  const auto &actor_name = actor_handle->GetName();
+  const auto &ray_namespace = actor_handle->GetNamespace();
+
+  /// Invalidate named actor cache.
+  if (!actor_name.empty()) {
+    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
+                   << " namespace " << ray_namespace << " id " << actor_id;
+    absl::MutexLock lock(&cache_mutex_);
+    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
+  }
 }
 
 void ActorManager::WaitForActorOutOfScope(
@@ -219,26 +223,15 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts()
-                << ", has creation_task_exception="
-                << actor_data.has_creation_task_exception();
+                << ", death context type="
+                << gcs::GetDeathCauseString(&actor_data.death_cause());
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
+                                             /*is_dead=*/false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
-    if (!actor_data.name().empty()) {
-      absl::MutexLock lock(&cache_mutex_);
-      cached_actor_name_to_ids_.erase(
-          GenerateCachedActorName(actor_data.ray_namespace(), actor_data.name()));
-    }
-    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
-    if (actor_data.has_creation_task_exception()) {
-      RAY_LOG(INFO) << "Creation task formatted exception: "
-                    << actor_data.creation_task_exception().formatted_exception_string()
-                    << ", actor_id: " << actor_id;
-      creation_task_exception =
-          std::make_shared<rpc::RayException>(actor_data.creation_task_exception());
-    }
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true,
-                                             creation_task_exception);
+    OnActorKilled(actor_id);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
+                                             /*is_dead=*/true, &actor_data.death_cause());
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
