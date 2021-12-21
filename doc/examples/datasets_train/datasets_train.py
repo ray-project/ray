@@ -67,6 +67,25 @@ class MLflowCallback(TrainingCallback):
         # Save the Trainer checkpoints as artifacts to mlflow.
         mlflow.log_artifacts(self.logdir)
 
+def register_mlflow_model(model):
+    mlflow.pytorch.log_model(
+        model, artifact_path="models", registered_model_name="torch_model")
+
+    # Get the latest model from mlflow model registry.
+    client = mlflow.tracking.MlflowClient()
+    registered_model_name = "torch_model"
+    # Get the info for the latest model.
+    # By default, registered models are in stage "None".
+    latest_model_info = client.get_latest_versions(
+        registered_model_name, stages=["None"])[0]
+    latest_version = latest_model_info.version
+
+    def load_model_func():
+        model_uri = f"models:/torch_model/{latest_version}"
+        return mlflow.pytorch.load_model(model_uri)
+
+    return load_model_func
+
 ###############################################################################
 # Generating a synthetic dataset
 # ------------------------------
@@ -378,6 +397,19 @@ def inference(dataset, model_cls: type, batch_size: int, result_path: str,
             num_cpus=0) \
         .write_parquet(result_path)
 
+# Later we'll use this convience class to perform inference to minimize the number of times we load the model into memory, but this is largely an optimization for giant models or large numbers of batches.
+
+class BatchInferModel:
+    def __init__(self, load_model_func):
+        self.device = torch.device("cuda:0"
+                                    if torch.cuda.is_available() else "cpu")
+        self.model = load_model_func().to(self.device)
+
+    def __call__(self, batch) -> "pd.DataFrame":
+        tensor = torch.FloatTensor(batch.to_pandas().values).to(
+            self.device)
+        return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
+
 ###############################################################################
 # Defining a neural network in Pytorch
 # -----------------------------------------------------
@@ -592,14 +624,14 @@ def train_func(config):
 # Input parsing
 # -------------
 #
-# * ``--dir-path``:
-# * ``--use-s3``:
-# * ``--smoke-test``:
-# * ``--address``:
-# * ``--num-workers``:
-# * ``--large-dataset``:
-# * ``--use-gpu``:
-# * ``--mlflow-register-model``:
+# * ``--dir-path <path>``: where we should store our generated parquet data for reading/writing
+# * ``--use-s3``: should we save to S3?
+# * ``--smoke-test``: run on a small amount of data / epochs to test
+# * ``--address <address>``: address of Ray cluster. can be ``<ip>:<port>``, or external provider like ``anyscale://<cluster-name>``
+# * ``--num-workers``: training worker count
+# * ``--large-dataset``:  TODO: remove?
+# * ``--use-gpu``: use GPU for training?
+# * ``--mlflow-register-model``: save our trained model to MLflow. Requires that you start an MLflow server. See docs on how to do this.
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -764,21 +796,7 @@ if __name__ == "__main__":
     trainer.shutdown()
 
     if args.mlflow_register_model:
-        mlflow.pytorch.log_model(
-            model, artifact_path="models", registered_model_name="torch_model")
-
-        # Get the latest model from mlflow model registry.
-        client = mlflow.tracking.MlflowClient()
-        registered_model_name = "torch_model"
-        # Get the info for the latest model.
-        # By default, registered models are in stage "None".
-        latest_model_info = client.get_latest_versions(
-            registered_model_name, stages=["None"])[0]
-        latest_version = latest_model_info.version
-
-        def load_model_func():
-            model_uri = f"models:/torch_model/{latest_version}"
-            return mlflow.pytorch.load_model(model_uri)
+        load_model_func = register_mlflow_model(model)
     else:
         state_dict = model.state_dict()
 
@@ -797,17 +815,6 @@ if __name__ == "__main__":
                 drop_prob=dropout_prob)
             model.load_state_dict(state_dict)
             return model
-
-    class BatchInferModel:
-        def __init__(self, load_model_func):
-            self.device = torch.device("cuda:0"
-                                       if torch.cuda.is_available() else "cpu")
-            self.model = load_model_func().to(self.device)
-
-        def __call__(self, batch) -> "pd.DataFrame":
-            tensor = torch.FloatTensor(batch.to_pandas().values).to(
-                self.device)
-            return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
 
     inference_dataset = preprocessor.preprocess_inference_data(
         read_dataset(inference_path))
