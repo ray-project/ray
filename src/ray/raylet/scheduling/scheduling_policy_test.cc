@@ -349,6 +349,7 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
 }
 
 TEST_F(SchedulingPolicyTest, SpreadSchedulingTest) {
+  // Test to make sure we are doing round robin for spread scheduling.
   StringIdMap map;
   ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   int64_t local_node = 0;

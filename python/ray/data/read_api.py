@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.scheduling_strategies import SPREAD_SCHEDULING_STRATEGY
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     MaybeBlockPartition, BlockExecStats, BlockPartitionMetadata
 from ray.data.context import DatasetContext
@@ -197,7 +196,7 @@ def read_datasource(datasource: Datasource[T],
         # so we go at 0.5 to avoid the warning message.
         ray_remote_args["num_cpus"] = 0.5
     if "scheduling_strategy" not in ray_remote_args:
-        ray_remote_args["scheduling_strategy"] = SPREAD_SCHEDULING_STRATEGY
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
     remote_read = cached_remote_fn(remote_read)
 
     if _spread_resource_prefix is not None:
