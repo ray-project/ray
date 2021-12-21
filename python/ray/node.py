@@ -206,7 +206,7 @@ class Node:
                 node_info = (
                     ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
-                        self.get_gcs_address(),
+                        self.gcs_address,
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
                 self._plasma_store_socket_name = (
@@ -271,7 +271,7 @@ class Node:
                     "the Ray processes failed to startup.")
             node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
-                self.get_gcs_address(),
+                self.gcs_address,
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
@@ -526,15 +526,6 @@ class Node:
     def get_sockets_dir_path(self):
         """Get the path of the sockets directory."""
         return self._sockets_dir
-
-    def get_gcs_address(self):
-        """Get the gcs address."""
-        if use_gcs_for_bootstrap():
-            # TODO (iycheng) Pass gcs address from the front
-            return self._gcs_address
-        self._gcs_address = get_gcs_address_from_redis(
-            self.create_redis_client())
-        return self._gcs_address
 
     def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
         """Return a incremental temporary file name. The file is not created.
@@ -804,7 +795,6 @@ class Node:
             self.gcs_address,
             self._temp_dir,
             self._logs_dir,
-            gcs_address=self.get_gcs_address(),
             stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
@@ -876,7 +866,6 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
-            self.get_gcs_address(),
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
@@ -938,7 +927,7 @@ class Node:
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
             self._redis_address,
-            self.get_gcs_address(),
+            self.gcs_address,
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
