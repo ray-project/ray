@@ -5,7 +5,6 @@ from typing import Dict, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from mlflow.entities import Run
     from mlflow.tracking import MlflowClient
-    from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +157,8 @@ class MLflowLoggerUtil:
 
         if set_active:
             return self._start_active_run(run_name=run_name, tags=tags)
+
+        from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
         client = self._get_client()
         tags[MLFLOW_RUN_NAME] = run_name
