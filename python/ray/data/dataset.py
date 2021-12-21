@@ -1789,8 +1789,7 @@ class Dataset(Generic[T]):
                                             prefetch_blocks + 1):
             block_window = list(block_window)
             with self._stats.iter_wait_s.timer():
-                # Set timeout to 0 to trigger prefetching asynchronously.
-                ray.wait(block_window, num_returns=1, fetch_local=True, timeout=0)
+                ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
 
         # Consume remainder of final block window.
