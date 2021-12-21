@@ -1,5 +1,6 @@
 steps:
 - label: "Compile Ray"
+  parallelism: 6
   commands:
     - mkdir ray
     - cd ray
@@ -13,10 +14,12 @@ steps:
     - export PYTHON="3.6"
     - export RAY_USE_RANDOM_PORTS="1"
     - export RAY_DEFAULT_BUILD="1"
+    - export WINDOWS_WHEELS="1"
     - export LC_ALL="en_US.UTF-8"
     - export LANG="en_US.UTF-8"
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
-    - . ./ci/travis/ci.sh test_core
+    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/travis/ci.sh test_core; fi
+    # Notice the below is sharded!
     - . ./ci/travis/ci.sh test_python
 
