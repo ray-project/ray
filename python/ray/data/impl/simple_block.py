@@ -50,7 +50,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def __init__(self, items: List[T]):
         self._items = items
 
-    def get_block_data(self) -> Block:
+    def get_block(self) -> Block:
         return self._items
 
     def num_rows(self) -> int:

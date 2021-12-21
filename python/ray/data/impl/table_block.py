@@ -79,7 +79,7 @@ class TableBlockBuilder(BlockBuilder[T]):
     def add_block(self, block: Any) -> None:
         assert isinstance(block, self._block_type), block
         accessor = BlockAccessor.for_block(block)
-        self._tables.append(accessor.get_block_data())
+        self._tables.append(accessor.get_block())
         self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
@@ -129,7 +129,7 @@ class TableBlockAccessor(BlockAccessor):
     def __init__(self, table: Any):
         self._table = table
 
-    def get_block_data(self) -> Block:
+    def get_block(self) -> Block:
         return self._table
 
     def _create_table_row(self, row: Any) -> TableRow:

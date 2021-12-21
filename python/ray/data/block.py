@@ -125,7 +125,7 @@ class BlockAccessor(Generic[T]):
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
-    def get_block_data(self) -> Block:
+    def get_block(self) -> Block:
         """Return block data"""
         raise NotImplementedError
 
