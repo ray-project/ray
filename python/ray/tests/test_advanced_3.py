@@ -462,20 +462,12 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # ray cluster and connecting to an existing one.
 
     # Make sure we connect to an existing cluster if
-    # RAY_ADDRESS is set to the cluster address.
+    # RAY_ADDRESS is set.
     os.environ["RAY_ADDRESS"] = address
     ray.init()
     assert "CPU" not in ray.state.cluster_resources()
-    ray.shutdown()
     del os.environ["RAY_ADDRESS"]
-
-    # Make sure we connect to an existing cluster if
-    # RAY_ADDRESS is set to "auto".
-    os.environ["RAY_ADDRESS"] = "auto"
-    ray.init()
-    assert "CPU" not in ray.state.cluster_resources()
     ray.shutdown()
-    del os.environ["RAY_ADDRESS"]
 
     # Make sure we start a new cluster if RAY_ADDRESS is not set.
     ray.init()
