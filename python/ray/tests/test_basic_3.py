@@ -128,4 +128,4 @@ def test_many_fractional_resources(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vvv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

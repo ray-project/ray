@@ -79,4 +79,4 @@ def test_actor_killing(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-vvv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
