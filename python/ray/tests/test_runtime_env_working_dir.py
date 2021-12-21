@@ -22,30 +22,6 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 
-@pytest.fixture(scope="function")
-def tmp_working_dir():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        path = Path(tmp_dir)
-
-        hello_file = path / "hello"
-        with hello_file.open(mode="w") as f:
-            f.write("world")
-
-        module_path = path / "test_module"
-        module_path.mkdir(parents=True)
-
-        test_file = module_path / "test.py"
-        with test_file.open(mode="w") as f:
-            f.write("def one():\n")
-            f.write("    return 1\n")
-
-        init_file = module_path / "__init__.py"
-        with init_file.open(mode="w") as f:
-            f.write("from test_module.test import one\n")
-
-        yield tmp_dir
-
-
 @pytest.mark.parametrize(
     "option", ["failure", "working_dir", "working_dir_zip", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
