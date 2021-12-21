@@ -6,12 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from ray.tests.conftest import *  # noqa
 from ray.util.dask import dataframe_optimize
 from ray.util.dask.optimizations import (rewrite_simple_shuffle_layer,
                                          MultipleReturnSimpleShuffleLayer)
 
 
-def test_rewrite_simple_shuffle_layer():
+def test_rewrite_simple_shuffle_layer(ray_start_regular_shared):
     npartitions = 10
     df = dd.from_pandas(
         pd.DataFrame(
@@ -35,7 +36,7 @@ def test_rewrite_simple_shuffle_layer():
 
 
 @mock.patch("ray.util.dask.optimizations.rewrite_simple_shuffle_layer")
-def test_dataframe_optimize(mock_rewrite):
+def test_dataframe_optimize(mock_rewrite, ray_start_regular_shared):
     def side_effect(dsk, keys):
         return rewrite_simple_shuffle_layer(dsk, keys)
 
