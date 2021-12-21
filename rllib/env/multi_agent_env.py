@@ -24,6 +24,7 @@ class MultiAgentEnv(abc.ABC):
     are not to be confused with RLlib Trainers, which are also sometimes
     referred to as "agents" or "RL agents".
     """
+
     def __init__(self):
         self.observation_space = None
         self.action_space = None
@@ -204,8 +205,8 @@ class MultiAgentEnv(abc.ABC):
             x: Observations to check.
 
         Returns:
-            True if the observation space contains the given all observations in
-                x.
+            True if the observation space contains the given all observations
+                in x.
         """
         logger.warning("observation_space_contains() has not been implemented")
         raise True
@@ -229,8 +230,9 @@ class MultiAgentEnv(abc.ABC):
             agent in that environment.
 
         Args:
-            agent_ids: List of agent ids to sample actions for. If None or empty
-                list, sample actions for all agents in the environment.
+            agent_ids: List of agent ids to sample actions for. If None or
+                empty list, sample actions for all agents in the
+                environment.
 
         Returns:
             A random action for each environment.
@@ -246,8 +248,9 @@ class MultiAgentEnv(abc.ABC):
         the agents in agent_ids.
 
         Args:
-            agent_ids: List of agent ids to sample actions for. If None or empty
-                list, sample actions for all agents in the environment.
+            agent_ids: List of agent ids to sample actions for. If None or
+                empty list, sample actions for all agents in the
+                environment.
 
         Returns:
             A random action for each environment.
@@ -477,23 +480,30 @@ def make_multi_agent(
                 self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
-        def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        def observation_space_sample(self,
+                                     agent_ids: list = None) -> MultiEnvDict:
             if agent_ids is None:
                 agent_ids = list(range(len(self.agents)))
-            obs = {env_id: {
-                agent_id: self.observation_space.sample()
-                for agent_id in agent_ids
-            } for env_id in range(len(self.agents))}
+            obs = {
+                env_id: {
+                    agent_id: self.observation_space.sample()
+                    for agent_id in agent_ids
+                }
+                for env_id in range(len(self.agents))
+            }
             return obs
 
         @override(MultiAgentEnv)
         def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
             if agent_ids is None:
                 agent_ids = list(range(len(self.agents)))
-            obs = {env_id: {
-                agent_id: self.action_space.sample()
-                for agent_id in agent_ids
-            } for env_id in range(len(self.agents))}
+            obs = {
+                env_id: {
+                    agent_id: self.action_space.sample()
+                    for agent_id in agent_ids
+                }
+                for env_id in range(len(self.agents))
+            }
             return obs
 
         @override(MultiAgentEnv)
