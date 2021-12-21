@@ -8,6 +8,7 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import (generate_system_config_map,
                                      wait_for_condition, SignalActor)
 
@@ -71,8 +72,15 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    if use_gcs_for_bootstrap():
+        monitor = Monitor(
+            redis_address=None, gcs_address=address, autoscaling_config=None)
+    else:
+        monitor = Monitor(
+            redis_address=address,
+            gcs_address=None,
+            autoscaling_config=None,
+            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     return monitor
 
 
