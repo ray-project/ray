@@ -5,6 +5,7 @@ from typing import Dict, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from mlflow.entities import Run
     from mlflow.tracking import MlflowClient
+    from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -140,28 +141,42 @@ class MLflowLoggerUtil:
 
         return new_dict
 
-    def start_run(self, tags: Optional[Dict] = None,
+    def start_run(self,
+                  run_name: Optional[str] = None,
+                  tags: Optional[Dict] = None,
                   set_active: bool = False) -> "Run":
-        """Starts a new run.
+        """Starts a new run and possibly sets it as the active run.
 
         Args:
             tags (Optional[Dict]): Tags to set for the new run.
             set_active (bool): Whether to set the new run as the active run.
-                Run creation will fail if an active run already exists.
+                If an active run already exists, then that run is returned.
 
         Returns:
             The newly created MLflow run.
+        """
+
+        if set_active:
+            return self._start_active_run(run_name=run_name, tags=tags)
+
+        client = self._get_client()
+        tags[MLFLOW_RUN_NAME] = run_name
+        run = client.create_run(experiment_id=self.experiment_id, tags=tags)
+
+        return run
+
+    def _start_active_run(self,
+                          run_name: Optional[str] = None,
+                          tags: Optional[Dict] = None) -> "Run":
+        """Starts a run and sets it as the active run if one does not exist.
+
+        If an active run already exists, then returns it.
         """
         active_run = self._mlflow.active_run()
         if active_run:
             return active_run
 
-        client = self._get_client()
-        run = client.create_run(experiment_id=self.experiment_id, tags=tags)
-
-        if set_active:
-            self._mlflow.start_run(run_id=run.info.run_id)
-        return run
+        return self._mlflow.start_run(run_name=run_name, tags=tags)
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""

@@ -107,7 +107,7 @@ class MLflowLoggerCallback(LoggerCallback):
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)
 
-            run = self.mlflow_util.start_run(tags=tags)
+            run = self.mlflow_util.start_run(tags=tags, run_name=str(trial))
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]
@@ -305,7 +305,9 @@ class MLflowTrainableMixin:
             tracking_token=tracking_token,
             create_experiment_if_not_exists=False)
 
-        self.mlflow_util.start_run(set_active=True)
+        run_name = self.trial_name + "_" + self.trial_id
+        run_name = run_name.replace("/", "_")
+        self.mlflow_util.start_run(set_active=True, run_name=run_name)
 
     def stop(self):
         self.mlflow_util.end_run()
