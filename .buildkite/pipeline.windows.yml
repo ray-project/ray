@@ -10,5 +10,13 @@ steps:
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}; else export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head; fi
     - git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
     - git checkout -f ${BUILDKITE_COMMIT}
+    - export PYTHON="3.6"
+    - export RAY_USE_RANDOM_PORTS="1"
+    - export RAY_DEFAULT_BUILD="1"
+    - export LC_ALL="en_US.UTF-8"
+    - export LANG="en_US.UTF-8"
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
+    - . ./ci/travis/ci.sh test_core
+    - . ./ci/travis/ci.sh test_python
+
