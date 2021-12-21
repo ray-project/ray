@@ -142,7 +142,7 @@ WorkerPool::~WorkerPool() {
       procs_to_kill.emplace(starting_worker.first, starting_worker.second.proc);
     }
   }
-  for (auto& entry : procs_to_kill) {
+  for (auto &entry : procs_to_kill) {
     entry.second.Kill();
     // NOTE: Avoid calling Wait() here. It fails with ECHILD, as SIGCHLD is disabled.
   }

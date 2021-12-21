@@ -135,11 +135,10 @@ class WorkerPoolMock : public WorkerPool {
   Process StartProcess(const std::vector<std::string> &worker_command_args,
                        const ProcessEnvironment &env) override {
     // Use a bogus process ID that won't conflict with those in the system
-    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
+    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_startup_token_.size());
     last_worker_process_ = Process::FromPid(pid);
-    worker_commands_by_proc_[last_worker_process_] = worker_command_args;
-    startup_tokens_by_proc_[last_worker_process_] =
-        WorkerPool::worker_startup_token_counter_;
+    worker_commands_by_startup_token_[WorkerPool::worker_startup_token_counter_] = worker_command_args;
+    proc_by_startup_token_[WorkerPool::worker_startup_token_counter_] = last_worker_process_;
     return last_worker_process_;
   }
 
@@ -147,8 +146,8 @@ class WorkerPoolMock : public WorkerPool {
 
   Process LastStartedWorkerProcess() const { return last_worker_process_; }
 
-  const std::vector<std::string> &GetWorkerCommand(Process proc) {
-    return worker_commands_by_proc_[proc];
+  const std::vector<std::string> &GetWorkerCommand(StartupToken token) {
+    return worker_commands_by_startup_token_[token];
   }
 
   int NumWorkersStarting() const {
@@ -179,17 +178,13 @@ class WorkerPoolMock : public WorkerPool {
     return state.restore_io_worker_state.num_starting_io_workers;
   }
 
-  StartupToken GetStartupToken(const Process &proc) {
-    return startup_tokens_by_proc_[proc];
+  int GetProcessSize() const { return worker_commands_by_startup_token_.size(); }
+
+  const absl::flat_hash_map<StartupToken, std::vector<std::string>> &GetProcesses() {
+    return worker_commands_by_startup_token_;
   }
 
-  int GetProcessSize() const { return worker_commands_by_proc_.size(); }
-
-  const absl::flat_hash_map<Process, std::vector<std::string>> &GetProcesses() {
-    return worker_commands_by_proc_;
-  }
-
-  void ClearProcesses() { worker_commands_by_proc_.clear(); }
+  void ClearProcesses() { worker_commands_by_startup_token_.clear(); }
 
   void SetCurrentTimeMs(double current_time) { current_time_ms_ = current_time; }
 
@@ -310,8 +305,8 @@ class WorkerPoolMock : public WorkerPool {
  private:
   Process last_worker_process_;
   // The worker commands by process.
-  absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
-  absl::flat_hash_map<Process, StartupToken> startup_tokens_by_proc_;
+  absl::flat_hash_map<StartupToken, std::vector<std::string>> worker_commands_by_startup_token_;
+  absl::flat_hash_map<StartupToken, Process> proc_by_startup_token_;
   double current_time_ms_ = 0;
   absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
@@ -387,7 +382,7 @@ class WorkerPoolTest : public ::testing::Test {
         static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) / num_workers_per_process));
     ASSERT_TRUE(expected_worker_process_count <
                 static_cast<int>(desired_initial_worker_process_count));
-    Process last_started_worker_process;
+    StartupToken last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
       PopWorkerStatus status;
       worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER, JOB_ID,
@@ -993,11 +988,9 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 1. we register both workers.
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), proc.GetId(),
-                                            worker_pool_->GetStartupToken(proc),
-                                            [](Status, int) {}));
+                                            token, [](Status, int) {}));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), proc.GetId(),
-                                            worker_pool_->GetStartupToken(proc),
-                                            [](Status, int) {}));
+                                            token, [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
   // PushWorker.
