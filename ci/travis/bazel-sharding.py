@@ -106,7 +106,7 @@ def main():
     expanded_targets = run_bazel_query(query, args.debug)
     my_targets = get_targets_for_shard(expanded_targets, args.index,
                                        args.count)
-    print("\n".join(my_targets))
+    print(" ".join(my_targets))
 
     return 0
 
