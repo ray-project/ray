@@ -22,7 +22,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
         num_cpus=2,
         _system_config={"worker_cap_initial_backoff_delay_ms": 0})
 
-    num_tasks = 3
+    num_tasks = 3 if sys.platform == "win32" else 10
 
     @ray.remote
     def g():
