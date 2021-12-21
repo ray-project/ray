@@ -7,7 +7,7 @@ prelude_commands: &prelude_commands |-
     git init
     git remote add origin https://github.com/ray-project/ray.git
     if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}; else export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head; fi
-    git fetch -v --prune -origin ${BUILDKITE_GIT_REF}
+    git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
     git checkout -f ${BUILDKITE_COMMIT}
     export PYTHON="3.6"
     export RAY_USE_RANDOM_PORTS="1"
