@@ -41,18 +41,18 @@ def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
         try:
             if not ray.is_initialized():
                 try:
-                    if not use_gcs_for_bootstrap():
+                    if use_gcs_for_bootstrap():
+                        address = self._dashboard_head.gcs_address
+                        redis_pw = None
+                        logger.info(
+                            f"Connecting to ray with address={address}")
+                    else:
                         ip, port = self._dashboard_head.redis_address
                         redis_pw = self._dashboard_head.redis_password
                         address = f"{ip}:{port}"
                         logger.info(
                             f"Connecting to ray with address={address}, "
                             f"redis_pw={redis_pw}")
-                    else:
-                        address = self._dashboard_head.gcs_address
-                        redis_pw = None
-                        logger.info(
-                            f"Connecting to ray with address={address}")
                     ray.init(
                         address=address,
                         namespace=RAY_INTERNAL_JOBS_NAMESPACE,
