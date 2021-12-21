@@ -20,7 +20,7 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   public ActorCreator(RayFuncR<A> func, Object[] args) {
     this.func = func;
     this.args = args;
-    /// Handle Static defined concurrency groups.
+    /// Handle statically defined concurrency groups.
     builder.setConcurrencyGroups(Ray.internal().extractConcurrencyGroups(this.func));
   }
 
