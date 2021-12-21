@@ -491,7 +491,8 @@ def validate_bootstrap_address(addr):
 
     address_parts = bootstrap_address.split(":")
     if len(address_parts) != 2:
-        raise ValueError("Malformed address. Expected '<host>:<port>'.")
+        raise ValueError(f"Malformed address. Expected '<host>:<port>',"
+                         f" but got {bootstrap_address} from {addr}.")
     ip = address_parts[0]
     try:
         port = int(address_parts[1])
