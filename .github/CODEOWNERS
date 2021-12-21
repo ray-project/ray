@@ -14,6 +14,7 @@
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
+/src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
