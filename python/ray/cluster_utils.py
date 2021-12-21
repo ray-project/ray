@@ -261,10 +261,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        ray._private.services.wait_for_node(self.redis_address,
-                                            node.gcs_address,
-                                            node.plasma_store_socket_name,
-                                            self.redis_password, timeout)
+        ray._private.services.wait_for_node(
+            self.redis_address, node.gcs_address,
+            node.plasma_store_socket_name, self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.

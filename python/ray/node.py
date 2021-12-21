@@ -238,8 +238,7 @@ class Node:
             try:
                 ray._private.services.wait_for_node(
                     self.redis_address, self.gcs_address,
-                    self._plasma_store_socket_name,
-                    self.redis_password)
+                    self._plasma_store_socket_name, self.redis_password)
             except TimeoutError:
                 raise Exception(
                     "The current node has not been updated within 30 "

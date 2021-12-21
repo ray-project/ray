@@ -327,8 +327,8 @@ def wait_for_node(redis_address,
     else:
         redis_ip_address, redis_port = redis_address.split(":")
         wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
-        gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                          redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(
+            redis_address, redis_password)
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
