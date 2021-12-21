@@ -73,7 +73,7 @@ def run_bazel_query(query, debug):
         universal_newlines=True,
     )
     output = p.stdout.strip()
-    return output.split("\n") if output else []
+    return output.splitlines() if output else []
 
 
 def get_targets_for_shard(targets, index, count):
