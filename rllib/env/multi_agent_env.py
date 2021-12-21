@@ -1,4 +1,6 @@
+import abc
 import gym
+import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
@@ -15,31 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class MultiAgentEnv(gym.Env):
+class MultiAgentEnv(abc.ABC):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
     are not to be confused with RLlib Trainers, which are also sometimes
     referred to as "agents" or "RL agents".
     """
-
     def __init__(self):
         self.observation_space = None
         self.action_space = None
-        self._agent_ids = {}
-
-        # do the action and observation spaces map from agent ids to spaces
-        # for the individual agents?
-        self._spaces_in_preferred_format = None
-
-    @PublicAPI
-    def get_agent_ids(self) -> Set[AgentID]:
-        """Returns a list of agent ids in the environment.
-
-        Returns:
-            List of agent ids.
-        """
-        return {}
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -208,6 +195,75 @@ class MultiAgentEnv(gym.Env):
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
         return self._agent_ids
+
+    @PublicAPI
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the observation space contains the given key.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observation space contains the given all observations in
+                x.
+        """
+        logger.warning("observation_space_contains() has not been implemented")
+        raise True
+
+    @PublicAPI
+    def action_space_contains(self, x: MultiAgentDict) -> bool:
+        """Checks if the action space contains the given action.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the action space contains all actions in x.
+        """
+        logger.warning("action_space_contains() has not been implemented")
+        raise True
+
+    @PublicAPI
+    def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_ids: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("action_space_sample() has not been implemented")
+        del agent_ids
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        """Returns a random observation from the observation space for each
+        agent if agent_ids is None, otherwise returns a random observation for
+        the agents in agent_ids.
+
+        Args:
+            agent_ids: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        del agent_ids
+        return {}
+
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Returns a list of agent ids in the environment.
+
+        Returns:
+            List of agent ids.
+        """
+        return {}
 
     @PublicAPI
     def render(self, mode=None) -> None:
@@ -421,6 +477,38 @@ def make_multi_agent(
                 self.observation_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
+        def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+            if agent_ids is None:
+                agent_ids = list(range(len(self.agents)))
+            obs = {env_id: {
+                agent_id: self.observation_space.sample()
+                for agent_id in agent_ids
+            } for env_id in range(len(self.agents))}
+            return obs
+
+        @override(MultiAgentEnv)
+        def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+            if agent_ids is None:
+                agent_ids = list(range(len(self.agents)))
+            obs = {env_id: {
+                agent_id: self.action_space.sample()
+                for agent_id in agent_ids
+            } for env_id in range(len(self.agents))}
+            return obs
+
+        @override(MultiAgentEnv)
+        def observation_space_contains(self, x: MultiEnvDict) -> bool:
+            return all(
+                self.observation_space.contains(obs)
+                for agent_dict in x.values() for obs in agent_dict.values())
+
+        @override(MultiAgentEnv)
+        def action_space_contains(self, x: MultiEnvDict) -> bool:
+            return all(
+                self.action_space.contains(action)
+                for agent_dict in x.values() for action in agent_dict.values())
+
+        @override(MultiAgentEnv)
         def reset(self):
             self.dones = set()
             return {i: a.reset() for i, a in enumerate(self.agents)}
@@ -539,6 +627,22 @@ class MultiAgentEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self.envs[0].action_space
+
+    @override(BaseEnv)
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        return self.envs[0].observation_space_contains(x)
+
+    @override(BaseEnv)
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        return self.envs[0].action_space_contains(x)
+
+    @override(BaseEnv)
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        return self.envs[0].observation_space_sample(agent_id)
+
+    @override(BaseEnv)
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        return self.envs[0].action_space_sample(agent_id)
 
 
 class _MultiAgentEnvState:

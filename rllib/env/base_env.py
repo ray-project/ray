@@ -339,8 +339,6 @@ class BaseEnv:
         Returns:
             True if the observations of x are contained in space.
         """
-        # this removes the agent_id key and inner dicts
-        # in MultiEnvDicts
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
             for agent_id, obs in multi_agent_dict:
