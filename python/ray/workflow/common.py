@@ -241,7 +241,7 @@ class WorkflowData:
         # "name" in the metadata is different from the "name" field.
         # Maybe rename it to avoid confusion.
         metadata = {
-            "name": get_module(f) + "." + get_qualname(f),
+            "name": self.name or get_module(f) + "." + get_qualname(f),
             "workflows": [w.step_id for w in self.inputs.workflows],
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "step_options": self.step_options.to_dict(),
