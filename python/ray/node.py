@@ -171,6 +171,7 @@ class Node:
                 node_info = (
                     ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
+                        self.gcs_address,
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
                 self._plasma_store_socket_name = (
