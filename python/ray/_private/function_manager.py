@@ -558,7 +558,10 @@ class FunctionActorManager:
                actor_creation_function_descriptor.function_id.binary())
         # Only wait for the actor class if it was exported from the same job.
         # It will hang if the job id mismatches, since we isolate actor class
-        # exports from the import thread.
+        # exports from the import thread. It's important to wait since this
+        # guarantees import order, though we fetch the actor class directly.
+        # Import order isn't important across jobs, as we only need to fetch
+        # the class for `ray.get_actor()`.
         if job_id.binary() == self._worker.current_job_id.binary():
             # Wait for the actor class key to have been imported by the
             # import thread. TODO(rkn): It shouldn't be possible to end
