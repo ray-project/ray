@@ -510,7 +510,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 # TODO(Chong-Li): GCS-based scheduler may also export this error msg.
 @pytest.mark.skipif(
     ray_constants.gcs_actor_scheduling_enabled(),
-    reason="GCS-based scheduler currently does not support this.")
+    reason="GCS-based scheduler currently does not export this msg.")
 def test_warning_all_tasks_blocked(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
@@ -561,7 +561,7 @@ def test_warning_many_actor_tasks_queued(shutdown_only):
 
 @pytest.mark.skipif(
     ray_constants.gcs_actor_scheduling_enabled(),
-    reason="GCS-based scheduler currently does not support this.")
+    reason="GCS-based scheduler currently does not export this msg.")
 def test_warning_actor_waiting_on_actor(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})

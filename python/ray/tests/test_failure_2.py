@@ -22,7 +22,7 @@ from ray._private.test_utils import (
 
 @pytest.mark.skipif(
     ray_constants.gcs_actor_scheduling_enabled(),
-    reason="GCS-based scheduler currently does not support this.")
+    reason="GCS-based scheduler currently does not export this msg.")
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     p = error_pubsub
     # Check that we get warning messages for infeasible tasks.
@@ -73,7 +73,7 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
 
 @pytest.mark.skipif(
     ray_constants.gcs_actor_scheduling_enabled(),
-    reason="GCS-based scheduler currently does not support this.")
+    reason="GCS-based scheduler currently does not export this msg.")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself

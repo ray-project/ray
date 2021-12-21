@@ -56,7 +56,6 @@ def test_actor_groups(ray_start_with_dashboard):
             actor_groups_resp = response.json()
             assert actor_groups_resp["result"] is True, actor_groups_resp[
                 "msg"]
-            print(actor_groups_resp)
             actor_groups = actor_groups_resp["data"]["actorGroups"]
             assert "Foo" in actor_groups
             summary = actor_groups["Foo"]["summary"]
