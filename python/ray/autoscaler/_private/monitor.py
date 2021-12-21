@@ -175,10 +175,12 @@ class Monitor:
         _initialize_internal_kv(gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.redis.set("AutoscalerMetricsAddress", monitor_addr)
             if use_gcs_for_bootstrap():
                 gcs_client.internal_kv_put(b"AutoscalerMetricsAddress",
                                            monitor_addr.encode(), True, None)
+            else:
+                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
+
         worker.mode = 0
         if use_gcs_for_bootstrap():
             head_node_ip = gcs_address.split(":")[0]
