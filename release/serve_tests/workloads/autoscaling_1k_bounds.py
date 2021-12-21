@@ -39,19 +39,23 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "5m"
 
 
-def make_get_num_running_replicas(controller: ServeController,
-                                  deployment_name: str) -> Callable[[], int]:
-    def get_num_running_replicas() -> int:
-        """
-        Get the amount of replicas currently running for given deployment.
-        """
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(
-                deployment_name))
-        running_replicas = replicas.get([ReplicaState.RUNNING])
-        return len(running_replicas)
+def get_num_running_replicas(controller: ServeController,
+                             deployment_name: str) -> int:
+    """
+    Get the amount of replicas currently running for given deployment.
+    """
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_name))
+    running_replicas = replicas.get([ReplicaState.RUNNING])
+    return len(running_replicas)
 
-    return get_num_running_replicas
+
+def running_replicas_bounded(controller: ServeController,
+                             deployment_name: str,
+                             min: int = -float("inf"),
+                             max: int = float("inf")) -> Callable[[], int]:
+
+    return min <= get_num_running_replicas(controller, deployment_name) <= max
 
 
 def convert_duration_to_seconds(duration_string: str) -> float:
@@ -158,11 +162,10 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
 
     ray.get(signal.send.remote())
 
-    num_running_replicas = make_get_num_running_replicas(
-        controller, deployment_name)
-
     # Allow deployments to downscale to min_replicas
-    wait_for_condition(num_running_replicas <= min_replicas)
+    wait_for_condition(lambda: running_replicas_bounded(controller,
+                                                        deployment_name,
+                                                        max=min_replicas))
 
     for _ in range(2):
 
@@ -181,12 +184,16 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
             all_endpoints=all_endpoints)
 
         # Check that deployments upscaled to max_replicas
-        wait_for_condition(num_running_replicas >= max_replicas)
+        wait_for_condition(lambda: running_replicas_bounded(controller,
+                                                            deployment_name,
+                                                            min=max_replicas))
 
         signal.send.remote()
 
         # Check that deployments scale back to min_replicas
-        wait_for_condition(num_running_replicas <= min_replicas)
+        wait_for_condition(lambda: running_replicas_bounded(controller,
+                                                            deployment_name,
+                                                            max=min_replicas))
 
 
 if __name__ == "__main__":
