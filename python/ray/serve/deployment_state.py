@@ -18,7 +18,8 @@ from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.utils import format_actor_name, get_random_letters, logger
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             wrap_to_ray_error)
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
 
@@ -1145,43 +1146,62 @@ class DeploymentState:
 
     def update(self) -> bool:
         """Updates the state of all deployments to match their goal state."""
-        # Add or remove DeploymentReplica instances in self._replicas.
-        # This should be the only place we adjust total number of replicas
-        # we manage.
-        running_replicas_changed = self._scale_deployment_replicas()
+        try:
+            # Add or remove DeploymentReplica instances in self._replicas.
+            # This should be the only place we adjust total number of replicas
+            # we manage.
+            running_replicas_changed = self._scale_deployment_replicas()
 
-        # Check the state of existing replicas and transition if necessary.
-        running_replicas_changed |= self._check_and_update_replicas()
+            # Check the state of existing replicas and transition if necessary.
+            running_replicas_changed |= self._check_and_update_replicas()
 
-        if running_replicas_changed:
-            self._notify_running_replicas_changed()
+            if running_replicas_changed:
+                self._notify_running_replicas_changed()
 
-        status = self._check_curr_goal_status()
+            status = self._check_curr_goal_status()
+            exception = None
+        except Exception as e:
+            status = GoalStatus.FAILED
+            exception = e
+
         if status == GoalStatus.SUCCEEDED:
             # Deployment successul, complete the goal and clear the
             # backup deployment_info.
             self._goal_manager.complete_goal(self._curr_goal)
             self._rollback_info = None
         elif status == GoalStatus.FAILED:
+            if exception is None:
+                # report a generic exception if none was caught
+                # TODO: in which cases can we get the exception
+                # that caused the failure?
+                exception = RuntimeError("Failed to reach deployment goal. "
+                                         "Check the serve logs for details.")
+            # wrap this exception so that it can be sent across the cluster
+            exception = wrap_to_ray_error("unknown", exception)
+
             # Roll back or delete the deployment if it failed.
             if self._rollback_info is None:
                 # No info to roll back to, delete it.
                 self._goal_manager.complete_goal(
                     self._curr_goal,
-                    RuntimeError(f"Deployment '{self._name}' failed, "
-                                 "deleting it asynchronously."))
+                    exception,
+                )
+                logger.info(f"Deployment '{self._name}' failed, deleting it. "
+                            f"component=serve deployment={self._name}")
                 self.delete()
             else:
                 # Roll back to the previous version.
                 rollback_info = self._rollback_info
                 self._goal_manager.complete_goal(
                     self._curr_goal,
-                    RuntimeError(
-                        f"Deployment '{self._name}' failed, rolling back to "
-                        f"version {rollback_info.version} asynchronously."))
-
+                    exception,
+                )
                 self._curr_goal = None
                 self._rollback_info = None
+                logger.info(
+                    f"Updating deployment '{self._name}' failed, rolling "
+                    f"back to version {rollback_info.version}. "
+                    f"component=serve deployment={self._name}")
                 self.deploy(rollback_info)
         elif status == GoalStatus.SUCCESSFULLY_DELETED:
             self._goal_manager.complete_goal(self._curr_goal)

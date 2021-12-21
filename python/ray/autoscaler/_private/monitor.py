@@ -139,8 +139,6 @@ class Monitor:
                  monitor_ip=None,
                  stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
-        ray.state.state._initialize_global_state(
-            redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         if monitor_ip:
@@ -327,8 +325,11 @@ class Monitor:
                 status["autoscaler_report"] = asdict(self.autoscaler.summary())
 
                 for msg in self.event_summarizer.summary():
-                    logger.info("{}{}".format(
-                        ray_constants.LOG_PREFIX_EVENT_SUMMARY, msg))
+                    # Need to prefix each line of the message for the lines to
+                    # get pushed to the driver logs.
+                    for line in msg.split("\n"):
+                        logger.info("{}{}".format(
+                            ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
                 self.event_summarizer.clear()
 
             as_json = json.dumps(status)

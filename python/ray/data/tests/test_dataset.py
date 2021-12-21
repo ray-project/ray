@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.stats import DatasetStats
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -230,10 +231,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list, 0)
+    ds = Dataset(block_list, 0, DatasetStats(stages={}, parent=None))
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -457,7 +459,7 @@ def test_tensor_array_reductions(ray_start_regular_shared):
 
 
 def test_tensor_array_block_slice():
-    # Test that ArrowBlock slicing workers with tensor column extension type.
+    # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
         expected_slice = table1.slice(a, b - a)
         assert table2.equals(expected_slice)
@@ -477,20 +479,22 @@ def test_tensor_array_block_slice():
                     assert bufs2[1].address == bufs1[1].address
 
     n = 20
-    df = pd.DataFrame({
-        "one": TensorArray(np.array(list(range(n)))),
-        "two": ["a"] * n
-    })
+    one_arr = np.arange(4 * n).reshape(n, 2, 2)
+    df = pd.DataFrame({"one": TensorArray(one_arr), "two": ["a"] * n})
     table = pa.Table.from_pandas(df)
     a, b = 5, 10
     block_accessor = BlockAccessor.for_block(table)
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
     # Test without copy.
     table2 = block_accessor.slice(a, b, False)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
@@ -520,6 +524,29 @@ def test_arrow_tensor_array_getitem(ray_start_regular_shared):
 
     for idx in range(1, outer_dim):
         np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
+@pytest.mark.parametrize("test_arr,dtype", [
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], None),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int32),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int16),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.longlong),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], None),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
+    ([[False, True], [True, False], [True, True], [False, False]], None),
+])
+def test_arrow_tensor_array_slice(test_arr, dtype):
+    # Test that ArrowTensorArray slicing works as expected.
+    arr = np.array(test_arr, dtype=dtype)
+    ata = ArrowTensorArray.from_numpy(arr)
+    np.testing.assert_array_equal(ata.to_numpy(), arr)
+    slice1 = ata.slice(0, 2)
+    np.testing.assert_array_equal(slice1.to_numpy(), arr[0:2])
+    np.testing.assert_array_equal(slice1[1], arr[1])
+    slice2 = ata.slice(2, 2)
+    np.testing.assert_array_equal(slice2.to_numpy(), arr[2:4])
+    np.testing.assert_array_equal(slice2[1], arr[3])
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
