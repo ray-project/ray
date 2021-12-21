@@ -41,6 +41,14 @@ class FaultInjectEnv(gym.Env):
 
 
 class IgnoresWorkerFailure(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def do_test(self, alg, config, fn=None):
         fn = fn or self._do_test_fault_recover
         try:
