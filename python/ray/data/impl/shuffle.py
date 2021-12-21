@@ -1,6 +1,6 @@
 import itertools
 import math
-from typing import TypeVar, List, Optional, Dict, Any
+from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union
 
 import numpy as np
 
@@ -22,7 +22,8 @@ def simple_shuffle(input_blocks: BlockList,
                    random_seed: Optional[int] = None,
                    map_ray_remote_args: Optional[Dict[str, Any]] = None,
                    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-                   _spread_resource_prefix: Optional[str] = None) -> BlockList:
+                   _spread_resource_prefix: Optional[str] = None
+                   ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
     input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
@@ -50,18 +51,22 @@ def simple_shuffle(input_blocks: BlockList,
     shuffle_map_out = [
         shuffle_map.options(
             **map_ray_remote_args,
-            num_returns=output_num_blocks,
+            num_returns=1 + output_num_blocks,
             resources=next(map_resource_iter)).remote(
                 block, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
+
+    # The first item returned is the BlockMetadata.
+    shuffle_map_metadata = []
+    for i, refs in enumerate(shuffle_map_out):
+        shuffle_map_metadata.append(refs[0])
+        shuffle_map_out[i] = refs[1:]
+
     # Eagerly delete the input block references in order to eagerly release
     # the blocks' memory.
     del input_blocks
-    if output_num_blocks == 1:
-        # Handle the num_returns=1 edge case which doesn't return a list.
-        shuffle_map_out = [[x] for x in shuffle_map_out]
-    map_bar.block_until_complete([x[0] for x in shuffle_map_out])
+    shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
     map_bar.close()
 
     # Randomize the reduce order of the blocks.
@@ -87,12 +92,19 @@ def simple_shuffle(input_blocks: BlockList,
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
 
-    return BlockList(list(new_blocks), list(new_metadata))
+    stats = {
+        "map": shuffle_map_metadata,
+        "reduce": new_metadata,
+    }
+
+    return BlockList(list(new_blocks), list(new_metadata)), stats
 
 
-def _shuffle_map(block: Block, idx: int, output_num_blocks: int,
-                 random_shuffle: bool,
-                 random_seed: Optional[int]) -> List[Block]:
+def _shuffle_map(
+        block: Block, idx: int, output_num_blocks: int, random_shuffle: bool,
+        random_seed: Optional[int]) -> List[Union[BlockMetadata, Block]]:
+    """Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks]."""
+    stats = BlockExecStats.builder()
     block = BlockAccessor.for_block(block)
 
     # Randomize the distribution of records to blocks.
@@ -114,14 +126,12 @@ def _shuffle_map(block: Block, idx: int, output_num_blocks: int,
 
     num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
     assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-    # Needed to handle num_returns=1 edge case in Ray API.
-    if len(slices) == 1:
-        return slices[0]
-    else:
-        return slices
+    metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
+    return [metadata] + slices
 
 
 def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
+    stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     for block in mapper_outputs:
         builder.add_block(block)
@@ -132,5 +142,5 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
         input_files=None,
-        exec_stats=BlockExecStats.TODO)
+        exec_stats=stats.build())
     return new_block, new_metadata
