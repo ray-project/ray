@@ -186,6 +186,7 @@ py_test_module_list(
     "test_failure_4.py",
     "test_object_spilling.py",
     "test_plasma_unlimited.py",
+    "test_placement_group_mini_integration.py",
   ],
   size = "large",
   extra_srcs = SRCS,
