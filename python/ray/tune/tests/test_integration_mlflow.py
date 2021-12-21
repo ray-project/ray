@@ -148,7 +148,8 @@ class MLflowTest(unittest.TestCase):
         run = logger.mlflow_util._mlflow.get_run(all_runs[0]["run_id"])
         self.assertDictEqual(run.data.tags, {
             "hello": "world",
-            "trial_name": "trial1"
+            "trial_name": "trial1",
+            "mlflow.runName": "trial1"
         })
         self.assertEqual(logger._trial_runs[trial], run.info.run_id)
         # Params should be logged.
