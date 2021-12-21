@@ -13,11 +13,13 @@
 // limitations under the License.
 
 #include "ray/common/asio/event_stats.h"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <utility>
+
 #include "ray/stats/metric.h"
 
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
@@ -63,8 +65,8 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
-std::shared_ptr<StatsHandle> EventStats::RecordStart(
-    const std::string &name, int64_t expected_queueing_delay_ns) {
+std::shared_ptr<StatsHandle> EventStats::RecordStart(const std::string &name,
+                                                     int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
   {
@@ -124,8 +126,7 @@ void EventStats::RecordExecution(const std::function<void()> &fn,
   handle->execution_recorded = true;
 }
 
-std::shared_ptr<GuardedEventStats> EventStats::GetOrCreate(
-    const std::string &name) {
+std::shared_ptr<GuardedEventStats> EventStats::GetOrCreate(const std::string &name) {
   // Get this event's stats.
   std::shared_ptr<GuardedEventStats> result;
   mutex_.ReaderLock();
@@ -169,17 +170,16 @@ absl::optional<EventStats> EventStats::get_event_stats(
   return to_event_stats_view(it->second);
 }
 
-std::vector<std::pair<std::string, EventStats>>
-EventStats::get_event_stats() const {
+std::vector<std::pair<std::string, EventStats>> EventStats::get_event_stats() const {
   // We lock the stats table while copying the table into a vector.
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, EventStats>> stats;
   stats.reserve(post_event_stats_.size());
-  std::transform(
-      post_event_stats_.begin(), post_event_stats_.end(), std::back_inserter(stats),
-      [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
-        return std::make_pair(p.first, to_event_stats_view(p.second));
-      });
+  std::transform(post_event_stats_.begin(), post_event_stats_.end(),
+                 std::back_inserter(stats),
+                 [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
+                   return std::make_pair(p.first, to_event_stats_view(p.second));
+                 });
   return stats;
 }
 
@@ -205,15 +205,15 @@ std::string EventStats::StatsString() const {
     curr_count += entry.second.curr_count;
     cum_execution_time += entry.second.cum_execution_time;
     event_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
-                         << " total (" << entry.second.curr_count << " active";
+                       << " total (" << entry.second.curr_count << " active";
     if (entry.second.running_count > 0) {
       event_stats_stream << ", " << entry.second.running_count << " running";
     }
     event_stats_stream << "), CPU time: mean = "
-                         << to_human_readable(entry.second.cum_execution_time /
-                                              static_cast<double>(entry.second.cum_count))
-                         << ", total = "
-                         << to_human_readable(entry.second.cum_execution_time);
+                       << to_human_readable(entry.second.cum_execution_time /
+                                            static_cast<double>(entry.second.cum_count))
+                       << ", total = "
+                       << to_human_readable(entry.second.cum_execution_time);
   }
   const auto global_stats = get_global_stats();
   std::stringstream stats_stream;

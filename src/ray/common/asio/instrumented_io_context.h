@@ -16,17 +16,19 @@
 
 #include <boost/asio.hpp>
 #include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
 #include "ray/stats/event_stats.h"
+#include "ray/util/logging.h"
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
 class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
-  instrumented_io_context(std::shared_ptr<EventStats> event_stats) : event_stats_(event_stats) {}
+  instrumented_io_context(std::shared_ptr<EventStats> event_stats)
+      : event_stats_(event_stats) {}
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
