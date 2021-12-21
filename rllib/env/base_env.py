@@ -271,6 +271,7 @@ class BaseEnv:
         Returns:
             A random action for each environment.
         """
+        logger.warning("action_space_sample() has not been implemented")
         del agent_id
         return {}
 
@@ -287,6 +288,7 @@ class BaseEnv:
             A random action for each environment.
         """
         logger.warning("observation_space_sample() has not been implemented")
+        del agent_id
         return {}
 
     @PublicAPI
@@ -337,8 +339,6 @@ class BaseEnv:
         Returns:
             True if the observations of x are contained in space.
         """
-        # this removes the agent_id key and inner dicts
-        # in MultiEnvDicts
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
             for agent_id, obs in multi_agent_dict:

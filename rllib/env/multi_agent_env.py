@@ -1,4 +1,6 @@
+import abc
 import gym
+import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
@@ -10,24 +12,20 @@ from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
 
+logger = logging.getLogger(__name__)
+
 
 @PublicAPI
-class MultiAgentEnv(gym.Env):
+class MultiAgentEnv(abc.ABC):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
     are not to be confused with RLlib Trainers, which are also sometimes
     referred to as "agents" or "RL agents".
     """
-
-    @PublicAPI
-    def get_agent_ids(self) -> Set[AgentID]:
-        """Returns a list of agent ids in the environment.
-
-        Returns:
-            List of agent ids.
-        """
-        return {}
+    def __init__(self):
+        self.observation_space = None
+        self.action_space = None
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -89,6 +87,75 @@ class MultiAgentEnv(gym.Env):
             }
         """
         raise NotImplementedError
+
+    @PublicAPI
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the observation space contains the given key.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observation space contains the given all observations in
+                x.
+        """
+        logger.warning("observation_space_contains() has not been implemented")
+        raise True
+
+    @PublicAPI
+    def action_space_contains(self, x: MultiAgentDict) -> bool:
+        """Checks if the action space contains the given action.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the action space contains all actions in x.
+        """
+        logger.warning("action_space_contains() has not been implemented")
+        raise True
+
+    @PublicAPI
+    def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_ids: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("action_space_sample() has not been implemented")
+        del agent_ids
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        """Returns a random observation from the observation space for each
+        agent if agent_ids is None, otherwise returns a random observation for
+        the agents in agent_ids.
+
+        Args:
+            agent_ids: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        del agent_ids
+        return {}
+
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Returns a list of agent ids in the environment.
+
+        Returns:
+            List of agent ids.
+        """
+        return {}
 
     @PublicAPI
     def render(self, mode=None) -> None:
@@ -253,6 +320,38 @@ def make_multi_agent(
             self.action_space = self.agents[0].action_space
 
         @override(MultiAgentEnv)
+        def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+            if agent_ids is None:
+                agent_ids = list(range(len(self.agents)))
+            obs = {env_id: {
+                agent_id: self.observation_space.sample()
+                for agent_id in agent_ids
+            } for env_id in range(len(self.agents))}
+            return obs
+
+        @override(MultiAgentEnv)
+        def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+            if agent_ids is None:
+                agent_ids = list(range(len(self.agents)))
+            obs = {env_id: {
+                agent_id: self.action_space.sample()
+                for agent_id in agent_ids
+            } for env_id in range(len(self.agents))}
+            return obs
+
+        @override(MultiAgentEnv)
+        def observation_space_contains(self, x: MultiEnvDict) -> bool:
+            return all(
+                self.observation_space.contains(obs)
+                for agent_dict in x.values() for obs in agent_dict.values())
+
+        @override(MultiAgentEnv)
+        def action_space_contains(self, x: MultiEnvDict) -> bool:
+            return all(
+                self.action_space.contains(action)
+                for agent_dict in x.values() for action in agent_dict.values())
+
+        @override(MultiAgentEnv)
         def reset(self):
             self.dones = set()
             return {i: a.reset() for i, a in enumerate(self.agents)}
@@ -286,7 +385,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
         Args:
             make_env (Callable[[int], EnvType]): Factory that produces a new
-                MultiAgentEnv intance. Must be defined, if the number of
+                MultiAgentEnv instance. Must be defined, if the number of
                 existing envs is less than num_envs.
             existing_envs (List[MultiAgentEnv]): List of already existing
                 multi-agent envs.
@@ -371,6 +470,22 @@ class MultiAgentEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self.envs[0].action_space
+
+    @override(BaseEnv)
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        return self.envs[0].observation_space_contains(x)
+
+    @override(BaseEnv)
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        return self.envs[0].action_space_contains(x)
+
+    @override(BaseEnv)
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        return self.envs[0].observation_space_sample(agent_id)
+
+    @override(BaseEnv)
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        return self.envs[0].action_space_sample(agent_id)
 
 
 class _MultiAgentEnvState:
