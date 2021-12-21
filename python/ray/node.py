@@ -246,6 +246,7 @@ class Node:
                     "the Ray processes failed to startup.")
             node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
+                self.gcs_address,
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
