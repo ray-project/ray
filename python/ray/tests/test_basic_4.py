@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsFunctionKeySubscriber
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
