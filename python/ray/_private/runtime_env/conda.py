@@ -208,7 +208,7 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
 def _get_conda_dict_with_ray_inserted(
         runtime_env: RuntimeEnv,
         logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
-    """Returns the conda spec with the appropriate Ray dependency inserted."""
+    """Returns the conda spec with the Ray and `python` dependency inserted."""
     conda_dict = json.loads(runtime_env.conda_config())
     assert conda_dict is not None
 
