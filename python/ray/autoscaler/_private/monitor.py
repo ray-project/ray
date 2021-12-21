@@ -159,11 +159,11 @@ class Monitor:
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
-        if not use_gcs_for_bootstrap():
+        if use_gcs_for_bootstrap():
+            gcs_client = GcsClient(address=gcs_address)
+        else:
             worker.redis_client = self.redis
             gcs_client = GcsClient.create_from_redis(self.redis)
-        else:
-            gcs_client = GcsClient(address=gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
@@ -180,12 +180,12 @@ class Monitor:
                 gcs_client.internal_kv_put(b"AutoscalerMetricsAddress",
                                            monitor_addr.encode(), True, None)
         worker.mode = 0
-        if not use_gcs_for_bootstrap():
+        if use_gcs_for_bootstrap():
+            head_node_ip = gcs_address.split(":")[0]
+        else:
             head_node_ip = redis_address.split(":")[0]
             self.redis_address = redis_address
             self.redis_password = redis_password
-        else:
-            head_node_ip = gcs_address.split(":")[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None

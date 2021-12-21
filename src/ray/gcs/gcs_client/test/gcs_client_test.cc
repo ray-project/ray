@@ -375,66 +375,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resources;
   }
 
-  void WaitForTaskLeaseUnsubscribed(const TaskID &task_id) {
-    auto condition = [this, task_id]() {
-      return gcs_client_->Tasks().IsTaskLeaseUnsubscribed(task_id);
-    };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
-
-  bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(
-        task, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::TaskTableData GetTask(const TaskID &task_id) {
-    std::promise<bool> promise;
-    rpc::TaskTableData task_table_data;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
-        task_id, [&task_table_data, &promise](
-                     Status status, const boost::optional<rpc::TaskTableData> &result) {
-          if (result) {
-            task_table_data.CopyFrom(*result);
-          }
-          promise.set_value(status.ok());
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return task_table_data;
-  }
-
-  bool SubscribeTaskLease(
-      const TaskID &task_id,
-      const gcs::SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>
-          &subscribe) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(
-        task_id, subscribe,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  void UnsubscribeTaskLease(const TaskID &task_id) {
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
-  }
-
-  bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(
-        task_lease, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool AttemptTaskReconstruction(
-      const std::shared_ptr<rpc::TaskReconstructionData> task_reconstruction_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
-        task_reconstruction_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool AddProfileData(const std::shared_ptr<rpc::ProfileTableData> &profile_table_data) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
@@ -909,42 +849,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 
   WaitForExpectedCount(node_change_count, 2);
   WaitForExpectedCount(resource_change_count, 2);
-}
-
-TEST_P(GcsClientTest, TestTaskTableResubscribe) {
-  // TODO: Support resubscribing with GCS pubsub.
-  if (use_gcs_pubsub_) {
-    return;
-  }
-
-  JobID job_id = JobID::FromInt(6);
-  AddJob(job_id);
-  TaskID task_id = TaskID::ForDriverTask(job_id);
-  auto task_table_data = Mocker::GenTaskTableData(job_id.Binary(), task_id.Binary());
-
-  // Subscribe to the event that the given task lease is added in GCS.
-  std::atomic<int> task_lease_count(0);
-  auto task_lease_subscribe = [&task_lease_count](
-                                  const TaskID &task_id,
-                                  const boost::optional<rpc::TaskLeaseData> &data) {
-    if (data) {
-      ++task_lease_count;
-    }
-  };
-  ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
-
-  ASSERT_TRUE(AddTask(task_table_data));
-  NodeID node_id = NodeID::FromRandom();
-  auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitForExpectedCount(task_lease_count, 1);
-
-  RestartGcsServer();
-
-  node_id = NodeID::FromRandom();
-  task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  ASSERT_TRUE(AddTaskLease(task_lease));
-  WaitForExpectedCount(task_lease_count, 3);
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
