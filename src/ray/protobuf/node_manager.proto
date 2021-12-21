@@ -73,8 +73,8 @@ message RequestWorkerLeaseReply {
 }
 
 message PrepareBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles that containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message PrepareBundleResourcesReply {

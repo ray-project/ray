@@ -262,7 +262,7 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address, self.get_gcs_address(),
+                    self.redis_address, self.gcs_address,
                     self._plasma_store_socket_name, self.redis_password)
             except TimeoutError:
                 raise Exception(
