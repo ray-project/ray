@@ -21,8 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import (
-    GcsClient, use_gcs_for_bootstrap, get_gcs_address_from_redis)
+from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
+                                    get_gcs_address_from_redis)
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
@@ -146,7 +146,6 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-
 
         # Register the temp dir.
         if head:
@@ -388,7 +387,7 @@ class Node:
             assert self._gcs_address is not None
             return self._gcs_address
         else:
-            redis = create_redis_client()
+            redis = self.create_redis_client()
             return get_gcs_address_from_redis(redis)
 
     @property
