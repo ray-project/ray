@@ -865,13 +865,23 @@ std::string ObjectManager::DebugString() const {
   return result.str();
 }
 
-void ObjectManager::RecordMetrics() const {
+void ObjectManager::RecordMetrics() {
+  pull_manager_->RecordMetrics();
+  push_manager_->RecordMetrics();
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
+  ray::stats::STATS_object_manager_received_chunks.Record(num_chunks_received_total_,
+                                                          "Total");
+  ray::stats::STATS_object_manager_received_chunks.Record(
+      num_chunks_received_total_failed_, "FailedTotal");
+  ray::stats::STATS_object_manager_received_chunks.Record(num_chunks_received_cancelled_,
+                                                          "FailedCancelled");
+  ray::stats::STATS_object_manager_received_chunks.Record(
+      num_chunks_received_failed_due_to_plasma_, "FailedPlasmaFull");
 }
 
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {

@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
-#include "ray/gcs/gcs_server/task_info_handler_impl.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -46,25 +45,39 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       pubsub_periodical_runner_(main_service_),
       periodical_runner_(main_service),
       is_started_(false),
-      is_stopped_(false) {}
+      is_stopped_(false) {
+  // Init gcs table storage.
+  RAY_LOG(INFO) << "GCS Storage is set to " << RayConfig::instance().gcs_storage();
+  RAY_LOG(INFO) << "gRPC based pubsub is"
+                << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
+                << "enabled";
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
+        << " grpc pubsub has to be enabled when using storage other than redis";
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
 
-GcsServer::~GcsServer() { Stop(); }
-
-RedisClientOptions GcsServer::GetRedisClientOptions() const {
-  return RedisClientOptions(config_.redis_address, config_.redis_port,
-                            config_.redis_password, config_.enable_sharding_conn);
-}
-
-void GcsServer::Start() {
-  // Init backend client.
-  redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-  auto status = redis_client_->Connect(main_service_);
-  RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-  // Init redis failure detector.
-  gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-      main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
-  gcs_redis_failure_detector_->Start();
+  auto on_done = [this](const ray::Status &status) {
+    RAY_CHECK(status.ok()) << "Failed to put internal config";
+    this->main_service_.stop();
+  };
+  ray::rpc::StoredConfig stored_config;
+  stored_config.set_config(config_.raylet_config_list);
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(),
+                                                             stored_config, on_done));
+  // Here we need to make sure the Put of internal config is happening in sync
+  // way. But since the storage API is async, we need to run the main_service_
+  // to block currenct thread.
+  // This will run async operations from InternalConfigTable().Put() above
+  // inline.
+  main_service_.run();
+  // Reset the main service to the initial status otherwise, the signal handler
+  // will be called.
+  main_service_.restart();
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
@@ -82,6 +95,7 @@ void GcsServer::Start() {
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
             rpc::ChannelType::RAY_LOG_CHANNEL,
             rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
+            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
         },
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
@@ -90,10 +104,16 @@ void GcsServer::Start() {
   }
   gcs_publisher_ =
       std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
+}
 
-  // Init gcs table storage.
-  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+GcsServer::~GcsServer() { Stop(); }
 
+RedisClientOptions GcsServer::GetRedisClientOptions() const {
+  return RedisClientOptions(config_.redis_address, config_.redis_port,
+                            config_.redis_password, config_.enable_sharding_conn);
+}
+
+void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
@@ -133,9 +153,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs worker manager.
   InitGcsWorkerManager();
 
-  // Init task info handler.
-  InitTaskInfoHandler();
-
   // Init stats handler.
   InitStatsHandler();
 
@@ -153,6 +170,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   rpc_server_.Run();
 
   // Store gcs rpc server address in redis.
+  // TODO (iycheng): Don't write once redis removal is done
+  //   if (!RayConfig::instance().bootstrap_with_gcs()) {
+  //     // Store gcs rpc server address in redis.
+  //     StoreGcsServerAddressInRedis();
+  //   }
   StoreGcsServerAddressInRedis();
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
@@ -160,7 +182,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
-  CollectStats();
+  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -205,7 +227,7 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(redis_client_ && gcs_table_storage_ && gcs_publisher_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(gcs_publisher_, gcs_table_storage_,
                                                        raylet_client_pool_);
   // Initialize by gcs tables data.
@@ -356,19 +378,9 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   std::string address = ip + ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
-  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+  RAY_CHECK_OK(GetOrConnectRedis()->GetPrimaryContext()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
-}
-
-void GcsServer::InitTaskInfoHandler() {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  task_info_handler_.reset(
-      new rpc::DefaultTaskInfoHandler(gcs_table_storage_, gcs_publisher_));
-  // Register service.
-  task_info_service_.reset(
-      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
-  rpc_server_.RegisterService(*task_info_service_);
 }
 
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
@@ -406,6 +418,7 @@ void GcsServer::InitStatsHandler() {
 
 void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
+  // TODO (yic): Use a factory with configs
   if (RayConfig::instance().gcs_storage() == "redis") {
     instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (RayConfig::instance().gcs_storage() == "memory") {
@@ -529,11 +542,11 @@ void GcsServer::InstallEventListeners() {
   }
 }
 
-void GcsServer::CollectStats() {
-  gcs_actor_manager_->CollectStats();
-  gcs_placement_group_manager_->CollectStats();
+void GcsServer::RecordMetrics() const {
+  gcs_actor_manager_->RecordMetrics();
+  gcs_placement_group_manager_->RecordMetrics();
   execute_after(
-      main_service_, [this] { CollectStats(); },
+      main_service_, [this] { RecordMetrics(); },
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
@@ -558,6 +571,20 @@ std::string GcsServer::GetDebugState() const {
     stream << grpc_based_resource_broadcaster_->DebugString();
   }
   return stream.str();
+}
+
+std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
+  if (redis_client_ == nullptr) {
+    redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
+    auto status = redis_client_->Connect(main_service_);
+    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+
+    // Init redis failure detector.
+    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
+        main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
+    gcs_redis_failure_detector_->Start();
+  }
+  return redis_client_;
 }
 
 void GcsServer::PrintAsioStats() {

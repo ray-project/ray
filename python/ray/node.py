@@ -368,6 +368,12 @@ class Node:
         return self._redis_address
 
     @property
+    def gcs_address(self):
+        """Get the gcs address."""
+        assert self._gcs_client is not None
+        return self._gcs_client.address
+
+    @property
     def redis_address(self):
         """Get the cluster Redis address."""
         return self._redis_address
@@ -439,7 +445,8 @@ class Node:
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
-            "metrics_export_port": self._metrics_export_port
+            "metrics_export_port": self._metrics_export_port,
+            "gcs_address": self.gcs_address,
         }
 
     def is_head(self):
@@ -808,6 +815,7 @@ class Node:
             "raylet", unique=True)
         process_info = ray._private.services.start_raylet(
             self._redis_address,
+            self.gcs_address,
             self._node_ip_address,
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
@@ -923,9 +931,10 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
+            gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+                self.redis_address, self.redis_password)
             global_state = ray.state.GlobalState()
-            global_state._initialize_global_state(
-                self.redis_address, redis_password=self.redis_password)
+            global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()
             assert self._config.items() <= new_config.items(), (
                 "The system config from GCS is not a superset of the local"

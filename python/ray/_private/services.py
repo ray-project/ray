@@ -21,6 +21,7 @@ import uuid
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray._raylet import GcsClientOptions
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -311,7 +312,9 @@ def wait_for_node(redis_address,
     redis_ip_address, redis_port = redis_address.split(":")
     wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
     global_state = ray.state.GlobalState()
-    global_state._initialize_global_state(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                      redis_password)
+    global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
         clients = global_state.node_table()
@@ -328,10 +331,11 @@ def wait_for_node(redis_address,
 def get_node_to_connect_for_driver(redis_address,
                                    node_ip_address,
                                    redis_password=None):
-    redis_ip_address, redis_port = redis_address.split(":")
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    global_state._initialize_global_state(redis_address, redis_password)
+    gcs_options = GcsClientOptions.from_redis_address(redis_address,
+                                                      redis_password)
+    global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
@@ -650,6 +654,15 @@ def start_ray_process(command,
     # before the process itself is assigned to the job.
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
+    if sys.platform == "win32":
+        # CreateProcess, which underlies Popen, is limited to
+        # 32,767 characters, including the Unicode terminating null
+        # character
+        total_chrs = sum([len(x) for x in command])
+        if total_chrs > 31766:
+            raise ValueError(
+                f"command is limited to a total of 31767 characters, "
+                f"got {total_chrs}")
 
     process = ConsolePopen(
         command,
@@ -1426,6 +1439,7 @@ def start_gcs_server(redis_address,
 
 
 def start_raylet(redis_address,
+                 gcs_address,
                  node_ip_address,
                  node_manager_port,
                  raylet_name,
@@ -1464,6 +1478,7 @@ def start_raylet(redis_address,
 
     Args:
         redis_address (str): The address of the primary Redis server.
+        gcs_address (str): The address of cluster.
         node_ip_address (str): The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1528,7 +1543,8 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    # TODO (iycheng): remove redis_ip_address after redis removal
+    redis_ip_address, redis_port = redis_address.split(":")
 
     has_java_command = False
     if shutil.which("java") is not None:
@@ -1626,14 +1642,15 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
+        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
-        f"--redis_address={gcs_ip_address}",
-        f"--redis_port={gcs_port}",
+        f"--redis_address={redis_ip_address}",
+        f"--redis_port={redis_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
