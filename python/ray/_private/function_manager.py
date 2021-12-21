@@ -91,6 +91,7 @@ class FunctionActorManager:
         self._num_exported = 0
         # This is to protect self._num_exported when doing exporting
         self._export_lock = threading.Lock()
+        self.cv = threading.Condition(lock=self.lock)
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -557,6 +558,25 @@ class FunctionActorManager:
         """Load actor class from GCS."""
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
+        # Only wait for the actor class if it was exported from the same job.
+        # It will hang if the job id mismatches, since we isolate actor class
+        # exports from the import thread.
+        if job_id.binary() == self._worker.current_job_id.binary():
+            # Wait for the actor class key to have been imported by the
+            # import thread. TODO(rkn): It shouldn't be possible to end
+            # up in an infinite loop here, but we should push an error to
+            # the driver if too much time is spent here.
+            while key not in self.imported_actor_classes:
+                try:
+                    # If we're in the process of deserializing an ActorHandle
+                    # and we hold the function_manager lock, we may be blocking
+                    # the import_thread from loading the actor class. Use wait
+                    # to temporarily yield control to the import thread.
+                    self.cv.wait()
+                except RuntimeError:
+                    # We don't hold the function_manager lock, just sleep
+                    time.sleep(0.001)
+
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(
             key, KV_NAMESPACE_FUNCTION_TABLE)
