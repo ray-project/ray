@@ -187,13 +187,16 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
                                                             min=max_replicas))
+        logger.info("Deployments scaled up to max replicas ....\n")
 
-        signal.send.remote()
+        ray.get(signal.send.remote())
+        logger.info("Clearing all requests ....\n")
 
         # Check that deployments scale back to min_replicas
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
                                                             max=min_replicas))
+        logger.info("Deployments scaled down to min replicas ....\n")
 
 
 if __name__ == "__main__":
