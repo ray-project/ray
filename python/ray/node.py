@@ -21,7 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
+                                    get_gcs_address_from_redis)
 from ray._private.resource_spec import ResourceSpec
 from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
                                     get_gcs_address_from_redis)
@@ -143,12 +144,9 @@ class Node:
         assert self.max_bytes >= 0
         assert self.backup_count >= 0
 
-        # Default num_redis_shards.
-        if head:
-            ray_params.update_if_absent(num_redis_shards=1)
-
         self._gcs_address = None
         if head:
+            ray_params.update_if_absent(num_redis_shards=1)
             gcs_server_port = os.getenv(
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
@@ -166,12 +164,6 @@ class Node:
                 assert self._gcs_address is not None
             self.get_gcs_client()
 
-        # Initialize webui url
-        if head:
-            self._webui_url = None
-        else:
-            self._webui_url = \
-                ray._private.services.get_webui_url_from_internal_kv()
 
         # Register the temp dir.
         if head:
@@ -180,9 +172,21 @@ class Node:
                 "%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
+            if use_gcs_for_bootstrap():
+                self._gcs_address = self._ray_params.gcs_address
+                assert self._gcs_address is not None
             session_name = self._internal_kv_get_with_retry(
                 "session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
+            # setup gcs client
+            self.get_gcs_client()
+
+        # Initialize webui url
+        if head:
+            self._webui_url = None
+        else:
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
 
         self._init_temp()
 
@@ -293,6 +297,21 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
+    def _init_gcs_address_from_redis(self):
+        assert self.head
+        redis_cli = self.create_redis_client()
+        error = None
+        for _ in range(NUM_REDIS_GET_RETRIES):
+            try:
+                self._gcs_address = get_gcs_address_from_redis(redis_cli)
+                return
+            except Exception as e:
+                logger.debug("Fetch gcs address from redis failed {e}")
+                error = e
+                time.sleep(1)
+        assert error is not None
+        logger.error("Fetch gcs address from redis failed {error}")
+
     def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
@@ -397,8 +416,12 @@ class Node:
     @property
     def gcs_address(self):
         """Get the gcs address."""
-        assert self._gcs_client is not None
-        return self._gcs_client.address
+        if use_gcs_for_bootstrap():
+            assert self._gcs_address is not None
+            return self._gcs_address
+        else:
+            redis = self.create_redis_client()
+            return get_gcs_address_from_redis(redis)
 
     @property
     def redis_address(self):
@@ -497,6 +520,7 @@ class Node:
                 try:
                     self._gcs_client = GcsClient(
                         address=self.gcs_address)
+                    self._gcs_client = GcsClient(address=self.gcs_address)
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -832,6 +856,9 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        # TODO (iycheng) Remove this once we pass gcs address into init
+        if use_gcs_for_bootstrap():
+            self._init_gcs_address_from_redis()
         # Init gcs client
         self.get_gcs_client()
 

@@ -133,8 +133,7 @@ class Monitor:
     """
 
     def __init__(self,
-                 redis_address,
-                 gcs_address,
+                 address,
                  autoscaling_config,
                  redis_password=None,
                  prefix_cluster_info=False,
@@ -142,11 +141,15 @@ class Monitor:
                  stop_event: Optional[Event] = None):
         if not use_gcs_for_bootstrap():
             # Initialize the Redis clients.
+            redis_address = address
             self.redis = ray._private.services.create_redis_client(
                 redis_address, password=redis_password)
-            (ip, port) = redis_address.split(":")
+            (ip, port) = address.split(":")
             # Initialize the gcs stub for getting all node resource usage.
             gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+        else:
+            gcs_address = address
+            redis_address = None
 
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = ray._private.utils.init_grpc_channel(
@@ -175,10 +178,11 @@ class Monitor:
         _initialize_internal_kv(gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.redis.set("AutoscalerMetricsAddress", monitor_addr)
             if use_gcs_for_bootstrap():
                 gcs_client.internal_kv_put(b"AutoscalerMetricsAddress",
                                            monitor_addr.encode(), True, None)
+            else:
+                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
         worker.mode = 0
         if use_gcs_for_bootstrap():
             head_node_ip = gcs_address.split(":")[0]
@@ -557,8 +561,7 @@ if __name__ == "__main__":
         autoscaling_config = None
 
     monitor = Monitor(
-        args.redis_address,
-        args.gcs_address,
+        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip)

@@ -17,7 +17,7 @@ import pytest
     indirect=True)
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -44,7 +44,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -70,7 +70,7 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     indirect=True)
 def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -104,7 +104,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioLogSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -135,7 +135,7 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     indirect=True)
 def test_publish_and_subscribe_function_keys(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -160,7 +160,7 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -186,7 +186,7 @@ def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
     address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_server_address"]
+    gcs_server_addr = address_info["gcs_address"]
 
     num_messages = 100
 

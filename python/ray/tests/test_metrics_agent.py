@@ -40,12 +40,7 @@ _METRICS = [
     "ray_heartbeat_report_ms_sum",
     "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
-    "ray_internal_num_received_tasks",
-    "ray_internal_num_dispatched_tasks",
     "ray_internal_num_spilled_tasks",
-    "ray_internal_num_infeasible_tasks",
-    # "ray_object_spilling_bandwidth_mb",
-    # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_outbound_heartbeat_size_kb_sum",
@@ -53,6 +48,25 @@ _METRICS = [
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
+    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_new_total",
+    "ray_grpc_server_req_handling_total",
+    "ray_grpc_server_req_finished_total",
+    "ray_object_manager_received_chunks",
+    "ray_pull_manager_usage_bytes",
+    "ray_pull_manager_requested_bundles",
+    "ray_pull_manager_requests",
+    "ray_pull_manager_active_bundles",
+    "ray_pull_manager_retries_total",
+    "ray_push_manager_in_flight_pushes",
+    "ray_push_manager_chunks",
+    "ray_scheduler_failed_worker_startup_total",
+    "ray_scheduler_tasks",
+    "ray_scheduler_unscheduleable_tasks",
+    "ray_spill_manager_objects",
+    "ray_spill_manager_objects_bytes",
+    "ray_spill_manager_request_total",
+    # "ray_spill_manager_throughput_mb",
     "ray_gcs_placement_group_creation_latency_ms_sum",
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
@@ -125,6 +139,9 @@ def _setup_cluster_for_test(ray_start_cluster):
 
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
+    # Infeasible task
+    b = f.options(resources={"a": 1})
+    print(b)
 
     node_info_list = ray.nodes()
     prom_addresses = []

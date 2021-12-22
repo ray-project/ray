@@ -137,6 +137,10 @@ class Cluster:
                 self.connect()
 
     @property
+    def gcs_address(self):
+        return self.head_node.gcs_address
+
+    @property
     def address(self):
         if not use_gcs_for_bootstrap():
             return self.redis_address

@@ -47,7 +47,7 @@ def StandardMetricsReporting(
         .for_each(CollectMetrics(
             workers,
             min_history=config["metrics_num_episodes_for_smoothing"],
-            timeout_seconds=config["collect_metrics_timeout"],
+            timeout_seconds=config["metrics_episode_collection_timeout_s"],
             selected_workers=selected_workers,
             by_steps_trained=by_steps_trained))
     return output_op

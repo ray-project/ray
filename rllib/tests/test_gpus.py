@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.agents.a3c.a2c import A2CTrainer, A2C_DEFAULT_CONFIG
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -17,7 +17,7 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = DEFAULT_CONFIG.copy()
+        config = A2C_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["env"] = "CartPole-v0"
 
@@ -52,13 +52,13 @@ class TestGPUs(unittest.TestCase):
                             self.assertRaisesRegex(
                                 RuntimeError,
                                 "Found 0 GPUs on your machine",
-                                lambda: PGTrainer(config, env="CartPole-v0"),
+                                lambda: A2CTrainer(config, env="CartPole-v0"),
                             )
                         # If actual_gpus >= num_gpus or faked,
                         # expect no error.
                         else:
                             print("direct RLlib")
-                            trainer = PGTrainer(config, env="CartPole-v0")
+                            trainer = A2CTrainer(config, env="CartPole-v0")
                             trainer.stop()
                             # Cannot run through ray.tune.run() w/ fake GPUs
                             # as it would simply wait infinitely for the
@@ -67,7 +67,7 @@ class TestGPUs(unittest.TestCase):
                             if num_gpus == 0:
                                 print("via ray.tune.run()")
                                 tune.run(
-                                    "PG",
+                                    "A2C",
                                     config=config,
                                     stop={"training_iteration": 0})
         ray.shutdown()
@@ -78,7 +78,7 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = DEFAULT_CONFIG.copy()
+        config = A2C_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["env"] = "CartPole-v0"
 
@@ -93,11 +93,11 @@ class TestGPUs(unittest.TestCase):
                     ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     print("direct RLlib")
-                    trainer = PGTrainer(config, env="CartPole-v0")
+                    trainer = A2CTrainer(config, env="CartPole-v0")
                     trainer.stop()
                     print("via ray.tune.run()")
                     tune.run(
-                        "PG", config=config, stop={"training_iteration": 0})
+                        "A2C", config=config, stop={"training_iteration": 0})
 
         ray.shutdown()
 
