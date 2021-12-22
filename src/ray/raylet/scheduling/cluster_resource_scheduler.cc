@@ -37,7 +37,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
-    gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
+    const std::string &local_taint, gcs::GcsClient &gcs_client,
+    std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
     : get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       gcs_client_(&gcs_client) {
@@ -45,7 +46,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
       local_node_id_, nodes_);
   NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, local_node_resources, local_node_resources);
+      string_to_int_map_, local_node_resources, local_node_resources, local_taint);
 
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, node_resources);
@@ -92,9 +93,10 @@ void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
 void ClusterResourceScheduler::AddOrUpdateNode(
     const std::string &node_id,
     const absl::flat_hash_map<std::string, double> &resources_total,
-    const absl::flat_hash_map<std::string, double> &resources_available) {
+    const absl::flat_hash_map<std::string, double> &resources_available,
+    const std::string &taint) {
   NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, resources_total, resources_available);
+      string_to_int_map_, resources_total, resources_available, taint);
   AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
 }
 
@@ -120,7 +122,7 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
   auto resources_total = MapFromProtobuf(resource_data.resources_total());
   auto resources_available = MapFromProtobuf(resource_data.resources_available());
   NodeResources node_resources = ResourceMapToNodeResources(
-      string_to_int_map_, resources_total, resources_available);
+      string_to_int_map_, resources_total, resources_available, resource_data.taint());
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
@@ -145,6 +147,7 @@ bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
 
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
+  local_view.taint = resource_data.taint();
 
   AddOrUpdateNode(node_id, local_view);
   return true;
@@ -173,6 +176,11 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
 bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
                                              int64_t node_id,
                                              const NodeResources &resources) const {
+  // First, check that the task tolerates the node's taint, if it has one.
+  if (resources.taint != "" && !resource_request.tolerations.contains(resources.taint)) {
+    RAY_LOG(DEBUG) << "Taint " << resources.taint << " not tolerated by task.";
+    return false;
+  }
   if (resource_request.requires_object_store_memory && resources.object_pulls_queued &&
       node_id != local_node_id_) {
     // It's okay if the local node's pull manager is at capacity because we
@@ -181,7 +189,7 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
     return false;
   }
 
-  // First, check predefined resources.
+  // Second, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] >
         resources.predefined_resources[i].available) {
@@ -227,7 +235,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       for (size_t i = 0; i < nodes_.size(); ++i) {
         // TODO(iycheng): Here is there are a lot of nodes died, the
         // distribution might not be even.
-        if (NodeAlive(iter->first)) {
+        std::string taint = iter->second.GetLocalView().taint;
+        if (NodeAlive(iter->first) &&
+            (taint == "" || resource_request.tolerations.contains(taint))) {
           best_node = iter->first;
           break;
         }
@@ -272,10 +282,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
     const rpc::SchedulingStrategy &scheduling_strategy, bool requires_object_store_memory,
-    bool actor_creation, bool force_spillback, int64_t *total_violations,
-    bool *is_infeasible) {
+    const absl::flat_hash_set<std::string> &tolerations, bool actor_creation,
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, task_resources, requires_object_store_memory);
+      string_to_int_map_, task_resources, requires_object_store_memory, tolerations);
   int64_t node_id =
       GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
                              force_spillback, total_violations, is_infeasible);
@@ -919,7 +929,7 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
   RAY_CHECK(task_allocation != nullptr);
   // We don't track object store memory demands so no need to allocate them.
   ResourceRequest resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
+      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false, {});
   return AllocateLocalTaskResources(resource_request, task_allocation);
 }
 
@@ -939,9 +949,11 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 
 bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
-    const absl::flat_hash_map<std::string, double> &task_resources) {
-  ResourceRequest resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, task_resources, /*requires_object_store_memory=*/false);
+    const absl::flat_hash_map<std::string, double> &task_resources,
+    const absl::flat_hash_set<std::string> &tolerations) {
+  ResourceRequest resource_request =
+      ResourceMapToResourceRequest(string_to_int_map_, task_resources,
+                                   /*requires_object_store_memory=*/false, tolerations);
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
   return SubtractRemoteNodeAvailableResources(node_id, resource_request);
@@ -960,7 +972,8 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
     std::shared_ptr<SchedulingResources> gcs_resources) {
   last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
       string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(),
-      gcs_resources->GetAvailableResources().GetResourceMap()));
+      gcs_resources->GetAvailableResources().GetResourceMap(),
+      gcs_resources->GetTaint()));
 }
 
 void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
@@ -973,7 +986,7 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
   // Initialize if last report resources is empty.
   if (!last_report_resources_) {
     NodeResources node_resources =
-        ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
+        ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}}, "");
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
@@ -1022,6 +1035,11 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
       resources_data.set_object_pulls_queued(resources.object_pulls_queued);
       resources_data.set_resources_available_changed(true);
     }
+  }
+
+  if (resources.taint != last_report_resources_->taint) {
+    resources_data.set_taint(resources.taint);
+    resources_data.set_resources_available_changed(true);
   }
 
   if (resources != *last_report_resources_.get()) {
@@ -1078,9 +1096,10 @@ ClusterResourceScheduler::GetResourceTotals(
 }
 
 bool ClusterResourceScheduler::IsLocallySchedulable(
-    const absl::flat_hash_map<std::string, double> &shape) {
+    const absl::flat_hash_map<std::string, double> &shape,
+    const absl::flat_hash_set<std::string> &tolerations) {
   auto resource_request = ResourceMapToResourceRequest(
-      string_to_int_map_, shape, /*requires_object_store_memory=*/false);
+      string_to_int_map_, shape, /*requires_object_store_memory=*/false, tolerations);
   return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources());
 }
 

@@ -45,6 +45,7 @@ DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
+DEFINE_string(taint, "", "The taint label for this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
@@ -93,6 +94,7 @@ int main(int argc, char *argv[]) {
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
+  const std::string taint = FLAGS_taint;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
@@ -169,6 +171,7 @@ int main(int argc, char *argv[]) {
             ray::ResourceSet(std::move(static_resource_conf));
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.ToString();
+        node_manager_config.taint = taint;
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();

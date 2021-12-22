@@ -1452,6 +1452,7 @@ def start_raylet(redis_address,
                  resource_spec,
                  plasma_directory,
                  object_store_memory,
+                 taint=None,
                  min_worker_port=None,
                  max_worker_port=None,
                  worker_port_list=None,
@@ -1492,6 +1493,7 @@ def start_raylet(redis_address,
         resource_dir(str): The path of resource of this session .
         log_dir (str): The path of the dir where log files are created.
         resource_spec (ResourceSpec): Resources for this raylet.
+        taint (str): A taint label for this node.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
         min_worker_port (int): The lowest port number that workers will bind
@@ -1664,6 +1666,8 @@ def start_raylet(redis_address,
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
     ]
+    if taint is not None:
+        command.append(f"--taint={taint}")
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:

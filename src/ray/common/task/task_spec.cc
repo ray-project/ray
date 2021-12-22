@@ -261,6 +261,11 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
+const absl::flat_hash_set<std::string> TaskSpecification::GetTolerations() const {
+  auto tolerations = message_->tolerations();
+  return absl::flat_hash_set<std::string>(tolerations.begin(), tolerations.end());
+}
+
 std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
 }
@@ -392,7 +397,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
+         << ", tolerations=";
+  const auto tolerations = GetTolerations();
+  for (auto it = tolerations.begin(); it != tolerations.end(); it++) {
+    if (it != tolerations.begin()) stream << ", ";
+    stream << *it;
+  }
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.

@@ -76,13 +76,14 @@ class RemoteFunction:
             different workers.
         _scheduling_strategy: Strategy about how to schedule
             this remote function.
+        _tolerations: The taints that this task or actor tolerates.
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
                  retry_exceptions, runtime_env, placement_group,
-                 scheduling_strategy: SchedulingStrategyT):
+                 scheduling_strategy: SchedulingStrategyT, tolerations):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -129,6 +130,7 @@ class RemoteFunction:
         self._function_signature = ray._private.signature.extract_signature(
             self._function)
         self._scheduling_strategy = scheduling_strategy
+        self._tolerations = tolerations
 
         self._last_export_session_and_job = None
         self._uuid = uuid.uuid4()
@@ -162,7 +164,8 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_strategy: SchedulingStrategyT = None):
+                scheduling_strategy: SchedulingStrategyT = None,
+                tolerations=None):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to
@@ -216,7 +219,8 @@ class RemoteFunction:
                         placement_group_capture_child_tasks),
                     runtime_env=new_runtime_env,
                     name=name,
-                    scheduling_strategy=scheduling_strategy)
+                    scheduling_strategy=scheduling_strategy,
+                    tolerations=tolerations)
 
         return FuncWrapper()
 
@@ -238,7 +242,8 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_strategy: SchedulingStrategyT = None):
+                scheduling_strategy: SchedulingStrategyT = None,
+                tolerations=None):
         """Submit the remote function for execution."""
 
         if client_mode_should_convert(auto_init=True):
@@ -261,7 +266,8 @@ class RemoteFunction:
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
                 name=name,
-                scheduling_strategy=scheduling_strategy)
+                scheduling_strategy=scheduling_strategy,
+                tolerations=tolerations)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -306,6 +312,8 @@ class RemoteFunction:
             retry_exceptions = self._retry_exceptions
         if scheduling_strategy is None:
             scheduling_strategy = self._scheduling_strategy
+        if tolerations is None:
+            tolerations = self._tolerations
 
         resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -352,6 +360,9 @@ class RemoteFunction:
         if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
 
+        if tolerations is None:
+            tolerations = []
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language.format_args(worker, args, kwargs)
@@ -368,8 +379,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
-                scheduling_strategy, worker.debugger_breakpoint, runtime_env
-                or "{}")
+                scheduling_strategy, tolerations, worker.debugger_breakpoint,
+                runtime_env or "{}")
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

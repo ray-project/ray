@@ -89,6 +89,7 @@ struct ActorCreationOptions {
                        bool is_detached, std::string &name, std::string &ray_namespace,
                        bool is_asyncio,
                        const rpc::SchedulingStrategy &scheduling_strategy,
+                       const std::vector<std::string> &tolerations,
                        const std::string &serialized_runtime_env = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false, int32_t max_pending_calls = -1)
@@ -106,7 +107,8 @@ struct ActorCreationOptions {
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy){};
+        scheduling_strategy(scheduling_strategy),
+        tolerations(tolerations){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -149,6 +151,8 @@ struct ActorCreationOptions {
   const int max_pending_calls = -1;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
+  /// The taints that this actor tolerates.
+  const std::vector<std::string> tolerations;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

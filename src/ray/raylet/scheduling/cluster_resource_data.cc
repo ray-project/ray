@@ -91,10 +91,12 @@ std::vector<double> VectorFixedPointToVectorDouble(
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
-    bool requires_object_store_memory) {
+    bool requires_object_store_memory,
+    const absl::flat_hash_set<std::string> &tolerations) {
   ResourceRequest resource_request;
 
   resource_request.requires_object_store_memory = requires_object_store_memory;
+  resource_request.tolerations = tolerations;
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
@@ -164,8 +166,10 @@ ResourceRequest TaskResourceInstances::ToResourceRequest() const {
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
-    const absl::flat_hash_map<std::string, double> &resource_map_available) {
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const std::string &taint) {
   NodeResources node_resources;
+  node_resources.taint = taint;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     node_resources.predefined_resources[i].total =
@@ -219,12 +223,17 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
 
 bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
                                 bool ignore_pull_manager_at_capacity) const {
+  // First, check that the task tolerates the node's taint, if it has one.
+  if (this->taint != "" && !resource_request.tolerations.contains(this->taint)) {
+    RAY_LOG(DEBUG) << "Taint " << this->taint << " not tolerated by task.";
+    return false;
+  }
   if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
       object_pulls_queued) {
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
-  // First, check predefined resources.
+  // Second, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (resource_request.predefined_resources[i] != 0) {
@@ -256,7 +265,12 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  // First, check predefined resources.
+  // First, check that the task tolerates the node's taint, if it has one.
+  if (this->taint != "" && !resource_request.tolerations.contains(this->taint)) {
+    RAY_LOG(DEBUG) << "Taint " << this->taint << " not tolerated by task.";
+    return false;
+  }
+  // Second, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
       if (resource_request.predefined_resources[i] != 0) {

@@ -1246,7 +1246,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
-          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
+          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap(),
+          task_spec.GetTolerations())) {
     RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
                    << " on a remote node that are no longer available";
   }
@@ -1442,7 +1443,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
 bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
   return cluster_resource_scheduler_->IsLocallySchedulable(
-      spec.GetRequiredResources().GetResourceMap());
+      spec.GetRequiredResources().GetResourceMap(), spec.GetTolerations());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
@@ -1508,7 +1509,7 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
   return cluster_resource_scheduler_->GetBestSchedulableNode(
       work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
       work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
-      requires_object_store_memory,
+      requires_object_store_memory, work.task.GetTaskSpecification().GetTolerations(),
       work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
       is_infeasible);
 }

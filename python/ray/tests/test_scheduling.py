@@ -681,6 +681,87 @@ def test_scheduling_class_depth(ray_start_regular):
     wait_for_condition(make_condition(4))
 
 
+def test_taints_and_tolerations_tasks(ray_start_cluster):
+    cluster = ray_start_cluster
+    foo_tainted_node = cluster.add_node(num_cpus=1, taint="foo")
+    bar_tainted_node = cluster.add_node(num_cpus=1, taint="bar")
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    def baz(sleep):
+        import time
+        time.sleep(sleep)
+        return ray.worker.global_worker.node.unique_id
+
+    n = 4
+    sleep_time = 0.5
+    foo_nodes = [
+        baz.options(tolerations=["foo"]).remote(sleep_time) for _ in range(n)
+    ]
+    bar_nodes = [
+        baz.options(tolerations=["bar"]).remote(sleep_time) for _ in range(n)
+    ]
+    # Tasks with "foo" toleration should be schedulable on "foo"-tainted node,
+    # but not "bar"-tainted node.
+    assert all(
+        node == foo_tainted_node.unique_id for node in ray.get(foo_nodes))
+    # Tasks with "bar" toleration should be schedulable on "bar"-tainted node,
+    # but not "foo"-tainted node.
+    assert all(
+        node == bar_tainted_node.unique_id for node in ray.get(bar_nodes))
+
+    untainted_node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    # Tasks without "foo" or "bar" toleration should be scheduled onto
+    # untainted node.
+    nodes = [baz.remote(sleep_time) for _ in range(n)]
+    assert any(node == untainted_node.unique_id for node in ray.get(nodes))
+
+
+def test_taints_and_tolerations_actors(ray_start_cluster):
+    cluster = ray_start_cluster
+    n = 2
+    foo_tainted_node = cluster.add_node(num_cpus=n, taint="foo")
+    bar_tainted_node = cluster.add_node(num_cpus=n, taint="bar")
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Baz:
+        def __init__(self):
+            pass
+
+        def get_location(self):
+            return ray.worker.global_worker.node.unique_id
+
+    bar_actors = [Baz.options(tolerations=["bar"]).remote() for _ in range(n)]
+    foo_actors = [Baz.options(tolerations=["foo"]).remote() for _ in range(n)]
+    # Tasks with "foo" toleration should be schedulable on "foo"-tainted node,
+    # but not "bar"-tainted node.
+    assert all(
+        ray.get(actor.get_location.remote()) == foo_tainted_node.unique_id
+        for actor in foo_actors)
+    # Tasks with "bar" toleration should be schedulable on "bar"-tainted node,
+    # but not "foo"-tainted node.
+    assert all(
+        ray.get(actor.get_location.remote()) == bar_tainted_node.unique_id
+        for actor in bar_actors)
+
+    untainted_node = cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Actors without "foo" or "bar" toleration should be scheduled onto
+    # untainted node.
+    actors = [Baz.remote() for _ in range(n)]
+    assert any(
+        ray.get(actor.get_location.remote()) == untainted_node.unique_id
+        for actor in actors)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

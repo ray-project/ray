@@ -759,6 +759,7 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
       ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
   last_resource_usage_->SetLoadResources(
       ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
+  last_resource_usage_->SetTaint(data_ptr->taint());
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,

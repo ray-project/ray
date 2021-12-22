@@ -114,6 +114,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries,
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
+            const c_vector[c_string] &tolerations,
             c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,

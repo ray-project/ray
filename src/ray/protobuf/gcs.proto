@@ -492,6 +492,8 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 13;
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
+  // Taint label for this node.
+  string taint = 15;
 }
 
 message ResourceUsageBatchData {

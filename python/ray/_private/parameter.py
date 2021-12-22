@@ -38,6 +38,7 @@ class RayParams:
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries. This only applies to the
             sharded redis tables (task and object tables).
+        taint (str): A taint label for this node.
         object_manager_port int: The port to use for the object manager.
         node_manager_port: The port to use for the node manager.
         gcs_server_port: The port to use for the GCS server.
@@ -130,6 +131,7 @@ class RayParams:
                  memory=None,
                  object_store_memory=None,
                  redis_max_memory=None,
+                 taint=None,
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_port=None,
@@ -182,6 +184,7 @@ class RayParams:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.redis_max_memory = redis_max_memory
+        self.taint = taint
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port

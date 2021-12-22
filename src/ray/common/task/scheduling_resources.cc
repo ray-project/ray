@@ -288,6 +288,10 @@ void SchedulingResources::SetLoadResources(ResourceSet &&newset) {
   resources_load_ = newset;
 }
 
+const std::string &SchedulingResources::GetTaint() const { return taint_; }
+
+void SchedulingResources::SetTaint(const std::string &taint) { taint_ = taint; }
+
 // Return specified resources back to SchedulingResources.
 void SchedulingResources::Release(const ResourceSet &resources) {
   return resources_available_.AddResourcesCapacityConstrained(resources,

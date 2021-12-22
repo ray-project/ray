@@ -235,6 +235,17 @@ class SchedulingResources {
   /// \return Void.
   void SetLoadResources(ResourceSet &&newset);
 
+  /// \brief Request the taint.
+  ///
+  /// \return The taint label.
+  const std::string &GetTaint() const;
+
+  /// \brief Overwrite old taint label with the specified taint label.
+  ///
+  /// \param taint: The new taint label that replaces the old taint label.
+  /// \return Void.
+  void SetTaint(const std::string &taint);
+
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
@@ -292,6 +303,8 @@ class SchedulingResources {
   ResourceSet resources_load_;
   /// Resources used by normal tasks.
   ResourceSet resources_normal_tasks_;
+  /// Taint label.
+  std::string taint_;
 };
 
 std::string format_resource(std::string resource_name, double quantity);

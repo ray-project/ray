@@ -68,6 +68,8 @@ class ResourceRequest {
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory = false;
+  /// Set of taints that this task tolerates.
+  absl::flat_hash_set<std::string> tolerations;
   /// Check whether the request contains no resources.
   bool IsEmpty() const;
   /// Returns human-readable string for this task request.
@@ -148,13 +150,16 @@ class NodeResources {
   NodeResources(const NodeResources &other)
       : predefined_resources(other.predefined_resources),
         custom_resources(other.custom_resources),
-        object_pulls_queued(other.object_pulls_queued) {}
+        object_pulls_queued(other.object_pulls_queued),
+        taint(other.taint) {}
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   bool object_pulls_queued = false;
+  /// The taint label for this node.
+  std::string taint;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
   /// of each resource and return the highest.
@@ -220,12 +225,14 @@ struct Node {
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
-    const absl::flat_hash_map<std::string, double> &resource_map_available);
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const std::string &taint);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
-    bool requires_object_store_memory);
+    bool requires_object_store_memory,
+    const absl::flat_hash_set<std::string> &tolerations);
 
 }  // namespace ray

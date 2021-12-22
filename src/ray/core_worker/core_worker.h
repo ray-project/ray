@@ -420,6 +420,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
+      const std::vector<std::string> &tolerations,
       const std::string &debugger_breakpoint);
 
   /// Create an actor.
@@ -791,6 +792,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
+      const absl::flat_hash_set<std::string> &tolerations,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
       const std::string &concurrency_group_name = "");

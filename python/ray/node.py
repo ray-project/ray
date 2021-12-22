@@ -378,6 +378,13 @@ class Node:
         return self._ray_params.redis_password
 
     @property
+    def taint(self):
+        """
+        Get the taint for this node, if set. If not set, this will be an empty
+        string."""
+        return self._ray_params.taint
+
+    @property
     def object_ref_seed(self):
         """Get the seed for deterministic generation of object refs"""
         return self._ray_params.object_ref_seed
@@ -821,6 +828,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            taint=self._ray_params.taint,
             min_worker_port=self._ray_params.min_worker_port,
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,

@@ -303,11 +303,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
-  cluster_resource_scheduler_ =
-      std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-          self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          *gcs_client_, [this]() { return object_manager_.GetUsedMemory(); },
-          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
+      config.taint, *gcs_client_, [this]() { return object_manager_.GetUsedMemory(); },
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -587,6 +586,8 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
+
+  resources_data.set_taint(initial_config_.taint);
 
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -2059,7 +2060,9 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
-  result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
+  result << "\nInitial resources: ";
+  result << "\n\tInitialResourceConfig: " << initial_config_.resource_config.ToString();
+  result << "\n\tTaint: " << initial_config_.taint;
   if (cluster_task_manager_ != nullptr) {
     result << "\nClusterTaskManager:\n";
     result << cluster_task_manager_->DebugStr();

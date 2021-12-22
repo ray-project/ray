@@ -267,6 +267,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
             const CSchedulingStrategy &scheduling_strategy,
+            const c_vector[c_string] &tolerations,
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,

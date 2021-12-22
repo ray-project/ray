@@ -256,6 +256,8 @@ message TaskSpec {
   int64 depth = 26;
   // Strategy about how to schedule this task.
   SchedulingStrategy scheduling_strategy = 27;
+  // Taints that this task tolerates.
+  repeated string tolerations = 28;
 }
 
 message Bundle {

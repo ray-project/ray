@@ -48,13 +48,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
+  /// \param local_taint: The taint label for the local node.
   ClusterResourceScheduler(int64_t local_node_id,
                            const NodeResources &local_node_resources,
                            gcs::GcsClient &gcs_client);
   ClusterResourceScheduler(
       const std::string &local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
-      gcs::GcsClient &gcs_client,
+      const std::string &local_taint, gcs::GcsClient &gcs_client,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
@@ -65,11 +66,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
+  /// \param taint: The taint label for the node.
   void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
   void AddOrUpdateNode(
       const std::string &node_id,
       const absl::flat_hash_map<std::string, double> &resource_map_total,
-      const absl::flat_hash_map<std::string, double> &resource_map_available);
+      const absl::flat_hash_map<std::string, double> &resource_map_available,
+      const std::string &taint);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -130,8 +133,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool requires_object_store_memory,
+      const absl::flat_hash_set<std::string> &tolerations, bool actor_creation,
+      bool force_spillback, int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -333,11 +337,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param node_id Remote node whose resources we allocate.
   /// \param resource_request Task for which we allocate resources.
+  /// \param tolerations: The taints that this task tolerates.
   /// \return True if remote node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateRemoteTaskResources(
       const std::string &node_id,
-      const absl::flat_hash_map<std::string, double> &task_resources);
+      const absl::flat_hash_map<std::string, double> &task_resources,
+      const absl::flat_hash_set<std::string> &tolerations);
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
@@ -393,10 +399,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   uint64_t GetNumCpus() const;
 
   /// Check whether a task request is schedulable on a the local node. A node is
-  /// schedulable if it has the available resources needed to execute the task.
+  /// schedulable if it has the available resources needed to execute the task and if
+  /// the task tolerates the node's taints, if it has any.
   ///
-  /// \param shape The resource demand's shape.
-  bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
+  /// \param shape: The resource demand's shape.
+  /// \param tolerations: The tains that this task tolerates.
+  bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape,
+                            const absl::flat_hash_set<std::string> &tolerations);
 
  private:
   bool NodeAlive(int64_t node_id) const;

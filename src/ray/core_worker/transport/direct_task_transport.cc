@@ -514,11 +514,19 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   }
 
   num_leases_requested_++;
-  // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
-  // same TaskID to request a worker
-  auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const TaskSpecification resource_spec = ([this, &scheduling_key_entry]() {
+    if (max_tasks_in_flight_per_worker_ == 1 &&
+        max_pending_lease_requests_per_scheduling_category_ == 1) {
+      // Work stealing and lease parallelism disabled, use task ID as lease request ID.
+      return scheduling_key_entry.task_queue.front();
+    } else {
+      // Create a TaskSpecification with an overwritten TaskID to make sure we don't
+      // reuse the same TaskID to request a worker.
+      auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
+      resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
+      return TaskSpecification(resource_spec_msg);
+    }
+  })();
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   if (raylet_address == nullptr) {

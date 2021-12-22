@@ -53,7 +53,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                             local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
-                            required_resources, required_placement_resources, "",
+                            required_resources, required_placement_resources, {}, "",
                             /*depth=*/0);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {

@@ -211,6 +211,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  /// Return the set of taints that this task tolerates.
+  ///
+  /// \return The set of taints that this task tolerates.
+  const absl::flat_hash_set<std::string> GetTolerations() const;
+
   /// Return the ObjectIDs of any dependencies passed by reference to this
   /// task. This is recomputed each time, so it can be used if the task spec is
   /// mutated.

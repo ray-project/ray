@@ -291,6 +291,7 @@ class ActorClassMetadata:
             node on which this actor runs.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
+        tolerations: The taints that this actor tolerates.
         last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -304,7 +305,8 @@ class ActorClassMetadata:
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
                  object_store_memory, resources, accelerator_type, runtime_env,
-                 concurrency_groups, scheduling_strategy: SchedulingStrategyT):
+                 concurrency_groups, scheduling_strategy: SchedulingStrategyT,
+                 tolerations):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -323,6 +325,7 @@ class ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
+        self.tolerations = tolerations
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -382,7 +385,7 @@ class ActorClass:
             cls, modified_class, class_id, max_restarts, max_task_retries,
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type, runtime_env, concurrency_groups,
-            scheduling_strategy: SchedulingStrategyT):
+            scheduling_strategy: SchedulingStrategyT, tolerations):
         for attribute in [
                 "remote",
                 "_remote",
@@ -426,7 +429,7 @@ class ActorClass:
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
             resources, accelerator_type, new_runtime_env, concurrency_groups,
-            scheduling_strategy)
+            scheduling_strategy, tolerations)
 
         return self
 
@@ -452,7 +455,7 @@ class ActorClass:
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type, new_runtime_env,
-            [], None)
+            [], None, [])
 
         return self
 
@@ -490,7 +493,8 @@ class ActorClass:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 max_pending_calls=-1,
-                scheduling_strategy: SchedulingStrategyT = None):
+                scheduling_strategy: SchedulingStrategyT = None,
+                tolerations=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -549,7 +553,8 @@ class ActorClass:
                         placement_group_capture_child_tasks),
                     runtime_env=new_runtime_env,
                     max_pending_calls=max_pending_calls,
-                    scheduling_strategy=scheduling_strategy)
+                    scheduling_strategy=scheduling_strategy,
+                    tolerations=tolerations)
 
         return ActorOptionWrapper()
 
@@ -574,7 +579,8 @@ class ActorClass:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 max_pending_calls=-1,
-                scheduling_strategy: SchedulingStrategyT = None):
+                scheduling_strategy: SchedulingStrategyT = None,
+                tolerations=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -633,6 +639,7 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
+            tolerations (List[str]): The taints that this actor tolerates.
 
         Returns:
             A handle to the newly created actor.
@@ -680,7 +687,8 @@ class ActorClass:
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
                 max_pending_calls=max_pending_calls,
-                scheduling_strategy=scheduling_strategy)
+                scheduling_strategy=scheduling_strategy,
+                tolerations=tolerations)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -849,6 +857,9 @@ class ActorClass:
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name))
 
+        if tolerations is None:
+            tolerations = []
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -867,7 +878,8 @@ class ActorClass:
             serialized_runtime_env=new_runtime_env or "{}",
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
-            scheduling_strategy=scheduling_strategy)
+            scheduling_strategy=scheduling_strategy,
+            tolerations=tolerations)
 
         actor_handle = ActorHandle(
             meta.language,
@@ -1169,7 +1181,8 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries, runtime_env,
-               concurrency_groups, scheduling_strategy: SchedulingStrategyT):
+               concurrency_groups, scheduling_strategy: SchedulingStrategyT,
+               tolerations):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 
@@ -1197,7 +1210,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type, runtime_env, concurrency_groups, scheduling_strategy)
+        accelerator_type, runtime_env, concurrency_groups, scheduling_strategy,
+        tolerations)
 
 
 def exit_actor():

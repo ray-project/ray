@@ -1486,6 +1486,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
+    const absl::flat_hash_set<std::string> &tolerations,
     const std::string &debugger_breakpoint, int64_t depth,
     const std::string &serialized_runtime_env,
     const std::string &concurrency_group_name) {
@@ -1496,8 +1497,8 @@ void CoreWorker::BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources, debugger_breakpoint, depth, override_runtime_env,
-      runtime_env_uris, concurrency_group_name);
+      required_placement_resources, tolerations, debugger_breakpoint, depth,
+      override_runtime_env, runtime_env_uris, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1508,7 +1509,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint) {
+    const std::vector<std::string> &tolerations, const std::string &debugger_breakpoint) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1525,12 +1526,14 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
+  absl::flat_hash_set<std::string> tolerations_set(tolerations.begin(),
+                                                   tolerations.end());
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, debugger_breakpoint,
-                      depth, task_options.serialized_runtime_env);
+                      constrained_resources, required_resources, tolerations_set,
+                      debugger_breakpoint, depth, task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
@@ -1581,12 +1584,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  absl::flat_hash_set<std::string> tolerations_set(
+      actor_creation_options.tolerations.begin(),
+      actor_creation_options.tolerations.end());
   int64_t depth = worker_context_.GetTaskDepth() + 1;
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, "" /* debugger_breakpoint */, depth,
-                      actor_creation_options.serialized_runtime_env);
+  BuildCommonTaskSpec(
+      builder, job_id, actor_creation_task_id, task_name,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, args, 1, new_resource, new_placement_resources, tolerations_set,
+      "" /* debugger_breakpoint */, depth, actor_creation_options.serialized_runtime_env);
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1792,7 +1798,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, "", /* debugger_breakpoint */
+                      required_resources, {}, /* tolerations */
+                      "",                     /* debugger_breakpoint */
                       depth,                  /*depth*/
                       "{}",                   /* serialized_runtime_env */
                       task_options.concurrency_group_name);

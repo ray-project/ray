@@ -67,7 +67,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
       placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
     }
     return_refs = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
-                                         options, 1, false, scheduling_strategy, "");
+                                         options, 1, false, scheduling_strategy, {}, "");
   }
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs.value()) {
@@ -108,7 +108,8 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                                 name,
                                                 ray_namespace,
                                                 /*is_asyncio=*/false,
-                                                scheduling_strategy};
+                                                scheduling_strategy,
+                                                /*tolerations=*/{}};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);

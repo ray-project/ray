@@ -2041,7 +2041,8 @@ def make_decorator(num_returns=None,
                    worker=None,
                    retry_exceptions=None,
                    concurrency_groups=None,
-                   scheduling_strategy: SchedulingStrategyT = None):
+                   scheduling_strategy: SchedulingStrategyT = None,
+                   tolerations=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2071,7 +2072,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group, scheduling_strategy)
+                runtime_env, placement_group, scheduling_strategy, tolerations)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2100,7 +2101,7 @@ def make_decorator(num_returns=None,
                 function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, accelerator_type, max_restarts,
                 max_task_retries, runtime_env, concurrency_groups,
-                scheduling_strategy)
+                scheduling_strategy, tolerations)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2221,6 +2222,7 @@ def remote(*args, **kwargs):
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
+        tolerations (List[str]): The set of taints that this task tolerates.
     """
     worker = global_worker
 
@@ -2246,6 +2248,7 @@ def remote(*args, **kwargs):
         "placement_group",
         "concurrency_groups",
         "scheduling_strategy",
+        "tolerations",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2282,6 +2285,7 @@ def remote(*args, **kwargs):
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
     scheduling_strategy = kwargs.get("scheduling_strategy")
+    tolerations = kwargs.get("tolerations")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2300,4 +2304,5 @@ def remote(*args, **kwargs):
         worker=worker,
         retry_exceptions=retry_exceptions,
         concurrency_groups=concurrency_groups or [],
-        scheduling_strategy=scheduling_strategy)
+        scheduling_strategy=scheduling_strategy,
+        tolerations=tolerations)
