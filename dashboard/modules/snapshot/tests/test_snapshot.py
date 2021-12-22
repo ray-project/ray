@@ -32,19 +32,13 @@ class Pinger:
 a = Pinger.options(lifetime={lifetime}, name={name}).remote()
 ray.get(a.ping.remote())
     """
-
+    address = ray_start_with_dashboard["redis_address"]
     detached_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="'detached'",
-        name="'abc'")
+        address=address, lifetime="'detached'", name="'abc'")
     named_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="'xyz'")
+        address=address, lifetime="None", name="'xyz'")
     unnamed_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="None")
+        address=address, lifetime="None", name="None")
 
     run_string_as_driver(detached_driver)
     run_string_as_driver(named_driver)

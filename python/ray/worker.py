@@ -1373,9 +1373,13 @@ def connect(node,
     worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address, redis_password=node.redis_password))
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1450,15 +1454,19 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    # As the synchronous and the asynchronous context of redis client is not
-    # used in this gcs client. We would not open connection for it by setting
-    # `enable_sync_conn` and `enable_async_conn` as false.
-    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        node.redis_address,
-        node.redis_password,
-        enable_sync_conn=False,
-        enable_async_conn=False,
-        enable_subscribe_conn=True)
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
+        # As the synchronous and the asynchronous context of redis client is
+        # not used in this gcs client. We would not open connection for it
+        # by setting `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 

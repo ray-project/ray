@@ -21,6 +21,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
@@ -170,6 +171,7 @@ class Node:
                 node_info = (
                     ray._private.services.get_node_to_connect_for_driver(
                         self.redis_address,
+                        self.gcs_address,
                         self._raylet_ip_address,
                         redis_password=self.redis_password))
                 self._plasma_store_socket_name = (
@@ -236,8 +238,8 @@ class Node:
             # we should update the address info after the node has been started
             try:
                 ray._private.services.wait_for_node(
-                    self.redis_address, self._plasma_store_socket_name,
-                    self.redis_password)
+                    self.redis_address, self.gcs_address,
+                    self._plasma_store_socket_name, self.redis_password)
             except TimeoutError:
                 raise Exception(
                     "The current node has not been updated within 30 "
@@ -245,6 +247,7 @@ class Node:
                     "the Ray processes failed to startup.")
             node_info = (ray._private.services.get_node_to_connect_for_driver(
                 self.redis_address,
+                self.gcs_address,
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
@@ -447,6 +450,8 @@ class Node:
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
+            "address": (self.gcs_address
+                        if use_gcs_for_bootstrap() else self._redis_address)
         }
 
     def is_head(self):
@@ -462,9 +467,8 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = \
-                        ray._private.gcs_utils.GcsClient.create_from_redis(
-                            self.create_redis_client())
+                    self._gcs_client = GcsClient.create_from_redis(
+                        self.create_redis_client())
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -732,6 +736,7 @@ class Node:
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
+            self.gcs_address,
             self._logs_dir,
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
@@ -756,6 +761,7 @@ class Node:
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
+            self.gcs_address,
             self._temp_dir,
             self._logs_dir,
             stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
@@ -871,6 +877,7 @@ class Node:
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
+            self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
@@ -931,8 +938,12 @@ class Node:
         # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-                self.redis_address, self.redis_password)
+            if not use_gcs_for_bootstrap():
+                gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+                    self.redis_address, self.redis_password)
+            else:
+                gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+                    self.gcs_address)
             global_state = ray.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
             new_config = global_state.get_system_config()

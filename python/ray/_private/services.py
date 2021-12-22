@@ -22,6 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -84,6 +85,16 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "use_perftools_profiler",
     "use_tmux",
 ])
+
+
+def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
+    if not use_gcs_for_bootstrap():
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        return GcsClientOptions.from_redis_address(redis_address,
+                                                   redis_password)
+    else:
+        return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
 def serialize_config(config):
@@ -292,6 +303,7 @@ def find_redis_address_or_die():
 
 
 def wait_for_node(redis_address,
+                  gcs_address,
                   node_plasma_store_socket_name,
                   redis_password=None,
                   timeout=30):
@@ -299,6 +311,7 @@ def wait_for_node(redis_address,
 
     Args:
         redis_address (str): The redis address.
+        gcs_address (str): The gcs address
         node_plasma_store_socket_name (str): The
             plasma_store_socket_name for the given node which we wait for.
         redis_password (str): the redis password.
@@ -309,11 +322,14 @@ def wait_for_node(redis_address,
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
-    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    if use_gcs_for_bootstrap():
+        gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+    else:
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(
+            redis_address, redis_password)
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -329,12 +345,13 @@ def wait_for_node(redis_address,
 
 
 def get_node_to_connect_for_driver(redis_address,
+                                   gcs_address,
                                    node_ip_address,
                                    redis_password=None):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
+    gcs_options = _get_gcs_client_options(redis_address, redis_password,
+                                          gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
@@ -1183,6 +1200,7 @@ def _start_redis_instance(executable,
 
 
 def start_log_monitor(redis_address,
+                      gcs_address,
                       logs_dir,
                       stdout_file=None,
                       stderr_file=None,
@@ -1214,7 +1232,8 @@ def start_log_monitor(redis_address,
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1230,6 +1249,7 @@ def start_log_monitor(redis_address,
 def start_dashboard(require_dashboard,
                     host,
                     redis_address,
+                    gcs_address,
                     temp_dir,
                     logdir,
                     port=None,
@@ -1246,12 +1266,13 @@ def start_dashboard(require_dashboard,
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
-        port (str): The port to bind the dashboard web server to.
-            Defaults to 8265.
         redis_address (str): The address of the Redis instance.
+        gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         logdir (str): The log directory used to generate dashboard log.
+        port (str): The port to bind the dashboard web server to.
+            Defaults to 8265.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1313,7 +1334,8 @@ def start_dashboard(require_dashboard,
             f"--port={port}", f"--port-retries={port_retries}",
             f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}"
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}"
         ]
         if redis_password is not None:
             command += ["--redis-password", redis_password]
@@ -1325,16 +1347,18 @@ def start_dashboard(require_dashboard,
             fate_share=fate_share)
 
         # Retrieve the dashboard url
-        redis_client = ray._private.services.create_redis_client(
-            redis_address, redis_password)
-        from ray._private.gcs_utils import GcsClient
-        gcs_client = GcsClient.create_from_redis(redis_client)
+        if not use_gcs_for_bootstrap():
+            redis_client = ray._private.services.create_redis_client(
+                redis_address, redis_password)
+            gcs_client = GcsClient.create_from_redis(redis_client)
+        else:
+            gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
@@ -1598,6 +1622,7 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1634,6 +1659,7 @@ def start_raylet(redis_address,
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
         ]
 
         if redis_password is not None and len(redis_password) != 0:
@@ -1953,6 +1979,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  gcs_address,
                   logs_dir,
                   stdout_file=None,
                   stderr_file=None,
@@ -1985,10 +2012,14 @@ def start_monitor(redis_address,
     """
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
-        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
+        sys.executable,
+        "-u",
+        monitor_path,
+        f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
