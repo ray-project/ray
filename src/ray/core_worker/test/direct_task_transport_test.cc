@@ -688,15 +688,19 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Fail task1 which will fail all the tasks
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), true, "", false,
-                                              /*failure_type=*/rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, NodeID::Nil(), true, "", false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Fail task2
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), true, "", false,
-                                              /*failure_type=*/rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, NodeID::Nil(), true, "", false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
