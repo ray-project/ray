@@ -141,13 +141,15 @@ class Monitor:
                  stop_event: Optional[Event] = None):
         if not use_gcs_for_bootstrap():
             # Initialize the Redis clients.
+            redis_address = address
             self.redis = ray._private.services.create_redis_client(
-                address, password=redis_password)
+                redis_address, password=redis_password)
             (ip, port) = address.split(":")
             # Initialize the gcs stub for getting all node resource usage.
             gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
         else:
             gcs_address = address
+            redis_address = None
 
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = ray._private.utils.init_grpc_channel(
