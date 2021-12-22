@@ -121,7 +121,7 @@ inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
       death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
     return nullptr;
   }
-  return &(death_cause->creation_task_failure_context().creation_task_exception());
+  return &(death_cause->creation_task_failure_context());
 }
 
 /// Generate object error type from ActorDeathCause.

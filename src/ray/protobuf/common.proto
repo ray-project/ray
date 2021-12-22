@@ -198,20 +198,13 @@ message RayException {
 
 message ActorDeathCause {
   oneof context {
-    CreationTaskFailureContext creation_task_failure_context = 1;
+    // Indicates that this actor is marked as DEAD due to actor creation task failure.
+    RayException creation_task_failure_context = 1;
     ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
-    ActorDiedErrorContext actor_died_error_context= 3;
+    ActorDiedErrorContext actor_died_error_context = 3;
   }
 }
 // ---Actor death contexts start----
-
-// Indicates that this actor is marked as DEAD due to actor creation task failure.
-// TODO(sang): Refactor it to ActorInitError
-message CreationTaskFailureContext {
-  // The exception thrown in creation task.
-  RayException creation_task_exception = 1;
-}
-
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message ActorDeathRuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
@@ -236,30 +229,6 @@ message ActorDiedErrorContext {
   string class_name = 8;
   // The id of the actor
   bytes actor_id = 9;
-}
-
-message ActorDeathWorkerDiedContext {
-  string error_message = 1;
-}
-
-message ActorDeathNodeDiedContext {
-  string error_message = 1;
-}
-
-message ActorDeathOwnerDiedContext {
-  // The id of the dead owner.
-  bytes owner_id = 1;
-  string error_message = 2;
-  // The exit type of dead owner.
-  WorkerExitType owner_worker_exit_type = 3;
-}
-
-message ActorDeathKilledByApplicationContext {
-  string error_message = 1;
-}
-
-message ActorDeathOutOfScopeContext {
-  string error_message = 1;
 }
 // ---Actor death contexts end----
 

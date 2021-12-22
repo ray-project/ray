@@ -867,9 +867,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     absl::StrAppend(&message, ": ",
                     creation_task_exception->formatted_exception_string());
 
-    death_cause.mutable_creation_task_failure_context()
-        ->mutable_creation_task_exception()
-        ->CopyFrom(*creation_task_exception);
+    death_cause.mutable_creation_task_failure_context()->CopyFrom(
+        *creation_task_exception);
   } else {
     death_cause = GenWorkerDiedCause(GetActor(actor_id), worker_ip, disconnect_type);
   }
