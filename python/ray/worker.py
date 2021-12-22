@@ -951,6 +951,14 @@ def init(
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
+        # TODO: (iycheng) Use  gcs_address from param directly
+        if gcs_utils.use_gcs_for_bootstrap():
+            # Before we allow ray.init to accept gcs address, we need to
+            # set the field from redis
+            redis_cli = services.create_redis_client(
+                redis_address, _redis_password)
+            ray_params.gcs_address = gcs_utils.get_gcs_address_from_redis(
+                redis_cli)
         _global_node = ray.node.Node(
             ray_params,
             head=False,

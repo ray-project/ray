@@ -97,7 +97,6 @@ class Node:
         else:
             raylet_ip_address = node_ip_address
         self._gcs_client = None
-
         if raylet_ip_address != node_ip_address and (not connect_only or head):
             raise ValueError(
                 "The raylet IP address should only be different than the node "
