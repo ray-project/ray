@@ -683,7 +683,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     print("Redeployed A with min_replicas set to 2.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
-    time.sleep(2)
+    time.sleep(5)
 
     # Confirm that autoscaler doesn't scale above 2 even after waiting
     assert get_num_running_replicas(controller, A) == 2
