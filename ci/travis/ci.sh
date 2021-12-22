@@ -398,6 +398,7 @@ build_wheels() {
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
