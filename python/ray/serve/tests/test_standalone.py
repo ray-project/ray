@@ -145,7 +145,6 @@ def test_connect(detached, ray_shutdown):
     assert "deployment-ception" in serve.list_deployments()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("controller_cpu", [True, False])
 @pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
 def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
