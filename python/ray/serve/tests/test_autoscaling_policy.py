@@ -532,7 +532,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
 
     import time
     start_time = time.time()
-    while time.time < start_time + 10:
+    while time.time() < start_time + 10:
         print(f"Num running replicas: "
               f"{get_num_running_replicas(controller, A)}\n")
         time.sleep(1)
