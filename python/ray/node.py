@@ -294,8 +294,6 @@ class Node:
         assert error is not None
         logger.error("Fetch gcs address from redis failed {error}")
 
-
-
     def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
