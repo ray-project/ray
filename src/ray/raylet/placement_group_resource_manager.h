@@ -108,7 +108,7 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   void CommitBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
                          &bundle_specs) override;
 
-  void ReturnBundle(const BundleSpecification &bundle_spec);
+  void ReturnBundle(const BundleSpecification &bundle_spec) override;
 
   const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;
