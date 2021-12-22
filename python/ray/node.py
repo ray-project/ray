@@ -97,6 +97,7 @@ class Node:
         else:
             raylet_ip_address = node_ip_address
         self._gcs_client = None
+
         if raylet_ip_address != node_ip_address and (not connect_only or head):
             raise ValueError(
                 "The raylet IP address should only be different than the node "
@@ -154,8 +155,13 @@ class Node:
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             if use_gcs_for_bootstrap():
+                if ray_params.gcs_address is None:
+                    # Before we allow ray.init to accept gcs address, we need
+                    # to set the field from redis
+                    ray_params.gcs_address = self._get_gcs_address_from_redis()
+
                 self._gcs_address = self._ray_params.gcs_address
-                assert self._gcs_address is not None
+
             session_name = self._internal_kv_get_with_retry(
                 "session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
@@ -278,14 +284,12 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_gcs_address_from_redis(self):
-        assert self.head
+    def _get_gcs_address_from_redis(self):
         redis_cli = self.create_redis_client()
         error = None
         for _ in range(NUM_REDIS_GET_RETRIES):
             try:
-                self._gcs_address = get_gcs_address_from_redis(redis_cli)
-                return
+                return get_gcs_address_from_redis(redis_cli)
             except Exception as e:
                 logger.debug("Fetch gcs address from redis failed {e}")
                 error = e
@@ -831,7 +835,7 @@ class Node:
         ]
         # TODO (iycheng) Remove this once we pass gcs address into init
         if use_gcs_for_bootstrap():
-            self._init_gcs_address_from_redis()
+            self._gcs_address = self._get_gcs_address_from_redis()
         # Init gcs client
         self.get_gcs_client()
 
