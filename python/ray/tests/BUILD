@@ -341,12 +341,13 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_object_spilling.py",
-    "test_object_spilling_2.py",
-    "test_object_spilling_3.py",
-    "test_scheduling.py",
-    "test_scheduling_2.py",
-    "test_array.py"
+    # "test_object_spilling.py",
+    # "test_object_spilling_2.py",
+    # "test_object_spilling_3.py",
+    # "test_scheduling.py",
+    # "test_scheduling_2.py",
+    # "test_array.py",
+    "test_placement_group_mini_integration.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -357,12 +358,13 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_object_spilling.py",
-    "test_object_spilling_2.py",
-    "test_object_spilling_3.py",
-    "test_scheduling.py",
-    "test_scheduling_2.py",
-    "test_array.py",
+    # "test_object_spilling.py",
+    # "test_object_spilling_2.py",
+    # "test_object_spilling_3.py",
+    # "test_scheduling.py",
+    # "test_scheduling_2.py",
+    # "test_array.py",
+    "test_placement_group_mini_integration.py",
   ],
   size = "large",
   extra_srcs = SRCS,
