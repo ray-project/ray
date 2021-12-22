@@ -14,7 +14,6 @@ import yaml
 
 import ray.autoscaler._private.monitor as monitor
 from ray._private import services
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
