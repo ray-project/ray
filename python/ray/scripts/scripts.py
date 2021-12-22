@@ -555,10 +555,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             address_env if address_env is not None else address
         if underlying_address is not None:
             cli_logger.print(
-                "Will use value of environment variable `{}`"
-                "as remote Redis server address(es). "
+                "Will use `{}` as external Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.", cf.bold("RAY_REDIS_ADDRESS"),
+                "with `{}` in local.", cf.bold(underlying_address),
                 cf.bold("--port"))
             external_addresses = underlying_address.split(",")
 
