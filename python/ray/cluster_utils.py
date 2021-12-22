@@ -135,6 +135,10 @@ class Cluster:
                 self.connect()
 
     @property
+    def gcs_address(self):
+        return self.head_node.gcs_address
+
+    @property
     def address(self):
         return self.redis_address
 
