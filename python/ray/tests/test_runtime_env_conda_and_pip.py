@@ -31,6 +31,7 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
                         "92599d9127e228fe8d0a2d94ca75754ec21c4ae4")
     monkeypatch.setattr(sys, "version_info", (3, 9, 7, "final", 0))
     # Simulate running on an M1 Mac.
+    monkeypatch.setattr(sys, "platform", "darwin")
     monkeypatch.setattr(platform, "machine", lambda: "arm64")
 
     input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
