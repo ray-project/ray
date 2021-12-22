@@ -72,15 +72,8 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    if use_gcs_for_bootstrap():
-        monitor = Monitor(
-            redis_address=None, gcs_address=address, autoscaling_config=None)
-    else:
-        monitor = Monitor(
-            redis_address=address,
-            gcs_address=None,
-            autoscaling_config=None,
-            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    monitor = Monitor(
+        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     return monitor
 
 
