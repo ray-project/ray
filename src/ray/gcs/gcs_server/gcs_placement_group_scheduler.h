@@ -269,7 +269,9 @@ class LeaseStatusTracker {
   /// This method returns bundle locations that grouped by node id.
   ///
   /// \return Location of bundles that succeed to prepare resources on a node.
-  const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &GetGroupedPreparedBundleLocations() const;
+  const std::unordered_map<NodeID,
+                           std::vector<std::shared_ptr<const BundleSpecification>>>
+      &GetGroupedPreparedBundleLocations() const;
 
   /// This method returns bundle locations that failed to commit resources.
   ///
@@ -315,7 +317,8 @@ class LeaseStatusTracker {
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
   /// Location of bundles grouped by node.
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> grouped_preparing_bundle_locations_;
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      grouped_preparing_bundle_locations_;
 
   /// Number of prepare requests that are returned.
   size_t prepare_request_returned_count_ = 0;
@@ -496,9 +499,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to commit resources for given bundles.
   /// \param callback
-  void CommitResources(const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-                       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
-                       const StatusCallback callback);
+  void CommitResources(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
+      const StatusCallback callback);
 
   /// Cacnel prepared or committed resources from a node.
   /// Nodes will be in charge of tracking state of a bundle.

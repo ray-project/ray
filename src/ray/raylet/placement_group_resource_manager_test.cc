@@ -148,7 +148,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
   ASSERT_FALSE(update_called_);
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec));
   ASSERT_TRUE(update_called_);
   /// 4. return bundle resource.
   ASSERT_FALSE(delete_called_);
@@ -180,8 +181,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       ConvertSingleSpecToVectorPtrs(second_bundle_spec)));
   ASSERT_FALSE(update_called_);
   ASSERT_FALSE(delete_called_);
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(first_bundle_spec));
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(second_bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(first_bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(second_bundle_spec));
   ASSERT_TRUE(update_called_);
   ASSERT_FALSE(delete_called_);
   /// 4. check remaining resources is correct after commit phase.
@@ -276,7 +279,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   /// 3. prepare bundle -> commit bundle -> prepare bundle.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec));
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
   /// 4. check remaining resources is correct.
@@ -299,8 +303,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   // 5. prepare bundle -> commit bundle -> commit bundle.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(bundle_spec));
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec));
   // 6. check remaining resources is correct.
   CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
@@ -308,7 +314,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  new_placement_group_resource_manager_->CommitBundles(ConvertSingleSpecToVectorPtrs(bundle_spec));
+  new_placement_group_resource_manager_->CommitBundles(
+      ConvertSingleSpecToVectorPtrs(bundle_spec));
   // 8. check remaining resources is correct.
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", available_resource, *gcs_client_);
@@ -388,17 +395,18 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
   // make sure it keeps Idempotency.
   new_placement_group_resource_manager_->CommitBundles(bundle_specs);
   // 5. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double>  remaining_resources = {{"CPU_group_" + group_id.Hex(), 4.0},
-                         {"CPU_group_1_" + group_id.Hex(), 1.0},
-                         {"CPU_group_2_" + group_id.Hex(), 1.0},
-                         {"CPU_group_3_" + group_id.Hex(), 1.0},
-                         {"CPU_group_4_" + group_id.Hex(), 1.0},
-                         {"CPU", 4.0},
-                         {"bundle_group_1_" + group_id.Hex(), 1000},
-                         {"bundle_group_2_" + group_id.Hex(), 1000},
-                         {"bundle_group_3_" + group_id.Hex(), 1000},
-                         {"bundle_group_4_" + group_id.Hex(), 1000},
-                         {"bundle_group_" + group_id.Hex(), 4000}};
+  absl::flat_hash_map<std::string, double> remaining_resources = {
+      {"CPU_group_" + group_id.Hex(), 4.0},
+      {"CPU_group_1_" + group_id.Hex(), 1.0},
+      {"CPU_group_2_" + group_id.Hex(), 1.0},
+      {"CPU_group_3_" + group_id.Hex(), 1.0},
+      {"CPU_group_4_" + group_id.Hex(), 1.0},
+      {"CPU", 4.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_3_" + group_id.Hex(), 1000},
+      {"bundle_group_4_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 4000}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
       "remaining", remaining_resources, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
@@ -407,7 +415,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
   allocating_resource.insert({"CPU", 4.0});
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       allocating_resource, resource_instances));
-  auto remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
   RAY_LOG(INFO) << "The current local resource view: "
                 << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);

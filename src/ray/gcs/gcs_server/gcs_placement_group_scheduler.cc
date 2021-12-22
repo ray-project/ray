@@ -284,8 +284,8 @@ void GcsPlacementGroupScheduler::CommitResources(
   RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
                  << " for bundles: " << GetDebugStringForBundles(bundles);
   lease_client->CommitBundleResources(
-      bundles, [bundles, node_id, callback](const Status &status,
-                                           const rpc::CommitBundleResourcesReply &reply) {
+      bundles, [bundles, node_id, callback](
+                   const Status &status, const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
                          << " for bundles: " << GetDebugStringForBundles(bundles);
@@ -339,8 +339,10 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const PGSchedulingFailureCallback &schedule_failure_handler,
     const PGSchedulingSuccessfulCallback &schedule_success_handler) {
-  const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &prepared_bundle_locations = 
-      lease_status_tracker->GetGroupedPreparedBundleLocations();
+  const std::unordered_map<NodeID,
+                           std::vector<std::shared_ptr<const BundleSpecification>>>
+      &prepared_bundle_locations =
+          lease_status_tracker->GetGroupedPreparedBundleLocations();
   lease_status_tracker->MarkCommitPhaseStarted();
 
   for (const auto &node_to_bundles : prepared_bundle_locations) {
@@ -348,10 +350,10 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const auto &node = gcs_node_manager_.GetAliveNode(node_id);
     const auto &bundles_per_node = node_to_bundles.second;
 
-    auto commit_resources_callback = [this, lease_status_tracker, bundles_per_node, node_id,
-                                      schedule_failure_handler,
+    auto commit_resources_callback = [this, lease_status_tracker, bundles_per_node,
+                                      node_id, schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
-      for (const auto &bundle: bundles_per_node) {
+      for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
       }
       if (lease_status_tracker->AllCommitRequestReturned()) {
@@ -763,7 +765,8 @@ void LeaseStatusTracker::MarkPrepareRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (status.ok()) {
     preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-    if (grouped_preparing_bundle_locations_.find(node_id) == grouped_preparing_bundle_locations_.end()) {
+    if (grouped_preparing_bundle_locations_.find(node_id) ==
+        grouped_preparing_bundle_locations_.end()) {
       grouped_preparing_bundle_locations_[node_id] = {};
     }
     grouped_preparing_bundle_locations_[node_id].push_back(bundle);
@@ -815,8 +818,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
   return preparing_bundle_locations_;
 }
 
-const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &LeaseStatusTracker::GetGroupedPreparedBundleLocations()
-    const {
+const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+    &LeaseStatusTracker::GetGroupedPreparedBundleLocations() const {
   return grouped_preparing_bundle_locations_;
 }
 

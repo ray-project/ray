@@ -102,11 +102,11 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
-  bool PrepareBundles(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) override;
+  bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
+                          &bundle_specs) override;
 
-  void CommitBundles(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) override;
+  void CommitBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
+                         &bundle_specs) override;
 
   void ReturnBundle(const BundleSpecification &bundle_spec);
 
@@ -139,7 +139,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Convert the normal original resources that were locked in the preparation phase
   /// to the placement group customer resources.
   ///
-  /// \param bundle_spec Specification of a bundle whose resources have been locked successfully before.
+  /// \param bundle_spec Specification of a bundle whose resources have been locked
+  /// successfully before.
   void CommitBundle(const BundleSpecification &bundle_spec);
 };
 
