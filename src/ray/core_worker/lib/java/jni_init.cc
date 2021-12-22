@@ -236,7 +236,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
   java_abstract_message_lite_class =
-      LoadClass(env, "com/google/protobuf/AbstractMessage");
+      LoadClass(env, "io/ray/shaded/com/google/protobuf/AbstractMessage");
+
   java_abstract_message_lite_to_byte_array =
       env->GetMethodID(java_abstract_message_lite_class, "toByteArray", "()[B");
 

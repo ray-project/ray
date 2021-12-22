@@ -1,0 +1,2 @@
+rule com.google.common.** io.ray.shaded.com.google.common.@1
+rule com.google.protobuf.** io.ray.shaded.com.google.protobuf.@1
