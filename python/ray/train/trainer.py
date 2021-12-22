@@ -628,7 +628,6 @@ class TrainingIterator:
         self._run_with_error_handling(
             lambda: ray.get(self._backend_executor_actor.start_training.remote(
                 train_func=train_func,
-                run_dir=run_dir,
                 dataset=dataset,
                 checkpoint=checkpoint_dict
             ))
