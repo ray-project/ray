@@ -14,6 +14,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-expe
 
 import collections
 import copy
+import platform
 from typing import Tuple
 
 import ray
@@ -32,7 +33,7 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
@@ -59,6 +60,11 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
         "replay_buffer_config": None,
+        # Whether all shards of the replay buffer must be co-located
+        # with the learner process (running the execution plan).
+        # If False, replay shards may be created on different node(s).
+        "replay_buffer_shards_colocated_with_driver": True,
+
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -129,7 +135,8 @@ class ApexTrainer(DQNTrainer):
         # Create a number of replay buffer actors.
         num_replay_buffer_shards = config["optimizer"][
             "num_replay_buffer_shards"]
-        replay_actors = create_colocated(ReplayActor, [
+
+        args = [
             num_replay_buffer_shards,
             config["learning_starts"],
             config["buffer_size"],
@@ -139,7 +146,20 @@ class ApexTrainer(DQNTrainer):
             config["prioritized_replay_eps"],
             config["multiagent"]["replay_mode"],
             config.get("replay_sequence_length", 1),
-        ], num_replay_buffer_shards)
+        ]
+        # Place all replay buffer shards on the same node as the learner
+        # (driver process that runs this execution plan).
+        if config["replay_buffer_shards_colocated_with_driver"]:
+            replay_actors = create_colocated_actors(
+                actor_specs=[
+                    # (class, args, kwargs={}, count)
+                    (ReplayActor, args, {}, num_replay_buffer_shards)  # [0]
+                ], node=platform.node(),  # localhost
+            )[0]
+        # Place replay buffer shards on any node(s).
+        else:
+            replay_actors = [ReplayActor(*args)
+                             for _ in range(num_replay_buffer_shards)]
 
         # Start the learner thread.
         learner_thread = LearnerThread(workers.local_worker())

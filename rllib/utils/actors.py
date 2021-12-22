@@ -1,7 +1,11 @@
+from collections import defaultdict, deque
 import logging
 import platform
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
+
 import ray
-from collections import deque
+from ray.actor import ActorHandle
+from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,63 @@ class TaskPool:
         return len(self._tasks)
 
 
+def create_colocated_actors(
+        actor_specs: Sequence[Tuple[Type, Any, Any, int]],
+        node: Optional[str] = None,
+        max_attempts: int = 10,
+) -> Dict[Type, List[ActorHandle]]:
+    """Create co-located actors of any type(s) on any node.
+
+    Args:
+        actor_specs: Tuple/list with tuples consisting of: 1) The
+            (already @ray.remote) class(es) to construct, 2) c'tor args,
+            3) c'tor kwargs, and 4) the number of actors of that class with
+            given args/kwargs to construct.
+        node: The node to co-locate the actors on. By default (None)
+            any (resource fulfilling) node in the clusted is used.
+        max_attempts: The maximum number of co-location attempts to
+            perform before throwing an error.
+
+    Returns:
+        A dict mapping the created types to the list of n ActorHandles
+        created (and co-located) for that type. 
+    """
+    # Maps types to lists of already co-located actors.
+    ok = defaultdict(list)
+    attempt = 1
+    while attempt < max_attempts:
+        all_good = True
+        for i, (typ, args, kwargs, count) in enumerate(actor_specs):
+            if len(ok[i]) < count:
+                all_good = False
+                co_located = try_create_colocated(
+                    cls=typ, args=args, kwargs=kwargs,
+                    count=count * attempt, node=node)
+                ok[i].extend(co_located)
+            elif len(ok[i]) > count:
+                for a in ok[i][count:]:
+                    a.__ray_terminate__.remote()
+                ok[i] = ok[i][:count]
+        if all_good:
+            break
+        elif attempt == max_attempts - 1:
+            raise Exception(
+                "Unable to create enough colocated actors -> aborting.")
+        attempt += 1
+
+    return ok
+
+
+def try_create_colocated(cls, args, count, kwargs=None, node=None):
+    kwargs = kwargs or {}
+    actors = [cls.remote(*args, **kwargs) for _ in range(count)]
+    co_located, non_co_located = split_colocated(actors, node=node)
+    logger.info("Got {} colocated actors of {}".format(len(co_located), count))
+    for a in non_co_located:
+        a.__ray_terminate__.remote()
+    return co_located
+
+
 def drop_colocated(actors):
     colocated, non_colocated = split_colocated(actors)
     for a in colocated:
@@ -72,38 +133,28 @@ def drop_colocated(actors):
     return non_colocated
 
 
-def split_colocated(actors):
-    localhost = platform.node()
+def split_colocated(actors, node=None):
+    # By default, locate on localhost.
+    node = node or platform.node()
+    # Get nodes of all created actors.
     hosts = ray.get([a.get_host.remote() for a in actors])
-    local = []
-    non_local = []
+    # Split into co-located (on `node) and non-co-located (not on `node`).
+    co_located = []
+    non_co_located = []
     for host, a in zip(hosts, actors):
-        if host == localhost:
-            local.append(a)
+        if host == node:
+            co_located.append(a)
         else:
-            non_local.append(a)
-    return local, non_local
+            non_co_located.append(a)
+    return co_located, non_co_located
 
 
-def try_create_colocated(cls, args, count):
-    actors = [cls.remote(*args) for _ in range(count)]
-    local, rest = split_colocated(actors)
-    logger.info("Got {} colocated actors of {}".format(len(local), count))
-    for a in rest:
-        a.__ray_terminate__.remote()
-    return local
+@Deprecated(new="create_colocated_actors", error=False)
+def create_colocated(cls, arg, count):
+    kwargs = {}
+    args = arg
 
-
-def create_colocated(cls, args, count):
-    logger.info("Trying to create {} colocated actors".format(count))
-    ok = []
-    i = 1
-    while len(ok) < count and i < 10:
-        attempt = try_create_colocated(cls, args, count * i)
-        ok.extend(attempt)
-        i += 1
-    if len(ok) < count:
-        raise Exception("Unable to create enough colocated actors, abort.")
-    for a in ok[count:]:
-        a.__ray_terminate__.remote()
-    return ok[:count]
+    return create_colocated_actors(
+        actor_specs=[(cls, args, kwargs, count)],
+        node=platform.node(),  # force on localhost
+    )[cls]

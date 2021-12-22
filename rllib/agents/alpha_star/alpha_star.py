@@ -2,14 +2,17 @@
 Multi-Agent, League-Based Asynch. PPO (MALB-APPO)
 ================================================
 """
+from collections import defaultdict
+
 import ray
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
-from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
+from ray.rllib.utils.typing import PartialTrainerConfigDict, \
+    TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 # yapf: disable
@@ -21,6 +24,13 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     appo.DEFAULT_CONFIG,  # See keys in appo.py, which are also supported.
     {
         "num_gpus_per_policy_learner": 0.1,
+
+        # TODO: Unify the buffer API, then clean up our existing
+        #  implementations of different buffers.
+        "replay_buffer_num_slots": 10,
+
+        # Use the `training_iteration` method instead of an execution-plan.
+        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
@@ -76,45 +86,81 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        # Map from policy ID to a) policy actor handle and b) replay actor
-        # handle.
-        self._policy_learners = {
-            pid: [None, None]
-            for pid in config["multiagent"]["policies"].keys()
-        }
+        ma_cfg = self.config["multiagent"]
+
+        # TODO: For now, fix the number of policies to those that are already
+        #  defined in the multiagent config dict. However, later, make the pool
+        #  of policy learners dynamically grow with more policies being added
+        #  on-the-fly.
+
+        # Map from policy ID to a) respective policy learner actor handle
+        # and b) the co-located replay actor handle for that policy.
+        # We'll keep this map synched across the algorithm's workers.
+        self._policy_learners = {}
+        for pid, policy_spec in ma_cfg["policies"].items():
+            if pid in self.workers.local_worker().policies_to_train:
+                self._policy_learners[pid] = [None, None]
+
+        # 4 GPUs 2 Policies -> 2 shards.
+        # 2 GPUs 4 Policies -> 2 shards.
+        num_learner_shards = max(self.config["num_gpus"] / len(self._policy_learners), self.config["num_gpus"]) if self.config["num_gpus"] else self.config.get("num_replay_buffer_shards", 1)
+        num_policies_per_shard = len(self._policy_learners) / num_learner_shards
+        num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards if self.config["num_gpus"] else
+        num_gpus_per_policy = num_gpus_per_shard / num_policies_per_shard
 
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
+        ReplayActor = ray.remote(num_cpus=1, num_gpus=0.01)(
+            MultiAgentReplayBuffer)
 
-        ReplayActor = ray.remote(num_cpus=1)(MultiAgentReplayBuffer)
+        # Setup remote replay buffer shards and policy learner actors
+        # (located on any GPU machine in the cluster):
+        replay_actor_args = [
+            num_learner_shards,
+            self.config["train_batch_size"],  # learning starts
+            self.config["replay_buffer_num_slots"],
+            self.config["train_batch_size"],
+            0.0,  # no prioritization
+        ]
+        self._replay_actors = []
+        policy_remote_kwargs = {}
+        if
+            "num_gpus": ,
+            "num_cpus": 1,
+        }
 
-        # Setup remote replay buffer shards (located on any GPU machine
-        # in the cluster, together with a subset of the policy learner
-        # actors).
+        for shard_idx in range(num_learner_shards):
+            policies = list(self._policy_learners.keys())[
+                slice(int(shard_idx * num_policies_per_shard),
+                      int((shard_idx+1) * num_policies_per_shard))
+            ]
+            colocated = create_colocated_actors(actor_specs=[
+                (ReplayActor, replay_actor_args, {}, 1),
+            ] + [(
+                ray.remote()(ma_cfg["policies"][pid].policy_class),
+                # Policy c'tor args.
+                (ma_cfg["policies"][pid].observation_space,
+                 ma_cfg["policies"][pid].action_space,
+                 ma_cfg["policies"][pid].config),
+                # Policy c'tor kwargs={}.
+                {},
+                # Count=1,
+                1
+            ) for pid in policies])
 
-        num_shards: int = 1,
-        learning_starts: int = 1000,
-        capacity: int = 10000,
-        replay_batch_size: int = 1,
-        prioritized_replay_alpha: float = 0.6,
-        prioritized_replay_beta: float = 0.4,
-        prioritized_replay_eps: float = 1e-6,
-        replay_mode: str = "independent",
-        replay_sequence_length: int = 1,
+            replay_actor = colocated[0][0]
+            self._replay_actors.append(replay_actor)
+            self._policy_learners
 
-        self._replay_actors = [ReplayActor.remote(
-            config["num_replay_buffer_shards"],
-            config["learning_starts"],
-            config["buffer_size"],
-            config["train_batch_size"],
-            config["prioritized_replay_alpha"],
-            config["prioritized_replay_beta"],
-            config["prioritized_replay_eps"],
-            config["multiagent"]["replay_mode"],
-            config.get("replay_sequence_length", 1),
-        ) for _ in range(config["num_replay_buffer_shards"])]
-
-        # Setup remote policy learners.
-        
-        policy_class
         print("here")
+
+    def training_iteration(self) -> ResultDict:
+        # - trigger rollouts on all workers (w/ timeout for asynch)
+        # - rollout results are sent directly to correct replay buffer
+        #   shards
+        evaluation_metrics = ray.get([worker.sample_to_buffer.remote() for worker in self.workers.remote_workers()])
+
+        # - trigger one update on each policy.
+        learner_metrics = ray.get([pol.learn_on_batch.remote() for pol in self._policy_learners])
+
+        return results

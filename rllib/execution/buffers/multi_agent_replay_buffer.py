@@ -54,7 +54,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                 `self.replay_batch_size` will be set to the number of
                 sequences sampled (B).
             prioritized_replay_alpha (float): Alpha parameter for a prioritized
-                replay buffer.
+                replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta (float): Beta parameter for a prioritized
                 replay buffer.
             prioritized_replay_eps (float): Epsilon parameter for a prioritized

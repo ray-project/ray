@@ -776,7 +776,7 @@ class Trainer(Trainable):
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
         update_global_seed_if_necessary(
-            config.get("framework"), config.get("seed"))
+            self.config["framework"], self.config["seed"])
 
         self.validate_config(self.config)
         if not callable(self.config["callbacks"]):
@@ -843,6 +843,11 @@ class Trainer(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
+
+        # Now that workers have been created, update our policy specs
+        # in the config[multiagent] dict with the correct spaces.
+        self.config["multiagent"]["policies"] = \
+            self.workers.local_worker().policy_map.policy_specs
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.

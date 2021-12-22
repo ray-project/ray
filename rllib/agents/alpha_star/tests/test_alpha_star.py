@@ -20,13 +20,23 @@ class Testalpha_star(unittest.TestCase):
         """Test whether a AlphaStarTrainer can be built with all frameworks."""
         config = alpha_star.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
+        # Multi0agent cartpole with 4 agents (IDs: 0, 1, 2, 3).
         config["env"] = MultiAgentCartPole
-        config["env_config"] = {
-            "num_agents": 2,
+        config["env_config"] = {"num_agents": 4}
+        # Two GPUs -> 2 policies per GPU.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        # Let the algo know about our 4 policies.
+        config["multiagent"] = {
+            "policies": {"p0", "p1", "p2", "p3"},
+            # Agent IDs are 0, 1, 2, 3 (ints).
+            "policy_mapping_fn":
+                lambda aid, eps, worker, **kw: f"p{aid}"
         }
+
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="tf2"):#TODO
+        for _ in framework_iterator(config, frameworks="torch"):#TODO
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):
