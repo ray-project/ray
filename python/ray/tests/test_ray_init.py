@@ -160,7 +160,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        address, "127.0.0.3", redis_password=password)
+        address, cluster.gcs_address, "127.0.0.3", redis_password=password)
     assert node_info.node_manager_port == node2.node_manager_port
 
 

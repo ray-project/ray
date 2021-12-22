@@ -87,6 +87,16 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 ])
 
 
+def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
+    if not use_gcs_for_bootstrap():
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        return GcsClientOptions.from_redis_address(redis_address,
+                                                   redis_password)
+    else:
+        return GcsClientOptions.from_gcs_address(gcs_server_address)
+
+
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
 
@@ -293,6 +303,7 @@ def find_redis_address_or_die():
 
 
 def wait_for_node(redis_address,
+                  gcs_address,
                   node_plasma_store_socket_name,
                   redis_password=None,
                   timeout=30):
@@ -300,6 +311,7 @@ def wait_for_node(redis_address,
 
     Args:
         redis_address (str): The redis address.
+        gcs_address (str): The gcs address
         node_plasma_store_socket_name (str): The
             plasma_store_socket_name for the given node which we wait for.
         redis_password (str): the redis password.
@@ -310,11 +322,14 @@ def wait_for_node(redis_address,
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
-    wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+    if use_gcs_for_bootstrap():
+        gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+    else:
+        redis_ip_address, redis_port = redis_address.split(":")
+        wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
+        gcs_options = GcsClientOptions.from_redis_address(
+            redis_address, redis_password)
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -330,12 +345,13 @@ def wait_for_node(redis_address,
 
 
 def get_node_to_connect_for_driver(redis_address,
+                                   gcs_address,
                                    node_ip_address,
                                    redis_password=None):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = GcsClientOptions.from_redis_address(redis_address,
-                                                      redis_password)
+    gcs_options = _get_gcs_client_options(redis_address, redis_password,
+                                          gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
