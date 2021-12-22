@@ -1948,9 +1948,9 @@ class Dataset(Generic[T]):
           key.
 
         If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,). 
-        If ``label_column`` is specified as ``None``, then no column from the 
-        ``Dataset`` will be treated as the label, and the output label tensor 
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
         will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
