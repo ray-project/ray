@@ -279,6 +279,23 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
+    def _init_gcs_address_from_redis(self):
+        assert self.head
+        redis_cli = self.create_redis_client()
+        error = None
+        for _ in range(NUM_REDIS_GET_RETRIES):
+            try:
+                self._gcs_address = get_gcs_address_from_redis(redis_cli)
+                return
+            except Exception as e:
+                logger.debug("Fetch gcs address from redis failed {e}")
+                error = e
+                time.sleep(1)
+        assert error is not None
+        logger.error("Fetch gcs address from redis failed {error}")
+
+
+
     def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
@@ -815,6 +832,9 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        # TODO (iycheng) Remove this once we pass gcs address into init
+        if use_gcs_for_bootstrap():
+            self._init_gcs_address_from_redis()
         # Init gcs client
         self.get_gcs_client()
 
