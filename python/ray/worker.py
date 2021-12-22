@@ -425,6 +425,7 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
+            logger.info(f"Signal {signum} received, shutting down Ray ...")
             shutdown(True)
             sys.exit(1)
 
@@ -841,10 +842,11 @@ def init(
     raylet_ip_address = node_ip_address
 
     if address:
-        bootstrap_address, _, _ = services.validate_bootstrap_address(address)
+        bootstrap_address, _, _ = services.canonicalize_bootstrap_address(
+            address)
     else:
         bootstrap_address = None
-    redis_address = None if services.bootstrap_with_gcs(
+    redis_address = None if gcs_utils.use_gcs_for_bootstrap(
     ) else bootstrap_address
 
     if configure_logging:
@@ -1056,6 +1058,7 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
+    logger.info(f"Signal {signum} received, exiting ...")
     sys.exit(signum)
 
 

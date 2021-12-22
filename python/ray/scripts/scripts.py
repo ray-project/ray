@@ -16,6 +16,7 @@ from socket import socket
 
 import ray
 import psutil
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -469,7 +470,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           metrics_export_port, no_monitor, tracing_startup_hook,
           ray_debugger_external):
     """Start Ray processes manually on the local machine."""
-    if services.bootstrap_with_gcs() and gcs_server_port is not None:
+    if use_gcs_for_bootstrap() and gcs_server_port is not None:
         cli_logger.abort("`{}` is deprecated. Specify {} instead.",
                          cf.bold("--gcs-server-port"), cf.bold("--port"))
         raise ValueError(
@@ -543,7 +544,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 port = s.getsockname()[1]
 
         # Override GCS port to `--port`.
-        if services.bootstrap_with_gcs():
+        if use_gcs_for_bootstrap():
             assert ray_params.gcs_server_port is None
             ray_params.gcs_server_port = port
 
@@ -710,7 +711,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Start Ray on a non-head node.
         bootstrap_address, address_ip, address_port = \
-            services.validate_bootstrap_address(address)
+            services.canonicalize_bootstrap_address(address)
 
         if bootstrap_address is None:
             cli_logger.abort("Cannot extract host IP and port from `{}={}`.",
@@ -719,10 +720,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             f"`--address={address}`.")
         ray_params.update(bootstrap_address=bootstrap_address)
 
-        if services.bootstrap_with_gcs():
-            raise NotImplementedError(
-                "Check version info via GCS is not implemented.")
-        else:
+        if not use_gcs_for_bootstrap():
             # Wait for the Redis server to be started. And throw an exception
             # if we can't connect to it.
             services.wait_for_redis_to_start(

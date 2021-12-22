@@ -477,6 +477,14 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
+    # Prefer `address` parameter to the `RAY_ADDRESS` environment variable,
+    # when `address` is not `auto`.
+    os.environ["RAY_ADDRESS"] = "test"
+    ray.init(address=address)
+    assert "CPU" not in ray.state.cluster_resources()
+    ray.shutdown()
+    del os.environ["RAY_ADDRESS"]
+
     # Make sure we start a new cluster if RAY_ADDRESS is not set.
     ray.init()
     assert "CPU" in ray.state.cluster_resources()
