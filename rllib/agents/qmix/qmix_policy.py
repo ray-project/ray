@@ -157,11 +157,17 @@ class QMixTorchPolicy(Policy):
     """
 
     def __init__(self, obs_space, action_space, config):
-        _validate(obs_space, action_space)
+        actual_observation_space = obs_space if not hasattr(
+            obs_space, "original_space") else obs_space.original_space
+        _validate(actual_observation_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
+
         super().__init__(obs_space, action_space, config)
-        self.n_agents = len(obs_space.original_space.spaces)
+
+        self.actual_observation_space = actual_observation_space
+
+        self.n_agents = len(self.actual_observation_space.spaces)
         config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
@@ -170,7 +176,7 @@ class QMixTorchPolicy(Policy):
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
 
-        agent_obs_space = obs_space.original_space.spaces[0]
+        agent_obs_space = self.actual_observation_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
             if "obs" not in space_keys:
@@ -262,9 +268,10 @@ class QMixTorchPolicy(Policy):
                         timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
+
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         # We need to ensure we do not use the env global state
-        # to compute actions
+        # to compute actions.
 
         # Compute actions
         with torch.no_grad():
@@ -470,10 +477,13 @@ class QMixTorchPolicy(Policy):
                 or None if it is not in the batch
         """
 
-        unpacked = _unpack_obs(
-            np.array(obs_batch, dtype=np.float32),
-            self.observation_space.original_space,
-            tensorlib=np)
+        if not self.config["_disable_preprocessor_api"]:
+            unpacked = _unpack_obs(
+                np.array(obs_batch, dtype=np.float32),
+                self.actual_observation_space,
+                tensorlib=np)
+        else:
+            unpacked = obs_batch
 
         if isinstance(unpacked[0], dict):
             assert "obs" in unpacked[0]
@@ -483,17 +493,18 @@ class QMixTorchPolicy(Policy):
         else:
             unpacked_obs = unpacked
 
+        B = len(tree.flatten(obs_batch)[0])
         obs = np.concatenate(
             unpacked_obs,
-            axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
+            axis=1).reshape([B, self.n_agents, self.obs_size])
 
         if self.has_action_mask:
             action_mask = np.concatenate(
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
-                    [len(obs_batch), self.n_agents, self.n_actions])
+                    [B, self.n_agents, self.n_actions])
         else:
             action_mask = np.ones(
-                [len(obs_batch), self.n_agents, self.n_actions],
+                [B, self.n_agents, self.n_actions],
                 dtype=np.float32)
 
         if self.has_env_global_state:
@@ -504,8 +515,7 @@ class QMixTorchPolicy(Policy):
 
 
 def _validate(obs_space, action_space):
-    if not hasattr(obs_space, "original_space") or \
-            not isinstance(obs_space.original_space, Tuple):
+    if not isinstance(obs_space, Tuple):
         raise ValueError("Obs space must be a Tuple, got {}. Use ".format(
             obs_space) + "MultiAgentEnv.with_agent_groups() to group related "
                          "agents for QMix.")
@@ -518,11 +528,11 @@ def _validate(obs_space, action_space):
         raise ValueError(
             "QMix requires a discrete action space, got {}".format(
                 action_space.spaces[0]))
-    if len({str(x) for x in obs_space.original_space.spaces}) > 1:
+    if len({str(x) for x in obs_space.spaces}) > 1:
         raise ValueError(
             "Implementation limitation: observations of grouped agents "
             "must be homogeneous, got {}".format(
-                obs_space.original_space.spaces))
+                obs_space.spaces))
     if len({str(x) for x in action_space.spaces}) > 1:
         raise ValueError(
             "Implementation limitation: action space of grouped agents "

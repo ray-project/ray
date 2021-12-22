@@ -1,3 +1,5 @@
+from gym.spaces import Tuple
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -15,7 +17,19 @@ class RNNModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
-        self.obs_size = _get_size(obs_space)
+        self.preprocessing_network = None
+        if isinstance(obs_space, Tuple):
+            self.preprocessing_network = ModelCatalog.get_model_v2(
+                obs_space=obs_space,
+                action_space=action_space,
+                num_outputs=None,
+                model_config=model_config,
+                name="preprocessor",
+                framework="torch",
+            )
+            self.obs_size = self.preprocessing_network.num_outputs
+        else:
+            self.obs_size = _get_size(obs_space)
         self.rnn_hidden_dim = model_config["lstm_cell_size"]
         self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)
         self.rnn = nn.GRUCell(self.rnn_hidden_dim, self.rnn_hidden_dim)

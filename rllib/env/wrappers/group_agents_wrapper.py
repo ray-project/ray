@@ -75,15 +75,15 @@ class GroupAgentsWrapper(MultiAgentEnv):
         # Apply grouping transforms to the env outputs
         obs = self._group_items(obs)
         rewards = self._group_items(
-            rewards, agg_fn=lambda gvals: list(gvals.values()))
+            rewards, agg_fn=lambda gvals: tuple(gvals.values()))
         dones = self._group_items(
             dones, agg_fn=lambda gvals: all(gvals.values()))
         infos = self._group_items(
-            infos, agg_fn=lambda gvals: {GROUP_INFO: list(gvals.values())})
+            infos, agg_fn=lambda gvals: {GROUP_INFO: tuple(gvals.values())})
 
         # Aggregate rewards, but preserve the original values in infos
         for agent_id, rew in rewards.items():
-            if isinstance(rew, list):
+            if isinstance(rew, (tuple, list)):
                 rewards[agent_id] = sum(rew)
                 if agent_id not in infos:
                     infos[agent_id] = {}
@@ -103,7 +103,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
                 out[agent_id] = value
         return out
 
-    def _group_items(self, items, agg_fn=lambda gvals: list(gvals.values())):
+    def _group_items(self, items, agg_fn=lambda gvals: tuple(gvals.values())):
         grouped_items = {}
         for agent_id, item in items.items():
             if agent_id in self.agent_id_to_group:

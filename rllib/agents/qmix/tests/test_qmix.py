@@ -56,7 +56,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
 class TestQMix(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -87,6 +87,51 @@ class TestQMix(unittest.TestCase):
         assert agent.train()["episode_reward_mean"] == 21.0
         agent.stop()
         ray.shutdown()
+
+    #TODO: move this learning test into a yaml and add to weekly regression
+    def test_qmix_on_pettingzoo_env(self):
+        from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv, ParallelPettingZooEnv
+        from pettingzoo.butterfly import cooperative_pong_v4
+        from gym.spaces import Tuple
+        #from pettingzoo.butterfly import pistonball_v4
+        #from pettingzoo.mpe import simple_spread_v2
+        from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0, resize_v0, frame_stack_v1
+
+        def env_creator(config):
+            env = cooperative_pong_v4.parallel_env()
+            env = dtype_v0(env, dtype=np.float32)
+            env = resize_v0(env, 140, 240)
+            env = color_reduction_v0(env, mode="R")
+            env = frame_stack_v1(env, 4)
+            env = normalize_obs_v0(env)
+            return env
+
+        env = ParallelPettingZooEnv(env_creator({}))
+        observation_space = env.observation_space
+        action_space = env.action_space
+        del env
+
+        # Group paddle0 and paddle1 into one single agent.
+        grouping = {"paddles": ["paddle_0", "paddle_1"]}
+        tuple_obs_space = Tuple([observation_space, observation_space])
+        tuple_act_space = Tuple([action_space, action_space])
+
+        register_env(
+            "coop_pong",
+            lambda config: ParallelPettingZooEnv(
+                env_creator(config)
+            ).with_agent_groups(
+                grouping, obs_space=tuple_obs_space,
+                act_space=tuple_act_space)
+        )
+
+        config = {
+            "buffer_size": 10,
+            "_disable_preprocessor_api": True,
+        }
+        trainer = QMixTrainer(env="coop_pong", config=config)
+        trainer.train()
+
 
 
 if __name__ == "__main__":
