@@ -37,9 +37,13 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-def make_export_key(pos):
+def make_exports_prefix(job_id: bytes) -> bytes:
+    return b"IsolatedExports:" + job_id
+
+
+def make_export_key(pos: int, job_id: bytes) -> bytes:
     # big-endian for ordering in binary
-    return b"Exports:" + pos.to_bytes(8, "big")
+    return make_exports_prefix(job_id) + b":" + pos.to_bytes(8, "big")
 
 
 class FunctionActorManager:
@@ -150,16 +154,21 @@ class FunctionActorManager:
                                      self._worker.import_thread.num_imported)
             while True:
                 self._num_exported += 1
-                holder = make_export_key(self._num_exported)
+                holder = make_export_key(self._num_exported,
+                                         self._worker.current_job_id.binary())
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
                 if self._worker.gcs_client.internal_kv_put(
                         holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                     break
+        # Notify all subscribers that there is a new function exported. Note
+        # that the notification doesn't include any actual data.
         if self._worker.gcs_pubsub_enabled:
+            # TODO(mwtian) implement per-job notification here.
             self._worker.gcs_publisher.publish_function_key(key)
         else:
-            self._worker.redis_client.lpush("Exports", "a")
+            self._worker.redis_client.lpush(
+                make_exports_prefix(self._worker.current_job_id.binary()), "a")
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -217,14 +226,6 @@ class FunctionActorManager:
         ]
         (job_id_str, function_id_str, function_name, serialized_function,
          module, max_calls) = (vals.get(field) for field in fields)
-
-        if ray_constants.ISOLATE_EXPORTS and \
-                job_id_str != self._worker.current_job_id.binary():
-            # A worker only executes tasks from the assigned job.
-            # TODO(jjyao): If fetching unrelated remote functions
-            # becomes a perf issue, we can also consider having export
-            # queue per job.
-            return
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
@@ -555,20 +556,27 @@ class FunctionActorManager:
         """Load actor class from GCS."""
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
-        # Wait for the actor class key to have been imported by the
-        # import thread. TODO(rkn): It shouldn't be possible to end
-        # up in an infinite loop here, but we should push an error to
-        # the driver if too much time is spent here.
-        while key not in self.imported_actor_classes:
-            try:
-                # If we're in the process of deserializing an ActorHandle
-                # and we hold the function_manager lock, we may be blocking
-                # the import_thread from loading the actor class. Use cv.wait
-                # to temporarily yield control to the import thread.
-                self.cv.wait()
-            except RuntimeError:
-                # We don't hold the function_manager lock, just sleep regularly
-                time.sleep(0.001)
+        # Only wait for the actor class if it was exported from the same job.
+        # It will hang if the job id mismatches, since we isolate actor class
+        # exports from the import thread. It's important to wait since this
+        # guarantees import order, though we fetch the actor class directly.
+        # Import order isn't important across jobs, as we only need to fetch
+        # the class for `ray.get_actor()`.
+        if job_id.binary() == self._worker.current_job_id.binary():
+            # Wait for the actor class key to have been imported by the
+            # import thread. TODO(rkn): It shouldn't be possible to end
+            # up in an infinite loop here, but we should push an error to
+            # the driver if too much time is spent here.
+            while key not in self.imported_actor_classes:
+                try:
+                    # If we're in the process of deserializing an ActorHandle
+                    # and we hold the function_manager lock, we may be blocking
+                    # the import_thread from loading the actor class. Use wait
+                    # to temporarily yield control to the import thread.
+                    self.cv.wait()
+                except RuntimeError:
+                    # We don't hold the function_manager lock, just sleep
+                    time.sleep(0.001)
 
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(

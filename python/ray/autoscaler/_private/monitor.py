@@ -180,7 +180,6 @@ class Monitor:
                                            monitor_addr.encode(), True, None)
             else:
                 self.redis.set("AutoscalerMetricsAddress", monitor_addr)
-
         worker.mode = 0
         if use_gcs_for_bootstrap():
             head_node_ip = gcs_address.split(":")[0]
