@@ -216,11 +216,11 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   // Trigger reply to RequestWorkerLease.
-  bool GrantWorkerLease(const std::string &address, int port,
-                        const NodeID &retry_at_raylet_id, bool cancel = false,
-                        std::string worker_id = std::string(), bool reject = false,
-                        const rpc::RequestWorkerLeaseReply::SchedulingFailureType &failure_type =
-                            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
+  bool GrantWorkerLease(
+      const std::string &address, int port, const NodeID &retry_at_raylet_id,
+      bool cancel = false, std::string worker_id = std::string(), bool reject = false,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType &failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
     rpc::RequestWorkerLeaseReply reply;
     if (cancel) {
       reply.set_canceled(true);

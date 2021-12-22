@@ -546,13 +546,16 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         if (status.ok()) {
           if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", canceled type: "
+            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id
+                           << ", canceled type: "
                            << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
                                   reply.failure_type());
             if (reply.failure_type() ==
-                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
                 reply.failure_type() ==
-                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -564,7 +567,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               while (!task_queue.empty()) {
                 auto &task_spec = task_queue.front();
                 if (reply.failure_type() ==
-                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
                   RAY_UNUSED(task_finisher_->FailPendingTask(
                       task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
                 } else {

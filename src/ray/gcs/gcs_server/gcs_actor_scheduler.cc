@@ -26,7 +26,8 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
+    std::function<void(std::shared_ptr<GcsActor>,
+                       rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
         schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
@@ -321,9 +322,10 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
       << actor->GetActorID() << "("
       << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
       << " has been canceled, job id = " << actor->GetActorID().JobId()
-      << ", cancel type: " << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
+      << ", cancel type: "
+      << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
-    schedule_failure_handler_(actor, failure_type);
+  schedule_failure_handler_(actor, failure_type);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,

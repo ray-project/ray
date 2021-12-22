@@ -38,7 +38,8 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
-    std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
+    std::function<void(std::shared_ptr<GcsActor>,
+                       rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
         schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,

@@ -969,7 +969,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 }
 
 void GcsActorManager::OnActorSchedulingFailed(
-    std::shared_ptr<GcsActor> actor, rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+    std::shared_ptr<GcsActor> actor,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
   if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
@@ -995,7 +996,8 @@ void GcsActorManager::OnActorSchedulingFailed(
     break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
-                   << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
+                   << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
+                          failure_type);
     break;
   }
 

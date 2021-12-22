@@ -180,7 +180,9 @@ bool ClusterTaskManager::PoppedWorkerHandler(
                      << task.GetTaskSpecification().PlacementGroupBundleId().first
                      << " was removed when poping workers for task: " << task_id
                      << ", will cancel the task.";
-      CancelTask(task_id, rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED);
+      CancelTask(
+          task_id,
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED);
       canceled = true;
     }
   }
@@ -238,7 +240,9 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // directly and raise a `RuntimeEnvSetupError` exception to user
         // eventually. The task will be removed from dispatch queue in
         // `CancelTask`.
-        CancelTask(task_id, rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED);
+        CancelTask(
+            task_id,
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED);
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -660,7 +664,8 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
 }
 
 bool ClusterTaskManager::CancelTask(
-    const TaskID &task_id, rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+    const TaskID &task_id,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
