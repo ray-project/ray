@@ -16,7 +16,10 @@ import os
 import ray
 from ray import serve
 from ray.serve.utils import logger
-from serve_test_utils import run_wrk_on_all_nodes
+from serve_test_utils import (
+    run_wrk_on_all_nodes,
+    save_test_results,
+)
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -197,6 +200,10 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
                                                             deployment_name,
                                                             max=min_replicas))
         logger.info("Deployments scaled down to min replicas ....\n")
+    
+    save_test_results(
+        "autoscaling successful!",
+        default_output_file="/tmp/autoscaling_1k_bounds.json")
 
 
 if __name__ == "__main__":
