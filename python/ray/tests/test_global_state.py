@@ -213,9 +213,9 @@ def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
     cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
 
-    global_state_accessor = make_global_state_accessor(cluster)
+    global_state_accessor = make_global_state_accessor(
+        ray.init(address=cluster.address))
 
     class PgLoadChecker:
         def nothing_is_ready(self):
