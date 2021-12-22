@@ -274,7 +274,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 }
 
 void GcsPlacementGroupScheduler::CommitResources(
-    const std::shared_ptr<const BundleSpecification> &bundle,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback callback) {
   RAY_CHECK(node.has_value());
@@ -282,16 +282,16 @@ void GcsPlacementGroupScheduler::CommitResources(
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
   RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
-                 << " for a bundle: " << bundle->DebugString();
+                 << " for bundles: " << GetDebugStringForBundles(bundles);
   lease_client->CommitBundleResources(
-      *bundle, [bundle, node_id, callback](const Status &status,
+      bundles, [bundles, node_id, callback](const Status &status,
                                            const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
-                         << " for bundle: " << bundle->DebugString();
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
-                         << " for bundle: " << bundle->DebugString();
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         RAY_CHECK(callback);
         callback(status);
@@ -339,18 +339,21 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const PGSchedulingFailureCallback &schedule_failure_handler,
     const PGSchedulingSuccessfulCallback &schedule_success_handler) {
-  const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
-      lease_status_tracker->GetPreparedBundleLocations();
+  const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &prepared_bundle_locations = 
+      lease_status_tracker->GetGroupedPreparedBundleLocations();
   lease_status_tracker->MarkCommitPhaseStarted();
-  for (const auto &bundle_to_commit : *prepared_bundle_locations) {
-    const auto &node_id = bundle_to_commit.second.first;
-    const auto &node = gcs_node_manager_.GetAliveNode(node_id);
-    const auto &bundle = bundle_to_commit.second.second;
 
-    auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
+  for (const auto &node_to_bundles : prepared_bundle_locations) {
+    const auto &node_id = node_to_bundles.first;
+    const auto &node = gcs_node_manager_.GetAliveNode(node_id);
+    const auto &bundles_per_node = node_to_bundles.second;
+
+    auto commit_resources_callback = [this, lease_status_tracker, bundles_per_node, node_id,
                                       schedule_failure_handler,
                                       schedule_success_handler](const Status &status) {
-      lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+      for (const auto &bundle: bundles_per_node) {
+        lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+      }
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
                                          schedule_success_handler);
@@ -358,7 +361,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     };
 
     if (node.has_value()) {
-      CommitResources(bundle, node, commit_resources_callback);
+      CommitResources(bundles_per_node, node, commit_resources_callback);
     } else {
       RAY_LOG(INFO) << "Failed to commit resources because the node is dead, node id = "
                     << node_id;
@@ -760,6 +763,10 @@ void LeaseStatusTracker::MarkPrepareRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (status.ok()) {
     preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+    if (grouped_preparing_bundle_locations_.find(node_id) == grouped_preparing_bundle_locations_.end()) {
+      grouped_preparing_bundle_locations_[node_id] = {};
+    }
+    grouped_preparing_bundle_locations_[node_id].push_back(bundle);
   }
   prepare_request_returned_count_ += 1;
 }
@@ -806,6 +813,11 @@ const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup(
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLocations()
     const {
   return preparing_bundle_locations_;
+}
+
+const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &LeaseStatusTracker::GetGroupedPreparedBundleLocations()
+    const {
+  return grouped_preparing_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations>

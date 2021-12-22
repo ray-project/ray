@@ -266,6 +266,11 @@ class LeaseStatusTracker {
   /// \return Location of bundles that succeed to prepare resources on a node.
   const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
 
+  /// This method returns bundle locations that grouped by node id.
+  ///
+  /// \return Location of bundles that succeed to prepare resources on a node.
+  const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &GetGroupedPreparedBundleLocations() const;
+
   /// This method returns bundle locations that failed to commit resources.
   ///
   /// \return Location of bundles that failed to commit resources on a node.
@@ -308,6 +313,9 @@ class LeaseStatusTracker {
   /// If prepare succeeds, the decision will be set as schedule_map[bundles[pos]]
   /// else will be set NodeID::Nil().
   std::shared_ptr<BundleLocations> preparing_bundle_locations_;
+
+  /// Location of bundles grouped by node.
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> grouped_preparing_bundle_locations_;
 
   /// Number of prepare requests that are returned.
   size_t prepare_request_returned_count_ = 0;
@@ -475,20 +483,20 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// all of bundles are atomically prepared on a given node.
   ///
   /// \param bundles Bundles to be scheduled on a node.
-  /// \param node A node to prepare resources for a given bundle.
+  /// \param node A node to prepare resources for given bundles.
   /// \param callback
   void PrepareResources(
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 
-  /// Send a bundle COMMIT request to a node. This means the placement group creation
+  /// Send bundles COMMIT request to a node. This means the placement group creation
   /// is ready and GCS will commit resources on a given node.
   ///
-  /// \param bundle A bundle to schedule on a node.
-  /// \param node A node to commit resources for a given bundle.
+  /// \param bundles Bundles to be scheduled on a node.
+  /// \param node A node to commit resources for given bundles.
   /// \param callback
-  void CommitResources(const std::shared_ptr<const BundleSpecification> &bundle,
+  void CommitResources(const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
                        const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
                        const StatusCallback callback);
 

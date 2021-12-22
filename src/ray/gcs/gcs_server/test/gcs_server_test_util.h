@@ -185,7 +185,7 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void CommitBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
         override {
       num_commit_requested += 1;
