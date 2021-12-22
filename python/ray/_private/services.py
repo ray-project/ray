@@ -1184,6 +1184,7 @@ def _start_redis_instance(executable,
 
 
 def start_log_monitor(redis_address,
+                      gcs_address,
                       logs_dir,
                       stdout_file=None,
                       stderr_file=None,
@@ -1215,7 +1216,8 @@ def start_log_monitor(redis_address,
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1604,6 +1606,7 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1960,6 +1963,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  gcs_address,
                   logs_dir,
                   stdout_file=None,
                   stderr_file=None,
@@ -1992,10 +1996,14 @@ def start_monitor(redis_address,
     """
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
-        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
+        sys.executable,
+        "-u",
+        monitor_path,
+        f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",
         f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
