@@ -22,6 +22,7 @@ import uuid
 import ray
 import ray.ray_constants as ray_constants
 from ray._raylet import GcsClientOptions
+from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import redis
 from ray.core.generated.common_pb2 import Language
 
@@ -1230,6 +1231,7 @@ def start_log_monitor(redis_address,
 def start_dashboard(require_dashboard,
                     host,
                     redis_address,
+                    gcs_address,
                     temp_dir,
                     logdir,
                     port=None,
@@ -1246,12 +1248,13 @@ def start_dashboard(require_dashboard,
             fail to start the dashboard. Otherwise it will print a warning if
             we fail to start the dashboard.
         host (str): The host to bind the dashboard web server to.
-        port (str): The port to bind the dashboard web server to.
-            Defaults to 8265.
         redis_address (str): The address of the Redis instance.
+        gcs_address (str): The gcs address the dashboard should connect to
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         logdir (str): The log directory used to generate dashboard log.
+        port (str): The port to bind the dashboard web server to.
+            Defaults to 8265.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1313,7 +1316,8 @@ def start_dashboard(require_dashboard,
             f"--port={port}", f"--port-retries={port_retries}",
             f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}"
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}"
         ]
         if redis_password is not None:
             command += ["--redis-password", redis_password]
@@ -1325,16 +1329,18 @@ def start_dashboard(require_dashboard,
             fate_share=fate_share)
 
         # Retrieve the dashboard url
-        redis_client = ray._private.services.create_redis_client(
-            redis_address, redis_password)
-        from ray._private.gcs_utils import GcsClient
-        gcs_client = GcsClient.create_from_redis(redis_client)
+        if not use_gcs_for_bootstrap():
+            redis_client = ray._private.services.create_redis_client(
+                redis_address, redis_password)
+            gcs_client = GcsClient.create_from_redis(redis_client)
+        else:
+            gcs_client = GcsClient(address=gcs_address)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD,
+                ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
@@ -1634,6 +1640,7 @@ def start_raylet(redis_address,
             f"--log-dir={log_dir}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
         ]
 
         if redis_password is not None and len(redis_password) != 0:
