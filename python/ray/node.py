@@ -264,7 +264,8 @@ class Node:
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
         def sigterm_handler(signum, frame):
-            logger.info(f"Signal {signum} received, cleaning up and exiting ...")
+            logger.info(
+                f"Signal {signum} received, cleaning up and exiting ...")
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
@@ -468,12 +469,19 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = GcsClient.create_from_redis(
-                        self.create_redis_client())
+                    if use_gcs_for_bootstrap():
+                        self._gcs_client = GcsClient(
+                            address=self._ray_params.bootstrap_address)
+                    else:
+                        self._gcs_client = GcsClient.create_from_redis(
+                            self.create_redis_client())
                     break
                 except Exception as e:
                     time.sleep(1)
-                    logger.debug(f"Waiting for gcs up {e}")
+                    logger.debug(f"Connecting to GCS: {e}")
+            assert self._gcs_client is not None, \
+                "Failed to connect to GCS at "\
+                f"{self._ray_params.bootstrap_address}"
             ray.experimental.internal_kv._initialize_internal_kv(
                 self._gcs_client)
 
@@ -712,6 +720,16 @@ class Node:
             for i in range(self._ray_params.num_redis_shards):
                 redis_log_files.append(
                     self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+
+        # Initializes Redis and GCS port when they are not set, e.g. when
+        # calling ray.init().
+        if use_gcs_for_bootstrap():
+            if self._ray_params.redis_port is None:
+                with socket.socket() as s:
+                    s.bind(("", 0))
+                    self._ray_params.redis_port = s.getsockname()[1]
+            if self._ray_params.gcs_server_port is None:
+                self._ray_params.gcs_server_port = ray_constants.DEFAULT_PORT
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(
@@ -1304,8 +1322,8 @@ class Node:
         for i in range(num_retries):
             try:
                 result = self.get_gcs_client().internal_kv_get(key, namespace)
-            except Exception as e:
-                logger.error(f"ERROR as {e}")
+            except Exception:
+                logger.exception("Internal KV Get failed")
                 result = None
 
             if result is not None:

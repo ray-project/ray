@@ -880,8 +880,6 @@ def init(
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
-            bootstrap_address=bootstrap_address,
-            redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
@@ -949,6 +947,7 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            bootstrap_address=bootstrap_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,

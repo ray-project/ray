@@ -505,7 +505,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
-        gcs_server_port=gcs_server_port,
         memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
@@ -547,6 +546,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         if use_gcs_for_bootstrap():
             assert ray_params.gcs_server_port is None
             ray_params.gcs_server_port = port
+            with socket() as s:
+                s.bind(("", 0))
+                ray_params.redis_port = s.getsockname()[1]
+        else:
+            ray_params.redis_port = port
+            ray_params.gcs_server_port = gcs_server_port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -602,7 +607,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Initialize Redis settings.
         ray_params.update_if_absent(
-            redis_port=port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
@@ -612,11 +616,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            redis_addresses = services.find_redis_address()
-            if default_address in redis_addresses:
+            bootstrap_addresses = services.find_redis_address()
+            if default_address in bootstrap_addresses:
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {redis_addresses}. "
+                    f"but is already running at {bootstrap_addresses}. "
                     "Please specify a different port using the `--port`"
                     " command to `ray start`.")
 

@@ -29,6 +29,8 @@ def memory_summary(address=None,
     from ray.dashboard.memory_utils import memory_summary
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    if address == "auto":
+        address = services.get_bootstrap_address_to_use_or_die()
 
     state = GlobalState()
     state._initialize_global_state(

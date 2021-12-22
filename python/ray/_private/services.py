@@ -1555,7 +1555,7 @@ def start_raylet(redis_address,
 
     Args:
         redis_address (str): The address of the primary Redis server.
-        gcs_address (str): The address of cluster.
+        gcs_address (str): The address of GCS server.
         node_ip_address (str): The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1619,9 +1619,6 @@ def start_raylet(redis_address,
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
-
-    # TODO (iycheng): remove redis_ip_address after redis removal
-    redis_ip_address, redis_port = redis_address.split(":")
 
     has_java_command = False
     if shutil.which("java") is not None:
@@ -1721,15 +1718,12 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
-        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
-        f"--redis_address={redis_ip_address}",
-        f"--redis_port={redis_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
@@ -1747,6 +1741,15 @@ def start_raylet(redis_address,
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
     ]
+    if use_gcs_for_bootstrap():
+        command.append(f"--gcs-address={gcs_address}")
+    else:
+        # TODO (iycheng): remove redis_ip_address after redis removal
+        redis_ip_address, redis_port = redis_address.split(":")
+        command.extend([
+            f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"
+        ])
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
