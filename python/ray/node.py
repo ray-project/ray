@@ -756,6 +756,7 @@ class Node:
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
+            self.gcs_address,
             self._temp_dir,
             self._logs_dir,
             stdout_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)

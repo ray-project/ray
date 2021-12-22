@@ -131,12 +131,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        aioredis_client = self._dashboard_head.aioredis_client
-
         if gcs_pubsub_enabled():
-            gcs_addr = await aioredis_client.get("GcsServerAddress")
-            subscriber = GcsAioResourceUsageSubscriber(
-                address=gcs_addr.decode())
+            gcs_addr = await self._dashboard_head.get_gcs_address()
+            subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
             await subscriber.subscribe()
 
             while True:
@@ -152,9 +149,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 except Exception:
                     logger.exception("Error receiving node physical stats "
                                      "from reporter agent.")
-
         else:
             receiver = Receiver()
+            aioredis_client = self._dashboard_head.aioredis_client
             reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
             await aioredis_client.psubscribe(receiver.pattern(reporter_key))
             logger.info(f"Subscribed to {reporter_key}")
