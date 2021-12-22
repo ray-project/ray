@@ -36,17 +36,6 @@ namespace gcs {
 
 class GcsActor;
 
-// Actor scheduling failed type.
-enum class ActorSchedulingFailedType {
-  PLACEMENT_GROUP_REMOVED = 0,
-  RUNTIME_ENV_SETUP_FAILED = 1,
-  CANCELLED_ACTIVELY = 2,
-  NOT_ENOUGH_RESOURCES = 3,
-  ActorSchedulingFailedType_MAX = 4,
-};
-
-std::string ActorSchedulingFailedType_Name(ActorSchedulingFailedType failed_type);
-
 class GcsActorSchedulerInterface {
  public:
   /// Schedule the specified actor.
@@ -114,7 +103,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   explicit GcsActorScheduler(
       instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)>
+      std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
           schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
           schedule_success_handler,
@@ -277,10 +266,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor Contains the resources needed to lease workers from the specified node.
   /// \param node_id The node where the runtime env is failed to setup.
-  /// \param cancel_type The type of the canceling.
+  /// \param failure_type The type of the canceling.
   void HandleRequestWorkerLeaseCanceled(
       std::shared_ptr<GcsActor> actor, const NodeID &node_id,
-      rpc::RequestWorkerLeaseReply::CancelType cancel_type);
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type);
 
   /// Create the specified actor on the specified worker.
   ///
@@ -330,7 +319,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// The handler to handle the scheduling failures.
-  std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)>
+  std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
       schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>

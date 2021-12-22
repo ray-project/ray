@@ -200,13 +200,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
-  /// \param cancel_type: The cancel type.
+  /// \param failure_type: The failure type.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::CancelType cancel_type =
-                      rpc::RequestWorkerLeaseReply::TASK_CANCELLED) override;
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

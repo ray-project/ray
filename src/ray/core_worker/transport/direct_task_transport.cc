@@ -546,13 +546,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         if (status.ok()) {
           if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", cancel type: "
-                           << rpc::RequestWorkerLeaseReply::CancelType_Name(
-                                  reply.cancel_type());
-            if (reply.cancel_type() ==
-                    rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED ||
-                reply.cancel_type() ==
-                    rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED) {
+            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", canceled type: "
+                           << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
+                                  reply.failure_type());
+            if (reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
+                reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -563,8 +563,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               auto &task_queue = scheduling_key_entry.task_queue;
               while (!task_queue.empty()) {
                 auto &task_spec = task_queue.front();
-                if (reply.cancel_type() ==
-                    rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED) {
+                if (reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
                   RAY_UNUSED(task_finisher_->FailPendingTask(
                       task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
                 } else {

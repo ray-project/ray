@@ -268,7 +268,7 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   mock_actor_scheduler_->actors.clear();
 
   gcs_actor_manager_->OnActorSchedulingFailed(
-      actor, gcs::ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
+      actor, rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED);
   gcs_actor_manager_->SchedulePendingActors();
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
   mock_actor_scheduler_->actors.clear();

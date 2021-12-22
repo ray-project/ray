@@ -969,14 +969,14 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 }
 
 void GcsActorManager::OnActorSchedulingFailed(
-    std::shared_ptr<GcsActor> actor, const ActorSchedulingFailedType failure_type) {
-  if (failure_type == ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES) {
+    std::shared_ptr<GcsActor> actor, rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
+  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
     pending_actors_.emplace_back(std::move(actor));
     return;
   }
-  if (failure_type == ActorSchedulingFailedType::CANCELLED_ACTIVELY) {
+  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
     // Return directly if the actor was canceled actively as we've already done the
     // recreate and destroy operation when we killed the actor.
     return;
@@ -984,18 +984,18 @@ void GcsActorManager::OnActorSchedulingFailed(
 
   std::string error_msg;
   switch (failure_type) {
-  case ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED:
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
     error_msg =
         "Could not create the actor because its associated placement group was removed.";
     break;
-  case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
     error_msg =
         "Could not create the actor because its associated runtime env failed to be "
         "created..";
     break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
-                   << ActorSchedulingFailedType_Name(failure_type);
+                   << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
     break;
   }
 

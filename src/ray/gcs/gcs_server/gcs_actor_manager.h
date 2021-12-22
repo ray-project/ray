@@ -312,9 +312,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  /// \param failed_type Scheduling failed type.
+  /// \param failure_type Scheduling failure type.
   void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                               const ActorSchedulingFailedType failed_type);
+                               const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.

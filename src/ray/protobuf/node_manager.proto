@@ -51,15 +51,15 @@ message RequestWorkerLeaseRequest {
 }
 
 message RequestWorkerLeaseReply {
-  // Request lease worker cancel type.
-  enum CancelType {
-    // Canceled because the placement group is removed.
-    // Currently tasks fate share with their placement group.
-    PLACEMENT_GROUP_REMOVED = 0;
-    // Canceled because of the failure of the runtime env setup.
-    RUNTIME_ENV_SETUP_FAILED = 1;
-    // Task canceled actively, for example, `ray.kill`.
-    TASK_CANCELLED = 2;
+  enum SchedulingFailureType {
+    // Scheduling is failed on this node. 
+    SCHEDULING_FAILED = 0;
+    // Scheduling is cancelled because task/actor's placement is removed.
+    SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 1;
+    // Scheduling is cancelled because task/actor's runtime environment setup is failed
+    SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 2;
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g., ray.kill or ray.cancel
+    SCHEDULING_CANCELLED_INTENDED = 3;
   }
 
   // Address of the leased worker. If this is empty, then the request should be
@@ -78,8 +78,8 @@ message RequestWorkerLeaseReply {
   bool rejected = 7;
   // The (normal task) resources data to be carried by the Reply.
   ResourcesData resources_data = 8;
-  // Cancel type.
-  CancelType cancel_type = 9;
+  // Scheduling failure type.
+  SchedulingFailureType failure_type = 9;
 }
 
 message PrepareBundleResourcesRequest {

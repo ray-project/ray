@@ -38,7 +38,7 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
     const GcsNodeManager &gcs_node_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
-    std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)>
+    std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
         schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
@@ -193,7 +193,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         node_to_actors_when_leasing_.erase(iter);
       }
       if (reply.canceled()) {
-        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.cancel_type());
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type());
       } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()

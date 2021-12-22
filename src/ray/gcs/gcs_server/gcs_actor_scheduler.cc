@@ -23,25 +23,10 @@
 namespace ray {
 namespace gcs {
 
-std::string ActorSchedulingFailedType_Name(ActorSchedulingFailedType failed_type) {
-  switch (failed_type) {
-  case ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED:
-    return "PLACEMENT_GROUP_REMOVED";
-  case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
-    return "RUNTIME_ENV_SETUP_FAILED";
-  case ActorSchedulingFailedType::CANCELLED_ACTIVELY:
-    return "CANCELLED_ACTIVELY";
-  case ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES:
-    return "NOT_ENOUGH_RESOURCES";
-  default:
-    return "UNKNOWN";
-  }
-}
-
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)>
+    std::function<void(std::shared_ptr<GcsActor>, rpc::RequestWorkerLeaseReply::SchedulingFailureType)>
         schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
@@ -68,7 +53,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
     schedule_failure_handler_(std::move(actor),
-                              ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
+                              rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED);
     return;
   }
 
@@ -330,25 +315,15 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
 
 void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     std::shared_ptr<GcsActor> actor, const NodeID &node_id,
-    rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type) {
   RAY_LOG(ERROR)
       << "The lease worker request from node " << node_id << " for actor "
       << actor->GetActorID() << "("
       << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
       << " has been canceled, job id = " << actor->GetActorID().JobId()
-      << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(cancel_type);
+      << ", cancel type: " << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
-  switch (cancel_type) {
-  case rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED:
-    schedule_failure_handler_(actor, ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED);
-    break;
-  case rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED:
-    schedule_failure_handler_(actor, ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED);
-    break;
-  default:
-    schedule_failure_handler_(actor, ActorSchedulingFailedType::CANCELLED_ACTIVELY);
-    break;
-  }
+    schedule_failure_handler_(actor, failure_type);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
@@ -540,7 +515,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
 
     if (status.ok()) {
       if (reply.canceled()) {
-        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.cancel_type());
+        HandleRequestWorkerLeaseCanceled(actor, node_id, reply.failure_type());
         return;
       }
 
