@@ -146,6 +146,20 @@ JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
+   if (tempLocalClassRef == nullptr) {
+    const std::string shaded_class_prefix = "io/ray/shaded/";
+    const auto class_name_str = std::string(class_name);
+    const auto this_prefix = class_name_str.substr(0, shaded_class_prefix.size());
+    if (this_prefix == shaded_class_prefix) {
+      // This is a shaded class, and try to load the original class.
+      env->ExceptionClear();
+      auto no_shaded_class_name =
+          class_name_str.substr(shaded_class_prefix.size(), class_name_str.size());
+      tempLocalClassRef = env->FindClass(no_shaded_class_name.c_str());
+    }
+  }
+  RAY_CHECK(tempLocalClassRef) << "Can't load Java class " << class_name;
+
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
   RAY_CHECK(ret) << "Can't load Java class " << class_name;
   env->DeleteLocalRef(tempLocalClassRef);

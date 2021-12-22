@@ -101,8 +101,16 @@
                         </artifactSet>
                         <relocations>
                             <relocation>
-                                <pattern>com.google</pattern>
-                                <shadedPattern>io.ray.shaded.com.google</shadedPattern>
+                                <pattern>com.google.common</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.common</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>com.google.protobuf</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.protobuf</shadedPattern>
+                            </relocation>
+                            <relocation>
+                                <pattern>com.google.thirdparty</pattern>
+                                <shadedPattern>io.ray.shaded.com.google.thirdparty</shadedPattern>
                             </relocation>
                         </relocations>
                         <filters>
