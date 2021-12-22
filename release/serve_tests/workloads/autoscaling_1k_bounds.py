@@ -202,7 +202,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         logger.info("Deployments scaled down to min replicas ....\n")
 
     save_test_results(
-        "autoscaling successful!",
+        {"success_message": "autoscaling successful!"},
         default_output_file="/tmp/autoscaling_1k_bounds.json")
 
 
