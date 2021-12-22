@@ -196,6 +196,13 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
+  /// Test Put, Get & Remote for large objects
+  std::array<int, 100000> arr;
+  auto r17 = ray::Put(arr);
+  auto r18 = ray::Task(ReturnLargeArray).Remote(r17);
+  EXPECT_EQ(arr, *(ray::Get(r17)));
+  EXPECT_EQ(arr, *(ray::Get(r18)));
+
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
