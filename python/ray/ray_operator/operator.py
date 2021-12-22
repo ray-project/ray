@@ -14,7 +14,6 @@ import yaml
 
 import ray.autoscaler._private.monitor as monitor
 from ray._private import services
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
@@ -109,8 +108,7 @@ class RayCluster:
         port = operator_utils.infer_head_port(self.config)
         address = services.address(ray_head_pod_ip, port)
         mtr = monitor.Monitor(
-            redis_address=None if use_gcs_for_bootstrap() else address,
-            gcs_address=address if use_gcs_for_bootstrap() else None,
+            address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
             prefix_cluster_info=True,
