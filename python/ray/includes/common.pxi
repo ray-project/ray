@@ -34,10 +34,10 @@ cdef class GcsClientOptions:
         return self
 
     @classmethod
-    def from_gcs_address(cls, gcs_ip, int gcs_port):
+    def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
         self.inner.reset(
-            new CGcsClientOptions(gcs_ip.encode("ascii"), gcs_port))
+            new CGcsClientOptions(gcs_address.encode("ascii")))
         return self
 
     cdef CGcsClientOptions* native(self):

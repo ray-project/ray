@@ -298,7 +298,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
                           c_bool enable_sync_conn,
                           c_bool enable_async_conn,
                           c_bool enable_subscribe_conn)
-        CGcsClientOptions(const c_string &gcs_address, int gcs_port)
+        CGcsClientOptions(const c_string &gcs_address)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
