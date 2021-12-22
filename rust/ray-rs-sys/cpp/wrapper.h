@@ -1,3 +1,6 @@
+
+#pragma once
+
 #include "ray/api.h"
 #include "ray/core_worker/core_worker_options.h"
 #include <msgpack.hpp>

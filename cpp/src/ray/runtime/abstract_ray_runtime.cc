@@ -50,7 +50,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
   } else {
-    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
+    // ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {

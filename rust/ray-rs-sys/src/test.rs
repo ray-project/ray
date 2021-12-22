@@ -1,17 +1,22 @@
 #[cfg(test)]
 mod test {
-    use ray_rs_sys::ray_api_ffi::*;
+    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
     #[test]
-    fn test_all() {
+    fn test_rust() {
+
+    }
+
+    #[test]
+    fn test_cpp_binding() {
         println!("{}", IsInitialized());
         Init();
         // InitAsLocal();
         println!("{}", IsInitialized());
 
         let_cxx_string!(name = "my_func");
-        Submit(&name, UniquePtr::null());
+        Submit(&name, &Vec::new());
 
         println!("\nPutting Uint64!");
         let x = PutUint64(1u64 << 20);

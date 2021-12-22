@@ -66,6 +66,7 @@ cc_binary(
     linkstatic = True,
     deps = [
         "ray_api",
+        # "//rust/ray-rs-sys:ray_rs_c"
     ],
 )
 

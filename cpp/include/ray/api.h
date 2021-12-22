@@ -26,12 +26,18 @@
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 
+#include "ray/core_worker/core_worker_options.h"
+
 #include <boost/callable_traits.hpp>
 #include <memory>
 #include <msgpack.hpp>
 #include <mutex>
 
 namespace ray {
+
+void Init(ray::RayConfig &config, core::CoreWorkerOptions::TaskExecutionCallback callback, int argc, char **argv);
+
+void StartWorkerWithCallback(core::CoreWorkerOptions::TaskExecutionCallback callback, int argc, char **argv);
 
 /// Initialize Ray runtime with config.
 void Init(ray::RayConfig &config);

@@ -52,7 +52,7 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
+DEFAULT_CPP_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
                                          "cpp/default_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
@@ -1470,7 +1470,7 @@ def start_raylet(redis_address,
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
-        worker_path (str): The path of the Python file that new worker
+        worker_path (str): The path of the file that new worker
             processes will execute.
         setup_worker_path (str): The path of the Python file that will set up
             the environment for the worker process.
@@ -1556,7 +1556,7 @@ def start_raylet(redis_address,
     else:
         java_worker_command = []
 
-    if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
+    if os.path.exists(DEFAULT_CPP_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             "", redis_address, plasma_store_name, raylet_name, redis_password,
             session_dir, log_dir, node_ip_address)
@@ -1639,6 +1639,7 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        # f"--rust_worker_command={subprocess.list2cmdline(rust_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
@@ -1768,7 +1769,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
     """
 
     command = [
-        DEFAULT_WORKER_EXECUTABLE,
+        DEFAULT_CPP_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",

@@ -20,11 +20,11 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     deps = [
         ":bridge",
-        ":ray_rs_c",
+        # ":ray_rs_c",
         "@cxx.rs//:cxx",
         "//:core_worker_lib",
         "//cpp:ray_api",
-    ],
+    ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
 )
 
 rust_cxx_bridge(
@@ -48,6 +48,7 @@ cc_library(
         "//:core_worker_lib",
         "//cpp:ray_api",
         "@cxx.rs//:core",
+        ":ray_rs_include",
     ],
 )
 

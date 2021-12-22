@@ -154,6 +154,8 @@ if setup_spec.type == SetupType.RAY_CPP:
         for filename in filenames
     ]
 
+# if setup_spec.type == SetupType.RAY_RUST
+
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
@@ -427,7 +429,7 @@ if is_automated_build and is_native_windows_or_msys():
     replace_symlinks_with_junctions()
 
 
-def build(build_python, build_java, build_cpp):
+def build(build_python, build_java, build_cpp, build_rust):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
                "Only Python {} are supported.").format(
@@ -520,6 +522,7 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += ["//rust:ray_rust_pkg"] if build_rust else []
 
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
@@ -577,9 +580,9 @@ def add_system_dlls(dlls, target_dir):
 
 def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
-        build(False, False, False)
+        build(False, False, False, False)
     else:
-        build(True, BUILD_JAVA, True)
+        build(True, BUILD_JAVA, True, False)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files
@@ -630,7 +633,7 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False, build_cpp=False)
+        kwargs = dict(build_python=False, build_java=False, build_cpp=False, build_rust=False)
         for lang in parsed_args.language.split(","):
             if "python" in lang:
                 kwargs.update(build_python=True)
@@ -638,6 +641,8 @@ def api_main(program, *args):
                 kwargs.update(build_java=True)
             elif "cpp" in lang:
                 kwargs.update(build_cpp=True)
+            elif "rust" in lang:
+                kwargs.update(build_rust=True)
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
