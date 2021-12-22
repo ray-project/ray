@@ -35,7 +35,7 @@ from typing import Optional, Callable
 DEFAULT_SMOKE_TEST_MIN_REPLICA = 1
 DEFAULT_FULL_TEST_MIN_REPLICA = 1
 DEFAULT_SMOKE_TEST_MAX_REPLICA = 4
-DEFAULT_FULL_TEST_MAX_REPLICA = 5
+DEFAULT_FULL_TEST_MAX_REPLICA = 100  # 5
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
@@ -181,7 +181,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         all_endpoints = list(serve.list_deployments().keys())
         run_wrk_on_all_nodes(
             trial_length,
-            10,
+            100,  # 10,
             http_host,
             http_port,
             all_endpoints=all_endpoints)
