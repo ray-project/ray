@@ -281,7 +281,8 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.latest_run_dir)
+            callback.start_training(
+                logdir=str(self.latest_run_dir), config=config or {})
 
         train_func = self._get_train_func(train_func, config)
 
