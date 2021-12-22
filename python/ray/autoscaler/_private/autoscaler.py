@@ -560,12 +560,13 @@ class StandardAutoscaler:
                 for node_id in self.non_terminated_nodes.worker_ids):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                taint = self._node_taint(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
                         args=(node_id, setup_commands, ray_start_commands,
-                              resources, docker_config)))
+                              resources, taint, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -822,6 +823,15 @@ class StandardAutoscaler:
         else:
             return {}
 
+    def _node_taint(self, node_id):
+        node_type = self.provider.node_tags(node_id).get(
+            TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get(
+                "taint", {})
+        else:
+            return {}
+
     def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
@@ -1025,6 +1035,7 @@ class StandardAutoscaler:
             is_head_node=False,
             docker_config=self.config.get("docker"),
             node_resources=self._node_resources(node_id),
+            taint=self._node_taint(node_id),
             for_recovery=True)
         updater.start()
         self.updaters[node_id] = updater
@@ -1087,7 +1098,7 @@ class StandardAutoscaler:
             docker_config=docker_config)
 
     def spawn_updater(self, node_id, setup_commands, ray_start_commands,
-                      node_resources, docker_config):
+                      node_resources, taint, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
         ip = self.provider.internal_ip(node_id)
@@ -1119,7 +1130,8 @@ class StandardAutoscaler:
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=docker_config,
-            node_resources=node_resources)
+            node_resources=node_resources,
+            taint=taint)
         updater.start()
         self.updaters[node_id] = updater
 

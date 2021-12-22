@@ -17,7 +17,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.constants import \
-     RESOURCES_ENVIRONMENT_VARIABLE
+     RESOURCES_ENVIRONMENT_VARIABLE, TAINT_ENVIRONMENT_VARIABLE
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
 
@@ -43,6 +43,8 @@ class NodeUpdater:
         runtime_hash: Used to check for config changes
         file_mounts_contents_hash: Used to check for changes to file mounts
         is_head_node: Whether to use head start/setup commands
+        node_resources: Resources for the node
+        taint: Taint label for the node
         rsync_options: Extra options related to the rsync command.
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
@@ -68,6 +70,7 @@ class NodeUpdater:
                  file_mounts_contents_hash,
                  is_head_node,
                  node_resources=None,
+                 taint=None,
                  cluster_synced_files=None,
                  rsync_options=None,
                  process_runner=subprocess,
@@ -99,6 +102,7 @@ class NodeUpdater:
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
         self.node_resources = node_resources
+        self.taint = taint
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
         # TODO (Alex): This makes the assumption that $HOME on the head and
@@ -464,6 +468,9 @@ class NodeUpdater:
                         }
                     else:
                         env_vars = {}
+
+                    if self.taint:
+                        env_vars[TAINT_ENVIRONMENT_VARIABLE] = self.taint
 
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()

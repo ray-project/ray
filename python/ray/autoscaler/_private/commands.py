@@ -613,6 +613,7 @@ def get_or_create_head_node(config: Dict[str, Any],
         # Not necessary to keep in sync with node_launcher.py
         # Keep in sync with autoscaler.py _node_resources
         head_node_resources = head_config.get("resources")
+        head_node_taint = head_config.get("taint")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     creating_new_head = _should_create_new_head(head_node, launch_hash,
@@ -707,6 +708,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
             node_resources=head_node_resources,
+            taint=head_node_taint,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")

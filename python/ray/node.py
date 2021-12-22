@@ -121,6 +121,7 @@ class Node:
                 f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
         self._resource_spec = None
+        self._taint = None
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
@@ -382,7 +383,16 @@ class Node:
         """
         Get the taint for this node, if set. If not set, this will be an empty
         string."""
-        return self._ray_params.taint
+        if self._taint is None:
+            self._taint = self._ray_params.taint
+            env_taint = os.getenv(ray_constants.TAINT_ENVIRONMENT_VARIABLE)
+            if env_taint:
+                if self._taint:
+                    logger.warning(
+                        f"Autoscaler is overriding your taint {self._taint} "
+                        f"with {env_taint}.")
+                self._taint = env_taint
+        return self._taint
 
     @property
     def object_ref_seed(self):
