@@ -657,10 +657,13 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
+        trial_errors = ", ".join(
+            f"{trial}: {trial.error_msg}" for trial in incomplete_trials
+        )
         if raise_on_failed_trial and not state[signal.SIGINT]:
-            raise TuneError("Trials did not complete", incomplete_trials)
+            raise TuneError("Trials did not complete", trial_errors)
         else:
-            logger.error("Trials did not complete: %s", incomplete_trials)
+            logger.error("Trials did not complete: %s", trial_errors)
 
     all_taken = time.time() - all_start
     if has_verbosity(Verbosity.V1_EXPERIMENT):
