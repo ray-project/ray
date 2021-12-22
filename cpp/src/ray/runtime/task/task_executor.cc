@@ -144,23 +144,10 @@ Status TaskExecutor::ExecuteTask(
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   ArgsBufferList ray_args_buffer;
   for (size_t i = 0; i < args_buffer.size(); i++) {
-    auto &ref = arg_refs.at(i);
-    bool is_ref_arg = (ref.object_id() != ray::ObjectID::Nil().Binary());
-
-    if (is_ref_arg) {
-      RAY_LOG(INFO) << "What up dog?: " << TaskType_Name(task_type);
-    } else {
-      RAY_LOG(INFO) << "What up cat?: " << TaskType_Name(task_type) << func_name;
-    }
-
     msgpack::sbuffer sbuf;
 
-    // if (is_ref_arg) {
-    //   sbuf.write(ref.object_id().data(), ref.object_id().size());
-    // } else {
-      auto &arg = args_buffer.at(i);
-      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
-    // }
+    auto &arg = args_buffer.at(i);
+    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
 
     ray_args_buffer.push_back(std::move(sbuf));
   }
