@@ -53,7 +53,7 @@ def test_simple_env_modification_plugin(ray_start_regular):
         }).remote()
 
 
-    if os.name != 'nt':
+    if os.name != "nt":
         # Windows does not have a command-line nice
         output = ray.get(
             f.options(
