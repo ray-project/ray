@@ -849,6 +849,10 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        # Connecting via non-localhost address may be blocked by firewall rule,
+        # e.g. https://github.com/ray-project/ray/issues/15780
+        # TODO(mwtian): figure out a way to use 127.0.0.1 for local connection
+        # when possible.
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
                                  f"{self._ray_params.gcs_server_port}")

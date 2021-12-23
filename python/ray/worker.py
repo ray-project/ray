@@ -1374,10 +1374,11 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
     if gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = None
         worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.gcs_address)
     else:
+        worker.redis_client = node.create_redis_client()
         worker.gcs_channel = gcs_utils.GcsChannel(
             redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
@@ -1431,19 +1432,20 @@ def connect(node,
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
-    try:
-        ray._private.services.check_version_info(worker.redis_client)
-    except Exception as e:
-        if mode == SCRIPT_MODE:
-            raise e
-        elif mode == WORKER_MODE:
-            traceback_str = traceback.format_exc()
-            ray._private.utils.publish_error_to_driver(
-                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
-                traceback_str,
-                job_id=None,
-                redis_client=worker.redis_client,
-                gcs_publisher=worker.gcs_publisher)
+    if not gcs_utils.use_gcs_for_bootstrap():
+        try:
+            ray._private.services.check_version_info(worker.redis_client)
+        except Exception as e:
+            if mode == SCRIPT_MODE:
+                raise e
+            elif mode == WORKER_MODE:
+                traceback_str = traceback.format_exc()
+                ray._private.utils.publish_error_to_driver(
+                    ray_constants.VERSION_MISMATCH_PUSH_ERROR,
+                    traceback_str,
+                    job_id=None,
+                    redis_client=worker.redis_client,
+                    gcs_publisher=worker.gcs_publisher)
 
     worker.lock = threading.RLock()
 
@@ -1462,7 +1464,6 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    redis_address, redis_port = node.redis_address.split(":")
     if gcs_utils.use_gcs_for_bootstrap():
         gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
             node.gcs_address)
