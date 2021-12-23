@@ -50,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward",
     type=float,
-    default=7.0,
+    default=8.0,
     help="Reward at which we stop training.")
 parser.add_argument(
     "--local-mode",
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     if args.as_test:
         config["seed"] = 1234
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=2)
+    results = tune.run(args.run, num_samples=10, stop=stop, config=config, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
