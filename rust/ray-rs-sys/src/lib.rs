@@ -39,6 +39,32 @@ impl RustTaskArg {
     }
 }
 
+unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8> {
+    let mut vec = Vec::with_capacity(size);
+    let slice = core::slice::from_raw_parts(data, size);
+    vec.copy_from_slice(slice);
+    vec
+}
+
+use std::{collections::HashMap, sync::Mutex};
+
+type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
+
+type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
+
+lazy_static::lazy_static! {
+    static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> =
+        Mutex::new(FunctionPtrMap::new());
+}
+
+// TODO: ensure you know how to handle the lifetime of RustBuffer safely...
+// Understand how to safely handle lifetimes for FFI more generally.
+#[no_mangle]
+extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
+    let key_as_vec = key.destroy_into_vec();
+    GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
+}
+
 #[cxx::bridge(namespace = "ray")]
 pub mod ray_api_ffi {
     extern "Rust" {
@@ -46,6 +72,10 @@ pub mod ray_api_ffi {
         fn is_value(&self) -> bool;
         fn value(&self) -> &Vec<u8>;
         fn object_ref(&self) -> &UniquePtr<CxxString>;
+    }
+
+    extern "Rust" {
+        unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8>;
     }
 
     unsafe extern "C++" {

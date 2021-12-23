@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 # cxx = "1.0"
 uniffi = "0.16.0"
+lazy_static = "1.4.0"
+
 
 # [build-dependencies]
 # cxx-build = "1.0"
