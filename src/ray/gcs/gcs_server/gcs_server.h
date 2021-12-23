@@ -156,6 +156,9 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
+  /// Get or connect to a redis server
+  std::shared_ptr<RedisClient> GetOrConnectRedis();
+
   /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.

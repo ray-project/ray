@@ -162,6 +162,14 @@ class SampleBatch(dict):
         """Returns the amount of samples in the sample batch."""
         return self.count
 
+    @PublicAPI
+    def agent_steps(self) -> int:
+        """Returns the same as len(self) (number of steps in this batch).
+
+        To make this compatible with `MultiAgentBatch.agent_steps()`.
+        """
+        return len(self)
+
     @staticmethod
     @PublicAPI
     def concat_samples(
@@ -367,17 +375,9 @@ class SampleBatch(dict):
         # meaningless).
         permutation = np.random.permutation(self.count)
 
-        def _permutate_in_place(path, value):
-            curr = self
-            for i, p in enumerate(path):
-                if i == len(path) - 1:
-                    curr[p] = value[permutation]
-                # Translate into list (tuples are immutable).
-                if isinstance(curr[p], tuple):
-                    curr[p] = list(curr[p])
-                curr = curr[p]
-
-        tree.map_structure_with_path(_permutate_in_place, self)
+        self_as_dict = {k: v for k, v in self.items()}
+        shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        self.update(shuffled)
 
         return self
 
@@ -682,6 +682,16 @@ class SampleBatch(dict):
             return self.__getitem__(key)
         except KeyError:
             return default
+
+    @PublicAPI
+    def as_multi_agent(self) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+
+        Returns:
+            The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
+            to this SampleBatch.
+        """
+        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
 
     @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
@@ -1078,6 +1088,11 @@ class MultiAgentBatch:
         return self.count
 
     @PublicAPI
+    def __len__(self) -> int:
+        """Same as `self.env_steps()`."""
+        return self.count
+
+    @PublicAPI
     def agent_steps(self) -> int:
         """The number of agent steps (there are >= 1 agent steps per env step).
 
@@ -1246,6 +1261,15 @@ class MultiAgentBatch:
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
+        return self
+
+    @DeveloperAPI
+    def as_multi_agent(self) -> "MultiAgentBatch":
+        """Simply returns `self` (already a MultiAgentBatch).
+
+        Returns:
+            This very instance of MultiAgentBatch.
+        """
         return self
 
     def __str__(self):
