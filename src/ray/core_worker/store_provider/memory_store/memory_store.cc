@@ -151,7 +151,9 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     : ref_counter_(std::move(counter)),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
-      unhandled_exception_handler_(unhandled_exception_handler) {}
+      unhandled_exception_handler_(unhandled_exception_handler),
+      std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
+                                                  const ObjectID &object_id)> object_allocator_) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -191,10 +193,16 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                                  object.GetNestedRefs(), true);
-  bool stored_in_direct_memory = true;
+  RAY_LOG(DEBUG) << "Putting object into memory store. objectid is " << object_id;
+  std::shared_ptr<RayObject> object_entry = nullptr;
+  if (object_allocator_ != nullptr) {
+    object_entry = object_allocator_(object, object_id);
+  } else {
+    object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
+                                               object.GetNestedIds(), true);
+  }
 
+  bool stored_in_direct_memory = true;
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
   {
