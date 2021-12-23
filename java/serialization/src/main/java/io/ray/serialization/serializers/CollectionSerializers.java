@@ -192,38 +192,21 @@ public class CollectionSerializers {
 
   public static final class CollectionDefaultJavaSerializer<T extends Collection>
       extends CollectionSerializer<T> {
-    private final boolean useCodegen;
-    private final Serializer<T> codegenSerializer;
     private final DefaultSerializer<T> fallbackSerializer;
 
     public CollectionDefaultJavaSerializer(Fury fury, Class<T> cls) {
       super(fury, cls, false);
-      useCodegen = CodegenSerializer.support(fury, cls);
-      if (useCodegen) {
-        codegenSerializer = fury.getClassResolver().getTypedSerializer(cls);
-        fallbackSerializer = null;
-      } else {
-        codegenSerializer = null;
-        fallbackSerializer = new DefaultSerializer<>(fury, cls);
-      }
+      fallbackSerializer = new DefaultSerializer<>(fury, cls);
     }
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, T value) {
-      if (useCodegen) {
-        codegenSerializer.write(fury, buffer, value);
-      } else {
-        fallbackSerializer.write(fury, buffer, value);
-      }
+      fallbackSerializer.write(fury, buffer, value);
     }
 
     @Override
     public T read(Fury fury, MemoryBuffer buffer, Class<T> type) {
-      if (useCodegen) {
-        return codegenSerializer.read(fury, buffer, type);
-      } else {
-        return fallbackSerializer.read(fury, buffer, type);
-      }
+      return fallbackSerializer.read(fury, buffer, type);
     }
   }
 }

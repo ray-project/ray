@@ -6,7 +6,6 @@ import static io.ray.serialization.serializers.JavaSerializers.isDynamicGenerate
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashBiMap;
 import io.ray.serialization.Fury;
-import io.ray.serialization.serializers.CodegenSerializer;
 import io.ray.serialization.serializers.CollectionSerializers;
 import io.ray.serialization.serializers.DefaultSerializer;
 import io.ray.serialization.serializers.ExternalizableSerializer;
@@ -356,21 +355,7 @@ public class ClassResolver {
         // Serializer of common map such as HashMap/LinkedHashMap should be registered already.
         return MapSerializers.MapDefaultJavaSerializer.class;
       }
-      LOG.warn("Class {} isn't supported for cross-language serialization.", cls);
-      if (CodegenSerializer.support(fury, cls) && fury.isCodeGenEnabled()) {
-        if (getClassCtx.size() > 0) {
-          // avoid potential recursive call for seq codec generation.
-          return CodegenSerializer.LazyInitBeanSerializer.class;
-        } else {
-          getClassCtx.add(cls);
-          Class<? extends Serializer<?>> serializerClass =
-              CodegenSerializer.loadCodegenSerializer(fury, cls);
-          getClassCtx.remove(cls);
-          return serializerClass;
-        }
-      } else {
-        return DefaultSerializer.class;
-      }
+      return DefaultSerializer.class;
     }
   }
 

@@ -12,7 +12,6 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Primitives;
 import io.ray.serialization.bean.BeanA;
-import io.ray.serialization.encoder.Generated;
 import io.ray.serialization.serializers.BufferCallback;
 import io.ray.serialization.serializers.DefaultSerializer;
 import io.ray.serialization.serializers.SerializedObject;
@@ -332,7 +331,6 @@ public class FuryTest {
     Outer outer = new Outer();
     outer.inner = new Outer.Inner();
     fury.deserialize(fury.serialize(outer));
-    assertTrue(fury.getClassResolver().getSerializer(Outer.class) instanceof Generated);
     assertTrue(
       fury.getClassResolver().getSerializer(Outer.Inner.class) instanceof DefaultSerializer);
   }

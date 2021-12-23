@@ -28,7 +28,7 @@ public class ExternalizableSerializerTest {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
       this.x = in.readInt();
       this.y = in.readInt();
       int len = in.readInt();
@@ -44,7 +44,6 @@ public class ExternalizableSerializerTest {
     a.x = 1;
     a.y = 1;
     a.bytes = "bytes".getBytes();
-
     Fury fury = Fury.builder().withReferenceTracking(false).build();
     assertEquals(a, fury.deserialize(fury.serialize(a)));
   }

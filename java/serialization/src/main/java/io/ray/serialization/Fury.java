@@ -1,7 +1,6 @@
 package io.ray.serialization;
 
 import com.google.common.base.Preconditions;
-import io.ray.serialization.codegen.CodeGenerator;
 import io.ray.serialization.resolver.ClassResolver;
 import io.ray.serialization.resolver.MapReferenceResolver;
 import io.ray.serialization.resolver.NoReferenceResolver;
@@ -37,7 +36,6 @@ public final class Fury {
   private final ClassLoader classLoader;
   private final boolean codeGenEnabled;
   private final boolean checkJdkClassSerializable;
-  private final CodeGenerator codeGenerator;
   private final boolean checkClassVersion;
   private final MemoryBuffer buffer;
 
@@ -54,7 +52,6 @@ public final class Fury {
     serializationContext = new SerializationContext();
     classLoader = builder.classLoader;
     codeGenEnabled = builder.codeGenEnabled;
-    codeGenerator = CodeGenerator.getSharedCodeGenerator(classLoader);
     checkClassVersion = builder.checkClassVersion;
     checkJdkClassSerializable = builder.jdkClassSerializableCheck;
     buffer = MemoryUtils.buffer(32);
@@ -346,10 +343,6 @@ public final class Fury {
 
   public boolean isCodeGenEnabled() {
     return codeGenEnabled;
-  }
-
-  public CodeGenerator getCodeGenerator() {
-    return codeGenerator;
   }
 
   public boolean checkClassVersion() {

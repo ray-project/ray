@@ -30,7 +30,7 @@ import java.util.TreeSet;
  *   <li>class that can't be handled by other serializers or codegen-based serializers
  * </ul>
  *
- * <p>Comparing to {@link CodegenSerializer}, this serializer allow parent class and child class to
+ * <p>Comparing to CodegenSerializer, this serializer allow parent class and child class to
  * have duplicate fields names.
  */
 public final class DefaultSerializer<T> extends Serializer<T> {
