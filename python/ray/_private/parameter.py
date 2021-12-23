@@ -127,6 +127,7 @@ class RayParams:
     def __init__(self,
                  bootstrap_address=None,
                  redis_address=None,
+                 gcs_address=None,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -179,6 +180,7 @@ class RayParams:
                  env_vars=None):
         self.bootstrap_address = bootstrap_address
         self.redis_address = redis_address
+        self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
