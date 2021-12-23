@@ -226,6 +226,13 @@ class Client:
             raise TypeError(
                 "config must be a DeploymentConfig or a dictionary.")
 
+        if deployment_config.autoscaling_config is not None and \
+            deployment_config.max_concurrent_queries < deployment_config. \
+                autoscaling_config.target_num_ongoing_requests_per_replica:
+            logger.warning("Autoscaling will never happen, "
+                           "because 'max_concurrent_queries' is less than "
+                           "'target_num_ongoing_requests_per_replica' now.")
+
         goal_id, updating = ray.get(
             self._controller.deploy.remote(name,
                                            deployment_config.to_proto_bytes(),
@@ -273,17 +280,17 @@ class Client:
     @_ensure_connected
     def get_handle(
             self,
-            endpoint_name: str,
+            deployment_name: str,
             missing_ok: Optional[bool] = False,
             sync: bool = True,
             _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+        """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
         Args:
-            endpoint_name (str): A registered service endpoint.
-            missing_ok (bool): If true, then Serve won't check the endpoint is
-                registered. False by default.
+            deployment_name (str): A registered service deployment.
+            missing_ok (bool): If true, then Serve won't check the deployment
+                is registered. False by default.
             sync (bool): If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
@@ -291,15 +298,15 @@ class Client:
         Returns:
             RayServeHandle
         """
-        cache_key = (endpoint_name, missing_ok, sync)
+        cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
             if cached_handle.is_polling and cached_handle.is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
-        if not missing_ok and endpoint_name not in all_endpoints:
-            raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
+        if not missing_ok and deployment_name not in all_endpoints:
+            raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 
         try:
             asyncio_loop_running = asyncio.get_event_loop().is_running()
@@ -327,13 +334,13 @@ class Client:
         if sync:
             handle = RayServeSyncHandle(
                 self._controller,
-                endpoint_name,
+                deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
-                endpoint_name,
+                deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 

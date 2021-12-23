@@ -17,6 +17,7 @@ from ray.external_storage import (create_url_with_offset,
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
+from ray._raylet import GcsClientOptions
 
 
 def run_basic_workload():
@@ -42,8 +43,9 @@ def is_dir_empty(temp_folder,
 
 def assert_no_thrashing(address):
     state = ray.state.GlobalState()
-    state._initialize_global_state(address,
-                                   ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    state._initialize_global_state(
+        GcsClientOptions.from_redis_address(
+            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD))
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
     consumed_bytes = 0

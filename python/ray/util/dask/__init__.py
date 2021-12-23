@@ -1,5 +1,6 @@
 import dask
-from .scheduler import ray_dask_get, ray_dask_get_sync
+from .scheduler import ray_dask_get, ray_dask_get_sync, enable_dask_on_ray, \
+    disable_dask_on_ray
 from .callbacks import (
     RayDaskCallback,
     local_ray_callbacks,
@@ -40,6 +41,9 @@ def patch_dask(ray_dask_persist, ray_dask_persist_mixin):
 patch_dask(ray_dask_persist, ray_dask_persist_mixin)
 
 __all__ = [
+    # Config
+    "enable_dask_on_ray",
+    "disable_dask_on_ray",
     # Schedulers
     "ray_dask_get",
     "ray_dask_get_sync",

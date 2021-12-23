@@ -287,7 +287,9 @@ class RayParams:
             "gcs_server": wrap_port(self.gcs_server_port),
             "client_server": wrap_port(self.ray_client_server_port),
             "dashboard": wrap_port(self.dashboard_port),
-            "dashboard_agent": wrap_port(self.metrics_agent_port),
+            "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
+            "dashboard_agent_http": wrap_port(
+                self.dashboard_agent_listen_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -316,7 +318,8 @@ class RayParams:
                         f"Ray component {comp} is trying to use "
                         f"a port number {port} that is used by "
                         "other components.\n"
-                        f"Port information: {pre_selected_ports}\n"
+                        f"Port information: "
+                        f"{self._format_ports(pre_selected_ports)}\n"
                         "If you allocate ports, "
                         "please make sure the same port is not used by "
                         "multiple components.")
@@ -392,3 +395,26 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+    def _format_ports(self, pre_selected_ports):
+        """Format the pre selected ports information to be more
+        human readable.
+        """
+        ports = pre_selected_ports.copy()
+
+        for comp, port_list in ports.items():
+            if len(port_list) == 1:
+                ports[comp] = port_list[0]
+            elif len(port_list) == 0:
+                # Nothing is selected, meaning it will be randomly selected.
+                ports[comp] = "random"
+            elif comp == "worker_ports":
+                min_port = port_list[0]
+                max_port = port_list[len(port_list) - 1]
+                port_range_str = None
+                if len(port_list) < 50:
+                    port_range_str = str(port_list)
+                else:
+                    port_range_str = f"from {min_port} to {max_port}"
+                ports[comp] = (f"{len(port_list)} ports {port_range_str}")
+        return ports

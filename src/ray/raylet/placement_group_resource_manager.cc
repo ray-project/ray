@@ -78,6 +78,34 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   return true;
 }
 
+bool NewPlacementGroupResourceManager::PrepareBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
+  std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
+  for (const auto &bundle_spec : bundle_specs) {
+    if (PrepareBundle(*bundle_spec)) {
+      prepared_bundles.emplace_back(bundle_spec);
+    } else {
+      // Terminate the preparation phase if any of bundle cannot be prepared.
+      break;
+    }
+  }
+
+  if (prepared_bundles.size() != bundle_specs.size()) {
+    RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
+                      "release the requested resources before.";
+    for (const auto &bundle : prepared_bundles) {
+      ReturnBundle(*bundle);
+      // Erase from `bundle_spec_map_`.
+      const auto &iter = bundle_spec_map_.find(bundle->BundleId());
+      if (iter != bundle_spec_map_.end()) {
+        bundle_spec_map_.erase(iter);
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
 void NewPlacementGroupResourceManager::CommitBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
