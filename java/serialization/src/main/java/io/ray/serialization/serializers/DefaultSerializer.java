@@ -92,7 +92,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         floatFieldAccessorsList.add(unsafeFieldAccessor);
       } else if (fieldType == double.class) {
         doubleFieldAccessorsList.add(unsafeFieldAccessor);
-      } else if (Modifier.isFinal(fieldType.getModifiers())) {
+      } else if (Modifier.isFinal(fieldType.getModifiers()) && fieldType != cls) {
         finalFieldAccessorsList.add(FieldAccessor.createAccessor(field));
       } else {
         otherFieldAccessorsList.add(FieldAccessor.createAccessor(field));
