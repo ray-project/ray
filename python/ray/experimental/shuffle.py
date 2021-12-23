@@ -109,18 +109,22 @@ class _StatusTracker:
 
     def get_progress(self):
         if self.map_refs:
+            print("wait map_refs start")
             ready, self.map_refs = ray.wait(
                 self.map_refs,
                 timeout=1,
                 num_returns=len(self.map_refs),
                 fetch_local=False)
+            print("wait map_refs end")
             self.num_map += len(ready)
         elif self.reduce_refs:
+            print("wait reduce_refs start")
             ready, self.reduce_refs = ray.wait(
                 self.reduce_refs,
                 timeout=1,
                 num_returns=len(self.reduce_refs),
                 fetch_local=False)
+            print("wait reduce_refs end")
             self.num_reduce += len(ready)
         return self.num_map, self.num_reduce
 
@@ -136,7 +140,9 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
 
     while (num_map < input_num_partitions
            or num_reduce < output_num_partitions):
+        print("get_progress start")
         new_num_map, new_num_reduce = ray.get(tracker.get_progress.remote())
+        print(f"get_progress end {new_num_map} {new_num_reduce}")
         map_bar.update(new_num_map - num_map)
         reduce_bar.update(new_num_reduce - num_reduce)
         num_map = new_num_map
