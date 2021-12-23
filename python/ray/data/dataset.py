@@ -231,11 +231,9 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) \
-                        or isinstance(applied, pa.Table) \
-                        or isinstance(applied, pd.core.frame.DataFrame):
-                    applied = applied
-                else:
+                if not (isinstance(applied, list)
+                        or isinstance(applied, pa.Table)
+                        or isinstance(applied, pd.core.frame.DataFrame)):
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "

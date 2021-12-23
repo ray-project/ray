@@ -72,7 +72,7 @@ PandasBlockSchema = collections.namedtuple("PandasBlockSchema",
 class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         if pandas is None:
-            raise ImportError("Run `pip install pandas` for Pandas support")
+            raise ImportError("Run `pip install pandas` for Pandas support.")
         TableBlockAccessor.__init__(self, table)
 
     def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
@@ -122,7 +122,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        # TODO (kfstorm): Should we count index?
         return self._table.memory_usage(index=True, deep=True).sum()
 
     def _zip(self, acc: BlockAccessor) -> "Block[T]":

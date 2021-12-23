@@ -614,10 +614,12 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
                 raise ValueError(
-                    f"Expected list of Ray object refs, got list containing {type(df)}")
+                    f"Expected list of Ray object refs, got list containing {type(df)}"
+                )
     else:
         raise ValueError(
-            f"Expected Ray object ref or list of Ray object refs, got {type(df)}")
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
+        )
 
     context = DatasetContext.get_current()
     if context.enable_pandas_block:

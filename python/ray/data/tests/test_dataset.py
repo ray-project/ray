@@ -3557,9 +3557,11 @@ def test_sort_simple(ray_start_regular_shared):
 
 
 def test_column_name_type_check(ray_start_regular_shared):
-    df = pd.DataFrame({"1": np.random.rand(10), "2": np.random.rand(10)})
-    ray.data.from_pandas(df)
-    df = pd.DataFrame({1: np.random.rand(10), 2: np.random.rand(10)})
+    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
+    ds = ray.data.from_pandas(df)
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
+    assert str(ds) == expected_str, str(ds)
+    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
 

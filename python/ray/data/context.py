@@ -15,6 +15,7 @@ DEFAULT_TARGET_MAX_BLOCK_SIZE = 2048 * 1024 * 1024
 DEFAULT_BLOCK_SPLITTING_ENABLED = False
 
 # Whether pandas block format is enabled.
+# TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
 
