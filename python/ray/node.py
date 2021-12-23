@@ -279,8 +279,6 @@ class Node:
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
         def sigterm_handler(signum, frame):
-            logger.info(
-                f"Signal {signum} received, cleaning up and exiting ...")
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 

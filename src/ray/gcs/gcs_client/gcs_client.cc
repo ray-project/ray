@@ -92,6 +92,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     RAY_LOG(ERROR) << "Failed to connect, server ip and gcs address both are empty.";
     return Status::Invalid("gcs service address is invalid!");
   }
+
   if (options_.gcs_address_.empty()) {
     // Connect to redis.
     // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`

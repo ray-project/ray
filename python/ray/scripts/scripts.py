@@ -722,8 +722,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                              cf.bold("--address"), cf.bold(address))
             raise Exception("Cannot extract host IP and port from "
                             f"`--address={address}`.")
-        ray_params.update(bootstrap_address=bootstrap_address)
 
+        if use_gcs_for_bootstrap():
+            ray_params.gcs_address = bootstrap_address
+        else:
+            ray_params.redis_address = bootstrap_address
+
+        # TODO(mwtian): add equivalent for GCS.
         if not use_gcs_for_bootstrap():
             # Wait for the Redis server to be started. And throw an exception
             # if we can't connect to it.
@@ -737,8 +742,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # Check that the version information on this node matches the
             # version information that the cluster was started with.
             services.check_version_info(redis_client)
-
-            ray_params.update(redis_address=bootstrap_address)
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(

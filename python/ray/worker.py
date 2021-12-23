@@ -425,7 +425,6 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            logger.info(f"Signal {signum} received, shutting down Ray ...")
             shutdown(True)
             sys.exit(1)
 
@@ -1059,7 +1058,6 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
-    logger.info(f"Signal {signum} received, exiting ...")
     sys.exit(signum)
 
 
@@ -1513,6 +1511,7 @@ def connect(node,
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
