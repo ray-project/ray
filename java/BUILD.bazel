@@ -9,9 +9,19 @@ exports_files([
     "checkstyle-suppressions.xml",
 ])
 
+java_plugin(
+    name = "lombok_plugin",
+    generates_api = 1,
+    processor_class = "lombok.launch.AnnotationProcessorHider$AnnotationProcessor",
+    deps = [
+        "@maven//:org_projectlombok_lombok",
+    ],
+)
+
 all_modules = [
     "api",
     "runtime",
+    "serialization",
     "serve",
     "test",
     "performance_test",
@@ -97,6 +107,25 @@ define_java_module(
 )
 
 define_java_module(
+    name = "serialization",
+    define_test_lib = True,
+    test_deps = [
+        "@maven//:org_testng_testng",
+        "@maven//:org_projectlombok_lombok",
+    ],
+    test_plugins = [
+        ":lombok_plugin",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@maven//:com_google_code_findbugs_jsr305",
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_codehaus_janino_janino",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
+define_java_module(
     name = "test",
     deps = [
         ":io_ray_ray_api",
@@ -178,6 +207,7 @@ java_binary(
     runtime_deps = [
         ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
+        ":io_ray_ray_serialization_test",
         ":io_ray_ray_serve_test",
         ":io_ray_ray_test",
     ],
@@ -288,6 +318,7 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
+        cp -f $(location //java:io_ray_ray_serialization_pom) "$$WORK_DIR/java/serialization/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
         cp -f $(location //java:io_ray_ray_serve_pom) "$$WORK_DIR/java/serve/pom.xml"
@@ -305,6 +336,7 @@ java_binary(
     runtime_deps = [
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "//java:io_ray_ray_serialization",
         "//java:io_ray_ray_serve",
         "//streaming/java:io_ray_ray_streaming-api",
         "//streaming/java:io_ray_ray_streaming-runtime",

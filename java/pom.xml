@@ -58,6 +58,7 @@
     <module>runtime</module>
     <module>serve</module>
     <module>test</module>
+    <module>serialization</module>
   </modules>
 
   <properties>
@@ -79,6 +80,12 @@
             <artifactId>snakeyaml</artifactId>
           </exclusion>
         </exclusions>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <scope>test</scope>
       </dependency>
     </dependencies>
   </dependencyManagement>

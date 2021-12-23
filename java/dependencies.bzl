@@ -27,6 +27,9 @@ def gen_java_deps():
             "net.java.dev.jna:jna:5.5.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
+            "com.google.code.findbugs:jsr305:3.0.2",
+            "org.codehaus.janino:janino:3.0.11",
+	        "org.projectlombok:lombok:1.18.8",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

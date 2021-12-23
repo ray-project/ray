@@ -64,6 +64,7 @@ def define_java_module(
         additional_resources = [],
         define_test_lib = False,
         test_deps = [],
+        test_plugins = [],
         **kwargs):
     lib_name = "io_ray_ray_" + name
     pom_file_targets = [lib_name]
@@ -83,6 +84,7 @@ def define_java_module(
             name = test_lib_name,
             srcs = native.glob([name + "/src/test/java/**/*.java"]),
             deps = test_deps,
+            plugins = test_plugins,
         )
     pom_file(
         name = "io_ray_ray_" + name + "_pom",
