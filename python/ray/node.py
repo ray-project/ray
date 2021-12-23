@@ -21,7 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
+from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis,\
+    use_gcs_for_bootstrap
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
@@ -125,6 +126,11 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
+        if use_gcs_for_bootstrap():
+            self._gcs_address = ray_params.bootstrap_address
+        else:
+            # This will be read from Redis when creating GCS client.
+            self._gcs_address = None
         self._config = ray_params._system_config or {}
 
         # Configure log rotation parameters.
@@ -370,17 +376,20 @@ class Node:
     @property
     def address(self):
         """Get the cluster address."""
+        if use_gcs_for_bootstrap():
+            return self._gcs_address
         return self._redis_address
 
     @property
     def gcs_address(self):
         """Get the gcs address."""
-        assert self._gcs_client is not None
-        return self._gcs_client.address
+        assert self._gcs_address is not None
+        return self._gcs_address
 
     @property
     def redis_address(self):
         """Get the cluster Redis address."""
+        assert self._redis_address is not None
         return self._redis_address
 
     @property
@@ -453,7 +462,7 @@ class Node:
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
             "address": (self.gcs_address
-                        if use_gcs_for_bootstrap() else self._redis_address)
+                        if use_gcs_for_bootstrap() else self.redis_address)
         }
 
     def is_head(self):
@@ -470,11 +479,11 @@ class Node:
             for i in range(num_retries):
                 try:
                     if use_gcs_for_bootstrap():
-                        self._gcs_client = GcsClient(
-                            address=self._ray_params.bootstrap_address)
+                        assert self._gcs_address is not None
                     else:
-                        self._gcs_client = GcsClient.create_from_redis(
-                            self.create_redis_client())
+                        redis = self.create_redis_client()
+                        self._gcs_address = get_gcs_address_from_redis(redis)
+                    self._gcs_client = GcsClient(address=self._gcs_address)
                     break
                 except Exception as e:
                     time.sleep(1)
@@ -802,6 +811,7 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
+        assert self._gcs_address is None
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
@@ -820,7 +830,8 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
-        # Init gcs client
+        # Using 127.0.0.1 is fine since GCS is started locally.
+        self._gcs_address = f"127.0.0.1:{self._ray_params.gcs_server_port}"
         self.get_gcs_client()
 
     def start_raylet(self,
