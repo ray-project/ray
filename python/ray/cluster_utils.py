@@ -202,10 +202,12 @@ class Cluster:
                 self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
+                ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+
                 node = ray.node.Node(
                     ray_params,
                     head=False,
