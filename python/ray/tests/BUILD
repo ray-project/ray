@@ -349,7 +349,7 @@ py_test_module_list(
     # "test_array.py",
     "test_placement_group_mini_integration.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   name_suffix = "_debug_mode",
   tags = ["exclusive", "debug_tests", "team:core"],
