@@ -405,6 +405,8 @@ class Node:
         """Get the gcs address."""
         if use_gcs_for_bootstrap():
             assert self._gcs_address is not None
+        else:
+            self._gcs_address = self._get_gcs_address_from_redis()
         return self._gcs_address
 
     @property
@@ -499,12 +501,9 @@ class Node:
         num_retries = NUM_REDIS_GET_RETRIES
         for i in range(num_retries):
             try:
-                self._gcs_client = GcsClient(address=self._gcs_address)
+                self._gcs_client = GcsClient(address=self.gcs_address)
                 break
             except Exception as e:
-                import pdb
-                pdb.set_trace()
-                time.sleep(1)
                 logger.debug(f"Connecting to GCS: {e}")
         assert self._gcs_client is not None, \
             f"Failed to connect to GCS at {self._gcs_address}"
@@ -857,8 +856,6 @@ class Node:
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
                                  f"{self._ray_params.gcs_server_port}")
-        else:
-            self._gcs_address = self._get_gcs_address_from_redis()
         # Init gcs client
         self.get_gcs_client()
 
