@@ -16,27 +16,27 @@ import static io.ray.serialization.codegen.ExpressionUtils.eq;
 import static io.ray.serialization.codegen.ExpressionUtils.eqNull;
 import static io.ray.serialization.codegen.ExpressionUtils.not;
 import static io.ray.serialization.codegen.ExpressionUtils.nullValue;
-import static io.ray.serialization.codegen.TypeUtils.CLASS_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.COLLECTION_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.MAP_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.OBJECT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_BYTE_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_CHAR_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_DOUBLE_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_FLOAT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_INT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_LONG_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_SHORT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_VOID_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.SET_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.getSizeOfPrimitiveType;
-import static io.ray.serialization.codegen.TypeUtils.isBoxed;
-import static io.ray.serialization.codegen.TypeUtils.isPrimitive;
 import static io.ray.serialization.encoder.CodecUtils.getPackage;
-import static io.ray.serialization.types.TypeInference.getElementType;
 import static io.ray.serialization.util.StringUtils.format;
 import static io.ray.serialization.util.StringUtils.uncapitalize;
+import static io.ray.serialization.util.TypeUtils.CLASS_TYPE;
+import static io.ray.serialization.util.TypeUtils.COLLECTION_TYPE;
+import static io.ray.serialization.util.TypeUtils.MAP_TYPE;
+import static io.ray.serialization.util.TypeUtils.OBJECT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_BYTE_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_CHAR_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_DOUBLE_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_FLOAT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_INT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_LONG_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_SHORT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_VOID_TYPE;
+import static io.ray.serialization.util.TypeUtils.SET_TYPE;
+import static io.ray.serialization.util.TypeUtils.getElementType;
+import static io.ray.serialization.util.TypeUtils.getSizeOfPrimitiveType;
+import static io.ray.serialization.util.TypeUtils.isBoxed;
+import static io.ray.serialization.util.TypeUtils.isPrimitive;
 
 import com.google.common.base.Preconditions;
 import com.google.common.reflect.TypeToken;
@@ -49,12 +49,12 @@ import io.ray.serialization.serializers.CodegenSerializer;
 import io.ray.serialization.serializers.CollectionSerializers.CollectionSerializer;
 import io.ray.serialization.serializers.MapSerializers.MapSerializer;
 import io.ray.serialization.serializers.Serializer;
-import io.ray.serialization.types.TypeInference;
 import io.ray.serialization.util.Descriptor;
 import io.ray.serialization.util.LoggerFactory;
 import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.ReflectionUtils;
 import io.ray.serialization.util.Tuple2;
+import io.ray.serialization.util.TypeUtils;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -512,7 +512,7 @@ public class SeqCodecBuilder extends CodecBuilder {
    * info, no need to forward to <code>fury</code>.
    */
   private Expression serializeForMap(Expression buffer, Expression map, TypeToken<?> typeToken) {
-    Tuple2<TypeToken<?>, TypeToken<?>> keyValueType = TypeInference.getMapKeyValueType(typeToken);
+    Tuple2<TypeToken<?>, TypeToken<?>> keyValueType = TypeUtils.getMapKeyValueType(typeToken);
     TypeToken<?> keyType = keyValueType.f0;
     TypeToken<?> valueType = keyValueType.f1;
     if (!Modifier.isFinal(keyType.getRawType().getModifiers())
@@ -835,7 +835,7 @@ public class SeqCodecBuilder extends CodecBuilder {
    * {@link SeqCodecBuilder#serializeForMap}
    */
   private Expression deserializeForMap(Expression buffer, TypeToken<?> typeToken) {
-    Tuple2<TypeToken<?>, TypeToken<?>> keyValueType = TypeInference.getMapKeyValueType(typeToken);
+    Tuple2<TypeToken<?>, TypeToken<?>> keyValueType = TypeUtils.getMapKeyValueType(typeToken);
     TypeToken<?> keyType = keyValueType.f0;
     TypeToken<?> valueType = keyValueType.f1;
     if (!Modifier.isFinal(keyType.getRawType().getModifiers())

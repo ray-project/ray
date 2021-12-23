@@ -10,9 +10,9 @@ import static io.ray.serialization.codegen.Expression.Reference;
 import static io.ray.serialization.codegen.Expression.SetField;
 import static io.ray.serialization.codegen.Expression.StaticInvoke;
 import static io.ray.serialization.codegen.ExpressionUtils.literalStr;
-import static io.ray.serialization.codegen.TypeUtils.CLASS_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.OBJECT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_VOID_TYPE;
+import static io.ray.serialization.util.TypeUtils.CLASS_TYPE;
+import static io.ray.serialization.util.TypeUtils.OBJECT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_VOID_TYPE;
 
 import com.google.common.base.Preconditions;
 import com.google.common.reflect.TypeToken;
@@ -21,11 +21,11 @@ import io.ray.serialization.codegen.CodegenContext;
 import io.ray.serialization.codegen.Expression;
 import io.ray.serialization.serializers.Serializer;
 import io.ray.serialization.serializers.UnsafeFieldAccessor;
-import io.ray.serialization.types.TypeInference;
 import io.ray.serialization.util.Descriptor;
 import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.ReflectionUtils;
 import io.ray.serialization.util.StringUtils;
+import io.ray.serialization.util.TypeUtils;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -83,7 +83,7 @@ public abstract class CodecBuilder {
   }
 
   private void addCommonImports(CodegenContext ctx) {
-    TypeInference.SUPPORTED_TYPES.stream()
+    TypeUtils.BASIC_TYPES.stream()
         .filter(
             typeToken ->
                 !typeToken.isPrimitive()

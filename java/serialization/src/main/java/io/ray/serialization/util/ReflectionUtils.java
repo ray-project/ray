@@ -9,7 +9,6 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -19,14 +18,6 @@ import java.util.stream.Stream;
 
 @SuppressWarnings("UnstableApiUsage")
 public class ReflectionUtils {
-  public static boolean isAbstract(Class<?> clazz) {
-    return Modifier.isAbstract(clazz.getModifiers());
-  }
-
-  public static boolean hasNoArgConstructor(Class<?> clazz) {
-    return getNoArgConstructor(clazz) != null;
-  }
-
   public static boolean hasPublicNoArgConstructor(Class<?> clazz) {
     Constructor<?> constructor = getNoArgConstructor(clazz);
     return constructor != null && Modifier.isPublic(constructor.getModifiers());
@@ -126,21 +117,6 @@ public class ReflectionUtils {
     return methods.get(0).getExceptionTypes().length > 0;
   }
 
-  /** @return true if any method named {@code methodName} has checked exception */
-  public static boolean hasCheckedException(Class<?> cls, String methodName) {
-    List<Method> methods = findMethods(cls, methodName);
-    if (methods.isEmpty()) {
-      String msg = String.format("class %s doesn't have method %s", cls, methodName);
-      throw new IllegalArgumentException(msg);
-    }
-    for (Class<?> exceptionType : methods.get(0).getExceptionTypes()) {
-      if (!RuntimeException.class.isAssignableFrom(exceptionType)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   public static Class<?> getReturnType(Class<?> cls, String methodName) {
     List<Method> methods = findMethods(cls, methodName);
     if (methods.isEmpty()) {
@@ -171,27 +147,6 @@ public class ReflectionUtils {
 
     String msg = String.format("class %s doesn't have field %s", cls, fieldName);
     throw new IllegalArgumentException(msg);
-  }
-
-  /**
-   * @param cls class
-   * @param searchParent true if return super classes fields.
-   * @return all fields of class. And all fields of super classes in order from subclass to super
-   *     classes if <code>searchParent</code> is true
-   */
-  public static List<Field> getFields(Class<?> cls, boolean searchParent) {
-    Preconditions.checkNotNull(cls);
-    List<Field> fields = new ArrayList<>();
-    if (searchParent) {
-      Class<?> clazz = cls;
-      do {
-        Collections.addAll(fields, clazz.getDeclaredFields());
-        clazz = clazz.getSuperclass();
-      } while (clazz != null);
-    } else {
-      Collections.addAll(fields, cls.getDeclaredFields());
-    }
-    return fields;
   }
 
   /** @return generic type arguments of <code>typeToken</code> */

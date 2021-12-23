@@ -2,7 +2,7 @@ package io.ray.serialization.serializers;
 
 import com.google.common.primitives.Primitives;
 import io.ray.serialization.Fury;
-import io.ray.serialization.exception.FuryException;
+import io.ray.serialization.FuryException;
 import io.ray.serialization.resolver.ReferenceResolver;
 import io.ray.serialization.util.CommonUtil;
 import io.ray.serialization.util.Descriptor;
@@ -33,7 +33,7 @@ import java.util.TreeSet;
  * <p>Comparing to {@link CodegenSerializer}, this serializer allow parent class and child class to
  * have duplicate fields names.
  */
-public final class FallbackSerializer<T> extends Serializer<T> {
+public final class DefaultSerializer<T> extends Serializer<T> {
   private final ReferenceResolver referenceResolver;
   private Constructor<T> constructor;
   private final Field[] fields;
@@ -46,7 +46,7 @@ public final class FallbackSerializer<T> extends Serializer<T> {
   private FieldAccessor[] otherFieldAccessors;
   private final int classVersionHash;
 
-  public FallbackSerializer(Fury fury, Class<T> cls) {
+  public DefaultSerializer(Fury fury, Class<T> cls) {
     super(fury, cls);
     this.referenceResolver = fury.getReferenceResolver();
     try {

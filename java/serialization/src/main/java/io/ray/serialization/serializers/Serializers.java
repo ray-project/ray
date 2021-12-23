@@ -1,12 +1,11 @@
 package io.ray.serialization.serializers;
 
-import static io.ray.serialization.codegen.TypeUtils.getArrayComponentInfo;
+import static io.ray.serialization.util.TypeUtils.getArrayComponentInfo;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Primitives;
 import io.ray.serialization.Fury;
 import io.ray.serialization.resolver.ReferenceResolver;
-import io.ray.serialization.types.DateTimeUtils;
 import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.Platform;
 import io.ray.serialization.util.Tuple2;
@@ -57,6 +56,23 @@ public class Serializers {
     @Override
     public Byte read(Fury fury, MemoryBuffer buffer, Class<Byte> type) {
       return buffer.readByte();
+    }
+  }
+
+
+  public static final class CharSerializer extends Serializer<Character> {
+    public CharSerializer(Fury fury) {
+      super(fury, Character.class);
+    }
+
+    @Override
+    public void write(Fury fury, MemoryBuffer buffer, Character value) {
+      buffer.writeChar(value);
+    }
+
+    @Override
+    public Character read(Fury fury, MemoryBuffer buffer, Class<Character> type) {
+      return buffer.readChar();
     }
   }
 
@@ -140,23 +156,6 @@ public class Serializers {
     }
   }
 
-  public static final class SqlDateSerializer extends Serializer<java.sql.Date> {
-    public SqlDateSerializer(Fury fury) {
-      super(fury, java.sql.Date.class);
-    }
-
-    @Override
-    public void write(Fury fury, MemoryBuffer buffer, java.sql.Date value) {
-      buffer.writeLong(DateTimeUtils.instantToMicros(Instant.ofEpochMilli(value.getTime())));
-    }
-
-    @Override
-    public java.sql.Date read(Fury fury, MemoryBuffer buffer, Class<java.sql.Date> type) {
-      Instant instant = DateTimeUtils.microsToInstant(buffer.readLong());
-      return new java.sql.Date(instant.toEpochMilli());
-    }
-  }
-
   public static final class LocalDateSerializer extends Serializer<LocalDate> {
     public LocalDateSerializer(Fury fury) {
       super(fury, LocalDate.class);
@@ -164,12 +163,14 @@ public class Serializers {
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, LocalDate value) {
-      buffer.writeInt(DateTimeUtils.localDateToDays(value));
+      buffer.writeInt(value.getYear());
+      buffer.writeByte((byte) value.getMonthValue());
+      buffer.writeByte((byte) value.getDayOfMonth());
     }
 
     @Override
     public LocalDate read(Fury fury, MemoryBuffer buffer, Class<LocalDate> type) {
-      return DateTimeUtils.daysToLocalDate(buffer.readInt());
+      return LocalDate.of(buffer.readInt(), buffer.readByte(), buffer.readByte());
     }
   }
 
@@ -180,12 +181,12 @@ public class Serializers {
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, Date value) {
-      buffer.writeLong(DateTimeUtils.instantToMicros(value.toInstant()));
+      buffer.writeLong(value.getTime());
     }
 
     @Override
     public Date read(Fury fury, MemoryBuffer buffer, Class<Date> type) {
-      return Date.from(DateTimeUtils.microsToInstant(buffer.readLong()));
+      return new Date(buffer.readLong());
     }
   }
 
@@ -196,12 +197,12 @@ public class Serializers {
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, Timestamp value) {
-      buffer.writeLong(DateTimeUtils.fromJavaTimestamp(value));
+      buffer.writeLong(value.getTime());
     }
 
     @Override
     public Timestamp read(Fury fury, MemoryBuffer buffer, Class<Timestamp> type) {
-      return DateTimeUtils.toJavaTimestamp(buffer.readLong());
+      return new Timestamp(buffer.readLong());
     }
   }
 
@@ -212,12 +213,13 @@ public class Serializers {
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, Instant value) {
-      buffer.writeLong(DateTimeUtils.instantToMicros(value));
+      buffer.writeLong(value.getEpochSecond());
+      buffer.writeInt(value.getNano());
     }
 
     @Override
     public Instant read(Fury fury, MemoryBuffer buffer, Class<Instant> type) {
-      return DateTimeUtils.microsToInstant(buffer.readLong());
+      return Instant.ofEpochSecond(buffer.readLong(), buffer.readInt());
     }
   }
 
@@ -260,12 +262,10 @@ public class Serializers {
   }
 
   public static final class EnumSerializer extends Serializer<Enum> {
-    private final StringSerializer stringSerializer;
     private final Enum[] enumConstants;
 
     public EnumSerializer(Fury fury, Class<Enum> cls) {
       super(fury, cls);
-      stringSerializer = new StringSerializer(fury);
       if (cls.isEnum()) {
         enumConstants = cls.getEnumConstants();
       } else {
@@ -362,17 +362,20 @@ public class Serializers {
 
     @Override
     public void write(Fury fury, MemoryBuffer buffer, byte[] value) {
-      writePrimitiveArray(buffer, value, Platform.BYTE_ARRAY_OFFSET, value.length, 1);
+      fury.writeSerializedObject(buffer, new SerializedObject.ByteArraySerializedObject(value));
     }
 
     @Override
     public byte[] read(Fury fury, MemoryBuffer buffer, Class<byte[]> type) {
-      int size = buffer.readInt();
-      int numElements = size;
-      byte[] values = new byte[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.BYTE_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
+      ByteBuffer buf = fury.readSerializedObject(buffer);
+      int remaining = buf.remaining();
+      if (buf.hasArray() && remaining == buf.array().length) {
+        return buf.array();
+      } else {
+        byte[] arr = new byte[remaining];
+        buf.get(arr);
+        return arr;
+      }
     }
   }
 

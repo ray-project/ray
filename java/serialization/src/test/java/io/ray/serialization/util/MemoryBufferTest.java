@@ -5,7 +5,6 @@ import static org.testng.Assert.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.util.Random;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class MemoryBufferTest {
@@ -94,31 +93,5 @@ public class MemoryBufferTest {
         Platform.freeMemory(address);
       }
     }
-  }
-
-  @Test
-  public void testCompare() {
-    MemoryBuffer buf1 = MemoryUtils.buffer(16);
-    MemoryBuffer buf2 = MemoryUtils.buffer(16);
-    buf1.putLongB(0, 10);
-    buf2.putLongB(0, 10);
-    buf1.put(9, (byte) 1);
-    buf2.put(9, (byte) 2);
-    Assert.assertTrue(buf1.compare(buf2, 0, 0, buf1.size()) < 0);
-    buf1.put(9, (byte) 3);
-    Assert.assertFalse(buf1.compare(buf2, 0, 0, buf1.size()) < 0);
-  }
-
-  @Test
-  public void testEqualTo() {
-    MemoryBuffer buf1 = MemoryUtils.buffer(16);
-    MemoryBuffer buf2 = MemoryUtils.buffer(16);
-    buf1.putLongB(0, 10);
-    buf2.putLongB(0, 10);
-    buf1.put(9, (byte) 1);
-    buf2.put(9, (byte) 1);
-    Assert.assertTrue(buf1.equalTo(buf2, 0, 0, buf1.size()));
-    buf1.put(9, (byte) 2);
-    Assert.assertFalse(buf1.equalTo(buf2, 0, 0, buf1.size()));
   }
 }

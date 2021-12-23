@@ -1,9 +1,10 @@
 package io.ray.serialization.util;
 
+import java.util.Arrays;
+
 /**
  * A resizable, ordered or unordered int array. Avoids the boxing that occurs with
- * ArrayList<Integer>. If unordered, this class avoids a memory copy when removing elements (the
- * last element is moved to the removed element's position).
+ * ArrayList<Integer>.
  *
  * @author Nathan Sweet
  */
@@ -29,17 +30,23 @@ public class IntArray {
 
   public void add(int value) {
     int[] items = this.items;
-    if (size == items.length) items = resize(Math.max(8, (int) (size * 1.75f)));
+    if (size == items.length) {
+      items = resize(Math.max(8, (int) (size * 1.75f)));
+    }
     items[size++] = value;
   }
 
   public int get(int index) {
-    if (index >= size) throw new IndexOutOfBoundsException(String.valueOf(index));
+    if (index >= size) {
+      throw new IndexOutOfBoundsException(String.valueOf(index));
+    }
     return items[index];
   }
 
   public void set(int index, int value) {
-    if (index >= size) throw new IndexOutOfBoundsException(String.valueOf(index));
+    if (index >= size) {
+      throw new IndexOutOfBoundsException(String.valueOf(index));
+    }
     items[index] = value;
   }
 
@@ -61,28 +68,6 @@ public class IntArray {
   }
 
   public String toString() {
-    if (size == 0) return "[]";
-    int[] items = this.items;
-    StringBuilder buffer = new StringBuilder(32);
-    buffer.append('[');
-    buffer.append(items[0]);
-    for (int i = 1; i < size; i++) {
-      buffer.append(", ");
-      buffer.append(items[i]);
-    }
-    buffer.append(']');
-    return buffer.toString();
-  }
-
-  public String toString(String separator) {
-    if (size == 0) return "";
-    int[] items = this.items;
-    StringBuilder buffer = new StringBuilder(32);
-    buffer.append(items[0]);
-    for (int i = 1; i < size; i++) {
-      buffer.append(separator);
-      buffer.append(items[i]);
-    }
-    return buffer.toString();
+    return Arrays.toString(Arrays.copyOfRange(items, 0, size));
   }
 }

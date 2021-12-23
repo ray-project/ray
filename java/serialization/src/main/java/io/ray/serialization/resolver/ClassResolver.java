@@ -5,12 +5,11 @@ import static io.ray.serialization.serializers.JavaSerializers.isDynamicGenerate
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashBiMap;
-import com.google.common.collect.Lists;
 import io.ray.serialization.Fury;
 import io.ray.serialization.serializers.CodegenSerializer;
 import io.ray.serialization.serializers.CollectionSerializers;
+import io.ray.serialization.serializers.DefaultSerializer;
 import io.ray.serialization.serializers.ExternalizableSerializer;
-import io.ray.serialization.serializers.FallbackSerializer;
 import io.ray.serialization.serializers.JavaSerializers.JavaSerializer;
 import io.ray.serialization.serializers.JavaSerializers.LambdaSerializer;
 import io.ray.serialization.serializers.MapSerializers;
@@ -36,7 +35,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,7 +45,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -122,23 +119,13 @@ public class ClassResolver {
     register(JdkProxySerializer.ReplaceStub.class, JDK_PROXY_STUB_ID);
     addDefaultSerializers();
     registerDefaultClasses();
-    registerDiscoveredClasses();
-  }
-
-  private void registerDiscoveredClasses() {
-    ServiceLoader<ClassProvider> loader =
-        ServiceLoader.load(ClassProvider.class, fury.getClassLoader());
-    LinkedHashSet<Class<?>> classes = new LinkedHashSet<>();
-    List<ClassProvider> providers = Lists.newArrayList(loader.iterator());
-    providers.sort(Comparator.comparing(p -> p.getClass().getName()));
-    providers.forEach(discover -> classes.addAll(discover.getClasses()));
-    classes.forEach(this::register);
   }
 
   private void addDefaultSerializers() {
     // primitive types will be boxed.
     addDefaultSerializer(Boolean.class, Serializers.BooleanSerializer.class);
     addDefaultSerializer(Byte.class, Serializers.ByteSerializer.class);
+    addDefaultSerializer(Character.class, Serializers.CharSerializer.class);
     addDefaultSerializer(Short.class, Serializers.ShortSerializer.class);
     addDefaultSerializer(Integer.class, Serializers.IntSerializer.class);
     addDefaultSerializer(Long.class, Serializers.LongSerializer.class);
@@ -149,7 +136,6 @@ public class ClassResolver {
     addDefaultSerializer(StringBuffer.class, Serializers.StringBufferSerializer.class);
     addDefaultSerializer(BigInteger.class, Serializers.BigIntegerSerializer.class);
     addDefaultSerializer(BigDecimal.class, Serializers.BigDecimalSerializer.class);
-    addDefaultSerializer(java.sql.Date.class, Serializers.SqlDateSerializer.class);
     addDefaultSerializer(LocalDate.class, Serializers.LocalDateSerializer.class);
     addDefaultSerializer(Date.class, Serializers.DateSerializer.class);
     addDefaultSerializer(Timestamp.class, Serializers.TimestampSerializer.class);
@@ -165,17 +151,12 @@ public class ClassResolver {
     addDefaultSerializer(String[].class, Serializers.StringArraySerializer.class);
     addDefaultSerializer(
         Object[].class, new Serializers.ObjectArraySerializer<>(fury, Object[].class));
-
     addDefaultSerializer(ArrayList.class, CollectionSerializers.ArrayListSerializer.class);
-    addDefaultSerializer(
-        Arrays.asList(1, 2).getClass(), CollectionSerializers.ArraysAsListSerializer.class);
     addDefaultSerializer(LinkedList.class, CollectionSerializers.CollectionSerializer.class);
-
     addDefaultSerializer(HashSet.class, CollectionSerializers.HashSetSerializer.class);
     addDefaultSerializer(LinkedHashSet.class, CollectionSerializers.HashSetSerializer.class);
     addDefaultSerializer(
         TreeSet.class, new CollectionSerializers.SortedSetSerializer<>(fury, TreeSet.class));
-
     addDefaultSerializer(HashMap.class, MapSerializers.HashMapSerializer.class);
     addDefaultSerializer(LinkedHashMap.class, MapSerializers.HashMapSerializer.class);
     addDefaultSerializer(
@@ -388,7 +369,7 @@ public class ClassResolver {
           return serializerClass;
         }
       } else {
-        return FallbackSerializer.class;
+        return DefaultSerializer.class;
       }
     }
   }

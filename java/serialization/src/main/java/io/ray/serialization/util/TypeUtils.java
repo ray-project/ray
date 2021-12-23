@@ -1,8 +1,7 @@
-package io.ray.serialization.codegen;
+package io.ray.serialization.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.reflect.TypeToken;
-import io.ray.serialization.util.Tuple2;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -12,6 +11,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -70,15 +70,8 @@ public class TypeUtils {
   public static Type KEY_SET_RETURN_TYPE;
   public static Type VALUES_RETURN_TYPE;
 
-  public static final TypeToken<?> PRIMITIVE_BYTE_ARRAY_TYPE = TypeToken.of(byte[].class);
-  public static final TypeToken<?> PRIMITIVE_BOOLEAN_ARRAY_TYPE = TypeToken.of(boolean[].class);
-  public static final TypeToken<?> PRIMITIVE_SHORT_ARRAY_TYPE = TypeToken.of(short[].class);
-  public static final TypeToken<?> PRIMITIVE_INT_ARRAY_TYPE = TypeToken.of(int[].class);
-  public static final TypeToken<?> PRIMITIVE_LONG_ARRAY_TYPE = TypeToken.of(long[].class);
-  public static final TypeToken<?> PRIMITIVE_FLOAT_ARRAY_TYPE = TypeToken.of(float[].class);
-  public static final TypeToken<?> PRIMITIVE_DOUBLE_ARRAY_TYPE = TypeToken.of(double[].class);
-
   public static final TypeToken<?> CLASS_TYPE = TypeToken.of(Class.class);
+  public static Set<TypeToken<?>> BASIC_TYPES = new HashSet<>();
 
   static {
     try {
@@ -89,6 +82,33 @@ public class TypeUtils {
     } catch (NoSuchMethodException e) {
       throw new Error(e); // should be impossible
     }
+  }
+
+  static {
+    BASIC_TYPES.add(PRIMITIVE_BYTE_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_BOOLEAN_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_CHAR_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_SHORT_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_INT_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_LONG_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_FLOAT_TYPE);
+    BASIC_TYPES.add(PRIMITIVE_DOUBLE_TYPE);
+
+    BASIC_TYPES.add(BYTE_TYPE);
+    BASIC_TYPES.add(BOOLEAN_TYPE);
+    BASIC_TYPES.add(CHAR_TYPE);
+    BASIC_TYPES.add(SHORT_TYPE);
+    BASIC_TYPES.add(INT_TYPE);
+    BASIC_TYPES.add(LONG_TYPE);
+    BASIC_TYPES.add(FLOAT_TYPE);
+    BASIC_TYPES.add(DOUBLE_TYPE);
+
+    BASIC_TYPES.add(STRING_TYPE);
+    BASIC_TYPES.add(BIG_DECIMAL_TYPE);
+    BASIC_TYPES.add(DATE_TYPE);
+    BASIC_TYPES.add(LOCAL_DATE_TYPE);
+    BASIC_TYPES.add(TIMESTAMP_TYPE);
+    BASIC_TYPES.add(INSTANT_TYPE);
   }
 
   public static boolean isNullable(Class<?> clz) {
@@ -202,11 +222,6 @@ public class TypeUtils {
   }
 
   /** @return dimensions of multi-dimension array */
-  public static int getArrayDimensions(TypeToken<?> type) {
-    return getArrayDimensions(type.getRawType());
-  }
-
-  /** @return dimensions of multi-dimension array */
   public static int getArrayDimensions(Class<?> type) {
     Preconditions.checkArgument(type.isArray());
     Class<?> t = type;
@@ -255,5 +270,29 @@ public class TypeUtils {
       typeBuilder.append('[').append(dimensions[i]).append(']');
     }
     return typeBuilder.toString();
+  }
+
+  /** @return element type of a iterable */
+  public static TypeToken<?> getElementType(TypeToken<?> typeToken) {
+    @SuppressWarnings("unchecked")
+    TypeToken<?> supertype =
+        ((TypeToken<? extends Iterable<?>>) typeToken).getSupertype(Iterable.class);
+    return supertype.resolveType(ITERATOR_RETURN_TYPE).resolveType(NEXT_RETURN_TYPE);
+  }
+
+  public static TypeToken<?> getCollectionType(TypeToken<?> typeToken) {
+    @SuppressWarnings("unchecked")
+    TypeToken<?> supertype =
+        ((TypeToken<? extends Iterable<?>>) typeToken).getSupertype(Iterable.class);
+    return supertype.getSubtype(Collection.class);
+  }
+
+  /** @return key/value type of a map */
+  public static Tuple2<TypeToken<?>, TypeToken<?>> getMapKeyValueType(TypeToken<?> typeToken) {
+    @SuppressWarnings("unchecked")
+    TypeToken<?> supertype = ((TypeToken<? extends Map<?, ?>>) typeToken).getSupertype(Map.class);
+    TypeToken<?> keyType = getElementType(supertype.resolveType(KEY_SET_RETURN_TYPE));
+    TypeToken<?> valueType = getElementType(supertype.resolveType(VALUES_RETURN_TYPE));
+    return Tuple2.of(keyType, valueType);
   }
 }

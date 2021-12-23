@@ -6,7 +6,6 @@ import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.Platform;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.nio.charset.StandardCharsets;
 
 public final class StringSerializer extends Serializer<String> {
   private static final boolean STRING_VALUE_FIELD_IS_CHARS;
@@ -71,15 +70,6 @@ public final class StringSerializer extends Serializer<String> {
   }
 
   private char[] charArray = null;
-
-  public void writeString(Fury fury, MemoryBuffer buffer, String value) {
-    writeJavaString(buffer, value);
-  }
-
-  public String readString(Fury fury, MemoryBuffer buffer) {
-    return readJavaString(buffer);
-  }
-
   // based on https://stackoverflow.com/questions/19692206/writing-and-reading-strings-with-unsafe
   public void writeJavaString(MemoryBuffer buffer, String value) {
     final int strLen = value.length();
@@ -108,12 +98,6 @@ public final class StringSerializer extends Serializer<String> {
       charArray = new char[numElements];
     }
     return charArray;
-  }
-
-  public void writeUTF8String(MemoryBuffer buffer, String value) {
-    byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-    buffer.writeInt(bytes.length);
-    buffer.writeBytes(bytes);
   }
 
   // We don't use UNSAFE.putObject to write String value field, because it's final, write final will
@@ -147,15 +131,5 @@ public final class StringSerializer extends Serializer<String> {
         return new String(chars, 0, numElements);
       }
     }
-  }
-
-  public String readUTF8String(MemoryBuffer buffer) {
-    // avoid wrong call to change readerIndex, so we don't use readInt, readBytes
-    int readerIndex = buffer.readerIndex();
-    int len = buffer.getInt(readerIndex);
-    // TODO(mubai) use CharBuffer to decode from buffer directly to remove a copy
-    byte[] bytes = buffer.getBytes(readerIndex + 4, len);
-    buffer.readerIndex(readerIndex + 4 + len);
-    return new String(bytes, StandardCharsets.UTF_8);
   }
 }

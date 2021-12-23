@@ -4,9 +4,9 @@ import static io.ray.serialization.codegen.Code.ExprCode;
 import static io.ray.serialization.codegen.CodeGenerator.alignIndent;
 import static io.ray.serialization.codegen.CodeGenerator.indent;
 import static io.ray.serialization.codegen.CodeGenerator.spaces;
-import static io.ray.serialization.codegen.TypeUtils.getArrayType;
 import static io.ray.serialization.util.StringUtils.format;
 import static io.ray.serialization.util.StringUtils.uncapitalize;
+import static io.ray.serialization.util.TypeUtils.getArrayType;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;

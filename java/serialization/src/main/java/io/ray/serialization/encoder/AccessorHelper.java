@@ -108,15 +108,12 @@ public class AccessorHelper {
       classLoader.loadClass(qualifiedClassName);
       return true;
     } catch (ClassNotFoundException ignored) {
-      Object lock;
       synchronized (defineLock) {
         if (defineAccessorStatus.containsKey(beanClass)) {
           return defineAccessorStatus.get(beanClass);
-        } else {
-          lock = getDefineLock(beanClass);
         }
       }
-      synchronized (lock) {
+      synchronized (getDefineLock(beanClass)) {
         if (defineAccessorStatus.containsKey(beanClass)) {
           return defineAccessorStatus.get(beanClass);
         }

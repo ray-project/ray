@@ -4,7 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.helpers.NOPLogger;
 
 public class LoggerFactory {
-  private static boolean disableLogging;
+  private static boolean disableLogging = true;
 
   public static void disableLogging() {
     disableLogging = true;

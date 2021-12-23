@@ -8,7 +8,7 @@ import java.util.IdentityHashMap;
 
 public final class MapReferenceResolver implements ReferenceResolver {
   private final Fury fury;
-  // TODO use IdentityObjectIntMap
+  // TODO use IdentityObjectIntMap to avoid box and reduce hash lookup.
   private final IdentityHashMap<Object, Integer> writtenObjects = new IdentityHashMap<>();
   private final ArrayList<Object> readObjects = new ArrayList<>();
   private final IntArray readReferenceIds = new IntArray(0);

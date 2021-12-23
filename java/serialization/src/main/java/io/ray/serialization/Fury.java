@@ -16,16 +16,8 @@ import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.MemoryUtils;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 
-/**
- * Cross-Lang Data layout: 1byte mask: 1-bit null: 0->null, 1->not null 1-bit endianness: 0->le,
- * 1->be 1-bit target lang: 0->native, 1->x_lang if x_lang, will write current process language as a
- * byte into buffer. 1-bit out-of-band serialization enable flag: 0 -> not enabled, 1 -> enabled.
- * other bits reserved
- */
 public final class Fury {
   public static final byte NULL = 0;
   // When reference tracking is enabled, this flag also indicates that the object is first read.
@@ -48,7 +40,6 @@ public final class Fury {
   private final CodeGenerator codeGenerator;
   private final boolean checkClassVersion;
   private final MemoryBuffer buffer;
-  private final List<Object> nativeObjects;
 
   private Fury(FuryBuilder builder) {
     this.isLittleEndian = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
@@ -67,7 +58,6 @@ public final class Fury {
     checkClassVersion = builder.checkClassVersion;
     checkJdkClassSerializable = builder.jdkClassSerializableCheck;
     buffer = MemoryUtils.buffer(32);
-    nativeObjects = new ArrayList<>();
   }
 
   /** register class */
@@ -322,14 +312,12 @@ public final class Fury {
     referenceResolver.resetWrite();
     classResolver.resetWrite();
     serializationContext.reset();
-    nativeObjects.clear();
   }
 
   public void resetRead() {
     referenceResolver.resetRead();
     classResolver.resetRead();
     serializationContext.reset();
-    nativeObjects.clear();
   }
 
   public boolean isLittleEndian() {

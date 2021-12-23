@@ -1,17 +1,13 @@
 package io.ray.serialization.serializers;
 
-import com.google.common.base.Preconditions;
 import io.ray.serialization.Fury;
 import io.ray.serialization.util.MemoryBuffer;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -125,38 +121,6 @@ public class CollectionSerializers {
     }
   }
 
-  public static final class ArraysAsListSerializer extends CollectionSerializer<List<?>> {
-
-    private Field arrayField;
-
-    public ArraysAsListSerializer(Fury fury, Class<List<?>> cls) {
-      super(fury, cls, false);
-      try {
-        arrayField = Class.forName("java.util.Arrays$ArrayList").getDeclaredField("a");
-        arrayField.setAccessible(true);
-      } catch (final Exception e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    @Override
-    public void write(Fury fury, MemoryBuffer buffer, List<?> value) {
-      try {
-        final Object[] array = (Object[]) arrayField.get(value);
-        fury.serializeReferencableToJava(buffer, array);
-      } catch (Exception e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    @Override
-    public List<?> read(Fury fury, MemoryBuffer buffer, Class<List<?>> type) {
-      final Object[] array = (Object[]) fury.deserializeReferencableFromJava(buffer);
-      Preconditions.checkNotNull(array);
-      return Arrays.asList(array);
-    }
-  }
-
   public static final class HashSetSerializer extends CollectionSerializer<HashSet> {
     public HashSetSerializer(Fury fury) {
       super(fury, HashSet.class);
@@ -230,7 +194,7 @@ public class CollectionSerializers {
       extends CollectionSerializer<T> {
     private final boolean useCodegen;
     private final Serializer<T> codegenSerializer;
-    private final FallbackSerializer<T> fallbackSerializer;
+    private final DefaultSerializer<T> fallbackSerializer;
 
     public CollectionDefaultJavaSerializer(Fury fury, Class<T> cls) {
       super(fury, cls, false);
@@ -240,7 +204,7 @@ public class CollectionSerializers {
         fallbackSerializer = null;
       } else {
         codegenSerializer = null;
-        fallbackSerializer = new FallbackSerializer<>(fury, cls);
+        fallbackSerializer = new DefaultSerializer<>(fury, cls);
       }
     }
 

@@ -13,7 +13,9 @@ import com.google.common.collect.Sets;
 import com.google.common.primitives.Primitives;
 import io.ray.serialization.bean.BeanA;
 import io.ray.serialization.encoder.Generated;
-import io.ray.serialization.serializers.FallbackSerializer;
+import io.ray.serialization.serializers.BufferCallback;
+import io.ray.serialization.serializers.DefaultSerializer;
+import io.ray.serialization.serializers.SerializedObject;
 import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.Platform;
 import java.io.Serializable;
@@ -44,6 +46,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.testng.Assert;
@@ -55,6 +58,11 @@ public class FuryTest {
 
   @DataProvider(name = "referenceTrackingConfig")
   public static Object[][] referenceTrackingConfig() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @DataProvider(name = "oobConfig")
+  public static Object[][] oobConfig() {
     return new Object[][] {{false}, {true}};
   }
 
@@ -76,20 +84,26 @@ public class FuryTest {
   enum EnumSubClass {
     A {
       @Override
-      void f() {}
+      void f() {
+      }
     },
     B {
       @Override
-      void f() {}
+      void f() {
+      }
     };
 
     abstract void f();
   }
 
-  @Test(dataProvider = "referenceTrackingConfig")
-  public void basicTest(boolean referenceTracking) {
-    Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
+  @Test(dataProvider = "javaFury")
+  public void basicTest(Fury fury) {
     assertEquals(true, serDe(fury, true));
+    assertEquals((byte) 1, serDe(fury, (byte) 1));
+    assertEquals('a', serDe(fury, 'a'));
+    assertEquals((short) 1, serDe(fury, (short) 1));
+    assertEquals(1, serDe(fury, 1));
+    assertEquals(1L, serDe(fury, 1L));
     assertEquals(Byte.MAX_VALUE, serDe(fury, Byte.MAX_VALUE));
     assertEquals(Short.MAX_VALUE, serDe(fury, Short.MAX_VALUE));
     assertEquals(Integer.MAX_VALUE, serDe(fury, Integer.MAX_VALUE));
@@ -117,21 +131,21 @@ public class FuryTest {
     assertEquals(instant, serDe(fury, instant));
 
     assertTrue(
-        Arrays.equals(
-            new boolean[] {false, true}, (boolean[]) serDe(fury, new boolean[] {false, true})));
+      Arrays.equals(
+        new boolean[] {false, true}, (boolean[]) serDe(fury, new boolean[] {false, true})));
     assertEquals(new byte[] {1, 1}, (byte[]) serDe(fury, new byte[] {1, 1}));
     assertEquals(new short[] {1, 1}, (short[]) serDe(fury, new short[] {1, 1}));
     assertEquals(new int[] {1, 1}, (int[]) serDe(fury, new int[] {1, 1}));
     assertEquals(new long[] {1, 1}, (long[]) serDe(fury, new long[] {1, 1}));
     assertTrue(Arrays.equals(new float[] {1.f, 1.f}, (float[]) serDe(fury, new float[] {1f, 1f})));
     assertTrue(
-        Arrays.equals(new double[] {1.0, 1.0}, (double[]) serDe(fury, new double[] {1.0, 1.0})));
+      Arrays.equals(new double[] {1.0, 1.0}, (double[]) serDe(fury, new double[] {1.0, 1.0})));
     assertEquals(new String[] {"str", "str"}, (Object[]) serDe(fury, new String[] {"str", "str"}));
     assertEquals(new Object[] {"str", 1}, (Object[]) serDe(fury, new Object[] {"str", 1}));
     assertTrue(
-        Arrays.deepEquals(
-            new Integer[][] {{1, 2}, {1, 2}},
-            (Integer[][]) serDe(fury, new Integer[][] {{1, 2}, {1, 2}})));
+      Arrays.deepEquals(
+        new Integer[][] {{1, 2}, {1, 2}},
+        (Integer[][]) serDe(fury, new Integer[][] {{1, 2}, {1, 2}})));
 
     assertEquals(Arrays.asList(1, 2), serDe(fury, Arrays.asList(1, 2)));
     List<String> arrayList = Arrays.asList("str", "str");
@@ -200,16 +214,16 @@ public class FuryTest {
   public void testTreeSet(boolean referenceTracking) {
     Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
     TreeSet<String> set =
-        new TreeSet<>(
-            (Comparator<? super String> & Serializable)
-                (s1, s2) -> {
-                  int delta = s1.length() - s2.length();
-                  if (delta == 0) {
-                    return s1.compareTo(s2);
-                  } else {
-                    return delta;
-                  }
-                });
+      new TreeSet<>(
+        (Comparator<? super String> & Serializable)
+          (s1, s2) -> {
+            int delta = s1.length() - s2.length();
+            if (delta == 0) {
+              return s1.compareTo(s2);
+            } else {
+              return delta;
+            }
+          });
     set.add("str11");
     set.add("str2");
     assertEquals(set, serDe(fury, set));
@@ -230,16 +244,16 @@ public class FuryTest {
     boolean referenceTracking = true;
     Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
     TreeMap<String, String> map =
-        new TreeMap<>(
-            (Comparator<? super String> & Serializable)
-                (s1, s2) -> {
-                  int delta = s1.length() - s2.length();
-                  if (delta == 0) {
-                    return s1.compareTo(s2);
-                  } else {
-                    return delta;
-                  }
-                });
+      new TreeMap<>(
+        (Comparator<? super String> & Serializable)
+          (s1, s2) -> {
+            int delta = s1.length() - s2.length();
+            if (delta == 0) {
+              return s1.compareTo(s2);
+            } else {
+              return delta;
+            }
+          });
     map.put("str1", "1");
     map.put("str2", "1");
     assertEquals(map, serDe(fury, map));
@@ -268,7 +282,7 @@ public class FuryTest {
   public void testLambda(boolean referenceTracking) {
     Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
     BiFunction<Fury, Object, byte[]> function =
-        (Serializable & BiFunction<Fury, Object, byte[]>) (fury1, obj) -> fury1.serialize(obj);
+      (Serializable & BiFunction<Fury, Object, byte[]>) (fury1, obj) -> fury1.serialize(obj);
     fury.deserialize(fury.serialize(function));
   }
 
@@ -277,11 +291,11 @@ public class FuryTest {
   public void testJdkProxy(boolean referenceTracking) {
     Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
     Function function =
-        (Function)
-            Proxy.newProxyInstance(
-                fury.getClassLoader(),
-                new Class[] {Function.class},
-                (Serializable & InvocationHandler) (proxy, method, args) -> 1);
+      (Function)
+        Proxy.newProxyInstance(
+          fury.getClassLoader(),
+          new Class[] {Function.class},
+          (Serializable & InvocationHandler) (proxy, method, args) -> 1);
     Function deserializedFunction = (Function) fury.deserialize(fury.serialize(function));
     assertEquals(deserializedFunction.apply(null), 1);
   }
@@ -290,15 +304,15 @@ public class FuryTest {
   public void testSerializeClasses(boolean referenceTracking) {
     Fury fury = Fury.builder().withReferenceTracking(referenceTracking).build();
     Primitives.allPrimitiveTypes()
-        .forEach(
-            cls -> {
-              assertSame(cls, fury.deserialize(fury.serialize(cls)));
-            });
+      .forEach(
+        cls -> {
+          assertSame(cls, fury.deserialize(fury.serialize(cls)));
+        });
     Primitives.allWrapperTypes()
-        .forEach(
-            cls -> {
-              assertSame(cls, fury.deserialize(fury.serialize(cls)));
-            });
+      .forEach(
+        cls -> {
+          assertSame(cls, fury.deserialize(fury.serialize(cls)));
+        });
     assertSame(Class.class, fury.deserialize(fury.serialize(Class.class)));
     assertSame(Fury.class, fury.deserialize(fury.serialize(Fury.class)));
   }
@@ -320,7 +334,7 @@ public class FuryTest {
     fury.deserialize(fury.serialize(outer));
     assertTrue(fury.getClassResolver().getSerializer(Outer.class) instanceof Generated);
     assertTrue(
-        fury.getClassResolver().getSerializer(Outer.Inner.class) instanceof FallbackSerializer);
+      fury.getClassResolver().getSerializer(Outer.Inner.class) instanceof DefaultSerializer);
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -332,7 +346,7 @@ public class FuryTest {
       queue.add(2);
       queue.add(3);
       assertEquals(
-          new ArrayList<>((Collection<Integer>) serDe(fury, queue)), new ArrayList<>(queue));
+        new ArrayList<>((Collection<Integer>) serDe(fury, queue)), new ArrayList<>(queue));
     }
     {
       LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
@@ -340,7 +354,7 @@ public class FuryTest {
       queue.add(2);
       queue.add(3);
       assertEquals(
-          new ArrayList<>((Collection<Integer>) serDe(fury, queue)), new ArrayList<>(queue));
+        new ArrayList<>((Collection<Integer>) serDe(fury, queue)), new ArrayList<>(queue));
     }
     {
       ConcurrentMap<String, Integer> map = Maps.newConcurrentMap();
@@ -374,23 +388,23 @@ public class FuryTest {
   public void testUnmodifiableCollection() {
     Fury fury = Fury.builder().withReferenceTracking(true).build();
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableList((Lists.newArrayList(1))))),
-        Collections.unmodifiableList(Lists.newArrayList(1)));
+      fury.deserialize(fury.serialize(Collections.unmodifiableList((Lists.newArrayList(1))))),
+      Collections.unmodifiableList(Lists.newArrayList(1)));
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableList(Lists.newLinkedList()))),
-        Collections.unmodifiableList(Lists.newLinkedList()));
+      fury.deserialize(fury.serialize(Collections.unmodifiableList(Lists.newLinkedList()))),
+      Collections.unmodifiableList(Lists.newLinkedList()));
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableSet(Sets.newHashSet(1)))),
-        Collections.unmodifiableSet(Sets.newHashSet(1)));
+      fury.deserialize(fury.serialize(Collections.unmodifiableSet(Sets.newHashSet(1)))),
+      Collections.unmodifiableSet(Sets.newHashSet(1)));
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableSortedSet(Sets.newTreeSet()))),
-        Collections.unmodifiableSortedSet(Sets.newTreeSet()));
+      fury.deserialize(fury.serialize(Collections.unmodifiableSortedSet(Sets.newTreeSet()))),
+      Collections.unmodifiableSortedSet(Sets.newTreeSet()));
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableMap(ImmutableMap.of(1, 2)))),
-        Collections.unmodifiableMap(ImmutableMap.of(1, 2)));
+      fury.deserialize(fury.serialize(Collections.unmodifiableMap(ImmutableMap.of(1, 2)))),
+      Collections.unmodifiableMap(ImmutableMap.of(1, 2)));
     Assert.assertEquals(
-        fury.deserialize(fury.serialize(Collections.unmodifiableSortedMap(new TreeMap<>()))),
-        Collections.unmodifiableSortedMap(new TreeMap<>()));
+      fury.deserialize(fury.serialize(Collections.unmodifiableSortedMap(new TreeMap<>()))),
+      Collections.unmodifiableSortedMap(new TreeMap<>()));
   }
 
   @Test
@@ -399,9 +413,35 @@ public class FuryTest {
     serDe(fury, ByteBuffer.allocate(32));
     serDe(fury, ByteBuffer.allocateDirect(32));
     assertThrows(
-        UnsupportedOperationException.class,
-        () -> {
-          fury.serialize(new Thread());
-        });
+      UnsupportedOperationException.class,
+      () -> fury.serialize(new Thread()));
+  }
+
+  @Test(dataProvider = "oobConfig")
+  public void testOutOfBandSerialization(boolean oob) {
+    Fury fury = Fury.builder().withReferenceTracking(true).build();
+    List<Object> list = Arrays.asList(new byte[10000], ByteBuffer.allocate(10000));
+    Map<Object, Object> map = new HashMap<>();
+    map.put("k1", list);
+    map.put("k2", ByteBuffer.allocateDirect(10000));
+    Collection<SerializedObject> serializedObjects = new ArrayList<>();
+    BufferCallback bufferCallback = o -> !serializedObjects.add(o);
+    if (!oob) {
+      bufferCallback = null;
+    }
+    byte[] inBandBuffer = fury.serialize(map, bufferCallback);
+    if (oob) {
+      assertEquals(serializedObjects.size(), 3);
+    }
+    List<ByteBuffer> buffers = serializedObjects.stream()
+      .map(SerializedObject::toBuffer).collect(Collectors.toList());
+    if (!oob) {
+      buffers = null;
+    }
+    Map<Object, Object> newMap = (Map<Object, Object>) fury.deserialize(inBandBuffer, buffers);
+    List<Object> newList = (List<Object>) newMap.get("k1");
+    assertEquals(newList.size(), 2);
+    assertEquals(((byte[]) newList.get(0)).length, 10000);
+    assertEquals(((ByteBuffer) newList.get(1)).remaining(), 10000);
   }
 }

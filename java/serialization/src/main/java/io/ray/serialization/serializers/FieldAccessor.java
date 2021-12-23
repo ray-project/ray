@@ -1,7 +1,7 @@
 package io.ray.serialization.serializers;
 
 import com.google.common.base.Preconditions;
-import io.ray.serialization.codegen.TypeUtils;
+import io.ray.serialization.util.TypeUtils;
 import java.lang.reflect.Field;
 
 /**

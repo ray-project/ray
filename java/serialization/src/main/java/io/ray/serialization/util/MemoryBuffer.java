@@ -9,14 +9,20 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ReadOnlyBufferException;
 
-/** Based on org.apache.flink.core.memory.MemoryBuffer */
+/**
+ * Based on org.apache.flink.core.memory.MemoryBuffer
+ */
 public final class MemoryBuffer {
 
-  /** The unsafe handle for transparent memory copied (heap / off-heap). */
+  /**
+   * The unsafe handle for transparent memory copied (heap / off-heap).
+   */
   @SuppressWarnings("restriction")
   private static final sun.misc.Unsafe UNSAFE = Platform.UNSAFE;
 
-  /** The beginning of the byte array contents, relative to the byte array object. */
+  /**
+   * The beginning of the byte array contents, relative to the byte array object.
+   */
   @SuppressWarnings("restriction")
   private static final long BYTE_ARRAY_BASE_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
 
@@ -48,13 +54,11 @@ public final class MemoryBuffer {
    */
   private long address;
 
-  /**
-   * The address one byte after the last addressable byte, i.e. <tt>address + size</tt> while the
-   * buffer is not disposed.
-   */
+  // The address one byte after the last addressable byte, i.e. <tt>address + size</tt> while the
+  // buffer is not disposed.
   private long addressLimit;
 
-  /** The size in bytes of the memory buffer. */
+  // The size in bytes of the memory buffer.
   private int size;
 
   private int readerIndex;
@@ -68,14 +72,14 @@ public final class MemoryBuffer {
    *
    * @param buffer The byte array whose memory is represented by this memory buffer.
    * @param offset The offset of the sub array to be used; must be non-negative and no larger than
-   *     <tt>array.length</tt>.
+   *   <tt>array.length</tt>.
    * @param length buffer size
    */
   MemoryBuffer(byte[] buffer, int offset, int length) {
     Preconditions.checkArgument(offset >= 0 && length >= 0);
     if (offset + length > buffer.length) {
       throw new IllegalArgumentException(
-          String.format("%d exceeds buffer size %d", offset + length, buffer.length));
+        String.format("%d exceeds buffer size %d", offset + length, buffer.length));
     }
     initHeapBuffer(buffer, offset, length);
   }
@@ -129,10 +133,10 @@ public final class MemoryBuffer {
     if (offHeapAddress >= Long.MAX_VALUE - Integer.MAX_VALUE) {
       // this is necessary to make sure the collapsed checks are safe against numeric overflows
       throw new IllegalArgumentException(
-          "Buffer initialized with too large address: "
-              + offHeapAddress
-              + " ; Max allowed address is "
-              + (Long.MAX_VALUE - Integer.MAX_VALUE - 1));
+        "Buffer initialized with too large address: "
+          + offHeapAddress
+          + " ; Max allowed address is "
+          + (Long.MAX_VALUE - Integer.MAX_VALUE - 1));
     }
 
     this.heapMemory = null;
@@ -180,7 +184,7 @@ public final class MemoryBuffer {
    * Checks whether this memory buffer is backed by off-heap memory.
    *
    * @return <tt>true</tt>, if the memory buffer is backed by off-heap memory, <tt>false</tt> if it
-   *     is backed by heap memory.
+   *   is backed by heap memory.
    */
   public boolean isOffHeap() {
     return heapMemory == null;
@@ -190,7 +194,7 @@ public final class MemoryBuffer {
    * Get the heap byte array object.
    *
    * @return Return non-null if the memory is on the heap, and return null, if the memory if off the
-   *     heap.
+   *   heap.
    */
   public byte[] getHeapMemory() {
     return heapMemory;
@@ -245,7 +249,7 @@ public final class MemoryBuffer {
    * @param length The number of bytes to be wrapped as a buffer.
    * @return A <tt>ByteBuffer</tt> backed by the specified portion of the memory buffer.
    * @throws IndexOutOfBoundsException Thrown, if offset is negative or larger than the memory
-   *     buffer size, or if the offset plus the length is larger than the buffer size.
+   *                                   buffer size, or if the offset plus the length is larger than the buffer size.
    */
   public ByteBuffer wrap(int offset, int length) {
     if (address <= addressLimit) {
@@ -281,15 +285,7 @@ public final class MemoryBuffer {
   //  - Use subtractions for range checks, as they are tolerant
   // ------------------------------------------------------------------------
 
-  /**
-   * Reads the byte at the given position.
-   *
-   * @param index The position from which the byte will be read
-   * @return The byte at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger or equal to the
-   *     size of the memory buffer.
-   */
-  public final byte get(int index) {
+  public byte get(int index) {
     final long pos = address + index;
     if (index >= 0 && pos < addressLimit) {
       return UNSAFE.getByte(heapMemory, pos);
@@ -301,15 +297,7 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Writes the given byte into this buffer at the given position.
-   *
-   * @param index The index at which the byte will be written.
-   * @param b The byte value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger or equal to the
-   *     size of the memory buffer.
-   */
-  public final void put(int index, byte b) {
+  public void put(int index, byte b) {
     final long pos = address + index;
     if (index >= 0 && pos < addressLimit) {
       UNSAFE.putByte(heapMemory, pos, b);
@@ -328,9 +316,9 @@ public final class MemoryBuffer {
    * @param index The position at which the first byte will be read.
    * @param dst The memory into which the memory will be copied.
    * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large that the data
-   *     between the index and the memory buffer end is not enough to fill the destination array.
+   *                                   between the index and the memory buffer end is not enough to fill the destination array.
    */
-  public final void get(int index, byte[] dst) {
+  public void get(int index, byte[] dst) {
     get(index, dst, 0, dst.length);
   }
 
@@ -341,9 +329,9 @@ public final class MemoryBuffer {
    * @param index The index in the memory buffer array, where the data is put.
    * @param src The source array to copy the data from.
    * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large such that the
-   *     array size exceed the amount of memory between the index and the memory buffer's end.
+   *                                   array size exceed the amount of memory between the index and the memory buffer's end.
    */
-  public final void put(int index, byte[] src) {
+  public void put(int index, byte[] src) {
     put(index, src, 0, src.length);
   }
 
@@ -356,10 +344,10 @@ public final class MemoryBuffer {
    * @param offset The copying offset in the destination memory.
    * @param length The number of bytes to be copied.
    * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large that the
-   *     requested number of bytes exceed the amount of memory between the index and the memory
-   *     buffer's end.
+   *                                   requested number of bytes exceed the amount of memory between the index and the memory
+   *                                   buffer's end.
    */
-  public final void get(int index, byte[] dst, int offset, int length) {
+  public void get(int index, byte[] dst, int offset, int length) {
     // check the byte array offset and length and the status
     if ((offset | length | (offset + length) | (dst.length - (offset + length))) < 0) {
       throw new IndexOutOfBoundsException();
@@ -386,17 +374,15 @@ public final class MemoryBuffer {
    * @param offset The offset in the source array where the copying is started.
    * @param length The number of bytes to copy.
    * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large such that the
-   *     array portion to copy exceed the amount of memory between the index and the memory buffer's
-   *     end.
+   *                                   array portion to copy exceed the amount of memory between the index and the memory buffer's
+   *                                   end.
    */
-  public final void put(int index, byte[] src, int offset, int length) {
+  public void put(int index, byte[] src, int offset, int length) {
     // check the byte array offset and length
     if ((offset | length | (offset + length) | (src.length - (offset + length))) < 0) {
       throw new IndexOutOfBoundsException();
     }
-
     final long pos = address + index;
-
     if (index >= 0 && pos <= addressLimit - length) {
       final long arrayAddress = BYTE_ARRAY_BASE_OFFSET + offset;
       UNSAFE.copyMemory(src, arrayAddress, heapMemory, pos, length);
@@ -408,40 +394,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Reads one byte at the given position and returns its boolean representation.
-   *
-   * @param index The position from which the memory will be read.
-   * @return The boolean value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 1.
-   */
-  public final boolean getBoolean(int index) {
+  public boolean getBoolean(int index) {
     return get(index) != 0;
   }
 
-  /**
-   * Writes one byte containing the byte value into this buffer at the given position.
-   *
-   * @param index The position at which the memory will be written.
-   * @param value The char value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 1.
-   */
-  public final void putBoolean(int index, boolean value) {
+  public void putBoolean(int index, boolean value) {
     put(index, (byte) (value ? 1 : 0));
   }
 
-  /**
-   * Reads a char value from the given position, in the system's native byte order.
-   *
-   * @param index The position from which the memory will be read.
-   * @return The char value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  @SuppressWarnings("restriction")
-  public final char getChar(int index) {
+  public char getCharN(int index) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       return UNSAFE.getChar(heapMemory, pos);
@@ -453,36 +414,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Reads a character value (16 bit, 2 bytes) from the given position, in little-endian byte order.
-   * This method's speed depends on the system's native byte order, and it is possibly slower than
-   * {@link #getChar(int)}. For most cases (such as transient storage in memory or serialization for
-   * I/O and network), it suffices to know that the byte order in which the value is written is the
-   * same as the one in which it is read, and {@link #getChar(int)} is the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The character value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final char getCharL(int index) {
+  public char getChar(int index) {
     if (LITTLE_ENDIAN) {
-      return getChar(index);
+      return getCharN(index);
     } else {
       return Character.reverseBytes(getChar(index));
     }
   }
 
-  /**
-   * Writes a char value to the given position, in the system's native byte order.
-   *
-   * @param index The position at which the memory will be written.
-   * @param value The char value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  @SuppressWarnings("restriction")
-  public final void putChar(int index, char value) {
+  public void putCharN(int index, char value) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       UNSAFE.putChar(heapMemory, pos, value);
@@ -494,37 +434,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Writes the given character (16 bit, 2 bytes) to the given position in little-endian byte order.
-   * This method's speed depends on the system's native byte order, and it is possibly slower than
-   * {@link #putChar(int, char)}. For most cases (such as transient storage in memory or
-   * serialization for I/O and network), it suffices to know that the byte order in which the value
-   * is written is the same as the one in which it is read, and {@link #putChar(int, char)} is the
-   * preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The char value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final void putCharL(int index, char value) {
+  public void putChar(int index, char value) {
     if (LITTLE_ENDIAN) {
-      putChar(index, value);
+      putCharN(index, value);
     } else {
       putChar(index, Character.reverseBytes(value));
     }
   }
 
-  /**
-   * Reads a short integer value (16 bit, 2 bytes) from the given position, composing them into a
-   * short value according to the current byte order.
-   *
-   * @param index The position from which the memory will be read.
-   * @return The short value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final short getShort(int index) {
+  public short getShortN(int index) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       return UNSAFE.getShort(heapMemory, pos);
@@ -536,37 +454,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Reads a short integer value (16 bit, 2 bytes) from the given position, in little-endian byte
-   * order. This method's speed depends on the system's native byte order, and it is possibly slower
-   * than {@link #getShort(int)}. For most cases (such as transient storage in memory or
-   * serialization for I/O and network), it suffices to know that the byte order in which the value
-   * is written is the same as the one in which it is read, and {@link #getShort(int)} is the
-   * preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The short value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final short getShortL(int index) {
+  public short getShort(int index) {
     if (LITTLE_ENDIAN) {
-      return getShort(index);
+      return getShortN(index);
     } else {
       return Short.reverseBytes(getShort(index));
     }
   }
 
-  /**
-   * Writes the given short value into this buffer at the given position, using the native byte
-   * order of the system.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The short value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final void putShort(int index, short value) {
+  public void putShortN(int index, short value) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       UNSAFE.putShort(heapMemory, pos, value);
@@ -578,40 +474,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Writes the given short integer value (16 bit, 2 bytes) to the given position in little-endian
-   * byte order. This method's speed depends on the system's native byte order, and it is possibly
-   * slower than {@link #putShort(int, short)}. For most cases (such as transient storage in memory
-   * or serialization for I/O and network), it suffices to know that the byte order in which the
-   * value is written is the same as the one in which it is read, and {@link #putShort(int, short)}
-   * is the preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The short value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 2.
-   */
-  public final void putShortL(int index, short value) {
+  public void putShort(int index, short value) {
     if (LITTLE_ENDIAN) {
-      putShort(index, value);
+      putShortN(index, value);
     } else {
       putShort(index, Short.reverseBytes(value));
     }
   }
 
-  /**
-   * Reads an int value (32bit, 4 bytes) from the given position, in the system's native byte order.
-   * This method offers the best speed for integer reading and should be used unless a specific byte
-   * order is required. In most cases, it suffices to know that the byte order in which the value is
-   * written is the same as the one in which it is read (such as transient storage in memory, or
-   * serialization for I/O and network), making this method the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The int value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final int getInt(int index) {
+  public int getIntN(int index) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 4) {
       return UNSAFE.getInt(heapMemory, pos);
@@ -623,40 +494,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Reads an int value (32bit, 4 bytes) from the given position, in little-endian byte order. This
-   * method's speed depends on the system's native byte order, and it is possibly slower than {@link
-   * #getInt(int)}. For most cases (such as transient storage in memory or serialization for I/O and
-   * network), it suffices to know that the byte order in which the value is written is the same as
-   * the one in which it is read, and {@link #getInt(int)} is the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The int value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final int getIntL(int index) {
+  public int getInt(int index) {
     if (LITTLE_ENDIAN) {
-      return getInt(index);
+      return getIntN(index);
     } else {
       return Integer.reverseBytes(getInt(index));
     }
   }
 
-  /**
-   * Writes the given int value (32bit, 4 bytes) to the given position in the system's native byte
-   * order. This method offers the best speed for integer writing and should be used unless a
-   * specific byte order is required. In most cases, it suffices to know that the byte order in
-   * which the value is written is the same as the one in which it is read (such as transient
-   * storage in memory, or serialization for I/O and network), making this method the preferable
-   * choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The int value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final void putInt(int index, int value) {
+  public void putIntN(int index, int value) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 4) {
       UNSAFE.putInt(heapMemory, pos, value);
@@ -668,40 +514,15 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Writes the given int value (32bit, 4 bytes) to the given position in little endian byte order.
-   * This method's speed depends on the system's native byte order, and it is possibly slower than
-   * {@link #putInt(int, int)}. For most cases (such as transient storage in memory or serialization
-   * for I/O and network), it suffices to know that the byte order in which the value is written is
-   * the same as the one in which it is read, and {@link #putInt(int, int)} is the preferable
-   * choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The int value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final void putIntL(int index, int value) {
+  public void putInt(int index, int value) {
     if (LITTLE_ENDIAN) {
-      putInt(index, value);
+      putIntN(index, value);
     } else {
       putInt(index, Integer.reverseBytes(value));
     }
   }
 
-  /**
-   * Reads a long value (64bit, 8 bytes) from the given position, in the system's native byte order.
-   * This method offers the best speed for long integer reading and should be used unless a specific
-   * byte order is required. In most cases, it suffices to know that the byte order in which the
-   * value is written is the same as the one in which it is read (such as transient storage in
-   * memory, or serialization for I/O and network), making this method the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The long value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final long getLong(int index) {
+  public long getLongN(int index) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 8) {
       return UNSAFE.getLong(heapMemory, pos);
@@ -713,49 +534,23 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Reads a long integer value (64bit, 8 bytes) from the given position, in little endian byte
-   * order. This method's speed depends on the system's native byte order, and it is possibly slower
-   * than {@link #getLong(int)}. For most cases (such as transient storage in memory or
-   * serialization for I/O and network), it suffices to know that the byte order in which the value
-   * is written is the same as the one in which it is read, and {@link #getLong(int)} is the
-   * preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The long value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final long getLongL(int index) {
+  public long getLong(int index) {
     if (LITTLE_ENDIAN) {
-      return getLong(index);
+      return getLongN(index);
     } else {
       return Long.reverseBytes(getLong(index));
     }
   }
 
-  public final long getLongB(int index) {
+  public long getLongB(int index) {
     if (LITTLE_ENDIAN) {
-      return Long.reverseBytes(getLong(index));
+      return Long.reverseBytes(getLongN(index));
     } else {
       return getLong(index);
     }
   }
 
-  /**
-   * Writes the given long value (64bit, 8 bytes) to the given position in the system's native byte
-   * order. This method offers the best speed for long integer writing and should be used unless a
-   * specific byte order is required. In most cases, it suffices to know that the byte order in
-   * which the value is written is the same as the one in which it is read (such as transient
-   * storage in memory, or serialization for I/O and network), making this method the preferable
-   * choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The long value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final void putLong(int index, long value) {
+  public void putLongN(int index, long value) {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 8) {
       UNSAFE.putLong(heapMemory, pos, value);
@@ -767,176 +562,61 @@ public final class MemoryBuffer {
     }
   }
 
-  /**
-   * Writes the given long value (64bit, 8 bytes) to the given position in little endian byte order.
-   * This method's speed depends on the system's native byte order, and it is possibly slower than
-   * {@link #putLong(int, long)}. For most cases (such as transient storage in memory or
-   * serialization for I/O and network), it suffices to know that the byte order in which the value
-   * is written is the same as the one in which it is read, and {@link #putLong(int, long)} is the
-   * preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The long value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final void putLongL(int index, long value) {
+  public void putLong(int index, long value) {
     if (LITTLE_ENDIAN) {
-      putLong(index, value);
+      putLongN(index, value);
     } else {
       putLong(index, Long.reverseBytes(value));
     }
   }
 
-  public final void putLongB(int index, long value) {
+  public void putLongB(int index, long value) {
     if (LITTLE_ENDIAN) {
-      putLong(index, Long.reverseBytes(value));
+      putLongN(index, Long.reverseBytes(value));
     } else {
       putLong(index, value);
     }
   }
 
-  /**
-   * Reads a single-precision floating point value (32bit, 4 bytes) from the given position, in the
-   * system's native byte order. This method offers the best speed for float reading and should be
-   * used unless a specific byte order is required. In most cases, it suffices to know that the byte
-   * order in which the value is written is the same as the one in which it is read (such as
-   * transient storage in memory, or serialization for I/O and network), making this method the
-   * preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The float value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final float getFloat(int index) {
+  public float getFloatN(int index) {
+    return Float.intBitsToFloat(getIntN(index));
+  }
+
+  public float getFloat(int index) {
     return Float.intBitsToFloat(getInt(index));
   }
 
-  /**
-   * Reads a single-precision floating point value (32bit, 4 bytes) from the given position, in
-   * little endian byte order. This method's speed depends on the system's native byte order, and it
-   * is possibly slower than {@link #getFloat(int)}. For most cases (such as transient storage in
-   * memory or serialization for I/O and network), it suffices to know that the byte order in which
-   * the value is written is the same as the one in which it is read, and {@link #getFloat(int)} is
-   * the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The long value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final float getFloatL(int index) {
-    return Float.intBitsToFloat(getIntL(index));
+  public void putFloatN(int index, float value) {
+    putIntN(index, Float.floatToRawIntBits(value));
   }
 
-  /**
-   * Writes the given single-precision float value (32bit, 4 bytes) to the given position in the
-   * system's native byte order. This method offers the best speed for float writing and should be
-   * used unless a specific byte order is required. In most cases, it suffices to know that the byte
-   * order in which the value is written is the same as the one in which it is read (such as
-   * transient storage in memory, or serialization for I/O and network), making this method the
-   * preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The float value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 4.
-   */
-  public final void putFloat(int index, float value) {
+  public void putFloat(int index, float value) {
     putInt(index, Float.floatToRawIntBits(value));
   }
 
-  /**
-   * Writes the given single-precision float value (32bit, 4 bytes) to the given position in little
-   * endian byte order. This method's speed depends on the system's native byte order, and it is
-   * possibly slower than {@link #putFloat(int, float)}. For most cases (such as transient storage
-   * in memory or serialization for I/O and network), it suffices to know that the byte order in
-   * which the value is written is the same as the one in which it is read, and {@link
-   * #putFloat(int, float)} is the preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The long value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final void putFloatL(int index, float value) {
-    putIntL(index, Float.floatToRawIntBits(value));
+  public double getDoubleN(int index) {
+    return Double.longBitsToDouble(getLongN(index));
   }
 
-  /**
-   * Reads a double-precision floating point value (64bit, 8 bytes) from the given position, in the
-   * system's native byte order. This method offers the best speed for double reading and should be
-   * used unless a specific byte order is required. In most cases, it suffices to know that the byte
-   * order in which the value is written is the same as the one in which it is read (such as
-   * transient storage in memory, or serialization for I/O and network), making this method the
-   * preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The double value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final double getDouble(int index) {
+  public double getDouble(int index) {
     return Double.longBitsToDouble(getLong(index));
   }
 
-  /**
-   * Reads a double-precision floating point value (64bit, 8 bytes) from the given position, in
-   * little endian byte order. This method's speed depends on the system's native byte order, and it
-   * is possibly slower than {@link #getDouble(int)}. For most cases (such as transient storage in
-   * memory or serialization for I/O and network), it suffices to know that the byte order in which
-   * the value is written is the same as the one in which it is read, and {@link #getDouble(int)} is
-   * the preferable choice.
-   *
-   * @param index The position from which the value will be read.
-   * @return The long value at the given position.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final double getDoubleL(int index) {
-    return Double.longBitsToDouble(getLongL(index));
+  public void putDoubleN(int index, double value) {
+    putLongN(index, Double.doubleToRawLongBits(value));
   }
 
-  /**
-   * Writes the given double-precision floating-point value (64bit, 8 bytes) to the given position
-   * in the system's native byte order. This method offers the best speed for double writing and
-   * should be used unless a specific byte order is required. In most cases, it suffices to know
-   * that the byte order in which the value is written is the same as the one in which it is read
-   * (such as transient storage in memory, or serialization for I/O and network), making this method
-   * the preferable choice.
-   *
-   * @param index The position at which the memory will be written.
-   * @param value The double value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final void putDouble(int index, double value) {
+  public void putDouble(int index, double value) {
     putLong(index, Double.doubleToRawLongBits(value));
-  }
-
-  /**
-   * Writes the given double-precision floating-point value (64bit, 8 bytes) to the given position
-   * in little endian byte order. This method's speed depends on the system's native byte order, and
-   * it is possibly slower than {@link #putDouble(int, double)}. For most cases (such as transient
-   * storage in memory or serialization for I/O and network), it suffices to know that the byte
-   * order in which the value is written is the same as the one in which it is read, and {@link
-   * #putDouble(int, double)} is the preferable choice.
-   *
-   * @param index The position at which the value will be written.
-   * @param value The long value to be written.
-   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or larger then the buffer
-   *     size minus 8.
-   */
-  public final void putDoubleL(int index, double value) {
-    putLongL(index, Double.doubleToRawLongBits(value));
   }
 
   // -------------------------------------------------------------------------
   //                     Read and Write Methods
   // -------------------------------------------------------------------------
 
-  /** Returns the {@code readerIndex} of this buffer. */
+  /**
+   * Returns the {@code readerIndex} of this buffer.
+   */
   public int readerIndex() {
     return readerIndex;
   }
@@ -945,13 +625,13 @@ public final class MemoryBuffer {
    * Sets the {@code readerIndex} of this buffer.
    *
    * @throws IndexOutOfBoundsException if the specified {@code readerIndex} is less than {@code 0}
-   *     or greater than {@code this.size}
+   *                                   or greater than {@code this.size}
    */
   public MemoryBuffer readerIndex(int readerIndex) {
     if (readerIndex < 0 || readerIndex > size) {
       throw new IndexOutOfBoundsException(
-          String.format(
-              "readerIndex: %d (expected: 0 <= readerIndex <= size(%d))", readerIndex, size));
+        String.format(
+          "readerIndex: %d (expected: 0 <= readerIndex <= size(%d))", readerIndex, size));
     }
     this.readerIndex = readerIndex;
     return this;
@@ -961,7 +641,9 @@ public final class MemoryBuffer {
     return size - readerIndex;
   }
 
-  /** Returns the {@code writerIndex} of this buffer. */
+  /**
+   * Returns the {@code writerIndex} of this buffer.
+   */
   public int writerIndex() {
     return writerIndex;
   }
@@ -970,102 +652,95 @@ public final class MemoryBuffer {
    * Sets the {@code writerIndex} of this buffer.
    *
    * @throws IndexOutOfBoundsException if the specified {@code writerIndex} is less than {@code 0}
-   *     or greater than {@code this.size}
+   *                                   or greater than {@code this.size}
    */
-  public MemoryBuffer writerIndex(int writerIndex) {
+  public void writerIndex(int writerIndex) {
     if (writerIndex < 0 || writerIndex > size) {
       throw new IndexOutOfBoundsException(
-          String.format(
-              "writerIndex: %d (expected: 0 <= writerIndex <= size(%d))", writerIndex, size));
+        String.format(
+          "writerIndex: %d (expected: 0 <= writerIndex <= size(%d))", writerIndex, size));
     }
     this.writerIndex = writerIndex;
-    return this;
   }
 
-  public MemoryBuffer writeBoolean(boolean value) {
+  public void writeBoolean(boolean value) {
     grow(1);
     putBoolean(writerIndex, value);
     writerIndex++;
-    return this;
   }
 
-  public MemoryBuffer writeByte(byte value) {
+  public void writeByte(byte value) {
     grow(1);
     put(writerIndex, value);
     writerIndex++;
-    return this;
   }
 
-  public MemoryBuffer writeChar(char value) {
+  public void writeChar(char value) {
     grow(2);
     putChar(writerIndex, value);
     writerIndex += 2;
-    return this;
   }
 
-  public MemoryBuffer writeShort(short value) {
+  public void writeShort(short value) {
     grow(2);
     putShort(writerIndex, value);
     writerIndex += 2;
-    return this;
   }
 
-  public MemoryBuffer writeInt(int value) {
+  public void writeInt(int value) {
     grow(4);
     putInt(writerIndex, value);
     writerIndex += 4;
-    return this;
   }
 
-  public MemoryBuffer writeLong(long value) {
+  public void writeLong(long value) {
     grow(8);
     putLong(writerIndex, value);
     writerIndex += 8;
-    return this;
   }
 
-  public MemoryBuffer writeFloat(float value) {
+  public void writeFloat(float value) {
     grow(4);
     putFloat(writerIndex, value);
     writerIndex += 4;
-    return this;
   }
 
-  public MemoryBuffer writeDouble(double value) {
+  public void writeDouble(double value) {
     grow(8);
     putDouble(writerIndex, value);
     writerIndex += 8;
-    return this;
   }
 
-  public MemoryBuffer writeBytes(byte[] bytes) {
-    return writeBytes(bytes, 0, bytes.length);
+  public void writeBytes(byte[] bytes) {
+    writeBytes(bytes, 0, bytes.length);
   }
 
-  public MemoryBuffer writeBytes(byte[] bytes, int offset, int length) {
+  public void writeBytes(byte[] bytes, int offset, int length) {
     grow(length);
     put(writerIndex, bytes, offset, length);
     writerIndex += length;
-    return this;
   }
 
-  public MemoryBuffer write(ByteBuffer source) {
-    return write(source, source.remaining());
+  public void write(ByteBuffer source) {
+    write(source, source.remaining());
   }
 
-  public MemoryBuffer write(ByteBuffer source, int numBytes) {
+  public void write(ByteBuffer source, int numBytes) {
     grow(numBytes);
     put(writerIndex, source, numBytes);
     writerIndex += numBytes;
-    return this;
   }
 
-  /** For off-heap buffer, this will make a heap buffer internally */
+  /**
+   * For off-heap buffer, this will make a heap buffer internally
+   */
   public void grow(int neededSize) {
     ensure(writerIndex + neededSize);
   }
 
-  /** For off-heap buffer, this will make a heap buffer internally */
+  /**
+   * For off-heap buffer, this will make a heap buffer internally
+   */
   public void ensure(int length) {
     if (length > size) {
       byte[] data = new byte[length * 2];
@@ -1157,9 +832,9 @@ public final class MemoryBuffer {
   public void checkReadableBytes(int minimumReadableBytes) {
     if (readerIndex > size - minimumReadableBytes) {
       throw new IndexOutOfBoundsException(
-          String.format(
-              "readerIndex(%d) + length(%d) exceeds size(%d): %s",
-              readerIndex, minimumReadableBytes, writerIndex, this));
+        String.format(
+          "readerIndex(%d) + length(%d) exceeds size(%d): %s",
+          readerIndex, minimumReadableBytes, writerIndex, this));
     }
   }
 
@@ -1178,11 +853,11 @@ public final class MemoryBuffer {
    * @param target The ByteBuffer to copy the bytes to.
    * @param numBytes The number of bytes to copy.
    * @throws IndexOutOfBoundsException If the offset is invalid, or this buffer does not contain the
-   *     given number of bytes (starting from offset), or the target byte buffer does not have
-   *     enough space for the bytes.
-   * @throws ReadOnlyBufferException If the target buffer is read-only.
+   *                                   given number of bytes (starting from offset), or the target byte buffer does not have
+   *                                   enough space for the bytes.
+   * @throws ReadOnlyBufferException   If the target buffer is read-only.
    */
-  public final void get(int offset, ByteBuffer target, int numBytes) {
+  public void get(int offset, ByteBuffer target, int numBytes) {
     // check the byte array offset and length
     if ((offset | numBytes | (offset + numBytes)) < 0) {
       throw new IndexOutOfBoundsException();
@@ -1238,10 +913,10 @@ public final class MemoryBuffer {
    * @param source The ByteBuffer to copy the bytes from.
    * @param numBytes The number of bytes to copy.
    * @throws IndexOutOfBoundsException If the offset is invalid, or the source buffer does not
-   *     contain the given number of bytes, or this buffer does not have enough space for the bytes
-   *     (counting from offset).
+   *                                   contain the given number of bytes, or this buffer does not have enough space for the bytes
+   *                                   (counting from offset).
    */
-  public final void put(int offset, ByteBuffer source, int numBytes) {
+  public void put(int offset, ByteBuffer source, int numBytes) {
     // check the byte array offset and length
     if ((offset | numBytes | (offset + numBytes)) < 0) {
       throw new IndexOutOfBoundsException();
@@ -1283,49 +958,10 @@ public final class MemoryBuffer {
   }
 
   /**
-   * Bulk copy method. Copies {@code numBytes} bytes from this memory buffer, starting at position
-   * {@code offset} to the target memory buffer. The bytes will be put into the target buffer
-   * starting at position {@code targetOffset}.
-   *
-   * @param offset The position where the bytes are started to be read from in this memory buffer.
-   * @param target The memory buffer to copy the bytes to.
-   * @param targetOffset The position in the target memory buffer to copy the chunk to.
-   * @param numBytes The number of bytes to copy.
-   * @throws IndexOutOfBoundsException If either of the offsets is invalid, or the source buffer
-   *     does not contain the given number of bytes (starting from offset), or the target buffer
-   *     does not have enough space for the bytes (counting from targetOffset).
-   */
-  public final void copyTo(int offset, MemoryBuffer target, int targetOffset, int numBytes) {
-    final byte[] thisHeapRef = this.heapMemory;
-    final byte[] otherHeapRef = target.heapMemory;
-    final long thisPointer = this.address + offset;
-    final long otherPointer = target.address + targetOffset;
-
-    if ((numBytes | offset | targetOffset) >= 0
-        && thisPointer <= this.addressLimit - numBytes
-        && otherPointer <= target.addressLimit - numBytes) {
-      UNSAFE.copyMemory(thisHeapRef, thisPointer, otherHeapRef, otherPointer, numBytes);
-    } else if (this.address > this.addressLimit) {
-      throw new IllegalStateException("this memory buffer has been freed.");
-    } else if (target.address > target.addressLimit) {
-      throw new IllegalStateException("target memory buffer has been freed.");
-    } else {
-      throw new IndexOutOfBoundsException(
-          String.format(
-              "offset=%d, targetOffset=%d, numBytes=%d, address=%d, targetAddress=%d",
-              offset, targetOffset, numBytes, this.address, target.address));
-    }
-  }
-
-  public final void copyFrom(int offset, MemoryBuffer source, int sourcePointer, int numBytes) {
-    source.copyTo(sourcePointer, this, offset, numBytes);
-  }
-
-  /**
    * Bulk copy method. Copies {@code numBytes} bytes to target unsafe object and pointer. NOTE: This
    * is a unsafe method, no check here, please be carefully.
    */
-  public final void copyToUnsafe(long offset, Object target, long targetPointer, int numBytes) {
+  public void copyToUnsafe(long offset, Object target, long targetPointer, int numBytes) {
     final long thisPointer = this.address + offset;
     checkArgument(thisPointer + numBytes <= addressLimit);
     UNSAFE.copyMemory(this.heapMemory, thisPointer, target, targetPointer, numBytes);
@@ -1335,7 +971,7 @@ public final class MemoryBuffer {
    * Bulk copy method. Copies {@code numBytes} bytes from source unsafe object and pointer. NOTE:
    * This is a unsafe method, no check here, please be carefully.
    */
-  public final void copyFromUnsafe(long offset, Object source, long sourcePointer, long numBytes) {
+  public void copyFromUnsafe(long offset, Object source, long sourcePointer, long numBytes) {
     final long thisPointer = this.address + offset;
     checkArgument(thisPointer + numBytes <= addressLimit);
     UNSAFE.copyMemory(source, sourcePointer, this.heapMemory, thisPointer, numBytes);
@@ -1343,7 +979,7 @@ public final class MemoryBuffer {
 
   /**
    * @return internal byte array if data is on heap and remaining buffer size is equal to internal
-   *     byte array size, or create a new byte array which copy remaining data from off-heap
+   *   byte array size, or create a new byte array which copy remaining data from off-heap
    */
   public byte[] getRemainingBytes() {
     int length = size - readerIndex;
@@ -1356,7 +992,7 @@ public final class MemoryBuffer {
 
   /**
    * @return internal byte array if data is on heap and buffer size is equal to internal byte array
-   *     size , or create a new byte array which copy data from off-heap
+   *   size , or create a new byte array which copy data from off-heap
    */
   public byte[] getAllBytes() {
     if (heapMemory != null && size == heapMemory.length) {
@@ -1379,16 +1015,6 @@ public final class MemoryBuffer {
     copyToUnsafe(index, dst, BYTE_ARRAY_BASE_OFFSET + dstIndex, length);
   }
 
-  /**
-   * Point this MemoryBuffer to a new buff and owner (reuse this MemoryBuffer object).
-   *
-   * @param buffer the new buffer to point to.
-   */
-  public void pointTo(byte[] buffer) {
-    initHeapBuffer(buffer, 0, buffer.length);
-    this.offHeapBuffer = null;
-  }
-
   public MemoryBuffer slice(int offset) {
     return slice(offset, size - offset);
   }
@@ -1409,7 +1035,7 @@ public final class MemoryBuffer {
     Preconditions.checkArgument(offset + length <= size);
     if (heapMemory != null) {
       return ByteBuffer.wrap(heapMemory, (int) (address - BYTE_ARRAY_BASE_OFFSET + offset), length)
-          .slice();
+        .slice();
     } else {
       ByteBuffer offHeapBuffer = ((MemoryBuffer) this).offHeapBuffer;
       if (offHeapBuffer != null) {
@@ -1440,59 +1066,5 @@ public final class MemoryBuffer {
     } else {
       return new MemoryBuffer(address, size);
     }
-  }
-
-  /**
-   * Compares two memory buffer regions.
-   *
-   * @param buf2 Buffer to compare this buffer with
-   * @param offset1 Offset of this buffer to start comparing
-   * @param offset2 Offset of buf2 to start comparing
-   * @param len Length of the compared memory region
-   * @return 0 if equal, -1 if buf1 &lt; buf2, 1 otherwise
-   */
-  public final int compare(MemoryBuffer buf2, int offset1, int offset2, int len) {
-    while (len >= 8) {
-      // Since compare is byte-wise, we need to use big endian byte-order.
-      long l1 = this.getLongB(offset1);
-      long l2 = buf2.getLongB(offset2);
-
-      if (l1 != l2) {
-        return (l1 < l2) ^ (l1 < 0) ^ (l2 < 0) ? -1 : 1;
-      }
-
-      offset1 += 8;
-      offset2 += 8;
-      len -= 8;
-    }
-    while (len > 0) {
-      int b1 = this.get(offset1) & 0xff;
-      int b2 = buf2.get(offset2) & 0xff;
-      int cmp = b1 - b2;
-      if (cmp != 0) {
-        return cmp;
-      }
-      offset1++;
-      offset2++;
-      len--;
-    }
-    return 0;
-  }
-
-  /**
-   * Equals two memory buffer regions.
-   *
-   * @param buf2 Buffer to equal this buffer with
-   * @param offset1 Offset of this buffer to start equaling
-   * @param offset2 Offset of buf2 to start equaling
-   * @param len Length of the equaled memory region
-   * @return true if equal, false otherwise
-   */
-  public final boolean equalTo(MemoryBuffer buf2, int offset1, int offset2, int len) {
-    final long pos1 = address + offset1;
-    final long pos2 = buf2.address + offset2;
-    Preconditions.checkArgument(pos1 < addressLimit);
-    Preconditions.checkArgument(pos2 < buf2.addressLimit);
-    return Platform.arrayEquals(heapMemory, pos1, buf2.heapMemory, pos2, len);
   }
 }

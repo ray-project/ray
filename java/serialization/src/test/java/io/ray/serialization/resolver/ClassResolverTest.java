@@ -5,7 +5,6 @@ import static org.testng.Assert.assertEquals;
 import io.ray.serialization.Fury;
 import io.ray.serialization.bean.Foo;
 import io.ray.serialization.serializers.CollectionSerializers.ArrayListSerializer;
-import io.ray.serialization.serializers.CollectionSerializers.ArraysAsListSerializer;
 import io.ray.serialization.serializers.CollectionSerializers.CollectionDefaultJavaSerializer;
 import io.ray.serialization.serializers.CollectionSerializers.CollectionSerializer;
 import io.ray.serialization.serializers.CollectionSerializers.HashSetSerializer;
@@ -20,7 +19,6 @@ import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.MemoryUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,9 +44,6 @@ public class ClassResolverTest {
     Fury fury = Fury.builder().build();
     ClassResolver classResolver = fury.getClassResolver();
     assertEquals(classResolver.getSerializerClass(ArrayList.class), ArrayListSerializer.class);
-    assertEquals(
-        classResolver.getSerializerClass(Arrays.asList(1, 2).getClass()),
-        ArraysAsListSerializer.class);
     assertEquals(classResolver.getSerializerClass(LinkedList.class), CollectionSerializer.class);
 
     assertEquals(classResolver.getSerializerClass(HashSet.class), HashSetSerializer.class);
@@ -107,30 +102,6 @@ public class ClassResolverTest {
       List<Foo> fooList = Arrays.asList(Foo.create(), Foo.create());
       Assert.assertEquals(fury.deserialize(fury.serialize(fooList)), fooList);
       Assert.assertEquals(fury.deserialize(fury.serialize(fooList)), fooList);
-    }
-  }
-
-  @Test
-  public void testClassProvider() {
-    Fury fury = Fury.builder().withReferenceTracking(true).build();
-    ClassResolver classResolver = fury.getClassResolver();
-    Assert.assertTrue(classResolver.getRegisteredClasses().contains(A.class));
-    Assert.assertTrue(classResolver.getRegisteredClasses().contains(B.class));
-  }
-
-  public static class TestClassProvider1 implements ClassProvider {
-
-    @Override
-    public List<Class<?>> getClasses() {
-      return Collections.singletonList(A.class);
-    }
-  }
-
-  public static class TestClassProvider2 implements ClassProvider {
-
-    @Override
-    public List<Class<?>> getClasses() {
-      return Collections.singletonList(B.class);
     }
   }
 }

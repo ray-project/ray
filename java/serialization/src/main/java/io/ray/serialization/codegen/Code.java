@@ -133,12 +133,7 @@ public interface Code {
 
     private String value;
 
-    public LiteralValue(Object value) {
-      super(value.getClass());
-      this.value = value.toString();
-    }
-
-    public LiteralValue(Class<?> javaType, String value) {
+    private LiteralValue(Class<?> javaType, String value) {
       super(javaType);
       this.value = value;
     }
@@ -167,19 +162,11 @@ public interface Code {
   }
 
   // ########################## utils ##########################
-  static ExprValue exprValue(Class<?> type, String code) {
-    return new SimpleExprValue(type, code);
+  static LiteralValue literal(Object value) {
+    return literal(value.getClass(), value.toString());
   }
 
-  static ExprValue variable(Class<?> type, String name) {
-    return new VariableValue(type, name);
-  }
-
-  static ExprValue isNullVariable(String name) {
-    return new VariableValue(boolean.class, name);
-  }
-
-  static ExprValue literal(Class<?> type, String value) {
+  static LiteralValue literal(Class<?> type, String value) {
     if (type == Boolean.class || type == boolean.class) {
       if ("true".equals(value)) {
         return TrueLiteral;
@@ -191,5 +178,17 @@ public interface Code {
     } else {
       return new LiteralValue(type, value);
     }
+  }
+
+  static ExprValue exprValue(Class<?> type, String code) {
+    return new SimpleExprValue(type, code);
+  }
+
+  static ExprValue variable(Class<?> type, String name) {
+    return new VariableValue(type, name);
+  }
+
+  static ExprValue isNullVariable(String name) {
+    return new VariableValue(boolean.class, name);
   }
 }

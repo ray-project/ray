@@ -1,6 +1,6 @@
 package io.ray.serialization.codegen;
 
-import io.ray.serialization.exception.FuryException;
+import io.ray.serialization.FuryException;
 
 public class CodegenException extends FuryException {
   public CodegenException(String message) {

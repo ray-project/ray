@@ -4,38 +4,37 @@ import static io.ray.serialization.codegen.Code.ExprCode;
 import static io.ray.serialization.codegen.Code.LiteralValue;
 import static io.ray.serialization.codegen.Code.LiteralValue.FalseLiteral;
 import static io.ray.serialization.codegen.Code.LiteralValue.TrueLiteral;
+import static io.ray.serialization.codegen.Code.literal;
 import static io.ray.serialization.codegen.CodeGenerator.alignIndent;
 import static io.ray.serialization.codegen.CodeGenerator.appendNewlineIfNeeded;
 import static io.ray.serialization.codegen.CodeGenerator.stripIfHasLastNewline;
 import static io.ray.serialization.codegen.ExpressionUtils.callFunc;
-import static io.ray.serialization.codegen.TypeUtils.BOOLEAN_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.ITERABLE_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.OBJECT_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.PRIMITIVE_VOID_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.STRING_TYPE;
-import static io.ray.serialization.codegen.TypeUtils.boxedType;
-import static io.ray.serialization.codegen.TypeUtils.defaultValue;
-import static io.ray.serialization.codegen.TypeUtils.getArrayType;
-import static io.ray.serialization.codegen.TypeUtils.isPrimitive;
-import static io.ray.serialization.codegen.TypeUtils.maxType;
-import static io.ray.serialization.types.TypeInference.getElementType;
 import static io.ray.serialization.util.StringUtils.capitalize;
 import static io.ray.serialization.util.StringUtils.format;
 import static io.ray.serialization.util.StringUtils.isBlank;
 import static io.ray.serialization.util.StringUtils.isNotBlank;
 import static io.ray.serialization.util.StringUtils.stripBlankLines;
+import static io.ray.serialization.util.TypeUtils.BOOLEAN_TYPE;
+import static io.ray.serialization.util.TypeUtils.ITERABLE_TYPE;
+import static io.ray.serialization.util.TypeUtils.OBJECT_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
+import static io.ray.serialization.util.TypeUtils.PRIMITIVE_VOID_TYPE;
+import static io.ray.serialization.util.TypeUtils.STRING_TYPE;
+import static io.ray.serialization.util.TypeUtils.boxedType;
+import static io.ray.serialization.util.TypeUtils.defaultValue;
+import static io.ray.serialization.util.TypeUtils.getArrayType;
+import static io.ray.serialization.util.TypeUtils.getElementType;
+import static io.ray.serialization.util.TypeUtils.isPrimitive;
+import static io.ray.serialization.util.TypeUtils.maxType;
 
 import com.google.common.base.Preconditions;
 import com.google.common.reflect.TypeToken;
 import io.ray.serialization.util.Platform;
 import io.ray.serialization.util.ReflectionUtils;
-import io.ray.serialization.util.TriFunction;
 import java.lang.reflect.Array;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -205,38 +204,34 @@ public interface Expression {
         javaType = boxedType(javaType);
       }
       if (value == null) {
-        LiteralValue defaultLiteral = new LiteralValue(javaType, defaultValue(javaType));
+        LiteralValue defaultLiteral = literal(javaType, defaultValue(javaType));
         return new ExprCode(null, TrueLiteral, defaultLiteral);
       } else {
         if (javaType == String.class) {
-          return new ExprCode(FalseLiteral, new LiteralValue(value));
+          return new ExprCode(FalseLiteral, literal(value));
         } else if (javaType == Boolean.class || javaType == Integer.class) {
-          return new ExprCode(null, FalseLiteral, new LiteralValue(javaType, value.toString()));
+          return new ExprCode(null, FalseLiteral, literal(javaType, value.toString()));
         } else if (javaType == Float.class) {
           Float f = (Float) value;
           if (f.isNaN()) {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, "Float.NaN"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Float.NaN"));
           } else if (f.equals(Float.POSITIVE_INFINITY)) {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, "Float.POSITIVE_INFINITY"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Float.POSITIVE_INFINITY"));
           } else if (f.equals(Float.NEGATIVE_INFINITY)) {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, "Float.NEGATIVE_INFINITY"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Float.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.format("%fF", f)));
+            return new ExprCode(FalseLiteral, literal(javaType, String.format("%fF", f)));
           }
         } else if (javaType == Double.class) {
           Double d = (Double) value;
           if (d.isNaN()) {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, "Double.NaN"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Double.NaN"));
           } else if (d.equals(Double.POSITIVE_INFINITY)) {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, "Double.POSITIVE_INFINITY"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Double.POSITIVE_INFINITY"));
           } else if (d.equals(Double.NEGATIVE_INFINITY)) {
-            return new ExprCode(
-                FalseLiteral, new LiteralValue(javaType, "Double.NEGATIVE_INFINITY"));
+            return new ExprCode(FalseLiteral, literal(javaType, "Double.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.format("%fD", d)));
+            return new ExprCode(FalseLiteral, literal(javaType, String.format("%fD", d)));
           }
         } else if (javaType == Byte.class) {
           return new ExprCode(
@@ -245,10 +240,9 @@ public interface Expression {
           return new ExprCode(
               FalseLiteral, Code.exprValue(javaType, String.format("(%s)%s", "short", value)));
         } else if (javaType == Long.class) {
-          return new ExprCode(
-              FalseLiteral, new LiteralValue(javaType, String.format("%dL", (Long) value)));
+          return new ExprCode(FalseLiteral, literal(javaType, String.format("%dL", (Long) value)));
         } else if (isPrimitive(javaType)) {
-          return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.valueOf(value)));
+          return new ExprCode(FalseLiteral, literal(javaType, String.valueOf(value)));
         } else {
           throw new UnsupportedOperationException("Unsupported type " + javaType);
         }
@@ -1087,53 +1081,6 @@ public interface Expression {
     }
   }
 
-  class AssignArrayElem implements Expression {
-    private Expression targetArray;
-    private Expression value;
-    private Expression[] indexes;
-
-    public AssignArrayElem(Expression targetArray, Expression value, Expression... indexes) {
-      this.targetArray = targetArray;
-      this.value = value;
-      this.indexes = indexes;
-    }
-
-    @Override
-    public TypeToken<?> type() {
-      return PRIMITIVE_VOID_TYPE;
-    }
-
-    @Override
-    public ExprCode doGenCode(CodegenContext ctx) {
-      StringBuilder codeBuilder = new StringBuilder();
-      ExprCode targetExprCode = targetArray.genCode(ctx);
-      ExprCode valueCode = value.genCode(ctx);
-      Stream.of(targetExprCode, valueCode)
-          .forEach(
-              exprCode -> {
-                if (isNotBlank(exprCode.code())) {
-                  codeBuilder.append(exprCode.code()).append('\n');
-                }
-              });
-
-      ExprCode[] indexExprCodes = new ExprCode[indexes.length];
-      for (int i = 0; i < indexes.length; i++) {
-        Expression indexExpr = indexes[i];
-        ExprCode indexExprCode = indexExpr.genCode(ctx);
-        indexExprCodes[i] = indexExprCode;
-        if (isNotBlank(indexExprCode.code())) {
-          codeBuilder.append(indexExprCode.code()).append("\n");
-        }
-      }
-      codeBuilder.append(targetExprCode.value());
-      for (int i = 0; i < indexes.length; i++) {
-        codeBuilder.append('[').append(indexExprCodes[i].value()).append(']');
-      }
-      codeBuilder.append(" = ").append(valueCode.value()).append(";");
-      return new ExprCode(codeBuilder.toString(), FalseLiteral, null);
-    }
-  }
-
   class If implements Expression {
     private Expression predicate;
     private Expression trueExpr;
@@ -1548,16 +1495,6 @@ public interface Expression {
     }
   }
 
-  class Subtract extends Arithmetic {
-    public Subtract(Expression left, Expression right) {
-      super("-", left, right);
-    }
-
-    public Subtract(boolean inline, Expression left, Expression right) {
-      super(inline, "-", left, right);
-    }
-  }
-
   class ForEach implements Expression {
     private final Expression inputObject;
     private final BiFunction<Expression, Expression, Expression> action;
@@ -1659,140 +1596,6 @@ public interface Expression {
     }
   }
 
-  class ZipForEach implements Expression {
-    private final Expression left;
-    private final Expression right;
-    private final TriFunction<Expression, Expression, Expression, Expression> action;
-
-    public ZipForEach(
-        Expression left,
-        Expression right,
-        TriFunction<Expression, Expression, Expression, Expression> action) {
-      this.left = left;
-      this.right = right;
-      this.action = action;
-      Preconditions.checkArgument(
-          left.type().isArray() || TypeToken.of(Collection.class).isSupertypeOf(left.type()));
-      Preconditions.checkArgument(
-          right.type().isArray() || TypeToken.of(Collection.class).isSupertypeOf(right.type()));
-      if (left.type().isArray()) {
-        Preconditions.checkArgument(
-            right.type().isArray(), "Should both be array or neither be array");
-      }
-    }
-
-    @Override
-    public TypeToken<?> type() {
-      return PRIMITIVE_VOID_TYPE;
-    }
-
-    @Override
-    public ExprCode doGenCode(CodegenContext ctx) {
-      StringBuilder codeBuilder = new StringBuilder();
-      ExprCode leftExprCode = left.genCode(ctx);
-      ExprCode rightExprCode = right.genCode(ctx);
-      Stream.of(leftExprCode, rightExprCode)
-          .forEach(
-              exprCode -> {
-                if (isNotBlank(exprCode.code())) {
-                  codeBuilder.append(exprCode.code()).append('\n');
-                }
-              });
-      String i = ctx.freshName("i");
-      String leftElemValue = ctx.freshName("leftElemValue");
-      String rightElemValue = ctx.freshName("rightElemValue");
-      TypeToken<?> leftElemType;
-      if (left.type().isArray()) {
-        leftElemType = left.type().getComponentType();
-      } else {
-        leftElemType = getElementType(left.type());
-      }
-      TypeToken<?> rightElemType;
-      if (right.type().isArray()) {
-        rightElemType = right.type().getComponentType();
-      } else {
-        rightElemType = getElementType(right.type());
-      }
-      Expression elemExpr =
-          action.apply(
-              new Literal(i),
-              new Reference(leftElemValue, leftElemType, true),
-              // elemValue nullability check use isNullAt inside action, so elemValueRef'nullable is
-              // false.
-              new Reference(rightElemValue, rightElemType, false));
-      ExprCode elementExprCode = elemExpr.genCode(ctx);
-
-      if (left.type().isArray()) {
-        String code =
-            format(
-                ""
-                    + "int ${len} = ${leftArr}.length;\n"
-                    + "int ${i} = 0;\n"
-                    + "while (${i} < ${len}) {\n"
-                    + "    ${leftElemType} ${leftElemValue} = ${leftArr}[${i}];\n"
-                    + "    ${rightElemType} ${rightElemValue} = ${rightArr}[${i}];\n"
-                    + "    ${elementExprCode}\n"
-                    + "    ${i}++;\n"
-                    + "}",
-                "leftArr",
-                leftExprCode.value(),
-                "len",
-                ctx.freshName("len"),
-                "i",
-                i,
-                "leftElemType",
-                ctx.type(leftElemType),
-                "leftElemValue",
-                leftElemValue,
-                "rightElemType",
-                ctx.type(rightElemType),
-                "rightElemValue",
-                rightElemValue,
-                "rightArr",
-                rightExprCode.value(),
-                "elementExprCode",
-                alignIndent(elementExprCode.code()));
-        codeBuilder.append(code);
-        return new ExprCode(codeBuilder.toString(), null, null);
-      } else {
-        String code =
-            format(
-                ""
-                    + "Iterator ${leftIter} = ${leftInput}.iterator();\n"
-                    + "Iterator ${rightIter} = ${rightInput}.iterator();\n"
-                    + "int ${i} = 0;\n"
-                    + "while (${leftIter}.hasNext() && ${rightIter}.hasNext()) {\n"
-                    + "    ${leftElemType} ${leftElemValue} = (${leftElemType})${leftIter}.next();\n"
-                    + "    ${rightElemType} ${rightElemValue} = (${rightElemType})${rightIter}.next();\n"
-                    + "    ${elementExprCode}\n"
-                    + "    ${i}++;\n"
-                    + "}",
-                "leftIter",
-                ctx.freshName("leftIter"),
-                "leftInput",
-                leftExprCode.value(),
-                "rightIter",
-                ctx.freshName("rightIter"),
-                "rightInput",
-                rightExprCode.value(),
-                "i",
-                i,
-                "leftElemType",
-                ctx.type(leftElemType),
-                "leftElemValue",
-                leftElemValue,
-                "rightElemType",
-                ctx.type(rightElemType),
-                "rightElemValue",
-                rightElemValue,
-                "elementExprCode",
-                alignIndent(elementExprCode.code()));
-        codeBuilder.append(code);
-        return new ExprCode(codeBuilder.toString(), null, null);
-      }
-    }
-  }
-
   class ForLoop implements Expression {
     private final Expression start;
     private final Expression end;
@@ -1855,74 +1658,6 @@ public interface Expression {
               actionExprCode.code());
       codeBuilder.append(forCode);
       return new ExprCode(codeBuilder.toString(), null, null);
-    }
-  }
-
-  /**
-   * build list from iterable
-   *
-   * <p>Since value is declared to be {@code List<elementType>}, no need to cast in other expression
-   * that need List
-   */
-  class ListFromIterable implements Expression {
-    private final TypeToken elementType;
-    private final Expression inputObject;
-    private final TypeToken<?> type;
-
-    public ListFromIterable(Expression inputObject) {
-      this.inputObject = inputObject;
-      Preconditions.checkArgument(
-          inputObject.type().getRawType() == Iterable.class,
-          "wrong type of inputObject, get " + inputObject.type());
-      elementType = getElementType(inputObject.type());
-      this.type = inputObject.type().getSubtype(List.class);
-    }
-
-    /** @return inputObject.type(), not {@code List<elementType>}. */
-    @Override
-    public TypeToken<?> type() {
-      return type;
-    }
-
-    @Override
-    public ExprCode doGenCode(CodegenContext ctx) {
-      StringBuilder codeBuilder = new StringBuilder();
-      ExprCode targetExprCode = inputObject.genCode(ctx);
-      if (isNotBlank(targetExprCode.code())) {
-        codeBuilder.append(targetExprCode.code()).append("\n");
-      }
-      String iter = ctx.freshName("iter");
-      String list = ctx.freshName("list");
-      String elemValue = ctx.freshName("elemValue");
-
-      Class rawType = elementType.getRawType();
-      // janino don't support Type inference for generic instance creation
-      String code =
-          format(
-              ""
-                  + "List<${className}> ${list} = new ArrayList<${className}>();\n"
-                  + "Iterator ${iter} = ${iterable}.iterator();\n"
-                  + "while (${iter}.hasNext()) {\n"
-                  + "   ${className} ${elemValue} = (${className})${iter}.next();\n"
-                  + "   ${list}.add(${elemValue});\n"
-                  + "}",
-              "className",
-              ctx.type(rawType),
-              "list",
-              list,
-              "iter",
-              iter,
-              "iterable",
-              targetExprCode.value(),
-              "elemValue",
-              elemValue);
-      codeBuilder.append(code);
-      return new ExprCode(codeBuilder.toString(), FalseLiteral, Code.variable(rawType, list));
-    }
-
-    @Override
-    public String toString() {
-      return String.format("%s(%s)", getClass().getSimpleName(), inputObject);
     }
   }
 

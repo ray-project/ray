@@ -1,4 +1,4 @@
-package io.ray.serialization.codegen;
+package io.ray.serialization.util;
 
 import static org.testng.Assert.assertEquals;
 

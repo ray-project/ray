@@ -50,21 +50,6 @@ public class Descriptor {
     return new ArrayList<>(allDescriptorsMap.values());
   }
 
-  /**
-   * @return descriptors map non-transient/non-static fields of class. Super class and sub class are
-   *     not allowed to have duplicate name field.
-   */
-  public static SortedMap<String, Descriptor> getDescriptorsMap(Class<?> clz) {
-    SortedMap<Field, Descriptor> allDescriptorsMap = getAllDescriptorsMap(clz);
-    Map<String, List<Field>> duplicateNameFields = getDuplicateNameFields(clz);
-    Preconditions.checkArgument(
-        duplicateNameFields.size() == 0,
-        String.format("%s has duplicate fields %s", clz, duplicateNameFields));
-    TreeMap<String, Descriptor> map = new TreeMap<>();
-    allDescriptorsMap.forEach((k, v) -> map.put(k.getName(), v));
-    return map;
-  }
-
   public static boolean hasDuplicateNameField(Class<?> clz) {
     return getDuplicateNameFields(clz).size() > 0;
   }

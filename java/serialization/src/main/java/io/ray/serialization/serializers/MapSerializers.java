@@ -178,7 +178,7 @@ public class MapSerializers {
   public static final class MapDefaultJavaSerializer<T extends Map> extends MapSerializer<T> {
     private final boolean useCodegen;
     private final Serializer<T> codegenSerializer;
-    private final FallbackSerializer<T> fallbackSerializer;
+    private final DefaultSerializer<T> fallbackSerializer;
 
     public MapDefaultJavaSerializer(Fury fury, Class<T> cls) {
       super(fury, cls, false);
@@ -187,7 +187,7 @@ public class MapSerializers {
         codegenSerializer = fury.getClassResolver().getTypedSerializer(cls);
         fallbackSerializer = null;
       } else {
-        fallbackSerializer = new FallbackSerializer<>(fury, cls);
+        fallbackSerializer = new DefaultSerializer<>(fury, cls);
         codegenSerializer = null;
       }
     }

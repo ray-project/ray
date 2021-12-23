@@ -11,7 +11,7 @@ import lombok.Data;
 import org.testng.annotations.Test;
 
 @SuppressWarnings("unchecked")
-public class FallbackSerializerTest {
+public class DefaultSerializerTest {
 
   @Test
   public void testLocalClass() {
@@ -22,7 +22,7 @@ public class FallbackSerializerTest {
       }
     }
     Fury fury = Fury.builder().withReferenceTracking(false).build();
-    FallbackSerializer serializer = new FallbackSerializer(fury, Foo.class);
+    DefaultSerializer serializer = new DefaultSerializer(fury, Foo.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     Foo foo = new Foo();
     serializer.write(fury, buffer, foo);
@@ -46,7 +46,7 @@ public class FallbackSerializerTest {
           }
         };
     Fury fury = Fury.builder().withReferenceTracking(false).build();
-    FallbackSerializer serializer = new FallbackSerializer(fury, foo.getClass());
+    DefaultSerializer serializer = new DefaultSerializer(fury, foo.getClass());
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     serializer.write(fury, buffer, foo);
     Object obj = serializer.read(fury, buffer, foo.getClass());
@@ -59,7 +59,7 @@ public class FallbackSerializerTest {
     Fury fury = Fury.builder().withReferenceTracking(true).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
 
-    FallbackSerializer<Cyclic> serializer = new FallbackSerializer<>(fury, Cyclic.class);
+    DefaultSerializer<Cyclic> serializer = new DefaultSerializer<>(fury, Cyclic.class);
     fury.getReferenceResolver().writeReferenceOrNull(buffer, cyclic);
     serializer.write(fury, buffer, cyclic);
     byte tag = fury.getReferenceResolver().readReferenceOrNull(buffer);
@@ -85,7 +85,7 @@ public class FallbackSerializerTest {
   public void testSerialization() {
     Fury fury = Fury.builder().withReferenceTracking(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    FallbackSerializer<A> serializer = new FallbackSerializer<>(fury, A.class);
+    DefaultSerializer<A> serializer = new DefaultSerializer<>(fury, A.class);
     A a = new A();
     serializer.write(fury, buffer, a);
     assertEquals(a, serializer.read(fury, buffer, A.class));
@@ -107,7 +107,7 @@ public class FallbackSerializerTest {
     assertEquals(((B) c).f1, 100);
     assertEquals(c.f1, -100);
     Fury fury = Fury.builder().withReferenceTracking(false).build();
-    FallbackSerializer<C> serializer = new FallbackSerializer<>(fury, C.class);
+    DefaultSerializer<C> serializer = new DefaultSerializer<>(fury, C.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     serializer.write(fury, buffer, c);
     C newC = serializer.read(fury, buffer, C.class);

@@ -3,10 +3,9 @@ package io.ray.serialization.resolver;
 import io.ray.serialization.Fury;
 import io.ray.serialization.util.MemoryBuffer;
 
+// TODO add putIfAbsent for cuckoo hash.
 /** This class is used to track objects that have already been read or written. */
 public interface ReferenceResolver {
-  // TODO(mubai) add putIfAbsent for cuckoo hash.
-
   /** Returns an id for the object if it has been written previously, otherwise returns -1. */
   int getWriteRefId(Object object);
 

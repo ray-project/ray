@@ -24,7 +24,7 @@ public class ThreadSafeFuryTest {
             for (int j = 0; j < 10; j++) {
               try {
                 assertEquals(fury.deserialize(fury.serialize(beanA)), beanA);
-              } catch (Exception e) {
+              } catch (Throwable e) {
                 hasException = true;
                 e.printStackTrace();
                 throw e;
