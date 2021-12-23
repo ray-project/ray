@@ -496,18 +496,19 @@ class Node:
             self._redis_address, self._ray_params.redis_password)
 
     def get_gcs_client(self):
-        if self._gcs_client is None:
-            num_retries = NUM_REDIS_GET_RETRIES
-            for i in range(num_retries):
-                try:
-                    self._gcs_client = GcsClient(address=self.gcs_address)
-                    break
-                except Exception as e:
-                    time.sleep(1)
-                    logger.debug(f"Waiting for gcs up {e}")
-            assert self._gcs_client is not None
-            ray.experimental.internal_kv._initialize_internal_kv(
-                self._gcs_client)
+        num_retries = NUM_REDIS_GET_RETRIES
+        for i in range(num_retries):
+            try:
+                self._gcs_client = GcsClient(address=self._gcs_address)
+                break
+            except Exception as e:
+                import pdb
+                pdb.set_trace()
+                time.sleep(1)
+                logger.debug(f"Connecting to GCS: {e}")
+        assert self._gcs_client is not None, \
+            f"Failed to connect to GCS at {self._gcs_address}"
+        ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
         return self._gcs_client
 
@@ -857,8 +858,7 @@ class Node:
             self._gcs_address = (f"{self._node_ip_address}:"
                                  f"{self._ray_params.gcs_server_port}")
         else:
-            redis = self.create_redis_client()
-            self._gcs_address = get_gcs_address_from_redis(redis)
+            self._gcs_address = self._get_gcs_address_from_redis()
         # Init gcs client
         self.get_gcs_client()
 
