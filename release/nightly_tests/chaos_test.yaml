@@ -54,10 +54,6 @@
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: dataset/pipelined_ingestion_app.yaml
     compute_template: dataset/pipelined_ingestion_compute.yaml

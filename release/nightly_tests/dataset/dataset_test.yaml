@@ -1,9 +1,5 @@
 - name: inference
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: inference.yaml
@@ -15,10 +11,6 @@
   
 - name: shuffle_data_loader
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: shuffle_app_config.yaml
     compute_template: shuffle_compute.yaml
@@ -29,10 +21,6 @@
 
 - name: pipelined_training_50_gb
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: pipelined_training_app.yaml
     compute_template: pipelined_training_compute.yaml
@@ -44,10 +32,6 @@
 
 - name: pipelined_ingestion_1500_gb_15_windows
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: pipelined_ingestion_app.yaml
     compute_template: pipelined_ingestion_compute.yaml
@@ -59,10 +43,6 @@
 
 - name: datasets_ingest_train_infer
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: ray_sgd_training_compute.yaml
@@ -86,10 +66,6 @@
 
 - name: datasets_preprocess_ingest
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: ray_sgd_training_compute_no_gpu.yaml
@@ -103,10 +79,6 @@
 
 - name: datasets_ingest_400G
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: dataset_ingest_400G_compute.yaml

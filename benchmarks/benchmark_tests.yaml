@@ -1,9 +1,5 @@
 - name: single_node
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: single_node.yaml
@@ -15,10 +11,6 @@
 
 - name: object_store
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: object_store.yaml
@@ -30,10 +22,6 @@
 
 - name: many_actors
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -45,10 +33,6 @@
 
 - name: many_actors_smoke_test
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -60,10 +44,6 @@
 
 - name: many_tasks
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -75,10 +55,6 @@
 
 - name: many_tasks_smoke_test
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -90,10 +66,6 @@
 
 - name: many_pgs
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -105,10 +77,6 @@
 
 - name: many_pgs_smoke_test
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -121,10 +89,6 @@
 # NOTE: No smoke test since this shares a script with the many_tasks_smoke_test
 - name: many_nodes
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
   cluster:
     app_config: app_config.yaml
     compute_template: many_nodes.yaml
@@ -136,10 +100,6 @@
 
 - name: many_tasks_redis_ha
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -157,10 +117,6 @@
 
 - name: many_actors_redis_ha
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -178,10 +134,6 @@
 
 - name: many_nodes_redis_ha
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
   cluster:
     app_config: app_config.yaml
     compute_template: many_nodes.yaml
@@ -199,10 +151,6 @@
 
 - name: many_pgs_redis_ha
   team: core
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
