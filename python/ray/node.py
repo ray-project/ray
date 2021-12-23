@@ -407,7 +407,6 @@ class Node:
             assert self._gcs_address is not None
         else:
             self._gcs_address = self._get_gcs_address_from_redis()
-        print(">>", self._gcs_address)
         return self._gcs_address
 
     @property
