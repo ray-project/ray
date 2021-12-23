@@ -407,6 +407,7 @@ class Node:
             assert self._gcs_address is not None
         else:
             self._gcs_address = self._get_gcs_address_from_redis()
+        print(">>", self._gcs_address)
         return self._gcs_address
 
     @property
@@ -498,7 +499,7 @@ class Node:
             self._redis_address, self._ray_params.redis_password)
 
     def get_gcs_client(self):
-        if self._gcs_client is not None:
+        if self._gcs_client is None:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
