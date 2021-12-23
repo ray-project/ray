@@ -405,15 +405,13 @@ class Node:
         """Get the gcs address."""
         if use_gcs_for_bootstrap():
             assert self._gcs_address is not None
-            return self._gcs_address
-        else:
-            redis = self.create_redis_client()
-            return get_gcs_address_from_redis(redis)
+        return self._gcs_address
 
     @property
     def redis_address(self):
         """Get the cluster Redis address."""
-        assert self._redis_address is not None
+        if not use_gcs_for_bootstrap():
+            assert self._redis_address is not None
         return self._redis_address
 
     @property
@@ -854,6 +852,9 @@ class Node:
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
                                  f"{self._ray_params.gcs_server_port}")
+        else:
+            redis = self.create_redis_client()
+            self._gcs_address = get_gcs_address_from_redis(redis)
         # Init gcs client
         self.get_gcs_client()
 

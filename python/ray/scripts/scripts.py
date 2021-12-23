@@ -616,6 +616,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
+            # TODO(mwtian): get both GCS and Redis addresses.
             bootstrap_addresses = services.find_redis_address()
             if default_address in bootstrap_addresses:
                 raise ConnectionError(
@@ -627,7 +628,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
 
-        redis_address = node.redis_address
+        bootstrap_addresses = node.gcs_address if use_gcs_for_bootstrap() \
+            else node.redis_address
         if temp_dir is None:
             # Default temp directory.
             temp_dir = ray._private.utils.get_user_temp_dir()
@@ -637,7 +639,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # TODO: Consider using the custom temp_dir for this file across the
         # code base. (https://github.com/ray-project/ray/issues/16458)
         with open(current_cluster_path, "w") as f:
-            print(redis_address, file=f)
+            print(bootstrap_addresses, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -653,7 +655,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # NOTE(kfstorm): Java driver rely on this line to get the address
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"), redis_address,
+                cf.bold("  ray start --address='{}'{}"), bootstrap_addresses,
                 f" --redis-password='{redis_password}'"
                 if redis_password else "")
             cli_logger.newline()
