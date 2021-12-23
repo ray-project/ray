@@ -194,6 +194,12 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_johnynek_bazel_jar_jar",
+        url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
+        sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
+    )
+
+    auto_http_archive(
         name = "io_opencensus_cpp",
         url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
         sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
