@@ -1377,7 +1377,10 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+    if gcs_utils.use_gcs_for_bootstrap():
+        worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.gcs_address)
+    else:
+        worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     if gcs_utils.use_gcs_for_bootstrap():
@@ -1509,10 +1512,7 @@ def connect(node,
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
-    import pdb
-    pdb.set_trace()
     serialized_job_config = job_config.serialize()
-    print("!!!")
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,

@@ -127,7 +127,7 @@ class Node:
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         if use_gcs_for_bootstrap():
-            self._gcs_address = ray_params.bootstrap_address
+            self._gcs_address = ray_params.gcs_address
         else:
             # This will be read from Redis when creating GCS client.
             self._gcs_address = None
