@@ -139,17 +139,10 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # runtime_env unsupported on Windows
-      -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
-      -python/ray/serve:test_cli # cli
-      -python/ray/serve:test_router # timeout
-      -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
-      -python/ray/serve:test_controller_crashes # timeout
       -python/ray/serve:test_standalone # timeout
+      -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
-      -python/ray/tests:test_advanced_2
-      -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
@@ -184,7 +177,6 @@ test_python() {
       -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
-      -python/ray/tests:test_runtime_env_conda # conda not supported on Windows
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
@@ -193,14 +185,22 @@ test_python() {
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./scripts/bazel-sharding.py --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    # shellcheck disable=SC2046
-    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
-      "${args[@]}";
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./scripts/bazel_export_options) \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      -- \
+      ${test_shard_selection};
   fi
 }
 
@@ -398,6 +398,7 @@ build_wheels() {
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
@@ -562,8 +563,13 @@ _check_job_triggers() {
   job_names="$1"
 
   local variable_definitions
-  # shellcheck disable=SC2031
-  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+  if command -v python3; then
+    # shellcheck disable=SC2031
+    variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+  else
+    # shellcheck disable=SC2031
+    variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  fi
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
@@ -598,6 +604,11 @@ configure_system() {
   git config --global core.askpass ""
   git config --global credential.helper ""
   git config --global credential.modalprompt false
+
+  # Requests library need root certificates.
+  if [ "${OSTYPE}" = msys ]; then
+    certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
+  fi
 }
 
 # Initializes the environment for the current job. Performs the following tasks:

@@ -1,3 +1,4 @@
+import contextlib
 from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -59,7 +60,7 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
-class NullContextManager:
+class NullContextManager(contextlib.AbstractContextManager):
     """No-op context manager"""
 
     def __init__(self):

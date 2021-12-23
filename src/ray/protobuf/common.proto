@@ -49,6 +49,30 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message PlacementGroupSchedulingStrategy {
+  // Placement group that is associated with this task.
+  bytes placement_group_id = 1;
+  // Placement group bundle that is associated with this task.
+  int64 placement_group_bundle_index = 2;
+  // Whether or not this task should capture parent's placement group automatically.
+  bool placement_group_capture_child_tasks = 3;
+}
+
+message DefaultSchedulingStrategy {}
+
+message SpreadSchedulingStrategy {}
+
+message SchedulingStrategy {
+  oneof scheduling_strategy {
+    // Default hybrid scheduling strategy.
+    DefaultSchedulingStrategy default_scheduling_strategy = 1;
+    // Placement group based scheduling strategy.
+    PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    // Best effort spread scheduling strategy.
+    SpreadSchedulingStrategy spread_scheduling_strategy = 3;
+  }
+}
+
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -150,6 +174,8 @@ enum ErrorType {
   // get thrown if an object appears to be created, but the requestor is not
   // able to fetch it after the configured timeout.
   OBJECT_FETCH_TIMED_OUT = 14;
+  // Indicates that a task failed because the local raylet died.
+  LOCAL_RAYLET_DIED = 15;
 }
 
 /// The information per ray error type.
@@ -212,12 +238,6 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 17;
-  // Placement group that is associated with this task.
-  bytes placement_group_id = 18;
-  // Placement group bundle that is associated with this task.
-  int64 placement_group_bundle_index = 19;
-  // Whether or not this task should capture parent's placement group automatically.
-  bool placement_group_capture_child_tasks = 20;
   // Whether or not to skip the execution of this task. When it's true,
   // the receiver will not execute the task. This field is used by async actors
   // to guarantee task submission order after restart.
@@ -234,6 +254,8 @@ message TaskSpec {
   // The depth of the task. The driver has depth 0, anything it calls has depth
   // 1, etc.
   int64 depth = 26;
+  // Strategy about how to schedule this task.
+  SchedulingStrategy scheduling_strategy = 27;
 }
 
 message Bundle {
@@ -351,6 +373,8 @@ message ActorCreationTaskSpec {
   repeated ConcurrencyGroup concurrency_groups = 13;
   // Whether to enable out of order execution.
   bool execute_out_of_order = 14;
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 15;
 }
 
 // Task spec of an actor task.
