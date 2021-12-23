@@ -827,7 +827,10 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        assert self._gcs_address is None
+        if use_gcs_for_bootstrap():
+            assert self._gcs_address is None, \
+                "Restarting GCS server is unimplemented."
+        # TODO(mwtian): append date time so restarted GCS uses different files.
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
 
