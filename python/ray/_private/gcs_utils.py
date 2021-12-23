@@ -174,7 +174,6 @@ class GcsChannel:
         else:
             self._gcs_address = get_gcs_address_from_redis(
                 self._redis_client).decode()
-
         self._channel = create_gcs_channel(self._gcs_address, self._aio)
 
     def channel(self):

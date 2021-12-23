@@ -209,6 +209,8 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    import copy
+    env = copy.deepcopy(os.environ).update(env or {})
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,

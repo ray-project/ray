@@ -1380,7 +1380,8 @@ def connect(node,
     if gcs_utils.use_gcs_for_bootstrap():
         worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.gcs_address)
     else:
-        worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+        worker.gcs_channel = gcs_utils.GcsChannel(
+            redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     if gcs_utils.use_gcs_for_bootstrap():

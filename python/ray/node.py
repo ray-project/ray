@@ -160,11 +160,6 @@ class Node:
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             if use_gcs_for_bootstrap():
-                if ray_params.gcs_address is None:
-                    # Before we allow ray.init to accept gcs address, we need
-                    # to set the field from redis
-                    ray_params.gcs_address = self._get_gcs_address_from_redis()
-
                 self._gcs_address = self._ray_params.gcs_address
 
             session_name = self._internal_kv_get_with_retry(
