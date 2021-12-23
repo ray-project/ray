@@ -859,7 +859,8 @@ class Node:
             process_info,
         ]
         if use_gcs_for_bootstrap():
-            self._gcs_address = f"{self._node_ip_address}:{self._ray_params.gcs_server_port}"
+            self._gcs_address = (f"{self._node_ip_address}:"
+                                 f"{self._ray_params.gcs_server_port}")
         # Init gcs client
         self.get_gcs_client()
 
