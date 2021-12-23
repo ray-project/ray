@@ -21,8 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
-                                    get_gcs_address_from_redis)
+from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis,\
+    use_gcs_for_bootstrap
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
@@ -126,6 +126,11 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
+        if use_gcs_for_bootstrap():
+            self._gcs_address = ray_params.bootstrap_address
+        else:
+            # This will be read from Redis when creating GCS client.
+            self._gcs_address = None
         self._config = ray_params._system_config or {}
 
         # Configure log rotation parameters.
@@ -398,6 +403,8 @@ class Node:
     @property
     def address(self):
         """Get the cluster address."""
+        if use_gcs_for_bootstrap():
+            return self._gcs_address
         return self._redis_address
 
     @property
@@ -413,6 +420,7 @@ class Node:
     @property
     def redis_address(self):
         """Get the cluster Redis address."""
+        assert self._redis_address is not None
         return self._redis_address
 
     @property
@@ -485,7 +493,7 @@ class Node:
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
             "address": (self.gcs_address
-                        if use_gcs_for_bootstrap() else self._redis_address)
+                        if use_gcs_for_bootstrap() else self.redis_address)
         }
 
     def is_head(self):
@@ -827,6 +835,7 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
+        assert self._gcs_address is None
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
 

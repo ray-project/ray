@@ -1509,7 +1509,8 @@ def connect(node,
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
-
+    import pdb
+    pdb.set_trace()
     serialized_job_config = job_config.serialize()
     print("!!!")
     worker.core_worker = ray._raylet.CoreWorker(
