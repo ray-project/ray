@@ -66,7 +66,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
 class TestQMix(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -76,10 +76,13 @@ class TestQMix(unittest.TestCase):
         grouping = {
             "group_1": ["agent_1", "agent_2"],
         }
-        obs_space = Tuple([AvailActionsTestEnv.observation_space,
-                           AvailActionsTestEnv.observation_space])
-        act_space = Tuple([AvailActionsTestEnv.action_space,
-                           AvailActionsTestEnv.action_space])
+        obs_space = Tuple([
+            AvailActionsTestEnv.observation_space,
+            AvailActionsTestEnv.observation_space
+        ])
+        act_space = Tuple([
+            AvailActionsTestEnv.action_space, AvailActionsTestEnv.action_space
+        ])
         register_env(
             "action_mask_test",
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
