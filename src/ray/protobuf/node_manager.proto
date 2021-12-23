@@ -52,13 +52,14 @@ message RequestWorkerLeaseRequest {
 
 message RequestWorkerLeaseReply {
   enum SchedulingFailureType {
-    // Scheduling is failed on this node. 
+    // Scheduling is failed on this node.
     SCHEDULING_FAILED = 0;
     // Scheduling is cancelled because task/actor's placement is removed.
     SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 1;
     // Scheduling is cancelled because task/actor's runtime environment setup is failed
     SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 2;
-    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g., ray.kill or ray.cancel
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
+    // ray.kill or ray.cancel
     SCHEDULING_CANCELLED_INTENDED = 3;
   }
 
