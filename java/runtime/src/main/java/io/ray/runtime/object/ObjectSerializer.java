@@ -161,7 +161,7 @@ public class ObjectSerializer {
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
       // any other type should be the MessagePack serialized bytes.
       NativeRayObject nativeRayObject =
-        new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+          new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
       nativeRayObject.setContainedObjectIds(ImmutableList.of(actorHandle.getActorHandleId()));
       return nativeRayObject;
     } else {

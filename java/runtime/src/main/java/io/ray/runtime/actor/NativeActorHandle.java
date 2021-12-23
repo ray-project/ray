@@ -114,10 +114,11 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   }
 
   private static final class NativeActorHandleReference
-    extends FinalizableWeakReference<NativeActorHandle> {
+      extends FinalizableWeakReference<NativeActorHandle> {
     private final AtomicBoolean removed;
     private final byte[] workerId;
     private final byte[] actorId;
+
     public NativeActorHandleReference(NativeActorHandle handle) {
       super(handle, REFERENCE_QUEUE);
       this.actorId = handle.actorId;
@@ -126,6 +127,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
       this.removed = new AtomicBoolean(false);
       REFERENCES.add(this);
     }
+
     @Override
     public void finalizeReferent() {
       if (!removed.getAndSet(true)) {

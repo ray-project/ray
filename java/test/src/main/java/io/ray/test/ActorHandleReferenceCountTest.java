@@ -31,7 +31,7 @@ public class ActorHandleReferenceCountTest {
       referencesField.setAccessible(true);
       Set<?> references = (Set<?>) referencesField.get(null);
       Class<?> referenceClass =
-        Class.forName("io.ray.runtime.actor.NativeActorHandle$NativeActorHandleReference");
+          Class.forName("io.ray.runtime.actor.NativeActorHandle$NativeActorHandleReference");
       Method finalizeReferentMethod = referenceClass.getDeclaredMethod("finalizeReferent");
       finalizeReferentMethod.setAccessible(true);
       for (Object reference : references) {
@@ -72,7 +72,7 @@ public class ActorHandleReferenceCountTest {
       int pid = myActor.task(MyActor::getPid).remote().get();
       // Pass the handle to another task that cannot run yet.
       ObjectRef<String> helloObj =
-        Ray.task(ActorHandleReferenceCountTest::foo, myActor, signal).remote();
+          Ray.task(ActorHandleReferenceCountTest::foo, myActor, signal).remote();
       // Delete the original handle. The actor should not get killed yet.
       del(myActor);
       // Once the task finishes, the actor process should get killed.
@@ -96,15 +96,14 @@ public class ActorHandleReferenceCountTest {
       del(myActor1);
       TimeUnit.SECONDS.sleep(5);
       Assert.assertThrows(
-        RayActorException.class,
-        () -> {
-          myActor1.task(MyActor::hello).remote().get();
-        });
+          RayActorException.class,
+          () -> {
+            myActor1.task(MyActor::hello).remote().get();
+          });
       /// myActor2 shouldn't be killed.
       Assert.assertEquals("hello", myActor2.task(MyActor::hello).remote().get());
     } finally {
       Ray.shutdown();
     }
   }
-
 }
