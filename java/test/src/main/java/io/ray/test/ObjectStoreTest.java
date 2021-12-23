@@ -7,10 +7,13 @@ import io.ray.api.Ray;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.util.ArrowUtil;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -72,17 +75,18 @@ public class ObjectStoreTest extends BaseTest {
 
     {
       IntVector vector = new IntVector("int", ArrowUtil.rootAllocator);
-      vector.allocateNew();
       for (int i = 0; i < 5; i++) {
         vector.setSafe(i, i);
       }
       vector.setValueCount(5);
-      VectorSchemaRoot root = VectorSchemaRoot.of(vector);
+      List<Field> fields = Arrays.asList(vector.getField());
+      List<FieldVector> vectors = Arrays.asList(vector);
+      VectorSchemaRoot root = new VectorSchemaRoot(fields, vectors);
       ObjectRef<VectorSchemaRoot> obj = Ray.put(root);
-      VectorSchemaRoot retrievedRoot = obj.get();
-      IntVector retrievedVector = (IntVector) retrievedRoot.getVector(0);
+      VectorSchemaRoot newRoot = obj.get();
+      IntVector newVector = (IntVector) newRoot.getVector(0);
       for (int i = 0; i < 5; i++) {
-        Assert.assertEquals(vector.get(i), retrievedVector.get(i));
+        Assert.assertEquals(i, newVector.get(i));
       }
     }
   }
