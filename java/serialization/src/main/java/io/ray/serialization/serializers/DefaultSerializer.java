@@ -60,7 +60,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     // all fields of class and super classes should be a consistent order between jvm process.
     this.fields = Descriptor.getFields(cls).toArray(new Field[0]);
     buildFieldAccessors();
-    classVersionHash = CodegenSerializer.computeVersionHash(cls);
+    classVersionHash = Serializers.computeVersionHash(cls);
   }
 
   private void buildFieldAccessors() {
@@ -175,12 +175,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   public T read(Fury fury, MemoryBuffer buffer, Class<T> type) {
     if (fury.checkClassVersion()) {
       int hash = buffer.readInt();
-      if (hash != classVersionHash) {
-        throw new FuryException(
-            String.format(
-                "Class %s version %s is not consistent with %s",
-                fury.getClassResolver().getCurrentReadClass(), hash, classVersionHash));
-      }
+      Serializers.checkClassVersion(fury, hash, classVersionHash);
     }
     Object bean = newBean();
     referenceResolver.reference(bean);

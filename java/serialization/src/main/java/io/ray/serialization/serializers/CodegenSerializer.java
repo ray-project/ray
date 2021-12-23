@@ -1,16 +1,12 @@
 package io.ray.serialization.serializers;
 
-import com.google.common.hash.Hashing;
 import com.google.common.reflect.TypeToken;
 import io.ray.serialization.Fury;
-import io.ray.serialization.FuryException;
 import io.ray.serialization.encoder.CodecUtils;
 import io.ray.serialization.util.Descriptor;
 import io.ray.serialization.util.LoggerFactory;
 import io.ray.serialization.util.MemoryBuffer;
 import java.lang.reflect.Modifier;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 
 @SuppressWarnings("UnstableApiUsage")
@@ -80,24 +76,4 @@ public final class CodegenSerializer {
     }
   }
 
-  public static int computeVersionHash(Class<?> clz) {
-    int hash =
-        Descriptor.getFields(clz).stream()
-            .map(
-                f ->
-                    Objects.hash(
-                        f.getName(), f.getType().getName(), f.getDeclaringClass().getName()))
-            .collect(Collectors.toList())
-            .hashCode();
-    return Hashing.murmur3_32().hashInt(hash).asInt();
-  }
-
-  public static void checkClassVersion(Fury fury, int readHash, int classVersionHash) {
-    if (readHash != classVersionHash) {
-      throw new FuryException(
-          String.format(
-              "Read class %s version %s is not consistent with %s",
-              fury.getClassResolver().getCurrentReadClass(), readHash, classVersionHash));
-    }
-  }
 }

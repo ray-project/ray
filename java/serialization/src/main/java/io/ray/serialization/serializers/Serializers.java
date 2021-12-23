@@ -3,9 +3,12 @@ package io.ray.serialization.serializers;
 import static io.ray.serialization.util.TypeUtils.getArrayComponentInfo;
 
 import com.google.common.base.Preconditions;
+import com.google.common.hash.Hashing;
 import com.google.common.primitives.Primitives;
 import io.ray.serialization.Fury;
+import io.ray.serialization.FuryException;
 import io.ray.serialization.resolver.ReferenceResolver;
+import io.ray.serialization.util.Descriptor;
 import io.ray.serialization.util.MemoryBuffer;
 import io.ray.serialization.util.Platform;
 import io.ray.serialization.util.Tuple2;
@@ -23,10 +26,11 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Serializers {
-
   public static final class BooleanSerializer extends Serializer<Boolean> {
     public BooleanSerializer(Fury fury) {
       super(fury, Boolean.class);
@@ -817,5 +821,27 @@ public class Serializers {
     buffer.grow(size);
     buffer.copyFromUnsafe(buffer.writerIndex(), arr, offset, size);
     buffer.writerIndex(buffer.writerIndex() + size);
+  }
+
+  public static void checkClassVersion(Fury fury, int readHash, int classVersionHash) {
+    if (readHash != classVersionHash) {
+      throw new FuryException(
+        String.format(
+          "Read class %s version %s is not consistent with %s",
+          fury.getClassResolver().getCurrentReadClass(), readHash, classVersionHash));
+    }
+  }
+
+  @SuppressWarnings("UnstableApiUsage")
+  public static int computeVersionHash(Class<?> clz) {
+    int hash =
+      Descriptor.getFields(clz).stream()
+        .map(
+          f ->
+            Objects.hash(
+              f.getName(), f.getType().getName(), f.getDeclaringClass().getName()))
+        .collect(Collectors.toList())
+        .hashCode();
+    return Hashing.murmur3_32().hashInt(hash).asInt();
   }
 }

@@ -49,6 +49,7 @@ import io.ray.serialization.serializers.CodegenSerializer;
 import io.ray.serialization.serializers.CollectionSerializers.CollectionSerializer;
 import io.ray.serialization.serializers.MapSerializers.MapSerializer;
 import io.ray.serialization.serializers.Serializer;
+import io.ray.serialization.serializers.Serializers;
 import io.ray.serialization.util.Descriptor;
 import io.ray.serialization.util.LoggerFactory;
 import io.ray.serialization.util.MemoryBuffer;
@@ -98,7 +99,7 @@ public class SeqCodecBuilder extends CodecBuilder {
     super(new CodegenContext(), beanType);
     this.fury = fury;
     classVersionHash =
-        new Literal(CodegenSerializer.computeVersionHash(beanClass), PRIMITIVE_INT_TYPE);
+        new Literal(Serializers.computeVersionHash(beanClass), PRIMITIVE_INT_TYPE);
     Tuple2<List<Descriptor>, List<Descriptor>> sortedDescriptors =
         buildDescriptors(beanType.getRawType());
     sortedPrimitiveDescriptors = sortedDescriptors.f0;
@@ -618,7 +619,7 @@ public class SeqCodecBuilder extends CodecBuilder {
   private Expression checkClassVersion(Expression buffer) {
     Expression hash = new Invoke(buffer, "readInt", PRIMITIVE_INT_TYPE);
     return new StaticInvoke(
-        CodegenSerializer.class,
+        Serializers.class,
         "checkClassVersion",
         PRIMITIVE_VOID_TYPE,
         false,
