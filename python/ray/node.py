@@ -829,6 +829,10 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
+
+        if use_gcs_for_bootstrap():
+            assert self._ray_params.gcs_server_port is not None
+
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
             self._logs_dir,
@@ -845,9 +849,8 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
-        # TODO (iycheng) Remove this once we pass gcs address into init
         if use_gcs_for_bootstrap():
-            self._gcs_address = self._get_gcs_address_from_redis()
+            self._gcs_address = f"{self._node_ip_address}:{self._ray_params.gcs_server_port}"
         # Init gcs client
         self.get_gcs_client()
 

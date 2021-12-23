@@ -12,9 +12,6 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        bootstrap_address (str): The address of Redis / GCS server to connect
-            to for bootstrapping. If this address is not provided, then this
-            command will start the Ray cluster.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -125,7 +122,6 @@ class RayParams:
     """
 
     def __init__(self,
-                 bootstrap_address=None,
                  redis_address=None,
                  gcs_address=None,
                  num_cpus=None,
@@ -178,7 +174,6 @@ class RayParams:
                  tracing_startup_hook=None,
                  no_monitor=False,
                  env_vars=None):
-        self.bootstrap_address = bootstrap_address
         self.redis_address = redis_address
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus

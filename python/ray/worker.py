@@ -848,6 +848,8 @@ def init(
         bootstrap_address = None
     redis_address = None if gcs_utils.use_gcs_for_bootstrap(
     ) else bootstrap_address
+    gcs_address = bootstrap_address if gcs_utils.use_gcs_for_bootstrap(
+    ) else None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -947,7 +949,7 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
-            bootstrap_address=bootstrap_address,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1509,6 +1511,7 @@ def connect(node,
         job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
+    print("!!!")
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
