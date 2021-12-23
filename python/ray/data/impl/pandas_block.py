@@ -49,7 +49,7 @@ class PandasRow(TableRow):
 class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pandas is None:
-            raise ImportError("Run `pip install pandas` for Pandas support")
+            raise ImportError("Run `pip install pandas` for Pandas support.")
         TableBlockBuilder.__init__(self, pandas.DataFrame)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:

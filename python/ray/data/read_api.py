@@ -610,9 +610,14 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     """
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
-    else:
+    elif isinstance(dfs, list):
         for df in dfs:
-            assert isinstance(df, ray.ObjectRef), df
+            if not isinstance(df, ray.ObjectRef):
+                raise ValueError(
+                    f"Expected list of Ray object refs, got list containing {type(df)}")
+    else:
+        raise ValueError(
+            f"Expected Ray object ref or list of Ray object refs, got {type(df)}")
 
     context = DatasetContext.get_current()
     if context.enable_pandas_block:

@@ -983,8 +983,8 @@ class Dataset(Generic[T]):
         schema = self.schema(fetch_if_missing=True)
         if schema is None:
             raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of"
-                " the dataset")
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
 
         try:
             import pyarrow as pa
