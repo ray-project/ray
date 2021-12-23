@@ -21,8 +21,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis,\
-    use_gcs_for_bootstrap
+from ray._private.gcs_utils import (GcsClient, use_gcs_for_bootstrap,
+                                    get_gcs_address_from_redis)
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
@@ -498,17 +498,18 @@ class Node:
             self._redis_address, self._ray_params.redis_password)
 
     def get_gcs_client(self):
-        num_retries = NUM_REDIS_GET_RETRIES
-        for i in range(num_retries):
-            try:
-                self._gcs_client = GcsClient(address=self.gcs_address)
-                break
-            except Exception as e:
-                logger.debug(f"Connecting to GCS: {e}")
-        assert self._gcs_client is not None, \
-            f"Failed to connect to GCS at {self._gcs_address}"
-        ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
-
+        if self._gcs_client is not None:
+            num_retries = NUM_REDIS_GET_RETRIES
+            for i in range(num_retries):
+                try:
+                    self._gcs_client = GcsClient(address=self.gcs_address)
+                    break
+                except Exception as e:
+                    logger.debug(f"Connecting to GCS: {e}")
+            assert self._gcs_client is not None, \
+                f"Failed to connect to GCS at {self._gcs_address}"
+            ray.experimental.internal_kv._initialize_internal_kv(
+                self._gcs_client)
         return self._gcs_client
 
     def get_temp_dir_path(self):
