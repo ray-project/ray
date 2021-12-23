@@ -115,7 +115,7 @@ public final class MemoryBuffer {
    * @throws IllegalArgumentException Thrown, if the given ByteBuffer is not direct.
    */
   MemoryBuffer(ByteBuffer buffer) {
-    this(Platform.checkBufferAndGetAddress(buffer) + buffer.position(), buffer.remaining());
+    this(Platform.getAddress(buffer) + buffer.position(), buffer.remaining());
     this.offHeapBuffer = buffer;
   }
 
@@ -238,35 +238,6 @@ public final class MemoryBuffer {
       return address;
     } else {
       throw new IllegalStateException("Memory buffer does not represent off heap memory");
-    }
-  }
-
-  /**
-   * Wraps the chunk of the underlying memory located between <tt>offset</tt> and <tt>length</tt> in
-   * a NIO ByteBuffer.
-   *
-   * @param offset The offset in the memory buffer.
-   * @param length The number of bytes to be wrapped as a buffer.
-   * @return A <tt>ByteBuffer</tt> backed by the specified portion of the memory buffer.
-   * @throws IndexOutOfBoundsException Thrown, if offset is negative or larger than the memory
-   *                                   buffer size, or if the offset plus the length is larger than the buffer size.
-   */
-  public ByteBuffer wrap(int offset, int length) {
-    if (address <= addressLimit) {
-      if (heapMemory != null) {
-        return ByteBuffer.wrap(heapMemory, offset, length);
-      } else {
-        try {
-          ByteBuffer wrapper = offHeapBuffer.duplicate();
-          wrapper.limit(offset + length);
-          wrapper.position(offset);
-          return wrapper;
-        } catch (IllegalArgumentException e) {
-          throw new IndexOutOfBoundsException();
-        }
-      }
-    } else {
-      throw new IllegalStateException("Buffer has been freed");
     }
   }
 
@@ -1034,8 +1005,7 @@ public final class MemoryBuffer {
   public ByteBuffer sliceAsByteBuffer(int offset, int length) {
     Preconditions.checkArgument(offset + length <= size);
     if (heapMemory != null) {
-      return ByteBuffer.wrap(heapMemory, (int) (address - BYTE_ARRAY_BASE_OFFSET + offset), length)
-        .slice();
+      return ByteBuffer.wrap(heapMemory, offset, length);
     } else {
       ByteBuffer offHeapBuffer = ((MemoryBuffer) this).offHeapBuffer;
       if (offHeapBuffer != null) {

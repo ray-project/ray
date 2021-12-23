@@ -8,7 +8,6 @@ import java.lang.reflect.Method;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import sun.misc.Unsafe;
-import sun.nio.ch.DirectBuffer;
 
 /** Based on org.apache.spark.unsafe.Platform */
 public final class Platform {
@@ -32,6 +31,9 @@ public final class Platform {
   public static final int DOUBLE_ARRAY_OFFSET;
 
   private static final boolean unaligned;
+
+  private static final Class<?> DIRECT_BYTE_BUFFER_CLASS =
+    getClassByName("java.nio.DirectByteBuffer");
 
   static {
     boolean _unaligned;
@@ -91,7 +93,7 @@ public final class Platform {
 
   static {
     try {
-      Class<?> cls = Class.forName("java.nio.DirectByteBuffer");
+      Class<?> cls = DIRECT_BYTE_BUFFER_CLASS;
       Constructor<?> constructor = cls.getDeclaredConstructor(Long.TYPE, Integer.TYPE);
       constructor.setAccessible(true);
       Field cleanerField = cls.getDeclaredField("cleaner");
@@ -104,7 +106,7 @@ public final class Platform {
       Field capacityField = Buffer.class.getDeclaredField("capacity");
       BUFFER_CAPACITY_FIELD_OFFSET = UNSAFE.objectFieldOffset(capacityField);
       Preconditions.checkArgument(BUFFER_CAPACITY_FIELD_OFFSET != 0);
-    } catch (ClassNotFoundException | NoSuchMethodException | NoSuchFieldException e) {
+    } catch (NoSuchMethodException | NoSuchFieldException e) {
       throw new IllegalStateException(e);
     }
   }
@@ -142,6 +144,15 @@ public final class Platform {
       CLEANER_CREATE_METHOD = createMethod;
     } catch (ClassNotFoundException | NoSuchMethodException e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  private static Class<?> getClassByName(
+    @SuppressWarnings("SameParameterValue") String className) {
+    try {
+      return Class.forName(className);
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
     }
   }
 
@@ -230,70 +241,6 @@ public final class Platform {
     copyMemory(null, address, null, newMemory, oldSize);
     freeMemory(address);
     return newMemory;
-  }
-
-  /** Allocate a DirectByteBuffer, potentially bypassing the JVM's MaxDirectMemorySize limit. */
-  public static ByteBuffer allocateDirectBuffer(int size) {
-    try {
-      if (CLEANER_CREATE_METHOD == null) {
-        // Can't set a Cleaner (see comments on field), so need to allocate via normal Java APIs
-        try {
-          return ByteBuffer.allocateDirect(size);
-        } catch (OutOfMemoryError oome) {
-          // checkstyle.off: RegexpSinglelineJava
-          throw new OutOfMemoryError(
-              "Failed to allocate direct buffer ("
-                  + oome.getMessage()
-                  + "); try increasing -XX:MaxDirectMemorySize=... to, for example, your heap size");
-          // checkstyle.on: RegexpSinglelineJava
-        }
-      }
-      // Otherwise, use internal JDK APIs to allocate a DirectByteBuffer while ignoring the JVM's
-      // MaxDirectMemorySize limit (the default limit is too low and we do not want to
-      // require users to increase it).
-      long memory = allocateMemory(size);
-      ByteBuffer buffer = (ByteBuffer) DBB_CONSTRUCTOR.newInstance(memory, size);
-      try {
-        DBB_CLEANER_FIELD.set(
-            buffer,
-            CLEANER_CREATE_METHOD.invoke(null, buffer, (Runnable) () -> freeMemory(memory)));
-      } catch (IllegalAccessException | InvocationTargetException e) {
-        freeMemory(memory);
-        throw new IllegalStateException(e);
-      }
-      return buffer;
-    } catch (Exception e) {
-      throwException(e);
-    }
-    throw new IllegalStateException("unreachable");
-  }
-
-  private static final ThreadLocal<ByteBuffer> localEmptyBuffer =
-      ThreadLocal.withInitial(
-          () -> {
-            try {
-              return (ByteBuffer) DBB_CONSTRUCTOR.newInstance(0, 0);
-            } catch (InstantiationException
-                | IllegalAccessException
-                | InvocationTargetException e) {
-              throwException(e);
-            }
-            throw new IllegalStateException("unreachable");
-          });
-
-  public static ByteBuffer wrapDirectBuffer(long address, int size) {
-    ByteBuffer buffer = localEmptyBuffer.get().duplicate();
-    UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
-    UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
-    buffer.clear();
-    return buffer;
-  }
-
-  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
-  public static void wrapDirectBuffer(ByteBuffer buffer, long address, int size) {
-    UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
-    UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
-    buffer.clear();
   }
 
   public static void setMemory(Object object, long offset, long size, byte value) {
@@ -385,20 +332,35 @@ public final class Platform {
     throw new IllegalStateException("unreachable");
   }
 
-  // --------------------------------------------------------------------------------------------
-  //  Utilities for native memory accesses and checks
-  // --------------------------------------------------------------------------------------------
   public static long getAddress(ByteBuffer buffer) {
-    return ((DirectBuffer) buffer).address();
+    Preconditions.checkNotNull(buffer, "buffer is null");
+    Preconditions.checkArgument(
+      buffer.isDirect(), "Can't get address of a non-direct ByteBuffer.");
+    long offHeapAddress;
+    try {
+      offHeapAddress = UNSAFE.getLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET);
+    } catch (Throwable t) {
+      throw new Error("Could not access direct byte buffer address field.", t);
+    }
+    return offHeapAddress;
   }
 
-  public static long checkBufferAndGetAddress(ByteBuffer buffer) {
-    if (buffer == null) {
-      throw new NullPointerException("buffer is null");
+  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
+  public static void wrapDirectBuffer(ByteBuffer buffer, long address, int size) {
+    UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
+    UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
+    buffer.clear();
+  }
+
+  public static ByteBuffer wrapDirectBuffer(long address, int size) {
+    try {
+      ByteBuffer buffer = (ByteBuffer) UNSAFE.allocateInstance(DIRECT_BYTE_BUFFER_CLASS);
+      UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
+      UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
+      buffer.clear();
+      return buffer;
+    } catch (Throwable t) {
+      throw new Error("Failed to wrap unsafe off-heap memory with ByteBuffer", t);
     }
-    if (!buffer.isDirect()) {
-      throw new NullPointerException("buffer isn't direct");
-    }
-    return ((DirectBuffer) buffer).address();
   }
 }

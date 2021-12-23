@@ -24,7 +24,6 @@ public final class Fury {
   // This flag also indicates that object is not null.
   // We don't use another byte to indicate REF, so that we can save one byte.
   public static final byte NOT_NULL_REF = 2;
-  public static final byte NOT_SUPPORT_CROSS_LANGUAGE = 0;
 
   private final boolean isLittleEndian;
   private BufferCallback bufferCallback;
