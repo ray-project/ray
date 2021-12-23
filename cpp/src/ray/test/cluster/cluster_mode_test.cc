@@ -293,20 +293,20 @@ TEST(RayClusterModeTest, LocalRefrenceTest) {
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
-  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto object_id = ray::ObjectID::FromBinary(r1->ID());
-  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    auto object_id = ray::ObjectID::FromBinary(r1.ID());
+    EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
-  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 1)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r2->Get();
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 0)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r1.reset();
-  r2.reset();
+    auto r2 = ray::Task(Plus1).Remote(r1);
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 1)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    r2.Get();
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 0)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+  }
   EXPECT_TRUE(CheckRefCount({}));
 }
 
