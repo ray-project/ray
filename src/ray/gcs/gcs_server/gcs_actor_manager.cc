@@ -644,13 +644,20 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
-          DestroyActor(actor_id, GenActorOutOfScopeCause());
+          auto job = gcs_job_manager_->GetJob(actor_id.JobId());
+          // For multiple actors in one process, if one actor is out of scope,
+          // We shouldn't force kill the actor because other actors in the process
+          // are still alive.
+          auto force_kill =
+              job == nullptr || job->config().num_java_workers_per_process() <= 1;
+          DestroyActor(actor_id, GenActorOutOfScopeCause(), force_kill);
         }
       });
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
-                                   const rpc::ActorDeathCause &death_cause) {
+                                   const rpc::ActorDeathCause &death_cause,
+                                   bool force_kill) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -700,7 +707,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
       // The actor has already been created. Destroy the process by force-killing
       // it.
-      NotifyCoreWorkerToKillActor(actor);
+      NotifyCoreWorkerToKillActor(actor, force_kill);
       RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);

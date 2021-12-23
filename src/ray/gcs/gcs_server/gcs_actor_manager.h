@@ -384,7 +384,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
+  /// \param[in] force_kill Whether destory the actor forcelly.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause, bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
