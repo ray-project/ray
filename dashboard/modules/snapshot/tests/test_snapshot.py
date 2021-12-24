@@ -84,7 +84,7 @@ import ray
 from ray import serve
 
 ray.init(
-    address="{ray_start_with_dashboard['redis_address']}",
+    address="{ray_start_with_dashboard['address']}",
     namespace="serve")
 
 serve.start(detached=True)
