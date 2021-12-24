@@ -1432,20 +1432,19 @@ def connect(node,
 
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
-    if not gcs_utils.use_gcs_for_bootstrap():
-        try:
-            ray._private.services.check_version_info(worker.redis_client)
-        except Exception as e:
-            if mode == SCRIPT_MODE:
-                raise e
-            elif mode == WORKER_MODE:
-                traceback_str = traceback.format_exc()
-                ray._private.utils.publish_error_to_driver(
-                    ray_constants.VERSION_MISMATCH_PUSH_ERROR,
-                    traceback_str,
-                    job_id=None,
-                    redis_client=worker.redis_client,
-                    gcs_publisher=worker.gcs_publisher)
+    try:
+        node.check_version_info()
+    except Exception as e:
+        if mode == SCRIPT_MODE:
+            raise e
+        elif mode == WORKER_MODE:
+            traceback_str = traceback.format_exc()
+            ray._private.utils.publish_error_to_driver(
+                ray_constants.VERSION_MISMATCH_PUSH_ERROR,
+                traceback_str,
+                job_id=None,
+                redis_client=worker.redis_client,
+                gcs_publisher=worker.gcs_publisher)
 
     worker.lock = threading.RLock()
 

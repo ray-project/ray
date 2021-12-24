@@ -834,67 +834,6 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             "attempts to ping the Redis server.")
 
 
-def _compute_version_info():
-    """Compute the versions of Python, and Ray.
-
-    Returns:
-        A tuple containing the version information.
-    """
-    ray_version = ray.__version__
-    python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
-
-
-def _put_version_info_in_redis(redis_client):
-    """Store version information in Redis.
-
-    This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray.
-
-    Args:
-        redis_client: A client for the primary Redis shard.
-    """
-    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
-
-
-def check_version_info(redis_client):
-    """Check if various version info of this process is correct.
-
-    This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray. If the version
-    information is not present in Redis, then no check is done.
-
-    Args:
-        redis_client: A client for the primary Redis shard.
-
-    Raises:
-        Exception: An exception is raised if there is a version mismatch.
-    """
-    redis_reply = redis_client.get("VERSION_INFO")
-
-    # Don't do the check if there is no version information in Redis. This
-    # is to make it easier to do things like start the processes by hand.
-    if redis_reply is None:
-        return
-
-    true_version_info = tuple(
-        json.loads(ray._private.utils.decode(redis_reply)))
-    version_info = _compute_version_info()
-    if version_info != true_version_info:
-        node_ip_address = get_node_ip_address()
-        error_message = ("Version mismatch: The cluster was started with:\n"
-                         "    Ray: " + true_version_info[0] + "\n"
-                         "    Python: " + true_version_info[1] + "\n"
-                         "This process on node " + node_ip_address +
-                         " was started with:" + "\n"
-                         "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n")
-        if version_info[:2] != true_version_info[:2]:
-            raise RuntimeError(error_message)
-        else:
-            logger.warning(error_message)
-
-
 def start_reaper(fate_share=None):
     """Start the reaper process.
 
@@ -1044,9 +983,6 @@ def start_redis(node_ip_address,
 
     # Init job counter to GCS.
     primary_redis_client.set("JobCounter", 0)
-
-    # Store version information in the primary Redis shard.
-    _put_version_info_in_redis(primary_redis_client)
 
     # Calculate the redis memory.
     assert resource_spec.resolved()
@@ -1488,7 +1424,11 @@ def start_gcs_server(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    gcs_ip_address, gcs_port = redis_address.split(":")
+    if redis_address is not None:
+        redis_ip_address, redis_port = redis_address.split(":")
+    else:
+        redis_ip_address, redis_port = "", 0
+
     redis_password = redis_password or ""
     config_str = serialize_config(config)
     if gcs_server_port is None:
@@ -1496,8 +1436,8 @@ def start_gcs_server(redis_address,
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--redis_address={gcs_ip_address}",
-        f"--redis_port={gcs_port}",
+        f"--redis_address={redis_ip_address}",
+        f"--redis_port={redis_port}",
         f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
