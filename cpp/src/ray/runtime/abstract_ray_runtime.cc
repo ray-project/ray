@@ -119,7 +119,6 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
     if (arg.buf) {
@@ -131,8 +130,13 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     } else {
       RAY_CHECK(arg.id);
       auto id = ObjectID::FromBinary(*arg.id);
+      auto owner_address = ray::rpc::Address{};
+      if (CoreWorkerProcess::IsInitialized()) {
+        auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+        owner_address = core_worker.GetOwnerAddress(id);
+      }
       ray_arg =
-          absl::make_unique<ray::TaskArgByReference>(id, core_worker.GetOwnerAddress(id),
+          absl::make_unique<ray::TaskArgByReference>(id, owner_address,
                                                      /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
