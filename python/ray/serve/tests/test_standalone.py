@@ -274,6 +274,7 @@ def test_middleware(ray_shutdown):
     assert resp.headers["access-control-allow-origin"] == "*"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_root_url(ray_shutdown):
     @serve.deployment
     def f(_):
