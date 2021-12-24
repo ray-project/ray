@@ -140,7 +140,10 @@ class Cluster:
 
     @property
     def address(self):
-        return self.redis_address
+        if use_gcs_for_bootstrap():
+            return self.gcs_address
+        else:
+            return self.redis_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
