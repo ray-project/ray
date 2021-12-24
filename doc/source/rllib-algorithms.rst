@@ -899,7 +899,7 @@ RE3 (Random Encoders for Efficient Exploration)
 `[paper] <https://arxiv.org/pdf/2102.09430.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/random_encoder.py>`__
 
-Tuned examples:
+Examples:
 `LunarLanderContinuous-v2 <https://github.com/ray-project/ray/blob/master/rllib/examples/re3_exploration.py>`__ (use ``--env LunarLanderContinuous-v2`` command line option)
 `Test case with Pendulum-v1 example <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/tests/test_random_encoder.py>`__
 
@@ -942,7 +942,7 @@ in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in t
 
 **Functionality**
 RLlib's RE3 is based on `"Random Encoders for Efficient Exploration" described in this paper here <https://arxiv.org/pdf/2102.09430.pdf>`__.
-RE3 quantifies exploration based on state entropy. The entropy of a state is calculated based on its distance from K nearest neighbors states present in the replay buffer in the latent space (train batch is used in this implementation). 
+RE3 quantifies exploration based on state entropy. The entropy of a state is calculated based on its distance from K nearest neighbor states present in the replay buffer in the latent space (With this implementation, KNN is implemented using training samples from the same batch). 
 The state entropy is considered as an intrinsic reward and for policy optimization added to the extrinsic reward when available.  If the extrinsic reward is not available then the state entropy is used as "intrinsic reward" for unsupervised pre-training of the RL agent. 
 RE3 further allows agents to learn in sparse-reward or even no-reward environments by
 using the state entropy as "intrinsic rewards".
