@@ -1394,13 +1394,6 @@ def connect(node,
         ray.state.state._initialize_global_state(
             ray._raylet.GcsClientOptions.from_redis_address(
                 node.redis_address, redis_password=node.redis_password))
-    else:
-        worker.redis_client = None
-        worker.gcs_channel = gcs_utils.GcsChannel(
-            gcs_address=node.get_gcs_address())
-        worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
-        ray.state.state._initialize_global_state(
-            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
 
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None

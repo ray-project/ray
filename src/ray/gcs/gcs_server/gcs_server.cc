@@ -170,7 +170,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   rpc_server_.Run();
 
   // Store gcs rpc server address in redis.
-  // TODO (iycheng): Don't write once redis removal is done
   if (!RayConfig::instance().bootstrap_with_gcs()) {
     // Store gcs rpc server address in redis.
     StoreGcsServerAddressInRedis();

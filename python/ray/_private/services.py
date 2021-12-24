@@ -1219,13 +1219,9 @@ def start_log_monitor(redis_address,
     log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
                                         "log_monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        log_monitor_filepath,
-        f"--redis-address={redis_address}",
-        f"--gcs-address={gcs_address}",
-        f"--logs-dir={logs_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
+        sys.executable, "-u", log_monitor_filepath,
+        f"--redis-address={redis_address}", f"--gcs-address={gcs_address}",
+        f"--logs-dir={logs_dir}", f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}"
     ]
@@ -1578,7 +1574,6 @@ def start_raylet(redis_address,
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
-
 
     has_java_command = False
     if shutil.which("java") is not None:

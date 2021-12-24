@@ -169,7 +169,6 @@ class Node:
                 assert self._gcs_address is not None
             self.get_gcs_client()
 
-
         # Register the temp dir.
         if head:
             # date including microsecond
