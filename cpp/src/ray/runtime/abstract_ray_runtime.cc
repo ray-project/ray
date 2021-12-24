@@ -135,9 +135,8 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
         owner_address = core_worker.GetOwnerAddress(id);
       }
-      ray_arg =
-          absl::make_unique<ray::TaskArgByReference>(id, owner_address,
-                                                     /*call_site=*/"");
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(id, owner_address,
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
