@@ -502,10 +502,15 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = GcsClient(address=self.gcs_address)
+                    if use_gcs_for_bootstrap():
+                        self._gcs_client = GcsClient(address=self.gcs_address)
+                    else:
+                        self._gcs_client = GcsClient.create_from_redis(
+                            self.create_redis_client())
                     break
                 except Exception as e:
                     logger.debug(f"Connecting to GCS: {e}")
+                    time.sleep(1)
             assert self._gcs_client is not None, \
                 f"Failed to connect to GCS at {self._gcs_address}"
             ray.experimental.internal_kv._initialize_internal_kv(

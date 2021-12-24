@@ -171,8 +171,10 @@ class GcsChannel:
     def connect(self):
         if self._gcs_address is None:
             assert self._redis_client is not None
-            self._gcs_address = get_gcs_address_from_redis(self._redis_client)
-        self._channel = create_gcs_channel(self._gcs_address, self._aio)
+            gcs_address = get_gcs_address_from_redis(self._redis_client)
+        else:
+            gcs_address = self._gcs_address
+        self._channel = create_gcs_channel(gcs_address, self._aio)
 
     def channel(self):
         return self._channel
