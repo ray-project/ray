@@ -11,7 +11,7 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (wait_for_condition, SignalActor,
                                      init_error_pubsub, get_error_message,
                                      convert_actor_state)
@@ -65,13 +65,15 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    address = address_info["bootstrap_address"]
-    redis_client = ray._private.services.create_redis_client(
-        address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    address = address_info["address"]
+    redis_client = None
     gcs_publisher = None
-    if gcs_pubsub_enabled():
-        gcs_publisher = GcsPublisher(
-            address=gcs_utils.get_gcs_address_from_redis(redis_client))
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_publisher = GcsPublisher(address=address)
+    else:
+        redis_client = ray._private.services.create_redis_client(
+            address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,

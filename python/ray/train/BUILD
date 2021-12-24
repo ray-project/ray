@@ -13,6 +13,15 @@ py_test(
 )
 
 py_test(
+    name = "mlflow_simple_example",
+    size = "medium",
+    main = "examples/mlflow_simple_example.py",
+    srcs = ["examples/mlflow_simple_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"],
+)
+
+py_test(
     name = "tensorflow_quick_start",
     size = "medium",
     main = "examples/tensorflow_quick_start.py",

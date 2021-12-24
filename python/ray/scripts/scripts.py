@@ -16,6 +16,7 @@ from socket import socket
 
 import ray
 import psutil
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -470,9 +471,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           metrics_export_port, no_monitor, tracing_startup_hook,
           ray_debugger_external):
     """Start Ray processes manually on the local machine."""
-    if gcs_server_port and not head:
+    if use_gcs_for_bootstrap() and gcs_server_port is not None:
+        cli_logger.abort("`{}` is deprecated. Specify {} instead.",
+                         cf.bold("--gcs-server-port"), cf.bold("--port"))
         raise ValueError(
-            "gcs_server_port can be only assigned when you specify --head.")
+            "`--gcs-server-port` is deprecated. Specify `--port` instead.")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -503,7 +506,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
-        gcs_server_port=gcs_server_port,
         memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
@@ -512,6 +514,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
@@ -528,15 +531,28 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external)
+
     if head:
+        # Start head node.
+
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
             port = ray_constants.DEFAULT_PORT
-
-        if port == 0:
+        elif port == 0:
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
+
+        # Override GCS port to `--port`.
+        if use_gcs_for_bootstrap():
+            assert ray_params.gcs_server_port is None
+            ray_params.gcs_server_port = port
+            with socket() as s:
+                s.bind(("", 0))
+                ray_params.redis_port = s.getsockname()[1]
+        else:
+            ray_params.redis_port = port
+            ray_params.gcs_server_port = gcs_server_port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -589,23 +605,20 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
+
+        # Initialize Redis settings.
         ray_params.update_if_absent(
-            redis_port=port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
-            autoscaling_config=autoscaling_config,
         )
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            if use_gcs_for_bootstrap():
-                bootstrap_addresses = services.find_gcs_address()
-            else:
-                bootstrap_addresses = services.find_redis_address()
-
+            # TODO(mwtian): get both GCS and Redis addresses.
+            bootstrap_addresses = services.find_redis_address()
             if default_address in bootstrap_addresses:
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
@@ -616,8 +629,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
 
-        bootstrap_address = node.redis_address if not use_gcs_for_bootstrap() \
-            else node.get_gcs_address()
+        bootstrap_addresses = node.gcs_address if use_gcs_for_bootstrap() \
+            else node.redis_address
         if temp_dir is None:
             # Default temp directory.
             temp_dir = ray._private.utils.get_user_temp_dir()
@@ -627,7 +640,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # TODO: Consider using the custom temp_dir for this file across the
         # code base. (https://github.com/ray-project/ray/issues/16458)
         with open(current_cluster_path, "w") as f:
-            print(bootstrap_address, file=f)
+            print(bootstrap_addresses, file=f)
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -643,7 +656,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # NOTE(kfstorm): Java driver rely on this line to get the address
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"), bootstrap_address,
+                cf.bold("  ray start --address='{}'{}"), bootstrap_addresses,
                 f" --redis-password='{redis_password}'"
                 if redis_password and not use_gcs_for_bootstrap() else "")
             cli_logger.newline()
@@ -678,22 +691,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(cf.bold("  ray stop"))
     else:
         # Start worker node.
-        if redis_shard_ports is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
-
-        # TODO(mwtian): wait for GCS when bootstrapping with GCS.
-        if not services.bootstrap_with_gcs():
-            # Wait for the Redis server to be started. And throw an exception
-            # if we can't connect to it.
-            services.wait_for_redis_to_start(
-                address_ip, address_port, password=redis_password)
-
-            raise Exception("If --head is not passed in, --address must "
-                            "be provided.")
-        if include_dashboard:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-dashboard"), cf.bold("--head"))
+        # Ensure `--address` flag is specified.
+        if address is None:
+            cli_logger.abort(
+                "`{}` is a required flag unless starting a head "
+                "node with `{}`.", cf.bold("--address"), cf.bold("--head"))
+            raise Exception("`--address` is a required flag unless starting a "
+                            "head node with `--head`.")
 
         # Raise error if any head-only flag are specified.
         head_only_flags = {
@@ -712,56 +716,41 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "with `--head`.")
 
         # Start Ray on a non-head node.
-        redis_address = None
-        if address is not None:
-            (redis_address, redis_address_ip,
-             redis_address_port) = services.validate_redis_address(address)
-        if not (port is None):
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--port"), cf.bold("--head"))
+        bootstrap_address, address_ip, address_port = \
+            services.canonicalize_bootstrap_address(address)
 
-            raise Exception("If --head is not passed in, --port is not "
-                            "allowed.")
-        if redis_shard_ports is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--redis-shard-ports"), cf.bold("--head"))
+        if bootstrap_address is None:
+            cli_logger.abort("Cannot extract host IP and port from `{}={}`.",
+                             cf.bold("--address"), cf.bold(address))
+            raise Exception("Cannot extract host IP and port from "
+                            f"`--address={address}`.")
 
-            raise Exception("If --head is not passed in, --redis-shard-ports "
-                            "is not allowed.")
-        if redis_address is None:
-            cli_logger.abort("`{}` is required unless starting with `{}`.",
-                             cf.bold("--address"), cf.bold("--head"))
+        if use_gcs_for_bootstrap():
+            ray_params.gcs_address = bootstrap_address
+        else:
+            ray_params.redis_address = bootstrap_address
 
-            raise Exception("If --head is not passed in, --address must "
-                            "be provided.")
-        if include_dashboard:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-dashboard"), cf.bold("--head"))
+        # TODO(mwtian): add equivalent for GCS.
+        if not use_gcs_for_bootstrap():
+            # Wait for the Redis server to be started. And throw an exception
+            # if we can't connect to it.
+            services.wait_for_redis_to_start(
+                address_ip, address_port, password=redis_password)
 
-            raise ValueError(
-                "If --head is not passed in, the --include-dashboard"
-                "flag is not relevant.")
+            # Create a Redis client.
+            redis_client = services.create_redis_client(
+                address_ip, password=redis_password)
 
-        # Wait for the Redis server to be started. And throw an exception if we
-        # can't connect to it.
-        services.wait_for_redis_to_start(
-            redis_address_ip, redis_address_port, password=redis_password)
-
-        # Create a Redis client.
-        redis_client = services.create_redis_client(
-            redis_address, password=redis_password)
-
-        # Check that the version information on this node matches the version
-        # information that the cluster was started with.
-        services.check_version_info(redis_client)
+            # Check that the version information on this node matches the
+            # version information that the cluster was started with.
+            services.check_version_info(redis_client)
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(redis_address))
+            node_ip_address=services.get_node_ip_address(address_ip))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
-        ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
 

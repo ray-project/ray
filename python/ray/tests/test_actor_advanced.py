@@ -613,7 +613,7 @@ def test_calling_put_on_actor_handle(ray_start_regular):
 
 
 def test_named_but_not_detached(ray_start_regular):
-    address = ray_start_regular["bootstrap_address"]
+    address = ray_start_regular["address"]
 
     driver_script = """
 import ray
@@ -687,7 +687,7 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(lifetime="detached", name="d_actor")
 
-    address = ray_start_regular["bootstrap_address"]
+    address = ray_start_regular["address"]
 
     get_actor_name = "d_actor"
     create_actor_name = "DetachedActor"
@@ -773,7 +773,7 @@ def test_detached_actor_cleanup(ray_start_regular):
     # name should have been cleaned up from GCS.
     create_and_kill_actor(dup_actor_name)
 
-    address = ray_start_regular["bootstrap_address"]
+    address = ray_start_regular["address"]
     driver_script = """
 import ray
 import ray._private.gcs_utils as gcs_utils

@@ -356,7 +356,6 @@ def test_ray_options(shutdown_only):
 def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
-
     signal_actor = SignalActor.remote()
 
     @ray.remote

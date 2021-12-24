@@ -843,18 +843,21 @@ def init(
     raylet_ip_address = node_ip_address
 
     if address:
-        redis_address, _, _ = services.validate_redis_address(address)
+        bootstrap_address, _, _ = services.canonicalize_bootstrap_address(
+            address)
     else:
         bootstrap_address = None
     redis_address = None if gcs_utils.use_gcs_for_bootstrap(
     ) else bootstrap_address
+    gcs_address = bootstrap_address if gcs_utils.use_gcs_for_bootstrap(
+    ) else None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
-    if redis_address is not None:
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {redis_address}")
+    if bootstrap_address is not None:
+        logger.info("Connecting to existing Ray cluster at address: "
+                    f"{bootstrap_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -877,10 +880,9 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if redis_address is None:
+    if bootstrap_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
-            redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
@@ -950,6 +952,7 @@ def init(
             bootstrap_address=bootstrap_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1370,15 +1373,24 @@ def connect(node,
             faulthandler.enable(all_threads=False)
     except io.UnsupportedOperation:
         pass  # ignore
-    if not gcs_utils.use_gcs_for_bootstrap():
-        # Create a Redis client to primary.
-        # The Redis client can safely be shared between threads. However,
-        # that is not true of Redis pubsub clients. See the documentation at
-        # https://github.com/andymccurdy/redis-py#thread-safety.
+
+    # Create a Redis client to primary.
+    # The Redis client can safely be shared between threads. However,
+    # that is not true of Redis pubsub clients. See the documentation at
+    # https://github.com/andymccurdy/redis-py#thread-safety.
+    if gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = None
+        worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.gcs_address)
+    else:
         worker.redis_client = node.create_redis_client()
         worker.gcs_channel = gcs_utils.GcsChannel(
             redis_client=worker.redis_client)
-        worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    _initialize_internal_kv(worker.gcs_client)
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
         ray.state.state._initialize_global_state(
             ray._raylet.GcsClientOptions.from_redis_address(
                 node.redis_address, redis_password=node.redis_password))
@@ -1433,7 +1445,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1462,8 +1474,11 @@ def connect(node,
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
-    if not gcs_utils.use_gcs_for_bootstrap():
-        redis_address, redis_port = node.redis_address.split(":")
+
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
         # As the synchronous and the asynchronous context of redis client is
         # not used in this gcs client. We would not open connection for it
         # by setting `enable_sync_conn` and `enable_async_conn` as false.

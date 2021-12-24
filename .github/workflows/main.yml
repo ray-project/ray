@@ -99,29 +99,29 @@ jobs:
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
-    - name: Run Tests
-      shell: bash -x -e -o pipefail -l {0}
-      env:
-        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        RAY_DEFAULT_BUILD: 1
-        WINDOWS_WHEELS: 1
-        BAZEL_LOG_BUCKET_ACCESS_KEY: ${{ secrets.BAZEL_LOG_BUCKET_ACCESS_KEY }}
-        TRAVIS_BRANCH: ${{ github.ref	}}
-        TRAVIS_COMMIT: ${{ github.sha }}
-        TRAVIS_JOB_ID: ${{ github.run_id }}
-      run: |
-        function clean_up() {
-          echo "Performing cleanup"
-          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
-        }
-        trap clean_up EXIT
+    # - name: Run Tests
+    #   shell: bash -x -e -o pipefail -l {0}
+    #   env:
+    #     BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
+    #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #     RAY_DEFAULT_BUILD: 1
+    #     WINDOWS_WHEELS: 1
+    #     BAZEL_LOG_BUCKET_ACCESS_KEY: ${{ secrets.BAZEL_LOG_BUCKET_ACCESS_KEY }}
+    #     TRAVIS_BRANCH: ${{ github.ref	}}
+    #     TRAVIS_COMMIT: ${{ github.sha }}
+    #     TRAVIS_JOB_ID: ${{ github.run_id }}
+    #   run: |
+    #     function clean_up() {
+    #       echo "Performing cleanup"
+    #       if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
+    #     }
+    #     trap clean_up EXIT
 
-        python -u ci/remote-watch.py --skip_repo=ray-project/ray &
-        . ./ci/travis/ci.sh test_core
-        . ./ci/travis/ci.sh test_python
-    - name: Run Clang Include-What-You-Use
-      continue-on-error: true
-      if: runner.os == 'Linux'
-      shell: bash -e -o pipefail -l {0}
-      run: ci/travis/iwyu.sh process "//:*"
+    #     python -u ci/remote-watch.py --skip_repo=ray-project/ray &
+    #     . ./ci/travis/ci.sh test_core
+    #     . ./ci/travis/ci.sh test_python
+    # - name: Run Clang Include-What-You-Use
+    #   continue-on-error: true
+    #   if: runner.os == 'Linux'
+    #   shell: bash -e -o pipefail -l {0}
+    #   run: ci/travis/iwyu.sh process "//:*"
