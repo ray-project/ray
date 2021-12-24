@@ -1776,7 +1776,8 @@ def healthcheck(address, redis_password, component):
             if use_gcs_for_bootstrap():
                 gcs_address = address
             else:
-                gcs_address = redis_client.get("GcsServerAddress").decode("utf-8")
+                gcs_address = redis_client.get("GcsServerAddress").decode(
+                    "utf-8")
             options = (("grpc.enable_http_proxy", 0), )
             channel = ray._private.utils.init_grpc_channel(
                 gcs_address, options)
