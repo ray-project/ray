@@ -104,10 +104,13 @@ class _StatusTracker:
         self.reduce_refs = []
 
     def register_objectrefs(self, map_refs, reduce_refs):
+        print("register_objectrefs start")
         self.map_refs = map_refs
         self.reduce_refs = reduce_refs
+        print("register_objectrefs end")
 
     def get_progress(self):
+        print("get_progress start")
         if self.map_refs:
             print("wait map_refs start")
             ready, self.map_refs = ray.wait(

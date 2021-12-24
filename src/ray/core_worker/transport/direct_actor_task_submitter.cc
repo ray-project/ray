@@ -390,9 +390,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto task_skipped = task_spec.GetMessage().skip_execution();
   const auto num_queued =
       request->sequence_number() - queue.rpc_client->ClientProcessedUpToSeqno();
-  RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
-                 << " actor counter " << actor_counter << " seq no "
-                 << request->sequence_number() << " num queued " << num_queued;
+  RAY_LOG(INFO) << "Pushing task " << task_id << " to actor " << actor_id
+                << " actor counter " << actor_counter << " seq no "
+                << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
@@ -403,6 +403,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_id, actor_id, actor_counter, task_spec, task_skipped](
           const Status &status, const rpc::PushTaskReply &reply) {
+        RAY_LOG(INFO) << "PushActorTask finished " << task_id << " " << actor_id
+                      << " " << status;
         /// Whether or not we will retry this actor task.
         auto will_retry = false;
 
