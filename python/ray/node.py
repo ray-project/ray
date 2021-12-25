@@ -1010,9 +1010,10 @@ class Node:
         """Start the ray client server process."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True)
+        addr = self.gcs_address if use_gcs_for_bootstrap() \
+            else self._redis_address
         process_info = ray._private.services.start_ray_client_server(
-            self._redis_address,
-            self.gcs_address,
+            addr,
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
