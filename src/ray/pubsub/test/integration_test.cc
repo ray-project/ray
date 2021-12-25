@@ -32,10 +32,10 @@
 namespace ray {
 namespace pubsub {
 
-// Implements PublisherService for handling subscriber polling.
-class PublisherServiceImpl final : public rpc::PublisherService::CallbackService {
+// Implements SubscriberService for handling subscriber polling.
+class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackService {
  public:
-  explicit PublisherServiceImpl(std::unique_ptr<Publisher> publisher)
+  explicit SubscriberServiceImpl(std::unique_ptr<Publisher> publisher)
       : publisher_(std::move(publisher)) {}
 
   grpc::ServerUnaryReactor *PubsubLongPolling(
@@ -95,7 +95,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
  public:
   explicit CallbackSubscriberClient(const std::string &address) {
     auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
-    stub_ = rpc::PublisherService::NewStub(std::move(channel));
+    stub_ = rpc::SubscriberService::NewStub(std::move(channel));
   }
 
   ~CallbackSubscriberClient() final = default;
@@ -127,7 +127,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
   }
 
  private:
-  std::unique_ptr<rpc::PublisherService::Stub> stub_;
+  std::unique_ptr<rpc::SubscriberService::Stub> stub_;
 };
 
 class IntegrationTest : public ::testing::Test {
@@ -166,7 +166,7 @@ class IntegrationTest : public ::testing::Test {
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
-    publisher_service_ = std::make_unique<PublisherServiceImpl>(std::move(publisher));
+    publisher_service_ = std::make_unique<SubscriberServiceImpl>(std::move(publisher));
 
     grpc::EnableDefaultHealthCheckService(true);
     grpc::ServerBuilder builder;
@@ -195,7 +195,7 @@ class IntegrationTest : public ::testing::Test {
   rpc::Address address_proto_;
   IOServicePool io_service_ = IOServicePool(3);
   std::unique_ptr<PeriodicalRunner> periodic_runner_;
-  std::unique_ptr<PublisherServiceImpl> publisher_service_;
+  std::unique_ptr<SubscriberServiceImpl> publisher_service_;
   std::unique_ptr<grpc::Server> server_;
 };
 
