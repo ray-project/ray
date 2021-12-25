@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 import pytest
 import os
 import shutil
@@ -12,7 +14,8 @@ from ray.train import Trainer
 from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
+                                 TBXLoggerCallback)
 from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 from ray.train.callbacks.logging import MLflowLoggerCallback
@@ -54,6 +57,26 @@ class TestBackend(Backend):
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TestConfig):
         pass
+
+
+def test_print(ray_start_4_cpus):
+    num_workers = 4
+
+    def train_func():
+        train.report(loss=0)
+
+    stream = io.StringIO()
+    with redirect_stdout(stream):
+        trainer = Trainer(TestConfig(), num_workers=num_workers)
+        trainer.start()
+        trainer.run(train_func, callbacks=[PrintCallback()])
+        trainer.shutdown()
+
+    output = stream.getvalue()
+    results = json.loads(output)
+
+    assert set(results.keys()) == (BASIC_AUTOFILLED_KEYS | {"loss"})
+    assert results["loss"] == (num_workers * [0])
 
 
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
