@@ -347,6 +347,7 @@ def _rayify_task(
             name=f"dask:{key!s}",
             num_returns=(1 if not isinstance(func, MultipleReturnFunc) else
                          func.num_returns),
+            scheduling_strategy="SPREAD",
         ).remote(
             func,
             repack,

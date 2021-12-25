@@ -1,16 +1,17 @@
+import pytest
 import sys
 import unittest
 
 import dask
 import dask.array as da
 import dask.dataframe as dd
-import pytest
 import numpy as np
 import pandas as pd
 
 import ray
 from ray.util.client.common import ClientObjectRef
 from ray.util.dask.callbacks import ProgressBarCallback
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture
@@ -73,6 +74,34 @@ def test_ray_dask_persist(ray_start_1_cpu):
     result = arr.persist(scheduler=ray_dask_get)
     assert isinstance(
         next(iter(result.dask.values())), (ray.ObjectRef, ClientObjectRef))
+
+
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+def test_spread_scheduling(ray_start_cluster):
+    # Make sure the default scheduling for dask on ray is spread.
+    from ray.util.dask import ray_dask_get
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address="auto")
+    cluster.add_node(num_cpus=4)
+
+    def set_aggregate(x, y):
+        return set([x, y])
+
+    def get_ip():
+        import time
+        time.sleep(3)
+        return ray.get_runtime_context().node_id.hex()
+
+    get_ip = dask.delayed(get_ip)
+    set_aggregate = dask.delayed(set_aggregate)
+
+    # Schedule 3 tasks at the same time. If the
+    # scheduler policy is spread, it should be spread to 2 nodes.
+    node_ids = set_aggregate(get_ip(),
+                             get_ip()).compute(scheduler=ray_dask_get)
+    print(node_ids)
+    assert len(node_ids) == 2
 
 
 def test_sort_with_progress_bar(ray_start_1_cpu):
