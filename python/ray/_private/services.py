@@ -2035,6 +2035,7 @@ def start_monitor(redis_address,
 
 def start_ray_client_server(
         redis_address,
+        gcs_address,
         ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
@@ -2078,6 +2079,7 @@ def start_ray_client_server(
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
+        f"--gcs-address={gcs_address}",
     ]
     if redis_password:
         command.append(f"--redis-password={redis_password}")
