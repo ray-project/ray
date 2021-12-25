@@ -461,8 +461,7 @@ class Bracket:
         This may cause bad trials to continue for a long time, in the case
         where all the good trials finish early and there are only bad trials
         left in a bracket with a large max-iteration."""
-        assert trial in self._live_trials
-        del self._live_trials[trial]
+        self._live_trials.pop(trial, None)
 
     def cleanup_full(self, trial_runner: "trial_runner.TrialRunner"):
         """Cleans up bracket after bracket is completely finished.
