@@ -743,6 +743,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
 
 def test_recreate_child_actor(ray_start_cluster):
     ray_start_cluster.add_node(num_cpus=1)
+
     @ray.remote
     class Actor:
         def __init__(self):

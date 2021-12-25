@@ -829,16 +829,19 @@ def main():
             }
 
             try:
+                kv_initialized = \
+                    ray.experimental.internal_kv._internal_kv_initialized()
                 if use_gcs_for_bootstrap():
-                    if not ray.experimental.internal_kv._internal_kv_initialized():
-                        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+                    if not kv_initialized:
+                        gcs_client = ray._private.gcs_utils.GcsClient(
+                            address=address)
                         ray.experimental.internal_kv._initialize_internal_kv(
                             gcs_client)
                 else:
                     if not redis_client:
                         redis_client = try_create_redis_client(
                             address, redis_password)
-                    if not ray.experimental.internal_kv._internal_kv_initialized():
+                    if not kv_initialized:
                         gcs_client = (ray._private.gcs_utils.GcsClient.
                                       create_from_redis(redis_client))
                         ray.experimental.internal_kv._initialize_internal_kv(
