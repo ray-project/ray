@@ -209,8 +209,12 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
-    import copy
-    env = copy.deepcopy(os.environ).update(env or {})
+    redis_removal_flags = ("RAY_gcs_grpc_based_pubsub",
+                           "RAY_bootstrap_with_gcs", "RAY_gcs_storage")
+    env = env or {}
+    env.update(
+        {k: v
+         for (k, v) in os.environ.items() if k in redis_removal_flags})
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
