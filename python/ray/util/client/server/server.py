@@ -36,6 +36,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -716,20 +717,18 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-def create_ray_handler(redis_address, redis_password):
+def create_ray_handler(address, redis_password):
     def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
-        if redis_address:
+        if address:
             if redis_password:
                 ray.init(
-                    address=redis_address,
+                    address=address,
                     _redis_password=redis_password,
                     job_config=job_config,
                     **ray_init_kwargs)
             else:
                 ray.init(
-                    address=redis_address,
-                    job_config=job_config,
-                    **ray_init_kwargs)
+                    address=address, job_config=job_config, **ray_init_kwargs)
         else:
             ray.init(job_config=job_config, **ray_init_kwargs)
 
@@ -778,6 +777,11 @@ def main():
         type=str,
         help="Password for connecting to Redis")
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="Gcs address to connect to.")
+    parser.add_argument(
         "--worker-shim-pid",
         required=False,
         type=int,
@@ -797,16 +801,21 @@ def main():
     # should do.
     redis_client = None
 
-    ray_connect_handler = create_ray_handler(args.redis_address,
-                                             args.redis_password)
+    if use_gcs_for_bootstrap():
+        redis_password = None
+        address = args.gcs_address
+    else:
+        address = args.redis_address
+        redis_password = args.redis_password
+    ray_connect_handler = create_ray_handler(address, redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
-            args.redis_address,
-            redis_password=args.redis_password,
+            address,
+            redis_password=redis_password,
             runtime_env_agent_port=args.metrics_agent_port)
     else:
         server = serve(hostport, ray_connect_handler)
@@ -821,7 +830,7 @@ def main():
             try:
                 if not redis_client:
                     redis_client = try_create_redis_client(
-                        args.redis_address, args.redis_password)
+                        address, redis_password)
                 if not ray.experimental.internal_kv._internal_kv_initialized():
                     gcs_client = (ray._private.gcs_utils.GcsClient.
                                   create_from_redis(redis_client))
