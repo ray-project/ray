@@ -2034,8 +2034,7 @@ def start_monitor(redis_address,
 
 
 def start_ray_client_server(
-        redis_address,
-        gcs_address,
+        address,
         ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
@@ -2048,7 +2047,7 @@ def start_ray_client_server(
     """Run the server process of the Ray client.
 
     Args:
-        redis_address: The address of the redis server.
+        address: The address of the cluster.
         ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -2074,13 +2073,16 @@ def start_ray_client_server(
         setup_worker_path,
         "-m",
         "ray.util.client.server",
-        f"--redis-address={redis_address}",
         f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
-        f"--gcs-address={gcs_address}",
     ]
+    if use_gcs_for_bootstrap():
+        command.append(f"--gcs-address={address}")
+    else:
+        command.append(f"--redis-address={address}")
+
     if redis_password:
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:

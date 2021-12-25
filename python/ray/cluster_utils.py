@@ -136,6 +136,8 @@ class Cluster:
 
     @property
     def gcs_address(self):
+        if self.head_node is None:
+            return None
         return self.head_node.gcs_address
 
     @property
