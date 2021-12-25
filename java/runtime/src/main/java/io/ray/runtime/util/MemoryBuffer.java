@@ -9,20 +9,14 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ReadOnlyBufferException;
 
-/**
- * Based on org.apache.flink.core.memory.MemoryBuffer
- */
+/** Based on org.apache.flink.core.memory.MemoryBuffer */
 public final class MemoryBuffer {
 
-  /**
-   * The unsafe handle for transparent memory copied (heap / off-heap).
-   */
+  /** The unsafe handle for transparent memory copied (heap / off-heap). */
   @SuppressWarnings("restriction")
   private static final sun.misc.Unsafe UNSAFE = Platform.UNSAFE;
 
-  /**
-   * The beginning of the byte array contents, relative to the byte array object.
-   */
+  /** The beginning of the byte array contents, relative to the byte array object. */
   @SuppressWarnings("restriction")
   private static final long BYTE_ARRAY_BASE_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
 
@@ -72,14 +66,14 @@ public final class MemoryBuffer {
    *
    * @param buffer The byte array whose memory is represented by this memory buffer.
    * @param offset The offset of the sub array to be used; must be non-negative and no larger than
-   *   <tt>array.length</tt>.
+   *     <tt>array.length</tt>.
    * @param length buffer size
    */
   MemoryBuffer(byte[] buffer, int offset, int length) {
     Preconditions.checkArgument(offset >= 0 && length >= 0);
     if (offset + length > buffer.length) {
       throw new IllegalArgumentException(
-        String.format("%d exceeds buffer size %d", offset + length, buffer.length));
+          String.format("%d exceeds buffer size %d", offset + length, buffer.length));
     }
     initHeapBuffer(buffer, offset, length);
   }
@@ -133,10 +127,10 @@ public final class MemoryBuffer {
     if (offHeapAddress >= Long.MAX_VALUE - Integer.MAX_VALUE) {
       // this is necessary to make sure the collapsed checks are safe against numeric overflows
       throw new IllegalArgumentException(
-        "Buffer initialized with too large address: "
-          + offHeapAddress
-          + " ; Max allowed address is "
-          + (Long.MAX_VALUE - Integer.MAX_VALUE - 1));
+          "Buffer initialized with too large address: "
+              + offHeapAddress
+              + " ; Max allowed address is "
+              + (Long.MAX_VALUE - Integer.MAX_VALUE - 1));
     }
 
     this.heapMemory = null;
@@ -280,9 +274,9 @@ public final class MemoryBuffer {
    * @param dst The memory into which the memory will be copied.
    * @param offset The copying offset in the destination memory.
    * @param length The number of bytes to be copied.
-   * @throws IndexOutOfBoundsException
-   * Thrown, if the index is negative, or too large that the requested number of bytes exceed the
-   *     amount of memory between the index and the memory buffer's end.
+   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large that the
+   *     requested number of bytes exceed the amount of memory between the index and the memory
+   *     buffer's end.
    */
   public void get(int index, byte[] dst, int offset, int length) {
     // check the byte array offset and length and the status
@@ -312,9 +306,9 @@ public final class MemoryBuffer {
    * @param offset The position where the bytes are started to be read from in this memory buffer.
    * @param target The ByteBuffer to copy the bytes to.
    * @param numBytes The number of bytes to copy.
-   * @throws IndexOutOfBoundsException
-   * If the offset is invalid, or this buffer does not contain the given number of bytes
-   *     (starting from offset), or the target byte buffer does not have enough space for the bytes.
+   * @throws IndexOutOfBoundsException If the offset is invalid, or this buffer does not contain the
+   *     given number of bytes (starting from offset), or the target byte buffer does not have
+   *     enough space for the bytes.
    * @throws ReadOnlyBufferException If the target buffer is read-only.
    */
   public void get(int offset, ByteBuffer target, int numBytes) {
@@ -366,9 +360,9 @@ public final class MemoryBuffer {
    * @param offset The position where the bytes are started to be written to in this memory buffer.
    * @param source The ByteBuffer to copy the bytes from.
    * @param numBytes The number of bytes to copy.
-   * @throws IndexOutOfBoundsException
-   * If the offset is invalid, or the source buffer does not contain the given number of bytes, or
-   *     this buffer does not have enough space for the bytes(counting from offset).
+   * @throws IndexOutOfBoundsException If the offset is invalid, or the source buffer does not
+   *     contain the given number of bytes, or this buffer does not have enough space for the
+   *     bytes(counting from offset).
    */
   public void put(int offset, ByteBuffer source, int numBytes) {
     // check the byte array offset and length
@@ -430,9 +424,9 @@ public final class MemoryBuffer {
    * @param src The source array to copy the data from.
    * @param offset The offset in the source array where the copying is started.
    * @param length The number of bytes to copy.
-   * @throws IndexOutOfBoundsException
-   * Thrown, if the index is negative, or too large such that the array portion to copy exceed the
-   *     amount of memory between the index and the memory buffer's end.
+   * @throws IndexOutOfBoundsException Thrown, if the index is negative, or too large such that the
+   *     array portion to copy exceed the amount of memory between the index and the memory buffer's
+   *     end.
    */
   public void put(int index, byte[] src, int offset, int length) {
     // check the byte array offset and length
@@ -671,9 +665,7 @@ public final class MemoryBuffer {
   //                     Read and Write Methods
   // -------------------------------------------------------------------------
 
-  /**
-   * Returns the {@code readerIndex} of this buffer.
-   */
+  /** Returns the {@code readerIndex} of this buffer. */
   public int readerIndex() {
     return readerIndex;
   }
@@ -682,13 +674,13 @@ public final class MemoryBuffer {
    * Sets the {@code readerIndex} of this buffer.
    *
    * @throws IndexOutOfBoundsException if the specified {@code readerIndex} is less than {@code 0}
-   *                                   or greater than {@code this.size}
+   *     or greater than {@code this.size}
    */
   public MemoryBuffer readerIndex(int readerIndex) {
     if (readerIndex < 0 || readerIndex > size) {
       throw new IndexOutOfBoundsException(
-        String.format(
-          "readerIndex: %d (expected: 0 <= readerIndex <= size(%d))", readerIndex, size));
+          String.format(
+              "readerIndex: %d (expected: 0 <= readerIndex <= size(%d))", readerIndex, size));
     }
     this.readerIndex = readerIndex;
     return this;
@@ -698,9 +690,7 @@ public final class MemoryBuffer {
     return size - readerIndex;
   }
 
-  /**
-   * Returns the {@code writerIndex} of this buffer.
-   */
+  /** Returns the {@code writerIndex} of this buffer. */
   public int writerIndex() {
     return writerIndex;
   }
@@ -709,13 +699,13 @@ public final class MemoryBuffer {
    * Sets the {@code writerIndex} of this buffer.
    *
    * @throws IndexOutOfBoundsException if the specified {@code writerIndex} is less than {@code 0}
-   *                                   or greater than {@code this.size}
+   *     or greater than {@code this.size}
    */
   public void writerIndex(int writerIndex) {
     if (writerIndex < 0 || writerIndex > size) {
       throw new IndexOutOfBoundsException(
-        String.format(
-          "writerIndex: %d (expected: 0 <= writerIndex <= size(%d))", writerIndex, size));
+          String.format(
+              "writerIndex: %d (expected: 0 <= writerIndex <= size(%d))", writerIndex, size));
     }
     this.writerIndex = writerIndex;
   }
@@ -788,16 +778,12 @@ public final class MemoryBuffer {
     writerIndex += numBytes;
   }
 
-  /**
-   * For off-heap buffer, this will make a heap buffer internally.
-   */
+  /** For off-heap buffer, this will make a heap buffer internally. */
   public void grow(int neededSize) {
     ensure(writerIndex + neededSize);
   }
 
-  /**
-   * For off-heap buffer, this will make a heap buffer internally.
-   */
+  /** For off-heap buffer, this will make a heap buffer internally. */
   public void ensure(int length) {
     if (length > size) {
       byte[] data = new byte[length * 2];
@@ -889,9 +875,9 @@ public final class MemoryBuffer {
   public void checkReadableBytes(int minimumReadableBytes) {
     if (readerIndex > size - minimumReadableBytes) {
       throw new IndexOutOfBoundsException(
-        String.format(
-          "readerIndex(%d) + length(%d) exceeds size(%d): %s",
-          readerIndex, minimumReadableBytes, writerIndex, this));
+          String.format(
+              "readerIndex(%d) + length(%d) exceeds size(%d): %s",
+              readerIndex, minimumReadableBytes, writerIndex, this));
     }
   }
 
@@ -917,7 +903,7 @@ public final class MemoryBuffer {
 
   /**
    * Returns internal byte array if data is on heap and remaining buffer size is equal to internal
-   *     byte array size, or create a new byte array which copy remaining data from off-heap.
+   * byte array size, or create a new byte array which copy remaining data from off-heap.
    */
   public byte[] getRemainingBytes() {
     int length = size - readerIndex;
@@ -930,7 +916,7 @@ public final class MemoryBuffer {
 
   /**
    * Returns internal byte array if data is on heap and buffer size is equal to internal byte array
-   *     size , or create a new byte array which copy data from off-heap.
+   * size , or create a new byte array which copy data from off-heap.
    */
   public byte[] getAllBytes() {
     if (heapMemory != null && size == heapMemory.length) {
@@ -972,8 +958,7 @@ public final class MemoryBuffer {
   public ByteBuffer sliceAsByteBuffer(int offset, int length) {
     Preconditions.checkArgument(offset + length <= size);
     if (heapMemory != null) {
-      return ByteBuffer.wrap(
-        heapMemory, (int) (address - BYTE_ARRAY_BASE_OFFSET + offset), length);
+      return ByteBuffer.wrap(heapMemory, (int) (address - BYTE_ARRAY_BASE_OFFSET + offset), length);
     } else {
       ByteBuffer offHeapBuffer = this.offHeapBuffer;
       if (offHeapBuffer != null) {

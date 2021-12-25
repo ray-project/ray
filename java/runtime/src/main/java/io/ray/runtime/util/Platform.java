@@ -33,7 +33,7 @@ public final class Platform {
   private static final boolean unaligned;
 
   private static final Class<?> DIRECT_BYTE_BUFFER_CLASS =
-    getClassByName("java.nio.DirectByteBuffer");
+      getClassByName("java.nio.DirectByteBuffer");
 
   static {
     boolean unalign;
@@ -45,7 +45,7 @@ public final class Platform {
     } else {
       try {
         Class<?> bitsClass =
-          Class.forName("java.nio.Bits", false, ClassLoader.getSystemClassLoader());
+            Class.forName("java.nio.Bits", false, ClassLoader.getSystemClassLoader());
         Method unalignedMethod = bitsClass.getDeclaredMethod("unaligned");
         unalignedMethod.setAccessible(true);
         unalign = Boolean.TRUE.equals(unalignedMethod.invoke(null));
@@ -147,8 +147,7 @@ public final class Platform {
     }
   }
 
-  private static Class<?> getClassByName(
-    @SuppressWarnings("SameParameterValue") String className) {
+  private static Class<?> getClassByName(@SuppressWarnings("SameParameterValue") String className) {
     try {
       return Class.forName(className);
     } catch (ClassNotFoundException e) {
@@ -158,7 +157,7 @@ public final class Platform {
 
   /**
    * Returns true when running JVM is having sun's Unsafe package available in it and underlying
-   *     system having unaligned-access capability.
+   * system having unaligned-access capability.
    */
   public static boolean unaligned() {
     return unaligned;
@@ -334,8 +333,7 @@ public final class Platform {
 
   public static long getAddress(ByteBuffer buffer) {
     Preconditions.checkNotNull(buffer, "buffer is null");
-    Preconditions.checkArgument(
-      buffer.isDirect(), "Can't get address of a non-direct ByteBuffer.");
+    Preconditions.checkArgument(buffer.isDirect(), "Can't get address of a non-direct ByteBuffer.");
     long offHeapAddress;
     try {
       offHeapAddress = UNSAFE.getLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET);

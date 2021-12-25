@@ -111,8 +111,7 @@ public class MemoryBufferTest {
     buffer.write(ByteBuffer.wrap(new byte[] {1, 2, 3, 4}));
     buffer2.put(ByteBuffer.wrap(new byte[] {1, 2, 3, 4}));
     buffer2.flip();
-    assertEquals(buffer.sliceAsByteBuffer(0, buffer.writerIndex()),
-      buffer2);
+    assertEquals(buffer.sliceAsByteBuffer(0, buffer.writerIndex()), buffer2);
     assertTrue(buffer.equalTo(MemoryUtils.wrap(buffer2), 0, 0, buffer.writerIndex()));
   }
 }

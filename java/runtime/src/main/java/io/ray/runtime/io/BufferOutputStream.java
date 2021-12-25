@@ -22,5 +22,4 @@ public class BufferOutputStream extends OutputStream {
   public void write(ByteBuffer byteBuffer, int numBytes) {
     buffer.write(byteBuffer, numBytes);
   }
-
 }

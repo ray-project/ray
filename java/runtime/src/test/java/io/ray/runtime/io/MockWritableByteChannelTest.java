@@ -13,6 +13,5 @@ public class MockWritableByteChannelTest {
       channel.write(ByteBuffer.allocate(100));
       assertEquals(channel.totalBytes(), 100);
     }
-
   }
 }

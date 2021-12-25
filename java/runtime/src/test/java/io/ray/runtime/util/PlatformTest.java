@@ -32,9 +32,11 @@ public class PlatformTest {
       ByteBuffer buffer2 = Platform.wrapDirectBuffer(Platform.getAddress(buffer1), 10);
       assertEquals(buffer2.getInt(), 10);
     }
-    assertThrows(IllegalArgumentException.class, () -> {
-      Platform.getAddress(ByteBuffer.allocate(10));
-    });
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> {
+          Platform.getAddress(ByteBuffer.allocate(10));
+        });
   }
 
   @Test
@@ -107,5 +109,4 @@ public class PlatformTest {
       Platform.freeMemory(address);
     }
   }
-
 }

@@ -1,6 +1,5 @@
 package io.ray.runtime.io;
 
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import io.ray.runtime.util.MemoryBuffer;
@@ -13,7 +12,7 @@ public class BufferWritableByteChannelTest {
   public void testWrite() {
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     MemoryBuffer buffer2 = MemoryUtils.buffer(32);
-    try(BufferWritableByteChannel channel = new BufferWritableByteChannel(buffer)) {
+    try (BufferWritableByteChannel channel = new BufferWritableByteChannel(buffer)) {
       channel.write(ByteBuffer.allocate(100));
       buffer2.write(ByteBuffer.allocate(100));
       channel.write(ByteBuffer.allocateDirect(100));

@@ -4,13 +4,12 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 /**
- * A helper class to track the size of allocations.
- * Writes to this stream do not copy or retain any data, they just bump
- * a size counter that can be later used to know exactly which data size
- * needs to be allocated for actual writing.
+ * A helper class to track the size of allocations. Writes to this stream do not copy or retain any
+ * data, they just bump a size counter that can be later used to know exactly which data size needs
+ * to be allocated for actual writing.
  *
- * <p>Note that {@link OutputStream} doesn't support {@link ByteBuffer}, which may
- * incur extra copy. See also {@link MockWritableByteChannel}.
+ * <p>Note that {@link OutputStream} doesn't support {@link ByteBuffer}, which may incur extra copy.
+ * See also {@link MockWritableByteChannel}.
  */
 public class MockOutputStream extends OutputStream {
   private int totalBytes;

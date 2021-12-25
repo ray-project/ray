@@ -1,6 +1,5 @@
 package io.ray.runtime.io;
 
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import io.ray.runtime.util.MemoryBuffer;
@@ -13,7 +12,7 @@ public class BufferOutputStreamTest {
   public void testWrite() throws Exception {
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     MemoryBuffer buffer2 = MemoryUtils.buffer(32);
-    try(BufferOutputStream stream = new BufferOutputStream(buffer)) {
+    try (BufferOutputStream stream = new BufferOutputStream(buffer)) {
       stream.write(ByteBuffer.allocate(100), 100);
       buffer2.write(ByteBuffer.allocate(100), 100);
       stream.write(ByteBuffer.allocateDirect(100), 100);
