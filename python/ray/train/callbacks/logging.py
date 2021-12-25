@@ -39,8 +39,11 @@ class PrintCallback(TrainingCallback):
     def handle_result(self, results: List[Dict], **info):
         """Prints results to STDOUT.
 
-        Arguments:
-            results: A list of results from each worker.
+        Args:
+            results (List[Dict]): List of results from the training
+                function. Each value in the list corresponds to the output of
+                the training function from each worker.
+            **info: kwargs dict for forward compatibility.
         """
         if not results:
             print(json.dumps({}))
