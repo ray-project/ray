@@ -21,6 +21,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_process.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,7 +77,7 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(
   // core worker is shutting down (or already shut down). If we can't get a core worker
   // instance here, skip calling the `RemoveLocalReference` method.
   const auto worker_id = JavaByteArrayToId<ray::WorkerID>(env, workerId);
-  auto core_worker = ray::CoreWorkerProcess::TryGetWorker(worker_id);
+  auto core_worker = CoreWorkerProcess::TryGetWorker(worker_id);
   if (core_worker != nullptr) {
     const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
     core_worker->RemoveActorHandleReference(actor_id);

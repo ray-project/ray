@@ -643,14 +643,16 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         auto node_it = owners_.find(owner_node_id);
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
-          // have already been destroyed if the owner died.
-          auto job = gcs_job_manager_->GetJob(actor_id.JobId());
+          // have already been destroyed if the owner died. 
+          // auto job = gcs_job_manager_->GetJob(actor_id.JobId());
+
           // For multiple actors in one process, if one actor is out of scope,
           // We shouldn't force kill the actor because other actors in the process
           // are still alive.
-          auto force_kill =
-              job == nullptr || job->config().num_java_workers_per_process() <= 1;
-          DestroyActor(actor_id, GenActorOutOfScopeCause(), force_kill);
+
+          // auto force_kill =
+              // job == nullptr || job->config().num_java_workers_per_process() <= 1;
+          DestroyActor(actor_id, GenActorOutOfScopeCause(), /*force_kill=*/false);
         }
       });
 }
