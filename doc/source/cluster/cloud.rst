@@ -175,7 +175,7 @@ Ray with cloud providers
 
     .. group-tab:: IBM Cloud
 
-        First, install ibm cloud client packages (``pip install ibm_vpc ibm_platform_services ibm_cloud_sdk_core``). Obtain API Key as described in `the docs <https://cloud.ibm.com/docs/account?topic=account-userapikey>`.
+        First, install ibm cloud client packages (``pip install ibm_vpc``). Obtain API Key as described in `the docs <https://cloud.ibm.com/docs/account?topic=account-userapikey>`.
         
         Then, install interactive vpc config tool (``pip install lithopscloud``), and use it to prepare <CLUSTER_CONFIG_FILE>
         .. code-block:: bash
