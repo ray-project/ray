@@ -139,6 +139,7 @@ def _ray_start_cluster(**kwargs):
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
+        print("???")
         if i > 0 and "_system_config" in init_kwargs:
             del init_kwargs["_system_config"]
         remote_nodes.append(cluster.add_node(**init_kwargs))
