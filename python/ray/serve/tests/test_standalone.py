@@ -482,7 +482,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     driver_template = """
 import ray
