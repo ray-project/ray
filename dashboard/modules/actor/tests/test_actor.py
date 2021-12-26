@@ -203,7 +203,7 @@ def test_kill_actor(ray_start_with_dashboard):
 
 
 @pytest.mark.skipif(gcs_utils.use_gcs_for_bootstrap(),
-                    "Test case need to be updated to use gcs pubsub")
+                    reason="Test case need to be updated to use gcs pubsub")
 def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     timeout = 5
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
