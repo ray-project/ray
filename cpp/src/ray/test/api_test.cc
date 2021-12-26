@@ -204,6 +204,19 @@ TEST(RayApiTest, ObjectRefArgsTest) {
   auto r4 = ray::Task(BlockGet).Remote();
   auto r5 = ray::Task(GetValue).Remote(r4);
   EXPECT_EQ(*r5.Get(), true);
+
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = ray::Task(GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj1 = ray::Put(1);
+  auto obj2 = ray::Put(2);
+  auto r1 = ray::Task(Add).Remote(obj1, obj2);
+  EXPECT_EQ(*r1.Get(), 3);
+
+  std::vector v{obj1, obj2};
+  auto r2 = ray::Task(GetList).Remote(v);
+  EXPECT_EQ(*r2.Get(), 3);
 }
 
 TEST(RayApiTest, CallWithValueTest) {

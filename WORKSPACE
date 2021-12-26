@@ -33,7 +33,7 @@ http_archive(
 
 load("@rules_rust//rust:repositories.bzl", "rust_repositories")
 
-rust_repositories()
+rust_repositories(version = "nightly", iso_date = "2021-06-16", edition="2018")
 
 http_archive(
     name = "cxx.rs",

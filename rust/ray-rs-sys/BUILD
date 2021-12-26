@@ -3,7 +3,7 @@ package(default_visibility = ["//visibility:public"])
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("@cxx.rs//tools/bazel:rust_cxx_bridge.bzl", "rust_cxx_bridge")
-load("@ray-rs-toml//:defs.bzl", "crates_from")
+load("@ray-rs-toml//:defs.bzl", "crates_from", "crate")
 
 rust_test(
     name = "test",
@@ -11,13 +11,14 @@ rust_test(
     deps = [
       ":ray_rs_sys",
       "@cxx.rs//:cxx",
-    ],
+    ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
     env = {"RUST_TEST_NOCAPTURE": "1"},
 )
 
 rust_library(
     name = "ray_rs_sys",
     srcs = glob(["src/**/*.rs"]),
+    proc_macro_deps = [crate("paste")],
     deps = [
         ":bridge",
         # ":ray_rs_c",

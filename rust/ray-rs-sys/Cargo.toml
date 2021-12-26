@@ -8,9 +8,11 @@ publish = false
 
 [dependencies]
 # cxx = "1.0"
+
+paste = "1.0.6"
 uniffi = "0.16.0"
 lazy_static = "1.4.0"
-
+rmp-serde = "0.15.5"
 
 # [build-dependencies]
 # cxx-build = "1.0"
