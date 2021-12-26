@@ -281,7 +281,7 @@ class Node:
     @staticmethod
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
-        _, _, port = ip_port.rpartition(':')
+        _, _, port = ip_port.rpartition(":")
         _ = int(port)
 
     def _register_shutdown_hooks(self):
@@ -982,17 +982,21 @@ class Node:
 
         # Job counter.
         # TODO(mwtian): Fix job counter usage in C++ to support GCS KV.
-        client.internal_kv_put(b"JobCounter", int(0).to_bytes(8, "little"),
-                               overwrite=True,
-                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+        client.internal_kv_put(
+            b"JobCounter",
+            int(0).to_bytes(8, "little"),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
         # Version info.
         ray_version = ray.__version__
         python_version = ".".join(map(str, sys.version_info[:3]))
         version_info = json.dumps((ray_version, python_version))
-        client.internal_kv_put(b"VERSION_INFO", version_info.encode(),
-                               overwrite=True,
-                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+        client.internal_kv_put(
+            b"VERSION_INFO",
+            version_info.encode(),
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
     def start_head_processes(self):
         """Start head processes on the node."""
