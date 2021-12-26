@@ -807,7 +807,6 @@ def main():
     else:
         address = args.redis_address
         redis_password = args.redis_password
-    assert address is not None
     ray_connect_handler = create_ray_handler(address, redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
