@@ -891,7 +891,6 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
-                redirect_worker_output=False,
                 password=None,
                 fate_share=None,
                 external_addresses=None,
@@ -914,9 +913,6 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        redirect_worker_output (bool): True if worker output should be
-            redirected to a file and false otherwise. Workers will have access
-            to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
         port_denylist (set): A set of denylist ports that shouldn't
@@ -984,17 +980,6 @@ def start_redis(node_ip_address,
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
-
-    # Put the redirect_worker_output bool in the Redis shard so that workers
-    # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput", 1
-                             if redirect_worker_output else 0)
-
-    # Init job counter to GCS.
-    primary_redis_client.set("JobCounter", 0)
-
-    # Store version information in the primary Redis shard.
-    _put_version_info_in_redis(primary_redis_client)
 
     # Calculate the redis memory.
     assert resource_spec.resolved()
