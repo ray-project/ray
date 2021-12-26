@@ -201,6 +201,7 @@ def test_kill_actor(ray_start_with_dashboard):
             time.sleep(.1)
     assert last_exc is None
 
+
 @pytest.mark.skipif(gcs_utils.use_gcs_for_bootstrap(),
                     "Test case need to be updated to use gcs pubsub")
 def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
