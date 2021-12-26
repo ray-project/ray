@@ -281,6 +281,17 @@ def find_redis_address():
     return _find_address_from_flag("--redis-address")
 
 
+def find_gcs_address():
+    return _find_address_from_flag("--gcs-address")
+
+
+def find_bootstrap_address():
+    if use_gcs_for_bootstrap():
+        return find_gcs_address()
+    else:
+        return find_redis_address()
+
+
 def _find_redis_address_or_die():
     """Find one Redis address unambiguously, or raise an error.
 

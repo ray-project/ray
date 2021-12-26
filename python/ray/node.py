@@ -818,7 +818,8 @@ class Node:
 
                 self._ray_params.gcs_server_port = ray_constants.DEFAULT_PORT
                 if is_port_in_use(self._ray_params.gcs_server_port):
-                    self._ray_params.gcs_server_port += 1
+                    self._ray_params.gcs_server_port = \
+                        ray._private.services.new_port()
 
         if use_gcs_for_bootstrap():
             return
