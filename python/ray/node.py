@@ -144,6 +144,10 @@ class Node:
         self._gcs_client = None
 
         if not self.head:
+            # TODO(mwtian): remove after supporting bootstraapping with GCS
+            # address.
+            if self._redis_address and not self._gcs_address:
+                self._gcs_address = self._get_gcs_address_from_redis()
             self.validate_ip_port(self.address)
             self.get_gcs_client()
 
@@ -280,23 +284,6 @@ class Node:
         _, _, port = ip_port.rpartition(':')
         _ = int(port)
 
-    def _write_cluster_info_to_kv(self):
-        client = self.get_gcs_client()
-
-        # Job counter.
-        # TODO(mwtian): Fix job counter usage in C++ to support GCS KV.
-        client.internal_kv_put(b"JobCounter", int(0).to_bytes(8, "little"),
-                               overwrite=True,
-                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
-
-        # Version info
-        ray_version = ray.__version__
-        python_version = ".".join(map(str, sys.version_info[:3]))
-        version_info = json.dumps((ray_version, python_version))
-        client.internal_kv_put(b"VERSION_INFO", version_info.encode(),
-                               overwrite=True,
-                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
-
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
         # as we're already in the exit procedure.
@@ -429,8 +416,6 @@ class Node:
         `ray start` or `ray.int()` to start worker nodes, that has been
         converted to ip:port format.
         """
-        if use_gcs_for_bootstrap():
-            return self._gcs_address
         return self._redis_address
 
     @property
@@ -978,7 +963,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
-            self.addres,
+            self.redis_address,
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
@@ -991,6 +976,23 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
             process_info
         ]
+
+    def _write_cluster_info_to_kv(self):
+        client = self.get_gcs_client()
+
+        # Job counter.
+        # TODO(mwtian): Fix job counter usage in C++ to support GCS KV.
+        client.internal_kv_put(b"JobCounter", int(0).to_bytes(8, "little"),
+                               overwrite=True,
+                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+
+        # Version info.
+        ray_version = ray.__version__
+        python_version = ".".join(map(str, sys.version_info[:3]))
+        version_info = json.dumps((ray_version, python_version))
+        client.internal_kv_put(b"VERSION_INFO", version_info.encode(),
+                               overwrite=True,
+                               namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
     def start_head_processes(self):
         """Start head processes on the node."""
