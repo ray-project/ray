@@ -809,7 +809,13 @@ class Node:
                     s.bind(("", 0))
                     self._ray_params.redis_port = s.getsockname()[1]
             if self._ray_params.gcs_server_port is None:
+                def is_port_in_use(port):
+                    import socket
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        return s.connect_ex(('localhost', port)) == 0
                 self._ray_params.gcs_server_port = ray_constants.DEFAULT_PORT
+                if is_port_in_use(self._ray_params.gcs_server_port):
+                    self._ray_params.gcs_server_port += 1
 
         if use_gcs_for_bootstrap():
             return
