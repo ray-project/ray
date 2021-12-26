@@ -113,7 +113,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   CoreWorkerOptions options;
   options.worker_type = ConfigInternal::Instance().worker_type;
-  options.language = Language::CPP;
+  options.language = Language::RUST;
   options.store_socket = ConfigInternal::Instance().plasma_store_socket_name;
   options.raylet_socket = ConfigInternal::Instance().raylet_socket_name;
   if (options.worker_type == WorkerType::DRIVER) {
@@ -130,7 +130,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
   options.raylet_ip_address = node_ip;
-  options.driver_name = "cpp_worker";
+  options.driver_name = "rust_worker";
   options.num_workers = 1;
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;

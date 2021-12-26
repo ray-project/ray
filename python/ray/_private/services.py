@@ -55,6 +55,10 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_CPP_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
                                          "cpp/default_worker" + EXE_SUFFIX)
 
+# Location of the rust default worker executables.
+DEFAULT_RUST_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
+                                      "rust/rust_worker" + EXE_SUFFIX)
+
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
 
@@ -1563,6 +1567,13 @@ def start_raylet(redis_address,
     else:
         cpp_worker_command = []
 
+    if os.path.exists(DEFAULT_RUST_WORKER_EXECUTABLE):
+        rust_worker_command = build_cpp_worker_command(
+            "", redis_address, plasma_store_name, raylet_name, redis_password,
+            session_dir, log_dir, node_ip_address)
+    else:
+        rust_worker_command = []
+
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
@@ -1639,7 +1650,7 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
-        # f"--rust_worker_command={subprocess.list2cmdline(rust_worker_command)}",  # noqa
+        f"--rust_worker_command={subprocess.list2cmdline(rust_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",

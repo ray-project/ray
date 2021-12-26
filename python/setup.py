@@ -147,6 +147,7 @@ if BUILD_JAVA or os.path.exists(
 
 if setup_spec.type == SetupType.RAY_CPP:
     setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
+    setup_spec.files_to_include += ["ray/rust/rust_worker" + exe_suffix]
     # C++ API library and project template files.
     setup_spec.files_to_include += [
         os.path.join(dirpath, filename)

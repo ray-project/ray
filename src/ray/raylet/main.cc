@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.native_library_path = native_library_path;
         if (python_worker_command.empty() && java_worker_command.empty() &&
             cpp_worker_command.empty() && rust_worker_command.empty()) {
-          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+          RAY_LOG(FATAL) << "At least one of Python/Java/CPP/Rust worker command "
                          << "should be provided";
         }
         if (!agent_command.empty()) {

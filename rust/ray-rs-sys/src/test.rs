@@ -6,6 +6,15 @@ mod test {
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
     #[test]
+    fn test_init_submit_execute() {
+        InitRust();
+        let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
+            ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
+        add_two_vecs.remote(a, b);
+        Shutdown();
+    }
+
+    #[test]
     fn test_remote_function_wrapper_macro() {
         let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
             ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
@@ -39,7 +48,7 @@ mod test {
         assert_eq!(ret3, (0u64..300).step_by(3).collect::<Vec<u64>>());
 
         // println!("{:?}", add_two_vecs(a.clone(), b.clone()));
-        println!("{:?}", add_two_vecs.remote(a, b));
+        // println!("{:?}", add_two_vecs.remote(a, b));
 
         println!("{:?}", add_two_vecs.name());
         println!("{:?}", add_three_vecs.name());

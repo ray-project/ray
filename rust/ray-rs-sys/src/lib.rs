@@ -25,7 +25,7 @@ use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 pub struct RustTaskArg {
     buf: Vec<u8>,
-    object_id: Pin<Box<UniquePtr<CxxString>>>,
+    object_id: String,
 }
 
 impl RustTaskArg {
@@ -37,10 +37,116 @@ impl RustTaskArg {
         &self.buf
     }
 
-    pub fn object_ref(&self) -> &UniquePtr<CxxString> {
-        &(*self.object_id)
+    pub fn object_ref(&self) -> &str {
+        &self.object_id
     }
 }
+
+
+use std::{collections::HashMap, sync::Mutex};
+
+type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
+
+type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
+
+
+
+// TODO (jon-chuang): ensure you know how to handle the lifetime of RustBuffer safely...
+// Understand how to safely handle lifetimes for FFI more generally.
+
+// Here, the RustBuffer ought to be passed by value (move semantics) and thus disappear
+// from scope on the Rust side.
+
+// We need to handle the case where the key is not found with an error;
+// however, we could also check in advance via the initially loaded function name mapping
+
+// If we were to apply the function for the user directly in the application code
+// and return the buffer (as was suggested for the C++ API), we would probably also
+// reduce the attack surface
+#[no_mangle]
+extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
+    let key_as_vec = key.destroy_into_vec();
+    GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
+}
+
+// struct FunctionManager {
+//     cache: FunctionPtrMap,
+//     libs:
+// }
+
+#[repr(C)]
+struct BufferData {
+    ptr_u64: u64,
+    size: u64,
+}
+
+type BufferRawPartsVec = Vec<(u64, u64)>;
+struct ArgsBuffer(BufferRawPartsVec);
+impl ArgsBuffer {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn add_arg(&mut self, ptr: *const u8, size: usize) {
+        self.0.push((ptr as u64, size as u64));
+    }
+
+
+}
+
+// unsafe fn push_arg_slice_from_raw_parts(vec: &mut ArgsVec<'a>, data: *const u8, size: usize) {
+//     vec.push((data, size as u64));
+// }
+
+#[cxx::bridge(namespace = "ray")]
+pub mod ray_api_ffi {
+    extern "Rust" {
+        type RustTaskArg;
+        fn is_value(&self) -> bool;
+        fn value(&self) -> &Vec<u8>;
+        fn object_ref(&self) -> &str;
+    }
+
+    extern "Rust" {
+        unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8>;
+    }
+
+    unsafe extern "C++" {
+        include!("rust/ray-rs-sys/cpp/tasks.h");
+
+        type ObjectID;
+
+        // fn Binary(self: &ObjectID) -> &CxxString;
+
+        fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
+        fn InitRust();
+    }
+
+    unsafe extern "C++" {
+        include!("ray/api.h");
+        include!("rust/ray-rs-sys/cpp/wrapper.h");
+
+        type Uint64ObjectRef;
+        type StringObjectRef;
+
+        fn InitAsLocal();
+        fn Init();
+        fn IsInitialized() -> bool;
+        fn Shutdown();
+
+        fn PutUint64(obj: u64) -> UniquePtr<Uint64ObjectRef>;
+        fn GetUint64(obj_ref: UniquePtr<Uint64ObjectRef>) -> SharedPtr<u64>;
+
+        fn PutString(obj: &CxxString) -> UniquePtr<StringObjectRef>;
+        fn GetString(obj_ref: UniquePtr<StringObjectRef>) -> SharedPtr<CxxString>;
+
+        fn PutAndGetConfig();
+
+        fn ID(self: &Uint64ObjectRef) -> &CxxString;
+        fn ID(self: &StringObjectRef) -> &CxxString;
+    }
+}
+
 
 // Idea: add a macro that
 macro_rules! impl_ray_function {
@@ -52,7 +158,7 @@ macro_rules! impl_ray_function {
                 ffi_lookup_name: String,
             }
 
-            impl<$($argp,)* R> [<RayFunction $n>]<$($argp,)* R> {
+            impl<$($argp: serde::Serialize,)* R> [<RayFunction $n>]<$($argp,)* R> {
                 fn new(
                     raw_fn: fn($($argty),*) -> R,
                     wrapped_fn: InvokerFunction,
@@ -71,8 +177,16 @@ macro_rules! impl_ray_function {
 
                 // Return object ref
                 // This should submit the
-                pub fn remote(&self, $($arg: $argty),*) -> Option<R> {
-                    Some((self.raw_fn)($($arg),*))
+                pub fn remote(&self, $($arg: $argty),*) -> UniquePtr<ray_api_ffi::ObjectID> {
+                    let mut task_args = Vec::new();
+                    $(
+                        let result = rmp_serde::to_vec(&$arg).unwrap();
+                        task_args.push(RustTaskArg {
+                            buf: result,
+                            object_id: String::new()
+                        });
+                    )*
+                    ray_api_ffi::Submit(&self.ffi_lookup_name, &task_args)
                 }
 
                 pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
@@ -80,29 +194,27 @@ macro_rules! impl_ray_function {
                 }
             }
 
-            // impl<$($argp,)* R> std::ops::FnOnce<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-            //     type Output = R;
-            //     extern "rust-call" fn call_once(self, ($($arg),*): ($($argty),*)) -> Self::Output {
-            //         (self.raw_fn)($($arg),*)
-            //     }
-            // }
-            //
-            // impl<$($argp,)* R> std::ops::FnMut<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-            //     extern "rust-call" fn call_mut(&mut self, ($($arg),*): ($($argty),*)) -> Self::Output {
-            //         (self.raw_fn)($($arg),*)
-            //     }
-            // }
-            //
-            // impl<$($argp,)* R> std::ops::Fn<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-            //     extern "rust-call" fn call(&self, ($($arg),*): ($($argty),*)) -> Self::Output {
-            //         (self.raw_fn)($($arg),*)
-            //     }
-            // }
+            impl<$($argp,)* R> std::ops::FnOnce<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
+                type Output = R;
+                extern "rust-call" fn call_once(self, ($($arg),*): ($($argty),*)) -> Self::Output {
+                    (self.raw_fn)($($arg),*)
+                }
+            }
+
+            impl<$($argp,)* R> std::ops::FnMut<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
+                extern "rust-call" fn call_mut(&mut self, ($($arg),*): ($($argty),*)) -> Self::Output {
+                    (self.raw_fn)($($arg),*)
+                }
+            }
+
+            impl<$($argp,)* R> std::ops::Fn<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
+                extern "rust-call" fn call(&self, ($($arg),*): ($($argty),*)) -> Self::Output {
+                    (self.raw_fn)($($arg),*)
+                }
+            }
         }
     };
 }
-
-
 
 impl_ray_function!([0], );
 impl_ray_function!([1], a0: T0 [T0]);
@@ -119,6 +231,17 @@ macro_rules! deserialize {
     ($ptrs:ident) => {};
     ($ptrs:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
         deserialize!($ptrs $(,$args:$argsty)*);
+        let (ptr, size) = $ptrs[$ptrs.len() - count!($($args)*) - 1];
+        let $arg = rmp_serde::from_read_ref::<_, $argty>(
+            unsafe { std::slice::from_raw_parts(ptr as *const u8, size as usize) }
+        ).unwrap();
+    };
+}
+
+macro_rules! serialize {
+    ($ptrs:ident) => {};
+    ($ptrs:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
+        serialize!($ptrs $(,$args:$argsty)*);
         let (ptr, size) = $ptrs[$ptrs.len() - count!($($args)*) - 1];
         let $arg = rmp_serde::from_read_ref::<_, $argty>(
             unsafe { std::slice::from_raw_parts(ptr as *const u8, size as usize) }
@@ -209,108 +332,6 @@ unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> 
     let slice = core::slice::from_raw_parts(data, size);
     vec.copy_from_slice(slice);
     vec
-}
-
-use std::{collections::HashMap, sync::Mutex};
-
-type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
-
-type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
-
-
-
-// TODO (jon-chuang): ensure you know how to handle the lifetime of RustBuffer safely...
-// Understand how to safely handle lifetimes for FFI more generally.
-
-// Here, the RustBuffer ought to be passed by value (move semantics) and thus disappear
-// from scope on the Rust side.
-
-// We need to handle the case where the key is not found with an error;
-// however, we could also check in advance via the initially loaded function name mapping
-
-// If we were to apply the function for the user directly in the application code
-// and return the buffer (as was suggested for the C++ API), we would probably also
-// reduce the attack surface
-#[no_mangle]
-extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
-    let key_as_vec = key.destroy_into_vec();
-    GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
-}
-
-// struct FunctionManager {
-//     cache: FunctionPtrMap,
-//     libs:
-// }
-
-#[repr(C)]
-struct BufferData {
-    ptr_u64: u64,
-    size: u64,
-}
-
-type BufferRawPartsVec = Vec<(u64, u64)>;
-struct ArgsBuffer(BufferRawPartsVec);
-impl ArgsBuffer {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn add_arg(&mut self, ptr: *const u8, size: usize) {
-        self.0.push((ptr as u64, size as u64));
-    }
-
-
-}
-
-// unsafe fn push_arg_slice_from_raw_parts(vec: &mut ArgsVec<'a>, data: *const u8, size: usize) {
-//     vec.push((data, size as u64));
-// }
-
-#[cxx::bridge(namespace = "ray")]
-pub mod ray_api_ffi {
-    extern "Rust" {
-        type RustTaskArg;
-        fn is_value(&self) -> bool;
-        fn value(&self) -> &Vec<u8>;
-        fn object_ref(&self) -> &UniquePtr<CxxString>;
-    }
-
-    extern "Rust" {
-        unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8>;
-    }
-
-    unsafe extern "C++" {
-        include!("rust/ray-rs-sys/cpp/tasks.h");
-
-        type ObjectID;
-
-        fn Submit(name: &CxxString, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
-        fn InitRust();
-    }
-
-    unsafe extern "C++" {
-        include!("ray/api.h");
-        include!("rust/ray-rs-sys/cpp/wrapper.h");
-
-        type Uint64ObjectRef;
-        type StringObjectRef;
-
-        fn InitAsLocal();
-        fn Init();
-        fn IsInitialized() -> bool;
-        fn Shutdown();
-
-        fn PutUint64(obj: u64) -> UniquePtr<Uint64ObjectRef>;
-        fn GetUint64(obj_ref: UniquePtr<Uint64ObjectRef>) -> SharedPtr<u64>;
-
-        fn PutString(obj: &CxxString) -> UniquePtr<StringObjectRef>;
-        fn GetString(obj_ref: UniquePtr<StringObjectRef>) -> SharedPtr<CxxString>;
-
-        fn PutAndGetConfig();
-
-        fn ID(self: &Uint64ObjectRef) -> &CxxString;
-        fn ID(self: &StringObjectRef) -> &CxxString;
-    }
 }
 
 // struct ObjectRef<T> {
