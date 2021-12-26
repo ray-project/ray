@@ -75,10 +75,10 @@ class Gen2NodeProvider(NodeProvider):
     with floating (external) ip and the rest of worker nodes will be allocated
     only private ips.
     """
-
     """
     Decorator to wrap a function to reinit clients and retry on except.
     """
+
     def retry_on_except(func):
         def decorated_func(*args, **kwargs):
             name = func.__name__
@@ -98,7 +98,8 @@ class Gen2NodeProvider(NodeProvider):
                     _self = args[0]
                     with _self.lock:
                         _self.ibm_vpc_client = _get_vpc_client(
-                            _self.endpoint, IAMAuthenticator(_self.iam_api_key))
+                            _self.endpoint,
+                            IAMAuthenticator(_self.iam_api_key))
 
                     time.sleep(1)
 
@@ -110,6 +111,7 @@ class Gen2NodeProvider(NodeProvider):
     """
     Tracing decorator. Needed for debugging. Will be removed before merging.
     """
+
     def log_in_out(func):
         def decorated_func(*args, **kwargs):
             name = func.__name__
@@ -132,6 +134,7 @@ class Gen2NodeProvider(NodeProvider):
     """
     Load cluster tags from cache file, vanished nodes removed from cache
     """
+
     def _load_tags(self):
         self.nodes_tags = {}
         ray_cache = Path(Path.home(), Path(".ray"))
@@ -218,6 +221,7 @@ class Gen2NodeProvider(NodeProvider):
     """
     in case filter is empty or get nodes by kind - return naming based nodes
     """
+
     def _get_nodes_by_tags(self, filters):
 
         nodes = []
@@ -241,7 +245,8 @@ class Gen2NodeProvider(NodeProvider):
                                 instance["id"], {})
                             node_cache.update({
                                 TAG_RAY_CLUSTER_NAME: self.cluster_name,
-                                TAG_RAY_NODE_KIND: kind})
+                                TAG_RAY_NODE_KIND: kind
+                            })
         else:
             with self.lock:
                 tags = self.nodes_tags.copy()
@@ -249,8 +254,8 @@ class Gen2NodeProvider(NodeProvider):
                 for node_id, node_tags in tags.items():
 
                     # filter by tags
-                    if not all(item in node_tags.items()for item
-                               in filters.items()):
+                    if not all(item in node_tags.items()
+                               for item in filters.items()):
                         logger.debug(
                             f"specified filter {filters} doesn't match node"
                             f"tags {node_tags}")
@@ -273,6 +278,7 @@ class Gen2NodeProvider(NodeProvider):
     """
     Returns ids of non terminated nodes
     """
+
     @log_in_out
     def non_terminated_nodes(self, tag_filters):
 
@@ -299,12 +305,9 @@ class Gen2NodeProvider(NodeProvider):
             with self.lock:
                 if node["id"] in self.pending_nodes:
                     if node["status"] != "running":
-                        pending_time = self.pending_nodes[node["id"]
-                                                          ] - time.time()
-                        logger.info(
-                            f"{node['id']} is pending for {pending_time}"
-                        )
-                        if pending_time > PENDING_TIMEOUT:
+                        p_time = self.pending_nodes[node["id"]] - time.time()
+                        logger.info(f"{node['id']} is pending for {p_time}")
+                        if p_time > PENDING_TIMEOUT:
                             logger.error(
                                 f"pending timeout {PENDING_TIMEOUT} reached, "
                                 f"deleting instance {node['id']}")
@@ -610,9 +613,7 @@ class Gen2NodeProvider(NodeProvider):
         if self.cache_stopped_nodes:
             stopped_nodes = self._stopped_nodes(tags)
             stopped_nodes_ids = [n["id"] for n in stopped_nodes]
-            stopped_nodes_dict = {
-                n["id"]: n for n in stopped_nodes
-            }
+            stopped_nodes_dict = {n["id"]: n for n in stopped_nodes}
 
             if stopped_nodes:
                 cli_logger.print(
@@ -622,8 +623,7 @@ class Gen2NodeProvider(NodeProvider):
 
             for node in stopped_nodes:
                 logger.info(f"Starting instance {node['id']}")
-                self.ibm_vpc_client.create_instance_action(
-                    node["id"], "start")
+                self.ibm_vpc_client.create_instance_action(node["id"], "start")
 
             time.sleep(1)
 
