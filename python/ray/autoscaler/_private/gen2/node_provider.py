@@ -18,7 +18,6 @@ import concurrent.futures as cf
 import inspect
 import json
 import logging
-import os
 import re
 import socket
 import threading
@@ -135,10 +134,10 @@ class Gen2NodeProvider(NodeProvider):
     """
     def _load_tags(self):
         self.nodes_tags = {}
-        ray_cache = Path(Path.home(), Path('.ray'))
+        ray_cache = Path(Path.home(), Path(".ray"))
         ray_cache.mkdir(exist_ok=True)
 
-        self.tags_file = Path(ray_cache, Path('tags.json'))
+        self.tags_file = Path(ray_cache, Path("tags.json"))
         if self.tags_file.is_file():
             all_tags = json.loads(self.tags_file.read_text())
             tags = all_tags.get(self.cluster_name, {})
@@ -160,17 +159,17 @@ class Gen2NodeProvider(NodeProvider):
             # check if the current node is a head node
             name = socket.gethostname()
 
-            logger.info(f'Check if {name} is HEAD')
+            logger.info(f"Check if {name} is HEAD")
             if self._get_node_type(name) == NODE_KIND_HEAD:
 
-                logger.info(f'{name} is HEAD')
+                logger.info(f"{name} is HEAD")
                 node = self.ibm_vpc_client.list_instances(
-                    name=name).get_result()['instances']
+                    name=name).get_result()["instances"]
                 if node:
-                    logger.info(f'{name} is node {node} in vpc')
+                    logger.info(f"{name} is node {node} in vpc")
 
                     ray_bootstrap_config = Path(
-                        Path.home(), Path('ray_bootstrap_config.yaml'))
+                        Path.home(), Path("ray_bootstrap_config.yaml"))
                     config = json.loads(ray_bootstrap_config.read_text())
                     (runtime_hash, mounts_contents_hash) = hash_runtime_conf(
                         config["file_mounts"], None, config)
@@ -180,13 +179,13 @@ class Gen2NodeProvider(NodeProvider):
                         "ray-node-name": name,
                         "ray-node-status": "up-to-date",
                         "ray-cluster-name": self.cluster_name,
-                        "ray-user-node-type": config['head_node_type'],
+                        "ray-user-node-type": config["head_node_type"],
                         "ray-runtime-config": runtime_hash,
                         "ray-file-mounts-contents": mounts_contents_hash
                     }
 
-                    logger.info(f'Setting HEAD node tags {head_tags}')
-                    self.set_node_tags(node[0]['id'], head_tags)
+                    logger.info(f"Setting HEAD node tags {head_tags}")
+                    self.set_node_tags(node[0]["id"], head_tags)
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
@@ -225,21 +224,21 @@ class Gen2NodeProvider(NodeProvider):
 
         if not filters or list(filters.keys()) == [TAG_RAY_NODE_KIND]:
             result = self.ibm_vpc_client.list_instances().get_result()
-            instances = result['instances']
-            while result['next']:
-                start = result['next']['href'].split('start=')[1]
+            instances = result["instances"]
+            while result["next"]:
+                start = result["next"]["href"].split("start=")[1]
                 result = self.ibm_vpc_client.list_instances(
                     start=start).get_result()
-                instances.append(result['instances'])
+                instances.append(result["instances"])
 
             for instance in instances:
-                kind = self._get_node_type(instance['name'])
-                if kind and instance['id'] not in self.deleted_nodes:
+                kind = self._get_node_type(instance["name"])
+                if kind and instance["id"] not in self.deleted_nodes:
                     if not filters or kind == filters[TAG_RAY_NODE_KIND]:
                         nodes.append(instance)
                         with self.lock:
                             node_cache = self.nodes_tags.setdefault(
-                                instance['id'], {})
+                                instance["id"], {})
                             node_cache.update({
                                 TAG_RAY_CLUSTER_NAME: self.cluster_name,
                                 TAG_RAY_NODE_KIND: kind})
@@ -285,7 +284,7 @@ class Gen2NodeProvider(NodeProvider):
 
             # check if node scheduled for delete
             with self.lock:
-                if node['id'] in self.deleted_nodes:
+                if node["id"] in self.deleted_nodes:
                     logger.info(f"{node['id']} scheduled for delete")
                     continue
 
@@ -298,9 +297,9 @@ class Gen2NodeProvider(NodeProvider):
 
             # validate instance not hanging in pending state
             with self.lock:
-                if node['id'] in self.pending_nodes:
+                if node["id"] in self.pending_nodes:
                     if node["status"] != "running":
-                        pending_time = self.pending_nodes[node['id']
+                        pending_time = self.pending_nodes[node["id"]
                                                           ] - time.time()
                         logger.info(
                             f"{node['id']} is pending for {pending_time}"
@@ -309,9 +308,9 @@ class Gen2NodeProvider(NodeProvider):
                             logger.error(
                                 f"pending timeout {PENDING_TIMEOUT} reached, "
                                 f"deleting instance {node['id']}")
-                            self._delete_node(node['id'])
+                            self._delete_node(node["id"])
                     else:
-                        self.pending_nodes.pop(node['id'], None)
+                        self.pending_nodes.pop(node["id"], None)
 
             if self._get_node_type(node["name"]) == NODE_KIND_HEAD:
                 nic_id = node["network_interfaces"][0]["id"]
@@ -319,7 +318,7 @@ class Gen2NodeProvider(NodeProvider):
                 # find head node external ip
                 res = self.ibm_vpc_client.\
                     list_instance_network_interface_floating_ips(
-                        node['id'], nic_id).get_result()
+                        node["id"], nic_id).get_result()
 
                 floating_ips = res["floating_ips"]
                 if len(floating_ips) == 0:
@@ -349,7 +348,7 @@ class Gen2NodeProvider(NodeProvider):
             try:
                 node = self._get_cached_node(node_id)
                 return node["status"] not in ["running", "starting", "pending"]
-            except Exception as e:
+            except Exception:
                 return True
 
     @log_in_out
@@ -415,8 +414,8 @@ class Gen2NodeProvider(NodeProvider):
                 node_cache.update(tags)
 
             # dump inmemory cache to file
-            ray_cache = Path(Path.home(), Path('.ray'))
-            self.tags_file = Path(ray_cache, Path('tags.json'))
+            ray_cache = Path(Path.home(), Path(".ray"))
+            self.tags_file = Path(ray_cache, Path("tags.json"))
 
             all_tags = {}
             if self.tags_file.is_file():
@@ -593,7 +592,7 @@ class Gen2NodeProvider(NodeProvider):
 
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
         tags[TAG_RAY_NODE_NAME] = name
-        self.set_node_tags(instance['id'], tags)
+        self.set_node_tags(instance["id"], tags)
 
         # currently always creating public ip for head node
         if self._get_node_type(name) == NODE_KIND_HEAD:
@@ -669,7 +668,7 @@ class Gen2NodeProvider(NodeProvider):
             with self.lock:
                 # drop node tags
                 self.nodes_tags.pop(node_id, None)
-                self.pending_nodes.pop(node['id'], None)
+                self.pending_nodes.pop(node["id"], None)
                 self.deleted_nodes.append(node_id)
                 self.cached_nodes.pop(node_id, None)
 
