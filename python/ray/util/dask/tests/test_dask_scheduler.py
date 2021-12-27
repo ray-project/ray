@@ -86,7 +86,7 @@ def test_spread_scheduling(ray_start_cluster):
     cluster.add_node(num_cpus=4)
 
     def set_aggregate(x, y):
-        return set([x, y])
+        return {x, y}
 
     def get_ip():
         import time
