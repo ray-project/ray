@@ -43,13 +43,17 @@ tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
 starlette
+aiorwlock
 
 # Requirements for running tests
 pyarrow==4.0.1
 blist; platform_system != "Windows"
-azure-common
-azure-mgmt-resource
-msrestazure
+azure-cli-core==2.29.1
+azure-identity==1.7.0
+azure-mgmt-compute==23.1.0
+azure-mgmt-network==19.0.0
+azure-mgmt-resource==20.0.0
+msrestazure==0.6.4
 boto3
 cython >= 0.29.15
 dataclasses; python_version < '3.7'

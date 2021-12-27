@@ -8,7 +8,7 @@ import ray
 from ray.rllib.agents.pg import pg
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
-from ray.rllib.examples.remote_vector_env_with_custom_api import \
+from ray.rllib.examples.remote_base_env_with_custom_api import \
     NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv
 from ray import tune
 

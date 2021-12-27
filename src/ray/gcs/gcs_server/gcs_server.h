@@ -47,6 +47,9 @@ struct GcsServerConfig {
   std::string node_ip_address;
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
+  std::string log_dir;
+  // This includes the config list of raylet.
+  std::string raylet_config_list;
 };
 
 class GcsNodeManager;
@@ -83,6 +86,9 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
+  /// Generate the redis client options
+  RedisClientOptions GetRedisClientOptions() const;
+
   void DoStart(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs node manager.
@@ -108,9 +114,6 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
-
-  /// Initialize task info handler.
-  void InitTaskInfoHandler();
 
   /// Initialize stats handler.
   void InitStatsHandler();
@@ -141,14 +144,20 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
-  void CollectStats();
-
   /// Print debug info periodically.
-  void PrintDebugInfo();
+  std::string GetDebugState() const;
+
+  /// Dump the debug info to debug_state_gcs.txt.
+  void DumpDebugStateToFile() const;
+
+  /// Collect stats from each module.
+  void RecordMetrics() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
+
+  /// Get or connect to a redis server
+  std::shared_ptr<RedisClient> GetOrConnectRedis();
 
   /// Gcs server configuration.
   GcsServerConfig config_;
@@ -188,9 +197,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Task info handler and service.
-  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
-  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
@@ -216,6 +222,8 @@ class GcsServer {
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;

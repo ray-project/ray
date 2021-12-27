@@ -31,7 +31,7 @@ namespace ray {
 struct Mocker {
   static TaskSpecification GenActorCreationTask(
       const JobID &job_id, int max_restarts, bool detached, const std::string &name,
-      const rpc::Address &owner_address,
+      const std::string &ray_namespace, const rpc::Address &owner_address,
       std::unordered_map<std::string, double> required_resources =
           std::unordered_map<std::string, double>(),
       std::unordered_map<std::string, double> required_placement_resources =
@@ -44,45 +44,65 @@ struct Mocker {
     builder.SetCommonTaskSpec(task_id, name + ":" + function_descriptor->CallString(),
                               Language::PYTHON, function_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
-                              required_resources, required_placement_resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
-    builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts,
-                                     /*max_task_retries=*/0, {}, 1, detached, name);
+                              required_resources, required_placement_resources, "", 0);
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
+    builder.SetActorCreationTaskSpec(actor_id, {}, scheduling_strategy, max_restarts,
+                                     /*max_task_retries=*/0, {}, 1, detached, name,
+                                     ray_namespace);
     return builder.Build();
   }
 
-  static rpc::CreateActorRequest GenCreateActorRequest(const JobID &job_id,
-                                                       int max_restarts = 0,
-                                                       bool detached = false,
-                                                       const std::string name = "") {
+  static rpc::CreateActorRequest GenCreateActorRequest(
+      const JobID &job_id, int max_restarts = 0, bool detached = false,
+      const std::string &name = "", const std::string &ray_namespace = "") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
-    auto actor_creation_task_spec =
-        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
+    auto actor_creation_task_spec = GenActorCreationTask(
+        job_id, max_restarts, detached, name, ray_namespace, owner_address);
     rpc::CreateActorRequest request;
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
 
-  static rpc::RegisterActorRequest GenRegisterActorRequest(const JobID &job_id,
-                                                           int max_restarts = 0,
-                                                           bool detached = false,
-                                                           const std::string name = "") {
+  static rpc::RegisterActorRequest GenRegisterActorRequest(
+      const JobID &job_id, int max_restarts = 0, bool detached = false,
+      const std::string &name = "", const std::string &ray_namespace = "") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
-    auto actor_creation_task_spec =
-        GenActorCreationTask(job_id, max_restarts, detached, name, owner_address);
+    auto actor_creation_task_spec = GenActorCreationTask(
+        job_id, max_restarts, detached, name, ray_namespace, owner_address);
     rpc::RegisterActorRequest request;
     request.mutable_task_spec()->CopyFrom(actor_creation_task_spec.GetMessage());
     return request;
   }
 
+  static std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
+      const PlacementGroupID &placement_group_id,
+      absl::flat_hash_map<std::string, double> &unit_resource, int bundles_size = 1) {
+    std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+    for (int i = 0; i < bundles_size; i++) {
+      rpc::Bundle bundle;
+      auto mutable_bundle_id = bundle.mutable_bundle_id();
+      // The bundle index is start from 1.
+      mutable_bundle_id->set_bundle_index(i + 1);
+      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+      auto mutable_unit_resources = bundle.mutable_unit_resources();
+      for (auto &resource : unit_resource) {
+        mutable_unit_resources->insert({resource.first, resource.second});
+      }
+      bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle));
+    }
+    return bundle_specs;
+  }
+
+  // TODO(@clay4444): Remove this once we did the batch rpc request refactor.
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {
@@ -156,27 +176,6 @@ struct Mocker {
     actor_table_data->set_max_restarts(1);
     actor_table_data->set_num_restarts(0);
     return actor_table_data;
-  }
-
-  static std::shared_ptr<rpc::TaskTableData> GenTaskTableData(
-      const std::string &job_id, const std::string &task_id) {
-    auto task_table_data = std::make_shared<rpc::TaskTableData>();
-    rpc::Task task;
-    rpc::TaskSpec task_spec;
-    task_spec.set_job_id(job_id);
-    task_spec.set_task_id(task_id);
-    task.mutable_task_spec()->CopyFrom(task_spec);
-    task_table_data->mutable_task()->CopyFrom(task);
-    return task_table_data;
-  }
-
-  static std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(
-      const std::string &task_id, const std::string &node_id) {
-    auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
-    task_lease_data->set_task_id(task_id);
-    task_lease_data->set_node_manager_id(node_id);
-    task_lease_data->set_timeout(9999);
-    return task_lease_data;
   }
 
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(

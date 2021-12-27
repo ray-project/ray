@@ -314,49 +314,48 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         runner.step()
 
 
-# TODO(xwjiang): Uncomment this when pg caching is removed.
-# @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
-# def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
-#     """Removing a node in full cluster causes Trial to be requeued."""
-#     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
-#
-#     cluster = start_connected_emptyhead_cluster
-#     node = cluster.add_node(num_cpus=1)
-#     cluster.wait_for_nodes()
-#
-#     syncer_callback = _PerTrialSyncerCallback(
-#         lambda trial: trial.trainable_name == "__fake")
-#     runner = TrialRunner(
-#         BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
-#     kwargs = {
-#         "stopping_criterion": {
-#             "training_iteration": 5
-#         },
-#         "checkpoint_freq": 1,
-#         "max_failures": 1,
-#     }
-#
-#     if trainable_id == "__fake_durable":
-#         kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
-#
-#     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
-#     for t in trials:
-#         runner.add_trial(t)
-#
-#     runner.step()  # Start trial
-#     runner.step()  # Process result, dispatch save
-#     runner.step()  # Process save
-#
-#     running_trials = _get_running_trials(runner)
-#     assert len(running_trials) == 1
-#     assert _check_trial_running(running_trials[0])
-#     cluster.remove_node(node)
-#     cluster.wait_for_nodes()
-#     time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
-#     runner.step()  # Process result, dispatch save
-#     runner.step()  # Process save (detect error), requeue trial
-#     assert all(
-#         t.status == Trial.PENDING for t in trials), runner.debug_string()
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
+    """Removing a node in full cluster causes Trial to be requeued."""
+    os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
+    cluster = start_connected_emptyhead_cluster
+    node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    syncer_callback = _PerTrialSyncerCallback(
+        lambda trial: trial.trainable_name == "__fake")
+    runner = TrialRunner(
+        BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 5
+        },
+        "checkpoint_freq": 1,
+        "max_failures": 1,
+    }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
+
+    trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
+    for t in trials:
+        runner.add_trial(t)
+
+    runner.step()  # Start trial
+    runner.step()  # Process result, dispatch save
+    runner.step()  # Process save
+
+    running_trials = _get_running_trials(runner)
+    assert len(running_trials) == 1
+    assert _check_trial_running(running_trials[0])
+    cluster.remove_node(node)
+    cluster.wait_for_nodes()
+    time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
+    runner.step()  # Process result, dispatch save
+    runner.step()  # Process save (detect error), requeue trial
+    assert all(
+        t.status == Trial.PENDING for t in trials), runner.debug_string()
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake_remote", "__fake_durable"])

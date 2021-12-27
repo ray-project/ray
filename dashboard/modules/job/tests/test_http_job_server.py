@@ -13,16 +13,22 @@ from ray._private.test_utils import (format_web_url, wait_for_condition,
 from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
 from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
                                            parse_cluster_info)
+from unittest.mock import patch
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(scope="module")
-def job_sdk_client():
+def headers():
+    return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+
+
+@pytest.fixture(scope="module")
+def job_sdk_client(headers):
     with _ray_start(include_dashboard=True, num_cpus=1) as address_info:
         address = address_info["webui_url"]
         assert wait_until_server_available(address)
-        yield JobSubmissionClient(format_web_url(address))
+        yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -68,7 +74,7 @@ def working_dir_option(request):
             test_file = module_path / "test.py"
             with test_file.open(mode="w") as f:
                 f.write("def run_test():\n")
-                f.write("    return 'Hello from test_module!'\n")
+                f.write("    return 'Hello from test_module!'\n")  # noqa: Q000
 
             init_file = module_path / "__init__.py"
             with init_file.open(mode="w") as f:
@@ -285,6 +291,27 @@ def test_version_endpoint(job_sdk_client):
     }
 
 
+def test_request_headers(job_sdk_client):
+    client = job_sdk_client
+
+    with patch("requests.request") as mock_request:
+        _ = client._do_request(
+            "POST",
+            "/api/jobs/",
+            json_data={"entrypoint": "ls"},
+        )
+        mock_request.assert_called_with(
+            "POST",
+            "http://127.0.0.1:8265/api/jobs/",
+            cookies=None,
+            data=None,
+            json={"entrypoint": "ls"},
+            headers={
+                "Connection": "keep-alive",
+                "Authorization": "TOK:<MY_TOKEN>"
+            })
+
+
 @pytest.mark.parametrize("address", [
     "http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1",
     "fake_module://127.0.0.1"
@@ -294,13 +321,43 @@ def test_parse_cluster_info(address: str):
         assert parse_cluster_info(address, False) == ClusterInfo(
             address="http" + address[address.index("://"):],
             cookies=None,
-            metadata=None)
+            metadata=None,
+            headers=None)
     elif address.startswith("http") or address.startswith("https"):
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None)
+            address=address, cookies=None, metadata=None, headers=None)
     else:
         with pytest.raises(RuntimeError):
             parse_cluster_info(address, False)
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs(job_sdk_client):
+    client = job_sdk_client
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+import time
+for i in range(100):
+    print("Hello", i)
+    time.sleep(0.1)
+"""
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as f:
+            f.write(driver_script)
+
+        job_id = client.submit_job(
+            entrypoint="python test_script.py",
+            runtime_env={"working_dir": tmp_dir})
+
+        i = 0
+        async for lines in client.tail_job_logs(job_id):
+            print(lines, end="")
+            for line in lines.strip().split("\n"):
+                assert line.split(" ") == ["Hello", str(i)]
+                i += 1
+
+        wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
 
 if __name__ == "__main__":

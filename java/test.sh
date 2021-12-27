@@ -64,7 +64,7 @@ echo "Build java maven deps."
 bazel build //java:gen_maven_deps
 
 echo "Build test jar."
-bazel build //java:all_tests_deploy.jar
+bazel build //java:all_tests_shaded.jar
 
 java/generate_jni_header_files.sh
 
@@ -91,7 +91,7 @@ while true; do
   # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
   # TestNG will exit with code 2. And bazel treats it as test failure.
   # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
-  run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+  run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
   echo Finished cluster mode test round $round
   date
@@ -103,7 +103,7 @@ done
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
-run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
@@ -112,8 +112,8 @@ case "${OSTYPE}" in
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="$ip"
-RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
- -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
+RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_shaded.jar -Dray.address="$ip:6379"\
+ -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_shaded.jar" io.ray.test.MultiDriverTest
 ray stop
 
 echo "Running documentation demo code."
@@ -122,7 +122,7 @@ for file in "$docdemo_path"*.java; do
   file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar -Dray.job.num-java-workers-per-process=1\
+  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.job.num-java-workers-per-process=1\
    -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
 done
 popd
@@ -136,7 +136,7 @@ popd
 
 pushd "$ROOT_DIR"
 echo "Running performance test."
-run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar io.ray.performancetest.test.ActorPerformanceTestCase1
+run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar io.ray.performancetest.test.ActorPerformanceTestCase1
 # The performance process may be killed by run_timeout, so clear ray here.
 ray stop
 popd

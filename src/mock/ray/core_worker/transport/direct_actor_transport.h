@@ -17,7 +17,8 @@ namespace core {
 class MockCoreWorkerDirectActorTaskSubmitterInterface
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  MOCK_METHOD(void, AddActorQueueIfNotExists, (const ActorID &actor_id), (override));
+  MOCK_METHOD(void, AddActorQueueIfNotExists,
+              (const ActorID &actor_id, int32_t max_pending_calls), (override));
   MOCK_METHOD(void, ConnectActor,
               (const ActorID &actor_id, const rpc::Address &address,
                int64_t num_restarts),

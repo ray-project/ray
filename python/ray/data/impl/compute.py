@@ -1,9 +1,10 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockPartition
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    BlockPartition, BlockExecStats
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -23,26 +24,31 @@ class ComputeStrategy:
 def _map_block_split(block: Block, fn: Any,
                      input_files: List[str]) -> BlockPartition:
     output = []
+    stats = BlockExecStats.builder()
     for new_block in fn(block):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
             schema=accessor.schema(),
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=stats.build())
         owner = DatasetContext.get_current().block_owner
         output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
     return output
 
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
-    builder = DelegatingArrowBlockBuilder()
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(input_files=input_files)
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build())
 
 
 class TaskPool(ComputeStrategy):

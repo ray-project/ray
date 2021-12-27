@@ -41,19 +41,19 @@ class PolicyMap(dict):
         """Initializes a PolicyMap instance.
 
         Args:
-            worker_index (int): The worker index of the RolloutWorker this map
+            worker_index: The worker index of the RolloutWorker this map
                 resides in.
-            num_workers (int): The total number of remote workers in the
+            num_workers: The total number of remote workers in the
                 WorkerSet to which this map's RolloutWorker belongs to.
-            capacity (int): The maximum number of policies to hold in memory.
+            capacity: The maximum number of policies to hold in memory.
                 The least used ones are written to disk/S3 and retrieved
                 when needed.
-            path (str): The path to store the policy pickle files to. Files
+            path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config (TrainerConfigDict): The Trainer's base config dict.
-            session_creator (Optional[Callable[[], tf1.Session]): An optional
+            policy_config: The Trainer's base config dict.
+            session_creator: An optional
                 tf1.Session creation callable.
-            seed (int): An optional seed (used to seed tf policies).
+            seed: An optional seed (used to seed tf policies).
         """
         super().__init__()
 
@@ -93,18 +93,18 @@ class PolicyMap(dict):
         """Creates a new policy and stores it to the cache.
 
         Args:
-            policy_id (PolicyID): The policy ID. This is the key under which
+            policy_id: The policy ID. This is the key under which
                 the created policy will be stored in this map.
-            policy_cls (Type[Policy]): The (original) policy class to use.
+            policy_cls: The (original) policy class to use.
                 This may still be altered in case tf-eager (and tracing)
                 is used.
-            observation_space (gym.Space): The observation space of the
+            observation_space: The observation space of the
                 policy.
-            action_space (gym.Space): The action space of the policy.
-            config_override (PartialTrainerConfigDict): The config override
+            action_space: The action space of the policy.
+            config_override: The config override
                 dict for this policy. This is the partial dict provided by
                 the user.
-            merged_config (TrainerConfigDict): The entire config (merged
+            merged_config: The entire config (merged
                 default config + `config_override`).
         """
         framework = merged_config.get("framework", "tf")

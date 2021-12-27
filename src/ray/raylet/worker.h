@@ -115,6 +115,7 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
   FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
   FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 

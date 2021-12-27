@@ -6,6 +6,7 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.misc import SlimFC, normc_initializer as \
     torch_normc_initializer
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -62,10 +63,14 @@ class KerasBatchNormModel(TFModelV2):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
+        if isinstance(input_dict, SampleBatch):
+            is_training = input_dict.is_training
+        else:
+            is_training = input_dict["is_training"]
         # Have to batch the is_training flag (B=1).
         out, self._value_out = self.base_model(
             [input_dict["obs"],
-             tf.expand_dims(input_dict["is_training"], 0)])
+             tf.expand_dims(is_training, 0)])
         return out, []
 
     @override(ModelV2)
@@ -100,6 +105,10 @@ class BatchNormModel(TFModelV2):
         last_layer = input_dict["obs"]
         hiddens = [256, 256]
         with tf1.variable_scope("model", reuse=tf1.AUTO_REUSE):
+            if isinstance(input_dict, SampleBatch):
+                is_training = input_dict.is_training
+            else:
+                is_training = input_dict["is_training"]
             for i, size in enumerate(hiddens):
                 last_layer = tf1.layers.dense(
                     last_layer,
@@ -109,9 +118,7 @@ class BatchNormModel(TFModelV2):
                     name="fc{}".format(i))
                 # Add a batch norm layer
                 last_layer = tf1.layers.batch_normalization(
-                    last_layer,
-                    training=input_dict["is_training"],
-                    name="bn_{}".format(i))
+                    last_layer, training=is_training, name="bn_{}".format(i))
 
             output = tf1.layers.dense(
                 last_layer,
@@ -194,10 +201,13 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
+        if isinstance(input_dict, SampleBatch):
+            is_training = bool(input_dict.is_training)
+        else:
+            is_training = bool(input_dict.get("is_training", False))
         # Set the correct train-mode for our hidden module (only important
         # b/c we have some batch-norm layers).
-        self._hidden_layers.train(
-            mode=bool(input_dict.get("is_training", False)))
+        self._hidden_layers.train(mode=is_training)
         self._hidden_out = self._hidden_layers(input_dict["obs"])
         logits = self._logits(self._hidden_out)
         return logits, []
