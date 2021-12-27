@@ -194,7 +194,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_user_setup_function():
     script = """
 import ray
@@ -218,7 +217,6 @@ print("local", ray._private.runtime_env.VAR)
 
 
 # https://github.com/ray-project/ray/issues/17842
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_disable_cuda_devices():
     script = """
 import ray
