@@ -45,16 +45,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "rust_worker",
-    srcs = glob(["cpp/worker.cc"]),
-    deps = [
-      "//cpp:ray_api",
-      ":ray_rs_c_linked",
-    ],
-    linkopts = ["-fuse-ld=lld"],
-)
-
 cc_library(
     name = "ray_rs_c_linked",
     srcs = [

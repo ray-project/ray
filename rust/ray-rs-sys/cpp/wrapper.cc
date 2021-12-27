@@ -15,12 +15,23 @@ rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id) {
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   std::vector<ObjectID> ids;
   ids.push_back(*id);
-  ::ray::Status status = core_worker.Get(ids, -1, &results);
+  ::ray::Status status = core_worker.Get(ids, 6000, &results);
 
   rust::Vec<uint8_t> buf;
   size_t size = results[0]->GetData()->Size();
+
+  RAY_LOG(DEBUG) << "Get Size" << size;
   buf.reserve(size);
-  memcpy(buf.data(), results[0]->GetData()->Data(), size);
+
+  // Unfortunately, we can't resize the vector and do a memcpy...
+  // memcpy(buf.data(), results[0]->GetData()->Data(), size);
+
+  uint8_t* ray_buf = results[0]->GetData()->Data();
+
+  size_t i;
+  for (i = 0; i < size; i++) {
+    buf.push_back(ray_buf[i]);
+  }
   return buf;
 }
 

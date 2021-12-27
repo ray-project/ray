@@ -102,9 +102,9 @@ impl ArgsBuffer {
 //     vec.push((data, size as u64));
 // }
 
-fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
-    let args = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
-    let ret = GLOBAL_FUNCTION_MAP.lock().unwrap().get(&fn_name.as_bytes().to_vec()).unwrap()(args);
+pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
+    let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
+    let ret = GLOBAL_FUNCTION_MAP.lock().unwrap().get(&fn_name.as_bytes().to_vec()).unwrap()(args_buffer);
     ret.destroy_into_vec()
 }
 
@@ -282,10 +282,13 @@ macro_rules! serialize {
 }
 
 lazy_static::lazy_static! {
-    static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> =
+    static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
+        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
         Mutex::new([
-            ("ray_rs_sys::add_two_vecs".as_bytes().to_vec(), add_two_vecs.get_invoker()),
-        ].iter().cloned().collect());
+            (fn_name.as_bytes().to_vec(), add_two_vecs.get_invoker()),
+        ].iter().cloned().collect::<HashMap<_,_>>())
+    };
+
 }
 
 

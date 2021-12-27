@@ -46,10 +46,10 @@ std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& a
   TaskOptions options{};
   std::vector<rpc::ObjectReference> return_refs;
   BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
-  auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(static_cast<std::string>(name));
+  auto function_descriptor = FunctionDescriptorBuilder::BuildRust(static_cast<std::string>(name));
   auto ray_args = TransformArgs(args);
   return_refs =
-      core_worker.SubmitTask(RayFunction(ray::Language::CPP, function_descriptor), ray_args, options, 1,
+      core_worker.SubmitTask(RayFunction(ray::Language::RUST, function_descriptor), ray_args, options, 1,
                              false, std::move(bundle_id), true, "");
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
@@ -110,7 +110,6 @@ Status ExecuteTask(
 
   rust::Vec<uint8_t> ret = get_execute_result(arg_ptrs, arg_sizes, func_name);
 
-
   // if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
   //   std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
   //   current_actor_ = data;
@@ -146,9 +145,13 @@ Status ExecuteTask(
   results->resize(return_ids.size(), nullptr);
   // if (task_type != ray::TaskType::ACTOR_CREATION_TASK) {
   size_t data_size = ret.size();
+
+  RAY_LOG(DEBUG) << "DATA SIZE" << data_size;
+  
   auto &result_id = return_ids[0];
   auto result_ptr = &(*results)[0];
   int64_t task_output_inlined_bytes = 0;
+
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
       result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
       task_output_inlined_bytes, result_ptr));

@@ -2,17 +2,27 @@
 mod test {
     use uniffi::RustBuffer;
     use rmp_serde;
-    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs, get};
+    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs, get, get_execute_result};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
+    const VEC_SIZE: usize = 100_000;
     #[test]
-    fn test_init_submit_execute() {
+    fn test_init_submit_execute_shutdown() {
         std::thread::sleep(std::time::Duration::from_millis(2000));
         InitRust();
+        let num_jobs = 16;
+
+        println!("{}", IsInitialized());
         let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
             ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
-        let ret = add_two_vecs.remote(a, b);
-        println!("{:?}", get::<Vec<u64>>(ret));
+
+        let ids: Vec<_> = (0..num_jobs).map(|_| {
+            add_two_vecs.remote(a, b)
+        }).collect();
+
+        for i in 0..num_jobs {
+            println!("Job {}: {:?}", i, get::<Vec<u64>>(ids[i]));
+        }
         Shutdown();
     }
 
@@ -35,6 +45,16 @@ mod test {
             &add_two_vecs.ray_call(args_ptrs).destroy_into_vec()
         ).unwrap();
         assert_eq!(ret, (0u64..200).step_by(2).collect::<Vec<u64>>());
+
+        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
+        let ret_ffi: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
+            &get_execute_result(
+                vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],
+                vec![a_ser.len() as u64, b_ser.len() as u64],
+                &fn_name,
+            )
+        ).unwrap();
+        assert_eq!(ret_ffi, (0u64..200).step_by(2).collect::<Vec<u64>>());
 
         let args_ptrs3 = RustBuffer::from_vec(rmp_serde::to_vec(
             &(
@@ -61,9 +81,6 @@ mod test {
         // Init();
         // // InitAsLocal();
         // println!("{}", IsInitialized());
-        //
-        // let_cxx_string!(name = "my_func");
-        // Submit(&name, &Vec::new());
         //
         // println!("\nPutting Uint64!");
         // let x = PutUint64(1u64 << 20);

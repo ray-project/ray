@@ -247,7 +247,7 @@ Process WorkerPool::StartWorkerProcess(
         code_search_path = code_search_path_str;
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        } else if (language == Language::CPP) {
+        } else if (language == Language::CPP || language == Language::RUST) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
@@ -396,8 +396,11 @@ Process WorkerPool::StartWorkerProcess(
     env.insert({"SPT_NOENV", "1"});
   }
 
-  if (language == Language::PYTHON || language == Language::CPP || language == Language::RUST) {
+  if (language == Language::PYTHON) {
     worker_command_args.push_back("--startup-token=" +
+                                  std::to_string(worker_startup_token_counter_));
+  } else if (language == Language::CPP || language == Language::RUST) {
+    worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
   }
 
