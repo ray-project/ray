@@ -243,6 +243,7 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
         raise ValueError(
             f"Node id {node_id} and node ip {node_ip} are given at the same time. Please provide only one of them."
         )
+    gcs_addr = services.get_ray_address_to_use_or_die()
     url = _get_dashboard_url()
     nodes = []
     if node_id:
@@ -253,11 +254,18 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
         nodes = json.loads(
             requests.get(f"{url}/nodes?view=details").text)["data"]["clients"]
     parsed_node_info = []
+    state = GlobalState()
+    state._initialize_global_state(
+        GcsClientOptions.from_redis_address(
+            gcs_addr, ray_constants.REDIS_DEFAULT_PASSWORD))
+    resources = state._available_resources_per_node()
     for node in nodes:
+        print(node)
         info = {
             "id": node["raylet"]["nodeId"],
             "ip": node["ip"],
-            "state": node["raylet"]["state"]
+            "state": node["raylet"]["state"],
+            "available_resources": resources[node["raylet"]["nodeId"]]
         }
         if debug:
             info["logUrl"] = node["logUrl"]
