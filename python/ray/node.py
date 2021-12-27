@@ -224,8 +224,8 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-            ray_params.gcs_server_port = self._get_cached_port(
-                "gcs_server_port", default_port=ray_params.gcs_server_port)
+            if ray_params.gcs_server_port is None:
+                ray_params.gcs_server_port = self._get_unused_port()
             self._gcs_server_port = ray_params.gcs_server_port
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
@@ -1020,14 +1020,6 @@ class Node:
 
     def _write_cluster_info_to_kv(self):
         client = self.get_gcs_client()
-
-        # Job counter.
-        # TODO(mwtian): Fix job counter usage in C++ to support GCS KV.
-        client.internal_kv_put(
-            b"JobCounter",
-            int(0).to_bytes(8, "little"),
-            overwrite=True,
-            namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
         # Version info.
         ray_version, python_version = self._compute_version_info()

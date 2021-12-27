@@ -693,6 +693,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
 
+        # Wait for the Redis server to be started. And throw an exception if we
+        # can't connect to it.
+        # TODO(mwtian): wait only when using Redis to bootstrap.
+        services.wait_for_redis_to_start(
+            redis_address_ip, redis_address_port, password=redis_password)
+
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
