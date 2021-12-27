@@ -2003,7 +2003,7 @@ Dict[str, List[str]]]): The names of the columns
                                            isinstance(feature_columns[0],
                                                       (list, tuple)))
 
-       # If an empty collection is passed in, treat it the same as None
+        # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
             feature_columns = None
 
