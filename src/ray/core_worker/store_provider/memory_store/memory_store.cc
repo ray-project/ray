@@ -199,7 +199,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
     object_entry = object_allocator_(object, object_id);
   } else {
     object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
-                                               object.GetNestedIds(), true);
+                                               object.GetNestedRefs(), true);
   }
 
   bool stored_in_direct_memory = true;
