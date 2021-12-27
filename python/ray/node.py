@@ -463,7 +463,7 @@ class Node:
     def gcs_address(self):
         """Get the gcs address."""
         if use_gcs_for_bootstrap():
-            assert self._gcs_address is not None, "Gcs address it not set"
+            assert self._gcs_address is not None, "Gcs address is not set"
         else:
             # Always get the address from Redis because GCS address may change
             # after restarting. This will be removed later.
