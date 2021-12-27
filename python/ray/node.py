@@ -303,13 +303,13 @@ class Node:
         if version_info != true_version_info:
             node_ip_address = ray._private.services.get_node_ip_address()
             error_message = (
-                    "Version mismatch: The cluster was started with:\n"
-                    "    Ray: " + true_version_info[0] + "\n"
-                    "    Python: " + true_version_info[1] + "\n"
-                    "This process on node " + node_ip_address +
-                    " was started with:" + "\n"
-                    "    Ray: " + version_info[0] + "\n"
-                    "    Python: " + version_info[1] + "\n")
+                "Version mismatch: The cluster was started with:\n"
+                "    Ray: " + true_version_info[0] + "\n"
+                "    Python: " + true_version_info[1] + "\n"
+                "This process on node " + node_ip_address +
+                " was started with:" + "\n"
+                "    Ray: " + version_info[0] + "\n"
+                "    Python: " + version_info[1] + "\n")
             if version_info[:2] != true_version_info[:2]:
                 raise RuntimeError(error_message)
             else:
