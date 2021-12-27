@@ -196,7 +196,7 @@ Windows Support
 ---------------
 
 Windows support is currently in beta. Please submit any issues you encounter on
-`Github <https://github.com/ray-project/ray/issues/>`_.
+`GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
 ----------------------------
