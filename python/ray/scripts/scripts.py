@@ -30,7 +30,7 @@ from ray.autoscaler._private.fake_multi_node.node_provider import \
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.internal.internal_api import memory_summary
+from ray.internal.internal_api import memory_summary, ray_log, ray_nodes, ray_actors, ray_actor_log
 from ray.autoscaler._private.cli_logger import (add_click_logging_options,
                                                 cli_logger, cf)
 from ray.core.generated import gcs_service_pb2
@@ -1561,6 +1561,69 @@ def local_dump(stream: bool = False,
         tempfile=tempfile)
 
 
+@cli.command(hidden=True)
+@click.option(
+    "--ip-address",
+    required=False,
+    type=str,
+    default=None,
+    help="The ip address of the log")
+@click.option(
+    "--node-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The unique id of the node.")
+@click.option(
+    "--actor-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The unique id of the node.")
+@click.option(
+    "--log-file",
+    "-f",
+    required=False,
+    type=str,
+    default=None,
+    help="The name of the log file.")
+def log(ip_address: str, node_id: str, actor_id: str, log_file: str):
+    if actor_id:
+        print(ray_actor_log(actor_id))
+    else:
+        print(ray_log(ip_address, node_id, log_file))
+
+
+@cli.command(hidden=True)
+@click.option(
+    "--ip-address",
+    required=False,
+    type=str,
+    default=None,
+    help="The ip address of the log")
+@click.option(
+    "--node-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The unique id of the node.")
+def nodes(ip_address, node_id):
+    from pprint import pprint
+    pprint(ray_nodes(node_id, ip_address))
+
+
+@cli.command(hidden=True)
+@click.option(
+    "--actor-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The ip address of the log")
+def actors(actor_id):
+    from pprint import pprint
+    pprint(ray_actors(actor_id))
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=False, type=str)
 @click.option(
@@ -1925,6 +1988,9 @@ cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
+cli.add_command(log)
+cli.add_command(nodes)
+cli.add_command(actors)
 add_command_alias(job_cli_group, name="job", hidden=True)
 
 try:
