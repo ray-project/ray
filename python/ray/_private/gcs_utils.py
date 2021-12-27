@@ -100,21 +100,17 @@ def use_gcs_for_bootstrap():
 
 
 def get_gcs_address_from_redis(redis) -> str:
-    """Reads GCS address from redis, with up to 10 retries.
+    """Reads GCS address from redis.
 
     Args:
         redis: Redis client to fetch GCS address.
     Returns:
         GCS address string.
     """
-    for i in range(0, 10):
-        gcs_address = redis.get("GcsServerAddress")
-        if gcs_address is None:
-            time.sleep(1)
-            continue
-        return gcs_address.decode()
-
-    raise RuntimeError("Failed to look up gcs address through redis")
+    gcs_address = redis.get("GcsServerAddress")
+    if gcs_address is None:
+        raise RuntimeError("Failed to look up gcs address through redis")
+    return gcs_address.decode()
 
 
 def create_gcs_channel(address: str, aio=False):
