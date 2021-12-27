@@ -6,13 +6,9 @@ import static org.testng.Assert.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 public class PlatformTest {
-
-  private static final Logger LOG = LoggerFactory.getLogger(PlatformTest.class);
 
   @Test
   public void testArrayEquals() {
@@ -53,7 +49,7 @@ public class PlatformTest {
     }
   }
 
-  @Test(enabled = false)
+  @Test(enabled = true)
   public void benchmarkWrapDirectBuffer() {
     long address = 0;
     try {
@@ -71,9 +67,7 @@ public class PlatformTest {
         }
         long duration = System.nanoTime() - startTime;
         buffer.putLong(0, 1);
-        if (LOG.isInfoEnabled()) {
-          LOG.info("wrapDirectBuffer costs " + duration + "ns " + duration / 1000_000 + "ms\n");
-        }
+        System.out.printf("wrapDirectBuffer costs %sns %sms\n", duration, duration / 1000_000);
       }
       {
         for (int i = 0; i < nums; i++) {
@@ -85,9 +79,7 @@ public class PlatformTest {
         }
         long duration = System.nanoTime() - startTime;
         buffer.putLong(0, 1);
-        if (LOG.isInfoEnabled()) {
-          LOG.info("wrap into buffer costs " + duration + "ns " + duration / 1000_000 + "ms\n");
-        }
+        System.out.printf("wrap into buffer costs %sns %sms\n", duration, duration / 1000_000);
       }
       {
         byte[] arr = new byte[32];
@@ -101,9 +93,7 @@ public class PlatformTest {
         }
         long duration = System.nanoTime() - startTime;
         buf.putLong(0, 1);
-        if (LOG.isInfoEnabled()) {
-          LOG.info("ByteBuffer.wrap " + duration + "ns " + duration / 1000_000 + "ms\n");
-        }
+        System.out.printf("ByteBuffer.wrap %s ns %s ms\n", duration, duration / 1000_000);
       }
     } finally {
       Platform.freeMemory(address);
