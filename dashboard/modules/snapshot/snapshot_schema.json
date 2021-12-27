@@ -135,7 +135,7 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": "string"
+                            "type": ["string", "null"]
                           }
                         },
                         "required": [
@@ -196,7 +196,7 @@
                       "type": "string"
                     },
                     "version": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     }
                   },
                   "required": [

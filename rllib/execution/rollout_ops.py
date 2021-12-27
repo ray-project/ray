@@ -2,6 +2,7 @@ import logging
 from typing import List, Tuple
 import time
 
+import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -17,6 +18,19 @@ from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
+
+
+def synchronous_parallel_sample(workers: WorkerSet) -> List[SampleBatch]:
+    # No remote workers in the set -> Use local worker for collecting
+    # samples.
+    if not workers.remote_workers():
+        return [workers.local_worker().sample()]
+
+    # Loop over remote workers' `sample()` method in parallel.
+    sample_batches = ray.get(
+        [r.sample.remote() for r in workers.remote_workers()])
+
+    return sample_batches
 
 
 def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",

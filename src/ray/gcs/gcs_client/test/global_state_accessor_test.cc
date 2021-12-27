@@ -54,13 +54,11 @@ class GlobalStateAccessorTest : public ::testing::Test {
     // Create GCS client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password);
-    gcs_client_.reset(new gcs::GcsClient(options));
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     // Create global state.
-    std::stringstream address;
-    address << config.redis_address << ":" << config.redis_port;
-    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), ""));
+    global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK(global_state_->Connect());
   }
 

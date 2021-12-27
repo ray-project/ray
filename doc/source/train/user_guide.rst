@@ -317,7 +317,7 @@ Log directories are exposed through the following attributes:
 
 Logs will be written by:
 
-1. :ref:`Logging Callbacks <train-logging-callbacks>`
+1. :ref:`Callbacks <train-callbacks>`
 2. :ref:`Checkpoints <train-checkpointing>`
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
@@ -326,6 +326,11 @@ Logs will be written by:
 
 Logging, Monitoring, and Callbacks
 ----------------------------------
+
+Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
+and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, printing, etc.).
+You can use either the :ref:`built-in callbacks <train-builtin-callbacks>` that Ray Train provides,
+or implement a :ref:`custom callback <train-custom-callbacks>` for your use case.
 
 Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -393,9 +398,64 @@ Callbacks
 ~~~~~~~~~
 
 You may want to plug in your training code with your favorite experiment management framework.
-Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results.
+Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
+(the values passed into ``train.report(...)``).
 
-You can plug all of these into Ray Train with the following interface:
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+
+.. _train-builtin-callbacks:
+
+Built-in Callbacks
+++++++++++++++++++
+
+The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
+
+1. :ref:`train-api-json-logger-callback`
+2. :ref:`train-api-tbx-logger-callback`
+3. :ref:`train-api-mlflow-logger-callback`
+
+Example: Logging to MLflow and Tensorboard
+++++++++++++++++++++++++++++++++++++++++++
+
+**Step 1: Install the necessary packages**
+
+.. code-block:: bash
+
+    $ pip install mlflow
+    $ pip install tensorboardX
+
+**Step 2: Run the following training script**
+
+.. literalinclude:: /../../python/ray/train/examples/mlflow_simple_example.py
+   :language: python
+
+**Step 3: Visualize the logs**
+
+.. code-block:: bash
+
+    # Navigate to the run directory of the trainer.
+    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
+    $ cd <TRAINER_RUN_DIR>
+
+    # View the MLflow UI.
+    $ mlflow ui
+
+    # View the tensorboard UI.
+    $ tensorboard --logdir .
+
+
+.. _train-custom-callbacks:
+
+Custom Callbacks
+++++++++++++++++
+
+If the provided callbacks do not cover your desired integrations or use-cases,
+you may always implement a custom callback by subclassing ``TrainingCallback``. If
+the callback is general enough, please feel welcome to `add it <https://docs
+.ray.io/en/master/getting-involved.html>`_ to the ``ray``
+`repository <https://github.com/ray-project/ray>`_.
+
+A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
@@ -421,44 +481,6 @@ You can plug all of these into Ray Train with the following interface:
     # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
-
-.. Here is a list of callbacks that are supported by Ray Train:
-
-.. * JsonLoggerCallback
-.. * TBXLoggerCallback
-.. * WandbCallback
-.. * MlflowCallback
-.. * CSVCallback
-
-.. _train-logging-callbacks:
-
-Logging Callbacks
-+++++++++++++++++
-
-The following ``TrainingCallback``\s are available and will write to a file within the
-:ref:`log directory <train-log-dir>` of each training run.
-
-1. :ref:`train-api-json-logger-callback`
-2. :ref:`train-api-tbx-logger-callback`
-
-Custom Callbacks
-++++++++++++++++
-
-If the provided callbacks do not cover your desired integrations or use-cases,
-you may always implement a custom callback by subclassing ``TrainingCallback``. If
-the callback is general enough, please feel welcome to `add it <https://docs
-.ray.io/en/master/getting-involved.html>`_ to the ``ray``
-`repository <https://github.com/ray-project/ray>`_.
-
-A simple example for creating a callback that will print out results:
-
-.. code-block:: python
-
-    from ray.train import TrainingCallback
-
-    class PrintingCallback(TrainingCallback):
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
 
 
 ..
