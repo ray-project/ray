@@ -43,9 +43,8 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDe
  * Method:    nativeSerialize
  * Signature: ([B[B)[B
  */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(JNIEnv *, jclass, jbyteArray,
-                                                            jbyteArray);
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
+    JNIEnv *, jclass, jbyteArray, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
