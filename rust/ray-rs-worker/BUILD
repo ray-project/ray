@@ -8,5 +8,7 @@ cc_binary(
     deps = [
       "//cpp:ray_api",
       "//rust/ray-rs-sys:ray_rs_c",
+      "//rust/ray-rs-sys:bridge/include",
+      "@cxx.rs//:core",
     ],
 )

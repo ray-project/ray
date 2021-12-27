@@ -16,8 +16,10 @@
 #include "rust/ray-rs-sys/cpp/tasks.h"
 
 int main(int argc, char **argv) {
-  // ray::StartWorkerWithCallback(ExecuteTask, argc, argv);
-  ray::Init();
-  ray::Shutdown();
+  RAY_LOG(INFO) << "RUST default worker started.";
+  ray::SetConfigToWorker();
+  ray::RayConfig config;
+  ray::Init(config, ray::internal::ExecuteTask, argc, argv);
+  ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
   return 0;
 }

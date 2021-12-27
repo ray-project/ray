@@ -21,11 +21,12 @@ rust_library(
     proc_macro_deps = [crate("paste")],
     deps = [
         ":bridge",
-        # ":ray_rs_c",
         "@cxx.rs//:cxx",
         "//:core_worker_lib",
         "//cpp:ray_api",
+        ":ray_rs_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
+    visibility = ["//visibility:public"],
 )
 
 rust_cxx_bridge(
@@ -41,9 +42,8 @@ rust_cxx_bridge(
 cc_library(
     name = "ray_rs_c",
     srcs = [
-      "cpp/tasks.h",
+      "cpp/tasks.cc",
     ],
-    copts = ["-std=c++17"],
     deps = [
         ":bridge/include",
         "//:core_worker_lib",
@@ -51,6 +51,7 @@ cc_library(
         "@cxx.rs//:core",
         ":ray_rs_include",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

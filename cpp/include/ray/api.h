@@ -39,6 +39,8 @@ void Init(ray::RayConfig &config, core::CoreWorkerOptions::TaskExecutionCallback
 
 void StartWorkerWithCallback(core::CoreWorkerOptions::TaskExecutionCallback callback, int argc, char **argv);
 
+void SetConfigToWorker();
+
 /// Initialize Ray runtime with config.
 void Init(ray::RayConfig &config);
 

@@ -24,6 +24,10 @@ namespace ray {
 
 static bool is_init_;
 
+void SetConfigToWorker() {
+  ray::internal::ConfigInternal::Instance().worker_type = ray::core::WorkerType::WORKER;
+}
+
 bool ShouldInitWithCallback() {
   return !(internal::ConfigInternal::Instance().run_mode == internal::RunMode::SINGLE_PROCESS
     || core::CoreWorkerProcess::IsInitialized());

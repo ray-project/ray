@@ -7,11 +7,14 @@ mod test {
 
     #[test]
     fn test_init_submit_execute() {
-        InitRust();
-        let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
-            ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
-        add_two_vecs.remote(a, b);
-        Shutdown();
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        // InitRust();
+        // let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
+        //     ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
+        // let ret = add_two_vecs.remote(a, b);
+        //
+        //
+        // Shutdown();
     }
 
     #[test]
@@ -23,10 +26,10 @@ mod test {
         let c_ser = rmp_serde::to_vec(&c).unwrap();
 
         let args_ptrs = RustBuffer::from_vec(rmp_serde::to_vec(
-            &vec![
-                (a_ser.as_ptr() as u64, b_ser.len()),
-                (b_ser.as_ptr() as u64, b_ser.len()),
-            ]
+            &(
+                vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],
+                vec![a_ser.len() as u64, b_ser.len() as u64],
+            )
         ).unwrap());
 
         let ret: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
@@ -35,11 +38,10 @@ mod test {
         assert_eq!(ret, (0u64..200).step_by(2).collect::<Vec<u64>>());
 
         let args_ptrs3 = RustBuffer::from_vec(rmp_serde::to_vec(
-            &vec![
-                (a_ser.as_ptr() as u64, b_ser.len()),
-                (b_ser.as_ptr() as u64, b_ser.len()),
-                (c_ser.as_ptr() as u64, c_ser.len()),
-            ]
+            &(
+                vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64, c_ser.as_ptr() as u64],
+                vec![a_ser.len() as u64, b_ser.len() as u64, c_ser.len() as u64],
+            )
         ).unwrap());
 
         let ret3: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
@@ -47,7 +49,7 @@ mod test {
         ).unwrap();
         assert_eq!(ret3, (0u64..300).step_by(3).collect::<Vec<u64>>());
 
-        // println!("{:?}", add_two_vecs(a.clone(), b.clone()));
+        println!("{:?}", add_two_vecs(a.clone(), b.clone()));
         // println!("{:?}", add_two_vecs.remote(a, b));
 
         println!("{:?}", add_two_vecs.name());

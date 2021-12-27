@@ -82,6 +82,8 @@ struct BufferData {
 
 type BufferRawPartsVec = Vec<(u64, u64)>;
 struct ArgsBuffer(BufferRawPartsVec);
+
+// TODO: maybe this more legit way...
 impl ArgsBuffer {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -91,12 +93,25 @@ impl ArgsBuffer {
         self.0.push((ptr as u64, size as u64));
     }
 
-
+    pub fn to_rust_buffer(self) -> RustBuffer {
+        RustBuffer::from_vec(rmp_serde::to_vec(&self.0).unwrap())
+    }
 }
 
 // unsafe fn push_arg_slice_from_raw_parts(vec: &mut ArgsVec<'a>, data: *const u8, size: usize) {
 //     vec.push((data, size as u64));
 // }
+
+fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
+    let args = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
+    let ret = GLOBAL_FUNCTION_MAP.lock().unwrap().get(&fn_name.as_bytes().to_vec()).unwrap()(args);
+    ret.destroy_into_vec()
+}
+
+fn new_vec() -> Vec<u64> {
+    Vec::<u64>::new()
+}
+
 
 #[cxx::bridge(namespace = "ray")]
 pub mod ray_api_ffi {
@@ -108,8 +123,13 @@ pub mod ray_api_ffi {
     }
 
     extern "Rust" {
-        unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8>;
+        fn new_vec() -> Vec<u64>;
+        fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
     }
+
+    // extern "Rust" {
+    //     unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8>;
+    // }
 
     unsafe extern "C++" {
         include!("rust/ray-rs-sys/cpp/tasks.h");
@@ -119,7 +139,7 @@ pub mod ray_api_ffi {
         // fn Binary(self: &ObjectID) -> &CxxString;
 
         fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
-        fn InitRust();
+        // fn InitRust();
     }
 
     unsafe extern "C++" {
@@ -192,6 +212,10 @@ macro_rules! impl_ray_function {
                 pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
                     (self.wrapped_fn)(args)
                 }
+
+                pub fn get_invoker(&self) -> InvokerFunction {
+                    self.wrapped_fn
+                }
             }
 
             impl<$($argp,)* R> std::ops::FnOnce<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
@@ -228,10 +252,11 @@ macro_rules! count {
 }
 
 macro_rules! deserialize {
-    ($ptrs:ident) => {};
-    ($ptrs:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
-        deserialize!($ptrs $(,$args:$argsty)*);
-        let (ptr, size) = $ptrs[$ptrs.len() - count!($($args)*) - 1];
+    ($ptrs:ident, $sizes:ident) => {};
+    ($ptrs:ident, $sizes:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
+        deserialize!($ptrs, $sizes $(,$args:$argsty)*);
+        let ptr = $ptrs[$ptrs.len() - count!($($args)*) - 1];
+        let size = $sizes[$sizes.len() - count!($($args)*) - 1];
         let $arg = rmp_serde::from_read_ref::<_, $argty>(
             unsafe { std::slice::from_raw_parts(ptr as *const u8, size as usize) }
         ).unwrap();
@@ -251,7 +276,9 @@ macro_rules! serialize {
 
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> =
-        Mutex::new(FunctionPtrMap::new());
+        Mutex::new([
+            ("ray_rs_sys::add_two_vecs".as_bytes().to_vec(), add_two_vecs.get_invoker()),
+        ].iter().cloned().collect());
 }
 
 
@@ -267,11 +294,11 @@ macro_rules! remote_internal {
             // TODO: convert this `no_mangle` name to use module_path!():: $name
             #[no_mangle]
             extern "C" fn [<ray_rust_ffi_ $name>](args: RustBuffer) -> RustBuffer {
-                let arg_raw_ptrs = rmp_serde::from_read_ref::<_, Vec<(u64, u64)>>(
+                let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
                     &args.destroy_into_vec()
                 ).unwrap();
                 // TODO: ensure this
-                deserialize!(arg_raw_ptrs $(,$arg:$argty)*);
+                deserialize!(arg_raw_ptrs, sizes $(,$arg:$argty)*);
                 let ret: $ret = [<ray_rust_private_ $name>]($($arg,)*);
                 let result = rmp_serde::to_vec(&ret).unwrap();
                 RustBuffer::from_vec(result)
