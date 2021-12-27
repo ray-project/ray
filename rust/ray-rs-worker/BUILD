@@ -7,8 +7,6 @@ cc_binary(
     srcs = glob(["worker.cc"]),
     deps = [
       "//cpp:ray_api",
-      "//rust/ray-rs-sys:ray_rs_c",
-      "//rust/ray-rs-sys:bridge/include",
-      "@cxx.rs//:core",
+      "//rust/ray-rs-sys:ray_rs_sys",
     ],
 )

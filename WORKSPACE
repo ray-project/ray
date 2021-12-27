@@ -38,7 +38,7 @@ rust_repositories(version = "nightly", iso_date = "2021-06-16", edition="2018")
 http_archive(
     name = "cxx.rs",
     strip_prefix = "cxx-master",
-    sha256 = "5cfef94527cd1a0326a3e7a9c92671768c2dc02e336c3eee55f37cd445ca5560",
+    sha256 = "4a7a733b8f96d4ca2c38961b18e9e1d001b723062c93b89b870c87ca6d23e09d",
     urls = [
         "https://github.com/jon-chuang/cxx/archive/refs/heads/master.zip",
     ]

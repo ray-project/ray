@@ -10,8 +10,6 @@
 #include "rust/cxx.h"
 #include "rust/ray-rs-sys/src/lib.rs.h"
 
-#include ""
-
 #include "ray/api.h"
 #include <ray/api/common_types.h>
 
@@ -21,55 +19,30 @@ using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 using ray::core::RayFunction;
 
+struct RustTaskArg;
+
 using TaskArgs = std::unique_ptr<::ray::TaskArg>;
 
-std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    const rust::Vec<RustTaskArg>& args) {
-  std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
-  for (auto& arg : args) {
-    std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
-    if (arg.is_value()) {
-      rust::Vec<uint8_t> buffer = arg.value();
-      auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          buffer.data(), buffer.size(), true);
-      ray_arg = std::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
-    } else {
-      auto id = ObjectID::FromBinary(static_cast<std::string>(arg.object_ref()));
-      auto owner_address = ray::rpc::Address{};
-      if (CoreWorkerProcess::IsInitialized()) {
-        auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-        owner_address = core_worker.GetOwnerAddress(id);
-      }
-      ray_arg = std::make_unique<ray::TaskArgByReference>(id, owner_address,
-                                                           /*call_site=*/"");
-    }
-    ray_args.push_back(std::move(ray_arg));
-  }
-  return ray_args;
+std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(const rust::Vec<RustTaskArg>& args);
+
+std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& args);
+
+void InitRust();
+
+namespace internal {
+Status ExecuteTask(
+  ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+  const std::unordered_map<std::string, double> &required_resources,
+  const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
+  const std::vector<rpc::ObjectReference> &arg_refs,
+  const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
+  std::vector<std::shared_ptr<ray::RayObject>> *results,
+  std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
+  bool *is_application_level_error,
+  const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+  const std::string name_of_concurrency_group_to_execute
+);
 }
 
-/// The purpose of this interface is to
-std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& args) {
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  TaskOptions options{};
-  std::vector<rpc::ObjectReference> return_refs;
-  BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
-  auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(static_cast<std::string>(name));
-  auto ray_args = TransformArgs(args);
-  return_refs =
-      core_worker.SubmitTask(RayFunction(ray::Language::CPP, function_descriptor), ray_args, options, 1,
-                             false, std::move(bundle_id), true, "");
-  std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs) {
-    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
-  }
-  return std::make_unique<ObjectID>(return_ids[0]);
-}
-
-void InitRust() {
-  ray::RayConfig config;
-  ray::Init(config, internal::ExecuteTask, 0, nullptr);
-}
 
 } // namespace ray

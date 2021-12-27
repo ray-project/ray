@@ -30,7 +30,7 @@ pub struct RustTaskArg {
 
 impl RustTaskArg {
     pub fn is_value(&self) -> bool {
-        self.buf.is_empty()
+        !self.buf.is_empty()
     }
 
     pub fn value(&self) -> &Vec<u8> {
@@ -139,12 +139,14 @@ pub mod ray_api_ffi {
         // fn Binary(self: &ObjectID) -> &CxxString;
 
         fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
-        // fn InitRust();
+        fn InitRust();
     }
 
     unsafe extern "C++" {
         include!("ray/api.h");
         include!("rust/ray-rs-sys/cpp/wrapper.h");
+
+        fn GetRaw(id: UniquePtr<ObjectID>) -> Vec<u8>;
 
         type Uint64ObjectRef;
         type StringObjectRef;
@@ -238,6 +240,11 @@ macro_rules! impl_ray_function {
             }
         }
     };
+}
+
+pub fn get<R: serde::de::DeserializeOwned>(id : UniquePtr<ray_api_ffi::ObjectID>) -> R {
+    let buf = ray_api_ffi::GetRaw(id);
+    rmp_serde::from_read_ref::<_, R>(&buf).unwrap()
 }
 
 impl_ray_function!([0], );

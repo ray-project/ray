@@ -2,19 +2,18 @@
 mod test {
     use uniffi::RustBuffer;
     use rmp_serde;
-    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs};
+    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs, get};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
     #[test]
     fn test_init_submit_execute() {
         std::thread::sleep(std::time::Duration::from_millis(2000));
-        // InitRust();
-        // let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
-        //     ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
-        // let ret = add_two_vecs.remote(a, b);
-        //
-        //
-        // Shutdown();
+        InitRust();
+        let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
+            ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
+        let ret = add_two_vecs.remote(a, b);
+        println!("{:?}", get::<Vec<u64>>(ret));
+        Shutdown();
     }
 
     #[test]

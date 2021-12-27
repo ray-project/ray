@@ -396,11 +396,8 @@ Process WorkerPool::StartWorkerProcess(
     env.insert({"SPT_NOENV", "1"});
   }
 
-  if (language == Language::PYTHON) {
+  if (language == Language::PYTHON || language == Language::CPP || language == Language::RUST) {
     worker_command_args.push_back("--startup-token=" +
-                                  std::to_string(worker_startup_token_counter_));
-  } else if (language == Language::CPP) {
-    worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
   }
 
