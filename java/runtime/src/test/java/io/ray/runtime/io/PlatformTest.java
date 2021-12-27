@@ -1,10 +1,11 @@
-package io.ray.runtime.util;
+package io.ray.runtime.io;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import org.testng.annotations.Test;
 
@@ -49,7 +50,7 @@ public class PlatformTest {
     }
   }
 
-  @Test(enabled = true)
+  @Test(enabled = false)
   public void benchmarkWrapDirectBuffer() {
     long address = 0;
     try {

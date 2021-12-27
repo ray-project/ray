@@ -1,6 +1,5 @@
 package io.ray.runtime.io;
 
-import io.ray.runtime.util.MemoryBuffer;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 

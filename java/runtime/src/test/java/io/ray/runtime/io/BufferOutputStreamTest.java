@@ -2,8 +2,6 @@ package io.ray.runtime.io;
 
 import static org.testng.Assert.assertTrue;
 
-import io.ray.runtime.util.MemoryBuffer;
-import io.ray.runtime.util.MemoryUtils;
 import java.nio.ByteBuffer;
 import org.testng.annotations.Test;
 
