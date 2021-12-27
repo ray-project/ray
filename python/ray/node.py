@@ -284,6 +284,47 @@ class Node:
         _, _, port = ip_port.rpartition(":")
         _ = int(port)
 
+    def check_version_info(self):
+        """Check if various Python and Ray version of this process is correct.
+
+        This will be used to detect if workers or drivers are started using
+        different versions of Python, or Ray. If the version information
+        is not present in KV store, then no check is done.
+        Raises:
+            Exception: An exception is raised if there is a version mismatch.
+        """
+        version_info = self.get_gcs_client().internal_kv_get(
+            b"VERSION_INFO", namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+        if version_info is None:
+            return
+        true_version_info = tuple(
+            json.loads(ray._private.utils.decode(version_info)))
+        version_info = self._compute_version_info()
+        if version_info != true_version_info:
+            node_ip_address = ray._private.services.get_node_ip_address()
+            error_message = (
+                    "Version mismatch: The cluster was started with:\n"
+                    "    Ray: " + true_version_info[0] + "\n"
+                    "    Python: " + true_version_info[1] + "\n"
+                    "This process on node " + node_ip_address +
+                    " was started with:" + "\n"
+                    "    Ray: " + version_info[0] + "\n"
+                    "    Python: " + version_info[1] + "\n")
+            if version_info[:2] != true_version_info[:2]:
+                raise RuntimeError(error_message)
+            else:
+                logger.warning(error_message)
+
+    def _compute_version_info(self):
+        """Compute the versions of Python, and Ray.
+
+        Returns:
+            A tuple containing the version information.
+        """
+        ray_version = ray.__version__
+        python_version = ".".join(map(str, sys.version_info[:3]))
+        return ray_version, python_version
+
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
         # as we're already in the exit procedure.
@@ -989,8 +1030,7 @@ class Node:
             namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
         # Version info.
-        ray_version = ray.__version__
-        python_version = ".".join(map(str, sys.version_info[:3]))
+        ray_version, python_version = self._compute_version_info()
         version_info = json.dumps((ray_version, python_version))
         client.internal_kv_put(
             b"VERSION_INFO",

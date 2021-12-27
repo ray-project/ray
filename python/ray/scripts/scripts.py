@@ -693,19 +693,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
 
-        # Wait for the Redis server to be started. And throw an exception if we
-        # can't connect to it.
-        services.wait_for_redis_to_start(
-            redis_address_ip, redis_address_port, password=redis_password)
-
-        # Create a Redis client.
-        redis_client = services.create_redis_client(
-            redis_address, password=redis_password)
-
-        # Check that the version information on this node matches the version
-        # information that the cluster was started with.
-        services.check_version_info(redis_client)
-
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address(redis_address))
@@ -715,6 +702,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
+
+        # Ray and Python versions should probably be checked before
+        # initializing Node.
+        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
