@@ -47,12 +47,12 @@ class RayObject {
   }
 
   RayObject(const std::shared_ptr<Buffer> &metadata,
-            const std::vector<ObjectID> &nested_ids,
+            const std::vector<rpc::ObjectReference> &nested_refs,
             std::function<std::shared_ptr<ray::Buffer>()> data_factory,
             bool copy_data = false)
       : data_factory_(std::move(data_factory)),
         metadata_(metadata),
-        nested_ids_(nested_ids),
+        nested_refs_(nested_refs),
         has_data_copy_(copy_data),
         creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
