@@ -56,8 +56,11 @@ ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
 FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
-YAPF_VERSION=$(yapf --version | awk '{print $2}')
+if [ "$BLACK_IS_ENABLED" = true ]; then
+  BLACK_VERSION=$(black --version | awk '{print $2}')
+else
+  YAPF_VERSION=$(yapf --version | awk '{print $2}')
+fi
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
 GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
