@@ -9,7 +9,10 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import sun.misc.Unsafe;
 
-/** Based on org.apache.spark.unsafe.Platform */
+/**
+ * A utility class for unsafe memory operations. Note: This class is based on
+ * org.apache.spark.unsafe.Platform
+ */
 public final class Platform {
 
   public static final Unsafe UNSAFE;

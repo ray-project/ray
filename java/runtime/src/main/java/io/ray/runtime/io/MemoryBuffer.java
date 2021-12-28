@@ -9,7 +9,24 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ReadOnlyBufferException;
 
-/** Based on org.apache.flink.core.memory.MemoryBuffer */
+/**
+ * A class for operations on memory managed by Ray. The buffer may be backed by heap memory (byte
+ * array) or by off-heap memory. If the memory is off-heap memory, it will be the memory allocated
+ * by ray object store.
+ *
+ * <p>This class is based on org.apache.flink.core.memory.MemorySegment and
+ * org.apache.arrow.memory.ArrowBuf, we add this class mainly for:
+ *
+ * <ul>
+ *   <li>read/write data into a chunk of direct memory
+ *   <li>additional binary compare, swap, and copy methods.
+ *   <li>little-endian access.
+ *   <li>independent read/write index.
+ * </ul>
+ *
+ * <p>Note that this class is designed to final so that all the methods in this class can be inlined
+ * by the just-in-time compiler.
+ */
 public final class MemoryBuffer {
 
   /** The unsafe handle for transparent memory copied (heap / off-heap). */
@@ -893,7 +910,7 @@ public final class MemoryBuffer {
 
   /**
    * Bulk copy method. Copies {@code numBytes} bytes from source unsafe object and pointer. NOTE:
-   * This is a unsafe method, no check here, please be carefully.
+   * This is an unsafe method, no check here, please be carefully.
    */
   public void copyFromUnsafe(long offset, Object source, long sourcePointer, long numBytes) {
     final long thisPointer = this.address + offset;
