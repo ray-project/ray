@@ -125,7 +125,7 @@ void GcsJobManager::ClearJobInfos(const JobID &job_id) {
     listener(std::make_shared<JobID>(job_id));
   }
   // Clear cache.
-  RAY_UNUSED(cached_job_configs_.erase(job_id));
+  // RAY_UNUSED(cached_job_configs_.erase(job_id));
 }
 
 /// Add listener to monitor the add action of nodes.
