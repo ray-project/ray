@@ -247,7 +247,8 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=env)
+        env=env,
+    )
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
