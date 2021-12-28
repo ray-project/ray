@@ -189,8 +189,14 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",
-        sha256 = "d21e155ac9a455831f81608bb06620e4a1d75012a630faf11f4c25ad10cfc9bb",
+        url = "https://github.com/cython/cython/archive/3028e8c7ac296bc848d996e397c3354b3dbbd431.tar.gz",
+        sha256 = "31ea23c2231ddee8572a2a5effd54952e16a1b44e9a4cb3eb645418f8accf20d",
+    )
+
+    auto_http_archive(
+        name = "com_github_johnynek_bazel_jar_jar",
+        url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
+        sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
     )
 
     auto_http_archive(

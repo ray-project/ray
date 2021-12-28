@@ -2,6 +2,7 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.options.ActorLifetime;
 import java.io.IOException;
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
@@ -94,7 +95,7 @@ public class NamespaceTest {
 
   private static void startDriver() throws InterruptedException {
     Ray.init();
-    ActorHandle<A> a = Ray.actor(A::new).setName("a").remote();
+    ActorHandle<A> a = Ray.actor(A::new).setLifetime(ActorLifetime.DETACHED).setName("a").remote();
     Assert.assertEquals("hello", a.task(A::hello).remote().get());
     /// Because we don't support long running job yet, so sleep to don't destroy
     /// it for a while. Otherwise the actor created in this job will be destroyed

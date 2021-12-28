@@ -399,7 +399,8 @@ def validate_redis_address(address):
 
     redis_address_parts = redis_address.split(":")
     if len(redis_address_parts) != 2:
-        raise ValueError("Malformed address. Expected '<host>:<port>'.")
+        raise ValueError(f"Malformed address. Expected '<host>:<port>',"
+                         f" but got {redis_address} from {address}.")
     redis_ip = redis_address_parts[0]
     try:
         redis_port = int(redis_address_parts[1])
@@ -781,67 +782,6 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             "attempts to ping the Redis server.")
 
 
-def _compute_version_info():
-    """Compute the versions of Python, and Ray.
-
-    Returns:
-        A tuple containing the version information.
-    """
-    ray_version = ray.__version__
-    python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
-
-
-def _put_version_info_in_redis(redis_client):
-    """Store version information in Redis.
-
-    This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray.
-
-    Args:
-        redis_client: A client for the primary Redis shard.
-    """
-    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
-
-
-def check_version_info(redis_client):
-    """Check if various version info of this process is correct.
-
-    This will be used to detect if workers or drivers are started using
-    different versions of Python, or Ray. If the version
-    information is not present in Redis, then no check is done.
-
-    Args:
-        redis_client: A client for the primary Redis shard.
-
-    Raises:
-        Exception: An exception is raised if there is a version mismatch.
-    """
-    redis_reply = redis_client.get("VERSION_INFO")
-
-    # Don't do the check if there is no version information in Redis. This
-    # is to make it easier to do things like start the processes by hand.
-    if redis_reply is None:
-        return
-
-    true_version_info = tuple(
-        json.loads(ray._private.utils.decode(redis_reply)))
-    version_info = _compute_version_info()
-    if version_info != true_version_info:
-        node_ip_address = get_node_ip_address()
-        error_message = ("Version mismatch: The cluster was started with:\n"
-                         "    Ray: " + true_version_info[0] + "\n"
-                         "    Python: " + true_version_info[1] + "\n"
-                         "This process on node " + node_ip_address +
-                         " was started with:" + "\n"
-                         "    Ray: " + version_info[0] + "\n"
-                         "    Python: " + version_info[1] + "\n")
-        if version_info[:2] != true_version_info[:2]:
-            raise RuntimeError(error_message)
-        else:
-            logger.warning(error_message)
-
-
 def start_reaper(fate_share=None):
     """Start the reaper process.
 
@@ -890,7 +830,6 @@ def start_redis(node_ip_address,
                 redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
-                redirect_worker_output=False,
                 password=None,
                 fate_share=None,
                 external_addresses=None,
@@ -913,9 +852,6 @@ def start_redis(node_ip_address,
             shard.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
-        redirect_worker_output (bool): True if worker output should be
-            redirected to a file and false otherwise. Workers will have access
-            to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
         port_denylist (set): A set of denylist ports that shouldn't
@@ -983,17 +919,6 @@ def start_redis(node_ip_address,
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
-
-    # Put the redirect_worker_output bool in the Redis shard so that workers
-    # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput", 1
-                             if redirect_worker_output else 0)
-
-    # Init job counter to GCS.
-    primary_redis_client.set("JobCounter", 0)
-
-    # Store version information in the primary Redis shard.
-    _put_version_info_in_redis(primary_redis_client)
 
     # Calculate the redis memory.
     assert resource_spec.resolved()
@@ -1620,6 +1545,7 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
