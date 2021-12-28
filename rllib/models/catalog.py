@@ -55,6 +55,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # These are used if no custom model is specified and the input space is 1D.
     # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
+    # Whether to apply a dropout layer after each FullyConnected layer. Values
+    # greater than 0.0 will be used as dropout probability for each layer.
+    "fcnet_dropout": 0.0,
     # Activation function descriptor.
     # Supported values are: "tanh", "relu", "swish" (or "silu"),
     # "linear" (or None).
