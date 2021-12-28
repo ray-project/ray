@@ -20,7 +20,7 @@ class RayError(Exception):
         return RayException(
             language=PYTHON,
             serialized_exception=pickle.dumps(self),
-            formatted_exception_string=formatted_exception_string
+            formatted_exception_string=formatted_exception_string,
         ).SerializeToString()
 
     @staticmethod
@@ -41,9 +41,12 @@ class CrossLanguageError(RayError):
     """Raised from another language."""
 
     def __init__(self, ray_exception):
-        super().__init__("An exception raised from {}:\n{}".format(
-            Language.Name(ray_exception.language),
-            ray_exception.formatted_exception_string))
+        super().__init__(
+            "An exception raised from {}:\n{}".format(
+                Language.Name(ray_exception.language),
+                ray_exception.formatted_exception_string,
+            )
+        )
 
 
 class TaskCancelledError(RayError):
@@ -73,14 +76,16 @@ class RayTaskError(RayError):
     thrown propagating the error message.
     """
 
-    def __init__(self,
-                 function_name,
-                 traceback_str,
-                 cause,
-                 proctitle=None,
-                 pid=None,
-                 ip=None,
-                 actor_repr=None):
+    def __init__(
+        self,
+        function_name,
+        traceback_str,
+        cause,
+        proctitle=None,
+        pid=None,
+        ip=None,
+        actor_repr=None,
+    ):
         """Initialize a RayTaskError."""
         import ray
 
@@ -124,7 +129,7 @@ class RayTaskError(RayError):
                 # BaseException implements a __reduce__ method that returns
                 # a tuple with the type and the value of self.args.
                 # https://stackoverflow.com/a/49715949/2213289
-                self.args = (cause, )
+                self.args = (cause,)
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -154,20 +159,24 @@ class RayTaskError(RayError):
         for i, line in enumerate(lines):
             # Convert traceback to the readable information.
             if line.startswith("Traceback "):
-                traceback_line = (f"{colorama.Fore.CYAN}"
-                                  f"{self.proctitle}"
-                                  f"{colorama.Fore.RESET} "
-                                  f"(pid={self.pid}, ip={self.ip}")
+                traceback_line = (
+                    f"{colorama.Fore.CYAN}"
+                    f"{self.proctitle}"
+                    f"{colorama.Fore.RESET} "
+                    f"(pid={self.pid}, ip={self.ip}"
+                )
                 if self.actor_repr:
                     traceback_line += f", repr={self.actor_repr})"
                 else:
                     traceback_line += ")"
                 code_from_internal_file = False
                 out.append(traceback_line)
-            elif line.startswith("  File ") and ("ray/worker.py" in line
-                                                 or "ray/_private/" in line
-                                                 or "ray/util/tracing/" in line
-                                                 or "ray/_raylet.pyx" in line):
+            elif line.startswith("  File ") and (
+                "ray/worker.py" in line
+                or "ray/_private/" in line
+                or "ray/util/tracing/" in line
+                or "ray/_raylet.pyx" in line
+            ):
                 # TODO(windows)
                 # Process the internal file line.
                 # The file line always starts with 2 space and File.
@@ -177,8 +186,10 @@ class RayTaskError(RayError):
                     # due to the dependency failure.
                     # Print out an user-friendly
                     # message to explain that..
-                    out.append("  At least one of the input arguments for "
-                               "this task could not be computed:")
+                    out.append(
+                        "  At least one of the input arguments for "
+                        "this task could not be computed:"
+                    )
                 if i + 1 < len(lines) and lines[i + 1].startswith("    "):
                     # If the next line is indented with 2 space,
                     # that means it contains internal code information.
@@ -200,16 +211,17 @@ class LocalRayletDiedError(RayError):
     """Indicates that the task's local raylet died."""
 
     def __str__(self):
-        return ("The task's local raylet died. "
-                "Check raylet.out for more information.")
+        return "The task's local raylet died. " "Check raylet.out for more information."
 
 
 class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
     def __str__(self):
-        return ("The worker died unexpectedly while executing this task. "
-                "Check python-core-worker-*.log files for more information.")
+        return (
+            "The worker died unexpectedly while executing this task. "
+            "Check python-core-worker-*.log files for more information."
+        )
 
 
 class RayActorError(RayError):
@@ -222,13 +234,15 @@ class RayActorError(RayError):
     RayActorError will contains this exception.
     """
 
-    def __init__(self,
-                 function_name=None,
-                 traceback_str=None,
-                 cause=None,
-                 proctitle=None,
-                 pid=None,
-                 ip=None):
+    def __init__(
+        self,
+        function_name=None,
+        traceback_str=None,
+        cause=None,
+        proctitle=None,
+        pid=None,
+        ip=None,
+    ):
         # Traceback handling is similar to RayTaskError, so we create a
         # RayTaskError to reuse its function.
         # But we don't want RayActorError to inherit from RayTaskError, since
@@ -236,7 +250,8 @@ class RayActorError(RayError):
         self.creation_task_error = None
         if function_name and traceback_str and cause:
             self.creation_task_error = RayTaskError(
-                function_name, traceback_str, cause, proctitle, pid, ip)
+                function_name, traceback_str, cause, proctitle, pid, ip
+            )
 
     def has_creation_task_error(self):
         return self.creation_task_error is not None
@@ -248,17 +263,23 @@ class RayActorError(RayError):
 
     def __str__(self):
         if self.creation_task_error:
-            return ("The actor died because of an error" +
-                    " raised in its creation task, " +
-                    self.creation_task_error.__str__())
-        return ("The actor died unexpectedly before finishing this task.")
+            return (
+                "The actor died because of an error"
+                + " raised in its creation task, "
+                + self.creation_task_error.__str__()
+            )
+        return "The actor died unexpectedly before finishing this task."
 
     @staticmethod
     def from_task_error(task_error):
-        return RayActorError(task_error.function_name,
-                             task_error.traceback_str, task_error.cause,
-                             task_error.proctitle, task_error.pid,
-                             task_error.ip)
+        return RayActorError(
+            task_error.function_name,
+            task_error.traceback_str,
+            task_error.cause,
+            task_error.proctitle,
+            task_error.pid,
+            task_error.ip,
+        )
 
 
 class RaySystemError(RayError):
@@ -290,7 +311,8 @@ class ObjectStoreFullError(RayError):
             "\n"
             "The local object store is full of objects that are still in "
             "scope and cannot be evicted. Tip: Use the `ray memory` command "
-            "to list active objects in the cluster.")
+            "to list active objects in the cluster."
+        )
 
 
 class ObjectLostError(RayError):
@@ -305,25 +327,32 @@ class ObjectLostError(RayError):
         self.object_ref_hex = object_ref_hex
         self.owner_address = owner_address
         self.call_site = call_site.replace(
-            ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
+            ray_constants.CALL_STACK_LINE_DELIMITER, "\n  "
+        )
 
     def _base_str(self):
         msg = f"Failed to retrieve object {self.object_ref_hex}. "
         if self.call_site:
-            msg += (f"The ObjectRef was created at: {self.call_site}")
+            msg += f"The ObjectRef was created at: {self.call_site}"
         else:
             msg += (
                 "To see information about where this ObjectRef was created "
                 "in Python, set the environment variable "
                 "RAY_record_ref_creation_sites=1 during `ray start` and "
-                "`ray.init()`.")
+                "`ray.init()`."
+            )
         return msg
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            f"All copies of {self.object_ref_hex} have been lost due to node "
-            "failure. Check cluster logs (`/tmp/ray/session_latest/logs`) for "
-            "more information about the failure.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                f"All copies of {self.object_ref_hex} have been lost due to node "
+                "failure. Check cluster logs (`/tmp/ray/session_latest/logs`) for "
+                "more information about the failure."
+            )
+        )
 
 
 class ObjectFetchTimedOutError(ObjectLostError):
@@ -334,10 +363,15 @@ class ObjectFetchTimedOutError(ObjectLostError):
     """
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            f"Fetch for object {self.object_ref_hex} timed out because no "
-            "locations were found for the object. This may indicate a "
-            "system-level bug.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                f"Fetch for object {self.object_ref_hex} timed out because no "
+                "locations were found for the object. This may indicate a "
+                "system-level bug."
+            )
+        )
 
 
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
@@ -349,9 +383,14 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            "The object has already been deleted by the reference counting "
-            "protocol. This should not happen.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object has already been deleted by the reference counting "
+                "protocol. This should not happen."
+            )
+        )
 
 
 class OwnerDiedError(ObjectLostError):
@@ -372,18 +411,24 @@ class OwnerDiedError(ObjectLostError):
                 worker_id = WorkerID(addr.worker_id)
                 log_loc = (
                     f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
-                    f" at IP address {ip_addr}")
+                    f" at IP address {ip_addr}"
+                )
             except Exception:
                 # Catch all to make sure we always at least print the default
                 # message.
                 pass
 
-        return self._base_str() + "\n\n" + (
-            "The object's owner has exited. This is the Python "
-            "worker that first created the ObjectRef via `.remote()` or "
-            "`ray.put()`. "
-            f"Check cluster logs ({log_loc}) for more "
-            "information about the Python worker failure.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object's owner has exited. This is the Python "
+                "worker that first created the ObjectRef via `.remote()` or "
+                "`ray.put()`. "
+                f"Check cluster logs ({log_loc}) for more "
+                "information about the Python worker failure."
+            )
+        )
 
 
 class ObjectReconstructionFailedError(ObjectLostError):
@@ -394,10 +439,15 @@ class ObjectReconstructionFailedError(ObjectLostError):
     """
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            "The object cannot be reconstructed "
-            "because it was created by an actor, ray.put() call, or its "
-            "ObjectRef was created by a different worker.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed "
+                "because it was created by an actor, ray.put() call, or its "
+                "ObjectRef was created by a different worker."
+            )
+        )
 
 
 class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
@@ -409,11 +459,16 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
     """
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            "The object cannot be reconstructed "
-            "because the maximum number of task retries has been exceeded. "
-            "To prevent this error, set "
-            "`@ray.remote(max_retries=<num retries>)` (default 3).")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed "
+                "because the maximum number of task retries has been exceeded. "
+                "To prevent this error, set "
+                "`@ray.remote(max_retries=<num retries>)` (default 3)."
+            )
+        )
 
 
 class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
@@ -425,25 +480,33 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
     """
 
     def __str__(self):
-        return self._base_str() + "\n\n" + (
-            "The object cannot be reconstructed because its lineage has been "
-            "evicted to reduce memory pressure. "
-            "To prevent this error, set the environment variable "
-            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object cannot be reconstructed because its lineage has been "
+                "evicted to reduce memory pressure. "
+                "To prevent this error, set the environment variable "
+                "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`."
+            )
+        )
 
 
 class GetTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
+
     pass
 
 
 class PlasmaObjectNotAvailable(RayError):
     """Called when an object was not available within the given timeout."""
+
     pass
 
 
 class AsyncioActorExit(RayError):
     """Raised when an asyncio actor intentionally exits via exit_actor()."""
+
     pass
 
 
@@ -460,6 +523,7 @@ class PendingCallsLimitExceeded(RayError):
     This exception could happen probably because the caller calls the callee
     too frequently.
     """
+
     pass
 
 

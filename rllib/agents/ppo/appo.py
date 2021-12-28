@@ -16,8 +16,12 @@ from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents import impala
 from ray.rllib.policy.policy import Policy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
+from ray.rllib.execution.common import (
+    STEPS_SAMPLED_COUNTER,
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+    _get_shared_metrics,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 
@@ -89,8 +93,9 @@ class UpdateTargetAndKL:
         self.workers = workers
         self.config = config
         self.update_kl = UpdateKL(workers)
-        self.target_update_freq = config["num_sgd_iter"] \
-            * config["minibatch_buffer_size"]
+        self.target_update_freq = (
+            config["num_sgd_iter"] * config["minibatch_buffer_size"]
+        )
 
     def __call__(self, fetches):
         metrics = _get_shared_metrics()
@@ -101,7 +106,8 @@ class UpdateTargetAndKL:
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
             self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.update_target())
+                lambda p, _: p.update_target()
+            )
             # Also update KL Coeff
             if self.config["use_kl_loss"]:
                 self.update_kl(fetches)
@@ -118,7 +124,8 @@ class APPOTrainer(impala.ImpalaTrainer):
 
         # After init: Initialize target net.
         self.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
+            lambda p, _: p.update_target()
+        )
 
     # TODO: Remove this once ImpalaTrainer directly inherits from Trainer
     #  (instead of being created by `build_trainer()` utility).
@@ -132,11 +139,12 @@ class APPOTrainer(impala.ImpalaTrainer):
         return DEFAULT_CONFIG
 
     @override(Trainer)
-    def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
-            Optional[Type[Policy]]:
+    def get_default_policy_class(
+        self, config: PartialTrainerConfigDict
+    ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import \
-                AsyncPPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+
             return AsyncPPOTorchPolicy
         else:
             return AsyncPPOTFPolicy

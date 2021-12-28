@@ -22,7 +22,7 @@ def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"foo": 1})
-    class Actor():
+    class Actor:
         def get_worker_pid(self):
             return os.getpid()
 
@@ -41,16 +41,20 @@ def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 5,
-        "object_store_memory": 10**8,
-    }],
-    indirect=True)
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 5,
+            "object_store_memory": 10 ** 8,
+        }
+    ],
+    indirect=True,
+)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
         def some_expensive_task(self):
-            return np.zeros(10**8 // 2, dtype=np.uint8)
+            return np.zeros(10 ** 8 // 2, dtype=np.uint8)
 
     actors = [LargeMemoryActor.remote() for _ in range(5)]
     for _ in range(5):
@@ -60,12 +64,10 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "_system_config": {
-            "task_retry_delay_ms": 500
-        }
-    }],
-    indirect=True)
+    "ray_start_regular",
+    [{"_system_config": {"task_retry_delay_ms": 500}}],
+    indirect=True,
+)
 def test_async_actor_task_retries(ray_start_regular):
     # https://github.com/ray-project/ray/issues/11683
 
@@ -119,7 +121,7 @@ def test_async_actor_task_retries(ray_start_regular):
     for i in range(100):
         if ray.get(signal.cur_num_waiters.remote()) > 0:
             break
-        time.sleep(.1)
+        time.sleep(0.1)
     assert ray.get(signal.cur_num_waiters.remote()) > 0
     # seqno 2
     ref_2 = dying.set_should_exit.remote()
@@ -138,4 +140,5 @@ def test_async_actor_task_retries(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

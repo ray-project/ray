@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.rllib.utils import try_import_tf, try_import_torch
+
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
     from ray.rllib.policy.policy import PolicySpec
@@ -82,8 +83,7 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer",
-                       "torch.optim.Optimizer"]
+LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

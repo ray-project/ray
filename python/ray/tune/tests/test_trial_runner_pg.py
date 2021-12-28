@@ -30,13 +30,10 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 "include_dashboard": False,
                 "num_cpus": self.head_cpus,
                 "num_gpus": self.head_gpus,
-                "resources": {
-                    "custom": self.head_custom
-                },
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
+                "resources": {"custom": self.head_custom},
+                "_system_config": {"num_heartbeats_timeout": 10},
+            },
+        )
         # Pytest doesn't play nicely with imports
         _register_all()
 
@@ -57,10 +54,9 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             self.assertFalse(pg_manager._ready[pgf])
         self.assertTrue(pg_manager._latest_staging_start_time)
 
-        num_non_removed_pgs = len([
-            p for pid, p in placement_group_table().items()
-            if p["state"] != "REMOVED"
-        ])
+        num_non_removed_pgs = len(
+            [p for pid, p in placement_group_table().items() if p["state"] != "REMOVED"]
+        )
         self.assertEqual(num_non_removed_pgs, 0)
 
     def testPlacementGroupRequests(self, reuse_actors=False, scheduled=10):
@@ -84,7 +80,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         max_num_parallel = 2
 
         placement_group_factory = PlacementGroupFactory(
-            [head_bundle, child_bundle, child_bundle])
+            [head_bundle, child_bundle, child_bundle]
+        )
 
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
 
@@ -92,34 +89,42 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
         class _TestCallback(Callback):
             def on_step_end(self, iteration, trials, **info):
-                num_finished = len([
-                    t for t in trials
-                    if t.status == Trial.TERMINATED or t.status == Trial.ERROR
-                ])
+                num_finished = len(
+                    [
+                        t
+                        for t in trials
+                        if t.status == Trial.TERMINATED or t.status == Trial.ERROR
+                    ]
+                )
 
                 num_staging = sum(
-                    len(s)
-                    for s in trial_executor._pg_manager._staging.values())
+                    len(s) for s in trial_executor._pg_manager._staging.values()
+                )
                 num_ready = sum(
-                    len(s) for s in trial_executor._pg_manager._ready.values())
+                    len(s) for s in trial_executor._pg_manager._ready.values()
+                )
                 num_in_use = len(trial_executor._pg_manager._in_use_pgs)
                 num_cached = len(trial_executor._pg_manager._cached_pgs)
 
-                total_num_tracked = num_staging + num_ready + \
-                    num_in_use + num_cached
+                total_num_tracked = num_staging + num_ready + num_in_use + num_cached
 
-                num_non_removed_pgs = len([
-                    p for pid, p in placement_group_table().items()
-                    if p["state"] != "REMOVED"
-                ])
+                num_non_removed_pgs = len(
+                    [
+                        p
+                        for pid, p in placement_group_table().items()
+                        if p["state"] != "REMOVED"
+                    ]
+                )
                 num_removal_scheduled_pgs = len(
-                    trial_executor._pg_manager._pgs_for_removal)
+                    trial_executor._pg_manager._pgs_for_removal
+                )
 
                 # All trials should be scheduled
                 this.assertEqual(
                     scheduled,
                     min(scheduled, len(trials)),
-                    msg=f"Num trials iter {iteration}")
+                    msg=f"Num trials iter {iteration}",
+                )
 
                 # The following two tests were relaxed for reuse_actors=True
                 # so that up to `max_num_parallel` more placement groups can
@@ -130,17 +135,17 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
                 # The number of PGs should decrease when trials finish
                 this.assertGreaterEqual(
-                    max(scheduled, len(trials)) - num_finished +
-                    num_parallel_reuse,
+                    max(scheduled, len(trials)) - num_finished + num_parallel_reuse,
                     total_num_tracked,
-                    msg=f"Num tracked iter {iteration}")
+                    msg=f"Num tracked iter {iteration}",
+                )
 
                 # The number of actual placement groups should match this
                 this.assertGreaterEqual(
-                    max(scheduled, len(trials)) - num_finished +
-                    num_parallel_reuse,
+                    max(scheduled, len(trials)) - num_finished + num_parallel_reuse,
                     num_non_removed_pgs - num_removal_scheduled_pgs,
-                    msg=f"Num actual iter {iteration}")
+                    msg=f"Num actual iter {iteration}",
+                )
 
         start = time.time()
         out = tune.run(
@@ -151,7 +156,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             trial_executor=trial_executor,
             callbacks=[_TestCallback()],
             reuse_actors=reuse_actors,
-            verbose=2)
+            verbose=2,
+        )
 
         trial_end_times = sorted(t.last_result["end"] for t in out.trials)
         print("Trial end times:", trial_end_times)
@@ -189,7 +195,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         child_bundle = {"CPU": 1}
 
         placement_group_factory = PlacementGroupFactory(
-            [head_bundle, child_bundle, child_bundle, child_bundle])
+            [head_bundle, child_bundle, child_bundle, child_bundle]
+        )
 
         @ray.remote
         class TrainingActor:
@@ -201,8 +208,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             base = config["base"]
             actors = [TrainingActor.remote() for _ in range(4)]
             futures = [
-                actor.train.remote(base + 2 * i)
-                for i, actor in enumerate(actors)
+                actor.train.remote(base + 2 * i) for i, actor in enumerate(actors)
             ]
             results = ray.get(futures)
 
@@ -216,13 +222,14 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             train,
             config={
                 "start_time": start,
-                "base": tune.grid_search(list(range(0, 100, 10)))
+                "base": tune.grid_search(list(range(0, 100, 10))),
             },
             resources_per_trial=placement_group_factory,
             num_samples=1,
             trial_executor=trial_executor,
             reuse_actors=reuse_actors,
-            verbose=2)
+            verbose=2,
+        )
 
         avgs = sorted(t.last_result["avg"] for t in out.trials)
         self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
@@ -258,4 +265,5 @@ def test_placement_group_no_cpu_trainer():
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

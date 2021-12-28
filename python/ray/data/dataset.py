@@ -1,7 +1,18 @@
 import logging
 import time
-from typing import List, Any, Callable, Iterator, Iterable, Generic, \
-    Dict, Optional, Union, TYPE_CHECKING, Tuple
+from typing import (
+    List,
+    Any,
+    Callable,
+    Iterator,
+    Iterable,
+    Generic,
+    Dict,
+    Optional,
+    Union,
+    TYPE_CHECKING,
+    Tuple,
+)
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -15,8 +26,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
-        AggregateOnTs
+    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, AggregateOnTs
 
 import collections
 import itertools
@@ -25,19 +35,31 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
-    BlockPartition, BlockPartitionMetadata, BlockExecStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    T,
+    U,
+    BlockPartition,
+    BlockPartitionMetadata,
+    BlockExecStats,
+)
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
-    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
-    ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
-    Mean, Std
+    Datasource,
+    CSVDatasource,
+    JSONDatasource,
+    NumpyDatasource,
+    ParquetDatasource,
+    BlockWritePathProvider,
+    DefaultBlockWritePathProvider,
+)
+from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.stats import DatasetStats
-from ray.data.impl.compute import get_compute, cache_wrapper, \
-    CallableClass
+from ray.data.impl.compute import get_compute, cache_wrapper, CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
@@ -86,11 +108,13 @@ class Dataset(Generic[T]):
         self._stats.dataset_uuid = self._uuid
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def map(self,
-            fn: Union[CallableClass, Callable[[T], U]],
-            *,
-            compute: Optional[str] = None,
-            **ray_remote_args) -> "Dataset[U]":
+    def map(
+        self,
+        fn: Union[CallableClass, Callable[[T], U]],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
         This is a blocking operation. Note that mapping individual records
@@ -134,8 +158,7 @@ class Dataset(Generic[T]):
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
-            output_buffer = BlockOutputBuffer(None,
-                                              context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             for row in block.iter_rows():
                 output_buffer.add(fn(row))
                 if output_buffer.has_next():
@@ -148,13 +171,15 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def map_batches(self,
-                    fn: Union[CallableClass, Callable[[BatchType], BatchType]],
-                    *,
-                    batch_size: Optional[int] = 4096,
-                    compute: Optional[str] = None,
-                    batch_format: str = "native",
-                    **ray_remote_args) -> "Dataset[Any]":
+    def map_batches(
+        self,
+        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        *,
+        batch_size: Optional[int] = 4096,
+        compute: Optional[str] = None,
+        batch_format: str = "native",
+        **ray_remote_args,
+    ) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
 
         This is a blocking operation.
@@ -204,8 +229,7 @@ class Dataset(Generic[T]):
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None,
-                                              context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
@@ -227,7 +251,8 @@ class Dataset(Generic[T]):
                 else:
                     raise ValueError(
                         "The batch format must be one of 'native', 'pandas', "
-                        "or 'pyarrow', got: {}".format(batch_format))
+                        "or 'pyarrow', got: {}".format(batch_format)
+                    )
 
                 applied = fn(view)
                 if isinstance(applied, list) or isinstance(applied, pa.Table):
@@ -235,10 +260,12 @@ class Dataset(Generic[T]):
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
                 else:
-                    raise ValueError("The map batches UDF returned the value "
-                                     f"{applied}, which is not allowed. "
-                                     "The return type must be either list, "
-                                     "pandas.DataFrame, or pyarrow.Table")
+                    raise ValueError(
+                        "The map batches UDF returned the value "
+                        f"{applied}, which is not allowed. "
+                        "The return type must be either list, "
+                        "pandas.DataFrame, or pyarrow.Table"
+                    )
                 output_buffer.add_block(applied)
                 if output_buffer.has_next():
                     yield output_buffer.next()
@@ -251,11 +278,13 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def flat_map(self,
-                 fn: Union[CallableClass, Callable[[T], Iterable[U]]],
-                 *,
-                 compute: Optional[str] = None,
-                 **ray_remote_args) -> "Dataset[U]":
+    def flat_map(
+        self,
+        fn: Union[CallableClass, Callable[[T], Iterable[U]]],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
         This is a blocking operation. Consider using ``.map_batches()`` for
@@ -281,8 +310,7 @@ class Dataset(Generic[T]):
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
-            output_buffer = BlockOutputBuffer(None,
-                                              context.target_max_block_size)
+            output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -297,11 +325,13 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def filter(self,
-               fn: Union[CallableClass, Callable[[T], bool]],
-               *,
-               compute: Optional[str] = None,
-               **ray_remote_args) -> "Dataset[T]":
+    def filter(
+        self,
+        fn: Union[CallableClass, Callable[[T], bool]],
+        *,
+        compute: Optional[str] = None,
+        **ray_remote_args,
+    ) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
         This is a blocking operation. Consider using ``.map_batches()`` for
@@ -338,8 +368,7 @@ class Dataset(Generic[T]):
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
-    def repartition(self, num_blocks: int, *,
-                    shuffle: bool = False) -> "Dataset[T]":
+    def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset[T]":
         """Repartition the dataset into exactly this number of blocks.
 
         This is a blocking operation. After repartitioning, all blocks in the
@@ -367,8 +396,7 @@ class Dataset(Generic[T]):
         stats = self._stats.child_builder("repartition")
         if shuffle:
             new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
-            return Dataset(new_blocks, self._epoch,
-                           stats.build_multistage(stage_info))
+            return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
@@ -388,7 +416,8 @@ class Dataset(Generic[T]):
         reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
-            reduce_task.remote(*s.get_internal_block_refs()) for s in splits
+            reduce_task.remote(*s.get_internal_block_refs())
+            for s in splits
             if s.num_blocks() > 0
         ]
         del splits  # Early-release memory.
@@ -410,24 +439,28 @@ class Dataset(Generic[T]):
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO)
-            empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
-                                                  empty_meta)
-                                                 for _ in range(num_empties)])
+                input_files=None, exec_stats=BlockExecStats.TODO
+            )
+            empty_blocks, empty_metadata = zip(
+                *[(ray.put(empty_block), empty_meta) for _ in range(num_empties)]
+            )
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
         return Dataset(
-            BlockList(new_blocks, new_metadata), self._epoch,
-            self._stats.child_TODO("repartition"))
+            BlockList(new_blocks, new_metadata),
+            self._epoch,
+            self._stats.child_TODO("repartition"),
+        )
 
     def random_shuffle(
-            self,
-            *,
-            seed: Optional[int] = None,
-            num_blocks: Optional[int] = None,
-            _move: Optional[bool] = False,
-            _spread_resource_prefix: Optional[str] = None) -> "Dataset[T]":
+        self,
+        *,
+        seed: Optional[int] = None,
+        num_blocks: Optional[int] = None,
+        _move: Optional[bool] = False,
+        _spread_resource_prefix: Optional[str] = None,
+    ) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -462,15 +495,13 @@ class Dataset(Generic[T]):
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
-            _spread_resource_prefix=_spread_resource_prefix)
-        return Dataset(new_blocks, self._epoch,
-                       stats.build_multistage(stage_info))
+            _spread_resource_prefix=_spread_resource_prefix,
+        )
+        return Dataset(new_blocks, self._epoch, stats.build_multistage(stage_info))
 
-    def split(self,
-              n: int,
-              *,
-              equal: bool = False,
-              locality_hints: List[Any] = None) -> List["Dataset[T]"]:
+    def split(
+        self, n: int, *, equal: bool = False, locality_hints: List[Any] = None
+    ) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
         This returns a list of sub-datasets that can be passed to Ray tasks
@@ -504,21 +535,29 @@ class Dataset(Generic[T]):
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
-                "doesn't equal the number of splits {n}.")
+                "doesn't equal the number of splits {n}."
+            )
 
-        def _partition_splits(splits: List[Dataset[T]], part_size: int,
-                              counts_cache: Dict[str, int]):
+        def _partition_splits(
+            splits: List[Dataset[T]], part_size: int, counts_cache: Dict[str, int]
+        ):
             """Partition splits into two sets: splits that are smaller than the
             target size and splits that are larger than the target size.
             """
             splits = sorted(splits, key=lambda s: counts_cache[s._get_uuid()])
-            idx = next(i for i, split in enumerate(splits)
-                       if counts_cache[split._get_uuid()] >= part_size)
+            idx = next(
+                i
+                for i, split in enumerate(splits)
+                if counts_cache[split._get_uuid()] >= part_size
+            )
             return splits[:idx], splits[idx:]
 
-        def _equalize_larger_splits(splits: List[Dataset[T]], target_size: int,
-                                    counts_cache: Dict[str, int],
-                                    num_splits_required: int):
+        def _equalize_larger_splits(
+            splits: List[Dataset[T]],
+            target_size: int,
+            counts_cache: Dict[str, int],
+            num_splits_required: int,
+        ):
             """Split each split into one or more subsplits that are each the
             target size, with at most one leftover split that's smaller
             than the target size.
@@ -545,14 +584,18 @@ class Dataset(Generic[T]):
                     # Short-circuit if the new splits will make us reach the
                     # desired number of splits.
                     new_splits.extend(
-                        split_splits[:num_splits_required - len(new_splits)])
+                        split_splits[: num_splits_required - len(new_splits)]
+                    )
                     break
                 new_splits.extend(split_splits)
             return new_splits, leftovers
 
         def _equalize_smaller_splits(
-                splits: List[Dataset[T]], target_size: int,
-                counts_cache: Dict[str, int], num_splits_required: int):
+            splits: List[Dataset[T]],
+            target_size: int,
+            counts_cache: Dict[str, int],
+            num_splits_required: int,
+        ):
             """Union small splits up to the target split size.
 
             This assume that the given splits are sorted in ascending order.
@@ -583,8 +626,7 @@ class Dataset(Generic[T]):
                     # that will fit into the union buffer and a leftover
                     # subsplit that we add back into the candidate split list.
                     diff = target_size - union_buffer_size
-                    diff_split, new_low_split = low_split.split_at_indices(
-                        [diff])
+                    diff_split, new_low_split = low_split.split_at_indices([diff])
                     union_buffer.append(diff_split)
                     union_buffer_size += diff
                     # We overwrite the old low split and don't advance the low
@@ -611,8 +653,7 @@ class Dataset(Generic[T]):
                         break
             return new_splits
 
-        def equalize(splits: List[Dataset[T]],
-                     num_splits: int) -> List[Dataset[T]]:
+        def equalize(splits: List[Dataset[T]], num_splits: int) -> List[Dataset[T]]:
             if not equal:
                 return splits
             counts = {s._get_uuid(): s.count() for s in splits}
@@ -622,27 +663,28 @@ class Dataset(Generic[T]):
 
             # Partition splits.
             smaller_splits, larger_splits = _partition_splits(
-                splits, target_size, counts)
+                splits, target_size, counts
+            )
             if len(smaller_splits) == 0 and num_splits < len(splits):
                 # All splits are already equal.
                 return splits
 
             # Split larger splits.
             new_splits, leftovers = _equalize_larger_splits(
-                larger_splits, target_size, counts, num_splits)
+                larger_splits, target_size, counts, num_splits
+            )
             # Short-circuit if we've already reached the desired number of
             # splits.
             if len(new_splits) == num_splits:
                 return new_splits
             # Add leftovers to small splits and re-sort.
             smaller_splits += leftovers
-            smaller_splits = sorted(
-                smaller_splits, key=lambda s: counts[s._get_uuid()])
+            smaller_splits = sorted(smaller_splits, key=lambda s: counts[s._get_uuid()])
 
             # Union smaller splits.
             new_splits_small = _equalize_smaller_splits(
-                smaller_splits, target_size, counts,
-                num_splits - len(new_splits))
+                smaller_splits, target_size, counts, num_splits - len(new_splits)
+            )
             new_splits.extend(new_splits_small)
             return new_splits
 
@@ -650,14 +692,18 @@ class Dataset(Generic[T]):
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            return equalize([
-                Dataset(
-                    BlockList(
-                        list(blocks), [metadata_mapping[b] for b in blocks]),
-                    self._epoch, self._stats)
-                for blocks in np.array_split(block_refs, n)
-                if not equal or len(blocks) > 0
-            ], n)
+            return equalize(
+                [
+                    Dataset(
+                        BlockList(list(blocks), [metadata_mapping[b] for b in blocks]),
+                        self._epoch,
+                        self._stats,
+                    )
+                    for blocks in np.array_split(block_refs, n)
+                    if not equal or len(blocks) > 0
+                ],
+                n,
+            )
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -674,8 +720,9 @@ class Dataset(Generic[T]):
         # In the second round: fill each actor's allocation with
         # remaining unallocated blocks until we reach the limit.
 
-        def build_allocation_size_map(num_blocks: int,
-                                      actors: List[Any]) -> Dict[Any, int]:
+        def build_allocation_size_map(
+            num_blocks: int, actors: List[Any]
+        ) -> Dict[Any, int]:
             """Given the total number of blocks and a list of actors, calcuate
             the expected number of blocks to allocate for each actor.
             """
@@ -689,8 +736,9 @@ class Dataset(Generic[T]):
                     num_blocks_by_actor[actor] += 1
             return num_blocks_by_actor
 
-        def build_block_refs_by_node_id(blocks: List[ObjectRef[Block]]
-                                        ) -> Dict[str, List[ObjectRef[Block]]]:
+        def build_block_refs_by_node_id(
+            blocks: List[ObjectRef[Block]],
+        ) -> Dict[str, List[ObjectRef[Block]]]:
             """Build the reverse index from node_id to block_refs. For
             simplicity, if the block is stored on multiple nodes we
             only pick the first one.
@@ -698,25 +746,25 @@ class Dataset(Generic[T]):
             block_ref_locations = ray.experimental.get_object_locations(blocks)
             block_refs_by_node_id = collections.defaultdict(list)
             for block_ref in blocks:
-                node_ids = block_ref_locations.get(block_ref, {}).get(
-                    "node_ids", [])
+                node_ids = block_ref_locations.get(block_ref, {}).get("node_ids", [])
                 node_id = node_ids[0] if node_ids else None
                 block_refs_by_node_id[node_id].append(block_ref)
             return block_refs_by_node_id
 
         def build_node_id_by_actor(actors: List[Any]) -> Dict[Any, str]:
-            """Build a map from a actor to its node_id.
-            """
+            """Build a map from a actor to its node_id."""
             actors_state = ray.state.actors()
             return {
-                actor: actors_state.get(actor._actor_id.hex(), {}).get(
-                    "Address", {}).get("NodeID")
+                actor: actors_state.get(actor._actor_id.hex(), {})
+                .get("Address", {})
+                .get("NodeID")
                 for actor in actors
             }
 
         # expected number of blocks to be allocated for each actor
         expected_block_count_by_actor = build_allocation_size_map(
-            len(block_refs), locality_hints)
+            len(block_refs), locality_hints
+        )
         # the reverse index from node_id to block_refs
         block_refs_by_node_id = build_block_refs_by_node_id(block_refs)
         # the map from actor to its node_id
@@ -739,22 +787,30 @@ class Dataset(Generic[T]):
         # In the second round: fill each actor's allocation with
         # remaining unallocated blocks until we reach the limit
         remaining_block_refs = list(
-            itertools.chain.from_iterable(block_refs_by_node_id.values()))
+            itertools.chain.from_iterable(block_refs_by_node_id.values())
+        )
         for actor in locality_hints:
-            while len(allocation_per_actor[actor]
-                      ) < expected_block_count_by_actor[actor]:
+            while (
+                len(allocation_per_actor[actor]) < expected_block_count_by_actor[actor]
+            ):
                 allocation_per_actor[actor].append(remaining_block_refs.pop())
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        return equalize([
-            Dataset(
-                BlockList(
-                    allocation_per_actor[actor],
-                    [metadata_mapping[b]
-                     for b in allocation_per_actor[actor]]), self._epoch,
-                self._stats) for actor in locality_hints
-        ], n)
+        return equalize(
+            [
+                Dataset(
+                    BlockList(
+                        allocation_per_actor[actor],
+                        [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                    ),
+                    self._epoch,
+                    self._stats,
+                )
+                for actor in locality_hints
+            ],
+            n,
+        )
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
@@ -830,10 +886,9 @@ class Dataset(Generic[T]):
                 calls.extend([None] * bl.initial_num_blocks())
                 metadata.extend(bl._metadata)
                 if context.block_splitting_enabled:
-                    block_partitions.extend([
-                        ray.put([(b, m)])
-                        for b, m in bl.get_blocks_with_metadata()
-                    ])
+                    block_partitions.extend(
+                        [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
+                    )
                 else:
                     block_partitions.extend(bl.get_blocks())
 
@@ -846,11 +901,14 @@ class Dataset(Generic[T]):
                     "Dataset contains data from multiple epochs: {}, "
                     "likely due to a `rewindow()` call. The higher epoch "
                     "number {} will be used. This warning will not "
-                    "be shown again.".format(set(epochs), max_epoch))
+                    "be shown again.".format(set(epochs), max_epoch)
+                )
                 _epoch_warned = True
         return Dataset(
-            LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.child_TODO("union"))
+            LazyBlockList(calls, metadata, block_partitions),
+            max_epoch,
+            self._stats.child_TODO("union"),
+        )
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -874,6 +932,7 @@ class Dataset(Generic[T]):
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
+
         return GroupedDataset(self, key)
 
     def aggregate(self, *aggs: AggregateFn) -> U:
@@ -903,28 +962,29 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _check_and_normalize_agg_on(self,
-                                    on: Optional["AggregateOnTs"],
-                                    skip_cols: Optional[List[str]] = None
-                                    ) -> Optional["AggregateOnTs"]:
+    def _check_and_normalize_agg_on(
+        self, on: Optional["AggregateOnTs"], skip_cols: Optional[List[str]] = None
+    ) -> Optional["AggregateOnTs"]:
         """Checks whether the provided aggregation `on` arg is valid for this
         type of dataset, and normalizes the value based on the Dataset type and
         any provided columns to skip.
         """
-        if (on is not None
-                and (not isinstance(on, (str, Callable, list)) or
-                     (isinstance(on, list)
-                      and not (all(isinstance(on_, str) for on_ in on)
-                               or all(isinstance(on_, Callable)
-                                      for on_ in on))))):
+        if on is not None and (
+            not isinstance(on, (str, Callable, list))
+            or (
+                isinstance(on, list)
+                and not (
+                    all(isinstance(on_, str) for on_ in on)
+                    or all(isinstance(on_, Callable) for on_ in on)
+                )
+            )
+        ):
             from ray.data.grouped_dataset import AggregateOnTs
 
-            raise TypeError(
-                f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
+            raise TypeError(f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
 
         if isinstance(on, list) and len(on) == 0:
-            raise ValueError(
-                "When giving a list for `on`, it must be nonempty.")
+            raise ValueError("When giving a list for `on`, it must be nonempty.")
 
         try:
             dataset_format = self._dataset_format()
@@ -952,21 +1012,20 @@ class Dataset(Generic[T]):
                 on = [col for col in schema.names if col not in skip_cols]
             # Check that column names refer to valid columns.
             elif isinstance(on, str) and on not in schema.names:
-                raise ValueError(
-                    f"on={on} is not a valid column name: {schema.names}")
+                raise ValueError(f"on={on} is not a valid column name: {schema.names}")
             elif isinstance(on, list) and isinstance(on[0], str):
                 for on_ in on:
                     if on_ not in schema.names:
                         raise ValueError(
-                            f"on={on_} is not a valid column name: "
-                            f"{schema.names}")
+                            f"on={on_} is not a valid column name: " f"{schema.names}"
+                        )
         else:
-            if isinstance(on, str) or (isinstance(on, list)
-                                       and isinstance(on[0], str)):
+            if isinstance(on, str) or (isinstance(on, list) and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
                     "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset.")
+                    "instead of a simple Dataset."
+                )
         return on
 
     def _dataset_format(self) -> str:
@@ -987,13 +1046,15 @@ class Dataset(Generic[T]):
             if schema is None:
                 raise ValueError(
                     "Dataset is empty or cleared, can't determine the format"
-                    " of the dataset")
+                    " of the dataset"
+                )
             if isinstance(schema, pa.Schema):
                 return "arrow"
             return "simple"
 
-    def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
-                      *args, **kwargs):
+    def _aggregate_on(
+        self, agg_cls: type, on: Optional["AggregateOnTs"], *args, **kwargs
+    ):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -1002,15 +1063,18 @@ class Dataset(Generic[T]):
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=None, **kwargs)
+            agg_cls, on, *args, skip_cols=None, **kwargs
+        )
         return self.aggregate(*aggs)
 
-    def _build_multicolumn_aggs(self,
-                                agg_cls: type,
-                                on: Optional["AggregateOnTs"],
-                                *args,
-                                skip_cols: Optional[List[str]] = None,
-                                **kwargs):
+    def _build_multicolumn_aggs(
+        self,
+        agg_cls: type,
+        on: Optional["AggregateOnTs"],
+        *args,
+        skip_cols: Optional[List[str]] = None,
+        **kwargs,
+    ):
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
@@ -1304,9 +1368,11 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]] = None,
-             descending: bool = False) -> "Dataset[T]":
+    def sort(
+        self,
+        key: Union[None, str, List[str], Callable[[T], Any]] = None,
+        descending: bool = False,
+    ) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
         (experimental support)
 
@@ -1342,8 +1408,10 @@ class Dataset(Generic[T]):
         if self.num_blocks() == 0:
             return self
         return Dataset(
-            sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.child_TODO("sort"))
+            sort_impl(self._blocks, key, descending),
+            self._epoch,
+            self._stats.child_TODO("sort"),
+        )
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1375,14 +1443,17 @@ class Dataset(Generic[T]):
             # TODO(ekl) consider supporting if num_rows are equal.
             raise ValueError(
                 "Cannot zip dataset of different num blocks: {} vs {}".format(
-                    len(blocks1), len(blocks2)))
+                    len(blocks1), len(blocks2)
+                )
+            )
 
         def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
             return result, br.get_metadata(
-                input_files=[], exec_stats=BlockExecStats.TODO)
+                input_files=[], exec_stats=BlockExecStats.TODO
+            )
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
@@ -1396,8 +1467,8 @@ class Dataset(Generic[T]):
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
         return Dataset(
-            BlockList(blocks, metadata), self._epoch,
-            self._stats.child_TODO("zip"))
+            BlockList(blocks, metadata), self._epoch, self._stats.child_TODO("zip")
+        )
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1451,8 +1522,10 @@ class Dataset(Generic[T]):
             output.append(row)
             if len(output) > limit:
                 raise ValueError(
-                    "The dataset has more than the given limit of {} records.".
-                    format(limit))
+                    "The dataset has more than the given limit of {} records.".format(
+                        limit
+                    )
+                )
         return output
 
     def show(self, limit: int = 20) -> None:
@@ -1486,13 +1559,12 @@ class Dataset(Generic[T]):
         get_num_rows = cached_remote_fn(_get_num_rows)
 
         return sum(
-            ray.get([
-                get_num_rows.remote(block)
-                for block in self._blocks.get_blocks()
-            ]))
+            ray.get([get_num_rows.remote(block) for block in self._blocks.get_blocks()])
+        )
 
-    def schema(self, fetch_if_missing: bool = False
-               ) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(
+        self, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
         For datasets of Arrow records, this will return the Arrow schema.
@@ -1565,16 +1637,16 @@ class Dataset(Generic[T]):
         return list(files)
 
     def write_parquet(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            try_create_dir: bool = True,
-            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-            block_path_provider:
-            BlockWritePathProvider = DefaultBlockWritePathProvider(),
-            arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-            **arrow_parquet_args) -> None:
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **arrow_parquet_args,
+    ) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1618,19 +1690,20 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_parquet_args_fn,
-            **arrow_parquet_args)
+            **arrow_parquet_args,
+        )
 
     def write_json(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            try_create_dir: bool = True,
-            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-            block_path_provider:
-            BlockWritePathProvider = DefaultBlockWritePathProvider(),
-            pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-            **pandas_json_args) -> None:
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **pandas_json_args,
+    ) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1675,18 +1748,20 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=pandas_json_args_fn,
-            **pandas_json_args)
+            **pandas_json_args,
+        )
 
-    def write_csv(self,
-                  path: str,
-                  *,
-                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                  try_create_dir: bool = True,
-                  arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-                  block_path_provider:
-                  BlockWritePathProvider = DefaultBlockWritePathProvider(),
-                  arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-                  **arrow_csv_args) -> None:
+    def write_csv(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **arrow_csv_args,
+    ) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1728,18 +1803,19 @@ class Dataset(Generic[T]):
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
-            **arrow_csv_args)
+            **arrow_csv_args,
+        )
 
     def write_numpy(
-            self,
-            path: str,
-            *,
-            column: str = "value",
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            try_create_dir: bool = True,
-            arrow_open_stream_args: Optional[Dict[str, Any]] = None,
-            block_path_provider:
-            BlockWritePathProvider = DefaultBlockWritePathProvider()) -> None:
+        self,
+        path: str,
+        *,
+        column: str = "value",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+    ) -> None:
         """Write a tensor column of the dataset to npy files.
 
         This is only supported for datasets convertible to Arrow records that
@@ -1776,10 +1852,10 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
-            block_path_provider=block_path_provider)
+            block_path_provider=block_path_provider,
+        )
 
-    def write_datasource(self, datasource: Datasource[T],
-                         **write_args) -> None:
+    def write_datasource(self, datasource: Datasource[T], **write_args) -> None:
         """Write the dataset to a custom datasource.
 
         Examples:
@@ -1821,17 +1897,20 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
         for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks, batch_format="native"):
+            prefetch_blocks=prefetch_blocks, batch_format="native"
+        ):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
                 yield row
 
-    def iter_batches(self,
-                     *,
-                     prefetch_blocks: int = 0,
-                     batch_size: int = None,
-                     batch_format: str = "native",
-                     drop_last: bool = False) -> Iterator[BatchType]:
+    def iter_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: int = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+    ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -1868,7 +1947,8 @@ class Dataset(Generic[T]):
             else:
                 raise ValueError(
                     f"The given batch format: {batch_format} "
-                    f"is invalid. Supported batch type: {BatchType}")
+                    f"is invalid. Supported batch type: {BatchType}"
+                )
 
         batcher = Batcher(batch_size=batch_size)
 
@@ -1883,8 +1963,9 @@ class Dataset(Generic[T]):
                     yield result
 
         block_window = []  # Handle empty sliding window gracefully.
-        for block_window in _sliding_window(self._blocks.iter_blocks(),
-                                            prefetch_blocks + 1):
+        for block_window in _sliding_window(
+            self._blocks.iter_blocks(), prefetch_blocks + 1
+        ):
             block_window = list(block_window)
             with self._stats.iter_wait_s.timer():
                 ray.wait(block_window, num_returns=1, fetch_local=True)
@@ -1903,16 +1984,17 @@ class Dataset(Generic[T]):
 
         self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
-    def to_torch(self,
-                 *,
-                 label_column: str,
-                 feature_columns: Optional[List[str]] = None,
-                 label_column_dtype: Optional["torch.dtype"] = None,
-                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
-                 batch_size: int = 1,
-                 prefetch_blocks: int = 0,
-                 drop_last: bool = False) -> \
-            "torch.utils.data.IterableDataset":
+    def to_torch(
+        self,
+        *,
+        label_column: str,
+        feature_columns: Optional[List[str]] = None,
+        label_column_dtype: Optional["torch.dtype"] = None,
+        feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+        batch_size: int = 1,
+        prefetch_blocks: int = 0,
+        drop_last: bool = False,
+    ) -> "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1958,26 +2040,27 @@ class Dataset(Generic[T]):
         """
         import torch
 
-        from ray.data.impl.torch_iterable_dataset import \
-            TorchIterableDataset
+        from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
 
         if feature_columns and feature_column_dtypes:
             if len(feature_columns) != len(feature_column_dtypes):
-                raise ValueError("The lengths of `feature_columns` "
-                                 f"({len(feature_columns)}) and "
-                                 f"`feature_column_dtypes` ("
-                                 f"{len(feature_column_dtypes)}) do not "
-                                 "match!")
+                raise ValueError(
+                    "The lengths of `feature_columns` "
+                    f"({len(feature_columns)}) and "
+                    f"`feature_column_dtypes` ("
+                    f"{len(feature_column_dtypes)}) do not "
+                    "match!"
+                )
 
         def make_generator():
             for batch in self.iter_batches(
-                    batch_size=batch_size,
-                    batch_format="pandas",
-                    prefetch_blocks=prefetch_blocks,
-                    drop_last=drop_last):
+                batch_size=batch_size,
+                batch_format="pandas",
+                prefetch_blocks=prefetch_blocks,
+                drop_last=drop_last,
+            ):
                 label_vals = batch.pop(label_column).values
-                label_tensor = torch.as_tensor(
-                    label_vals, dtype=label_column_dtype)
+                label_tensor = torch.as_tensor(label_vals, dtype=label_column_dtype)
                 label_tensor = label_tensor.view(-1, 1)
 
                 feature_tensors = []
@@ -2000,13 +2083,15 @@ class Dataset(Generic[T]):
 
         return TorchIterableDataset(make_generator)
 
-    def to_tf(self,
-              *,
-              label_column: str,
-              output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
-              feature_columns: Optional[List[str]] = None,
-              prefetch_blocks: int = 0,
-              batch_size: int = 1) -> "tf.data.Dataset":
+    def to_tf(
+        self,
+        *,
+        label_column: str,
+        output_signature: Tuple["tf.TypeSpec", "tf.TypeSpec"],
+        feature_columns: Optional[List[str]] = None,
+        prefetch_blocks: int = 0,
+        batch_size: int = 1,
+    ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
         The TF Dataset will be created from the generator returned by the
@@ -2051,9 +2136,10 @@ class Dataset(Generic[T]):
 
         def make_generator():
             for batch in self.iter_batches(
-                    prefetch_blocks=prefetch_blocks,
-                    batch_size=batch_size,
-                    batch_format="pandas"):
+                prefetch_blocks=prefetch_blocks,
+                batch_size=batch_size,
+                batch_format="pandas",
+            ):
                 target_col = batch.pop(label_column)
                 if feature_columns:
                     batch = batch[feature_columns]
@@ -2062,7 +2148,8 @@ class Dataset(Generic[T]):
                 yield batch.values, target_col.values
 
         dataset = tf.data.Dataset.from_generator(
-            make_generator, output_signature=output_signature)
+            make_generator, output_signature=output_signature
+        )
 
         return dataset
 
@@ -2093,13 +2180,15 @@ class Dataset(Generic[T]):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
-                    "ray.util.dask).")
+                    "ray.util.dask)."
+                )
             return block.to_pandas()
 
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self._blocks.get_blocks()])
+            [block_to_df(block) for block in self._blocks.get_blocks()]
+        )
         return ddf
 
     def to_mars(self) -> "mars.DataFrame":
@@ -2132,13 +2221,12 @@ class Dataset(Generic[T]):
             A Modin dataframe created from this dataset.
         """
 
-        from modin.distributed.dataframe.pandas.partitions import (
-            from_partitions)
+        from modin.distributed.dataframe.pandas.partitions import from_partitions
+
         pd_objs = self.to_pandas_refs()
         return from_partitions(pd_objs, axis=0)
 
-    def to_spark(self,
-                 spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
+    def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -2147,13 +2235,15 @@ class Dataset(Generic[T]):
             A Spark dataframe created from this dataset.
         """
         import raydp
+
         core_worker = ray.worker.global_worker.core_worker
         locations = [
             core_worker.get_owner_address(block)
             for block in self.get_internal_block_refs()
         ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs(), locations)
+            spark, self.schema(), self.get_internal_block_refs(), locations
+        )
 
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
@@ -2177,7 +2267,8 @@ class Dataset(Generic[T]):
         if self.count() > limit:
             raise ValueError(
                 "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas().".format(limit))
+                "Use ds.limit(N).to_pandas().".format(limit)
+            )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
         for block in blocks:
@@ -2199,12 +2290,11 @@ class Dataset(Generic[T]):
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
-        return [
-            block_to_df.remote(block) for block in self._blocks.get_blocks()
-        ]
+        return [block_to_df.remote(block) for block in self._blocks.get_blocks()]
 
-    def to_numpy_refs(self, *, column: Optional[str] = None
-                      ) -> List[ObjectRef[np.ndarray]]:
+    def to_numpy_refs(
+        self, *, column: Optional[str] = None
+    ) -> List[ObjectRef[np.ndarray]]:
         """Convert this dataset into a distributed set of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
@@ -2302,8 +2392,9 @@ class Dataset(Generic[T]):
         return DatasetPipeline(Iterable(self), length=times or float("inf"))
 
     def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
-        raise DeprecationWarning("Use .window(blocks_per_window=n) instead of "
-                                 ".pipeline(parallelism=n)")
+        raise DeprecationWarning(
+            "Use .window(blocks_per_window=n) instead of " ".pipeline(parallelism=n)"
+        )
 
     def window(self, *, blocks_per_window: int = 10) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by windowing over data blocks.
@@ -2353,6 +2444,7 @@ class Dataset(Generic[T]):
                 disables pipelining.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+
         outer_stats = self._stats
 
         class Iterator:
@@ -2406,8 +2498,9 @@ class Dataset(Generic[T]):
         self._blocks.clear()
         return blocks
 
-    def _split(self, index: int,
-               return_right_half: bool) -> ("Dataset[T]", "Dataset[T]"):
+    def _split(
+        self, index: int, return_right_half: bool
+    ) -> ("Dataset[T]", "Dataset[T]"):
         get_num_rows = cached_remote_fn(_get_num_rows)
         split_block = cached_remote_fn(_split_block, num_returns=4)
 
@@ -2434,8 +2527,9 @@ class Dataset(Generic[T]):
                 left_blocks.append(b)
                 left_metadata.append(m)
             else:
-                b0, m0, b1, m1 = split_block.remote(b, m, index - count,
-                                                    return_right_half)
+                b0, m0, b1, m1 = split_block.remote(
+                    b, m, index - count, return_right_half
+                )
                 left_blocks.append(b0)
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
@@ -2443,12 +2537,16 @@ class Dataset(Generic[T]):
             count += num_rows
 
         left = Dataset(
-            BlockList(left_blocks, left_metadata), self._epoch,
-            self._stats.child_TODO("split"))
+            BlockList(left_blocks, left_metadata),
+            self._epoch,
+            self._stats.child_TODO("split"),
+        )
         if return_right_half:
             right = Dataset(
-                BlockList(right_blocks, right_metadata), self._epoch,
-                self._stats.child_TODO("split"))
+                BlockList(right_blocks, right_metadata),
+                self._epoch,
+                self._stats.child_TODO("split"),
+            )
         else:
             right = None
         return left, right
@@ -2456,7 +2554,8 @@ class Dataset(Generic[T]):
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._blocks.divide(block_idx)
         return Dataset(left, self._epoch, self._stats), Dataset(
-            right, self._epoch, self._stats)
+            right, self._epoch, self._stats
+        )
 
     def __repr__(self) -> str:
         schema = self.schema()
@@ -2474,20 +2573,19 @@ class Dataset(Generic[T]):
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
         return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
-            self._blocks.initial_num_blocks(), count, schema_str)
+            self._blocks.initial_num_blocks(), count, schema_str
+        )
 
     def __str__(self) -> str:
         return repr(self)
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
-        return ray.get(
-            [get_num_rows.remote(b) for b in self._blocks.get_blocks()])
+        return ray.get([get_num_rows.remote(b) for b in self._blocks.get_blocks()])
 
     def _block_size_bytes(self) -> List[int]:
         get_size_bytes = cached_remote_fn(_get_size_bytes)
-        return ray.get(
-            [get_size_bytes.remote(b) for b in self._blocks.get_blocks()])
+        return ray.get([get_size_bytes.remote(b) for b in self._blocks.get_blocks()])
 
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()
@@ -2563,7 +2661,7 @@ def _sliding_window(iterable: Iterable, n: int):
 
 
 def _split_block(
-        block: Block, meta: BlockMetadata, count: int, return_right_half: bool
+    block: Block, meta: BlockMetadata, count: int, return_right_half: bool
 ) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
@@ -2574,7 +2672,8 @@ def _split_block(
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files,
-        exec_stats=BlockExecStats.TODO)
+        exec_stats=BlockExecStats.TODO,
+    )
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
         a1 = BlockAccessor.for_block(b1)
@@ -2583,7 +2682,8 @@ def _split_block(
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
-            exec_stats=BlockExecStats.TODO)
+            exec_stats=BlockExecStats.TODO,
+        )
     else:
         b1 = None
         m1 = None

@@ -40,6 +40,5 @@ class LinUCBTrainer(Trainer):
         return UCB_CONFIG
 
     @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> \
-            Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return BanditPolicy

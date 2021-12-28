@@ -32,7 +32,8 @@ class TestAttentionNetLearning(unittest.TestCase):
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         config = dict(
-            self.config, **{
+            self.config,
+            **{
                 "num_workers": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
@@ -50,7 +51,8 @@ class TestAttentionNetLearning(unittest.TestCase):
                         "position_wise_mlp_dim": 32,
                     },
                 },
-            })
+            }
+        )
         tune.run("PPO", config=config, stop=self.stop, verbose=1)
 
     # TODO: (sven) causes memory failures/timeouts on Travis.
@@ -85,4 +87,5 @@ class TestAttentionNetLearning(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

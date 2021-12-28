@@ -5,21 +5,31 @@ from typing import Dict, List, Tuple, Any
 
 import ray
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import \
-    AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
-    LAST_TARGET_UPDATE_TS, LEARN_ON_BATCH_TIMER, \
-    LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
-    WORKER_UPDATE_TIMER, _check_sample_batch_type, \
-    _get_global_vars, _get_shared_metrics
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
-    MultiAgentBatch
+from ray.rllib.execution.common import (
+    AGENT_STEPS_TRAINED_COUNTER,
+    APPLY_GRADS_TIMER,
+    COMPUTE_GRADS_TIMER,
+    LAST_TARGET_UPDATE_TS,
+    LEARN_ON_BATCH_TIMER,
+    LOAD_BATCH_TIMER,
+    NUM_TARGET_UPDATES,
+    STEPS_SAMPLED_COUNTER,
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    WORKER_UPDATE_TIMER,
+    _check_sample_batch_type,
+    _get_global_vars,
+    _get_shared_metrics,
+)
+from ray.rllib.policy.sample_batch import (
+    SampleBatch,
+    DEFAULT_POLICY_ID,
+    MultiAgentBatch,
+)
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, \
-    NUM_AGENT_STEPS_TRAINED
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_INFO
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
@@ -44,9 +54,12 @@ def train_one_step(trainer, train_batch) -> Dict:
         if num_sgd_iter > 1 or sgd_minibatch_size > 0:
             info = do_minibatch_sgd(
                 train_batch,
-                {pid: local_worker.get_policy(pid)
-                 for pid in policies}, local_worker, num_sgd_iter,
-                sgd_minibatch_size, [])
+                {pid: local_worker.get_policy(pid) for pid in policies},
+                local_worker,
+                num_sgd_iter,
+                sgd_minibatch_size,
+                [],
+            )
         # Single update step using train batch.
         else:
             info = local_worker.learn_on_batch(train_batch)
@@ -81,19 +94,20 @@ class TrainOneStep:
     local iterator context.
     """
 
-    def __init__(self,
-                 workers: WorkerSet,
-                 policies: List[PolicyID] = frozenset([]),
-                 num_sgd_iter: int = 1,
-                 sgd_minibatch_size: int = 0):
+    def __init__(
+        self,
+        workers: WorkerSet,
+        policies: List[PolicyID] = frozenset([]),
+        num_sgd_iter: int = 1,
+        sgd_minibatch_size: int = 0,
+    ):
         self.workers = workers
         self.local_worker = workers.local_worker()
         self.policies = policies
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
 
-    def __call__(self,
-                 batch: SampleBatchType) -> (SampleBatchType, List[dict]):
+    def __call__(self, batch: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(batch)
         metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
@@ -103,29 +117,35 @@ class TrainOneStep:
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
                 lw = self.workers.local_worker()
                 learner_info = do_minibatch_sgd(
-                    batch, {
+                    batch,
+                    {
                         pid: lw.get_policy(pid)
-                        for pid in self.policies
-                        or self.local_worker.policies_to_train
-                    }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
+                        for pid in self.policies or self.local_worker.policies_to_train
+                    },
+                    lw,
+                    self.num_sgd_iter,
+                    self.sgd_minibatch_size,
+                    [],
+                )
             # Single update step using train batch.
             else:
-                learner_info = \
-                    self.workers.local_worker().learn_on_batch(batch)
+                learner_info = self.workers.local_worker().learn_on_batch(batch)
 
             metrics.info[LEARNER_INFO] = learner_info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = batch.count
         if isinstance(batch, MultiAgentBatch):
-            metrics.counters[
-                AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
+            metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = ray.put(self.workers.local_worker().get_weights(
-                    self.policies or self.local_worker.policies_to_train))
+                weights = ray.put(
+                    self.workers.local_worker().get_weights(
+                        self.policies or self.local_worker.policies_to_train
+                    )
+                )
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
@@ -149,15 +169,17 @@ class MultiGPUTrainOneStep:
     local iterator context.
     """
 
-    def __init__(self,
-                 *,
-                 workers: WorkerSet,
-                 sgd_minibatch_size: int,
-                 num_sgd_iter: int,
-                 num_gpus: int,
-                 shuffle_sequences: bool,
-                 _fake_gpus: bool = False,
-                 framework: str = "tf"):
+    def __init__(
+        self,
+        *,
+        workers: WorkerSet,
+        sgd_minibatch_size: int,
+        num_sgd_iter: int,
+        num_gpus: int,
+        shuffle_sequences: bool,
+        _fake_gpus: bool = False,
+        framework: str = "tf"
+    ):
         self.workers = workers
         self.local_worker = workers.local_worker()
         self.num_sgd_iter = num_sgd_iter
@@ -183,15 +205,12 @@ class MultiGPUTrainOneStep:
         assert self.batch_size % len(self.devices) == 0
         assert self.batch_size >= len(self.devices), "Batch size too small!"
 
-    def __call__(self,
-                 samples: SampleBatchType) -> (SampleBatchType, List[dict]):
+    def __call__(self, samples: SampleBatchType) -> (SampleBatchType, List[dict]):
         _check_sample_batch_type(samples)
 
         # Handle everything as if multi agent.
         if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({
-                DEFAULT_POLICY_ID: samples
-            }, samples.count)
+            samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
         metrics = _get_shared_metrics()
         load_timer = metrics.timers[LOAD_BATCH_TIMER]
@@ -211,8 +230,8 @@ class MultiGPUTrainOneStep:
                 # (idx=0). Policies only have >1 buffers, if we are training
                 # asynchronously.
                 num_loaded_samples[policy_id] = self.local_worker.policy_map[
-                    policy_id].load_batch_into_buffer(
-                        batch, buffer_index=0)
+                    policy_id
+                ].load_batch_into_buffer(batch, buffer_index=0)
 
         # Execute minibatch SGD on loaded data.
         with learn_timer:
@@ -221,14 +240,13 @@ class MultiGPUTrainOneStep:
             # This makes sure results dicts always have the same structure
             # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
             # tf vs torch).
-            learner_info_builder = LearnerInfoBuilder(
-                num_devices=len(self.devices))
+            learner_info_builder = LearnerInfoBuilder(num_devices=len(self.devices))
 
             for policy_id, samples_per_device in num_loaded_samples.items():
                 policy = self.local_worker.policy_map[policy_id]
                 num_batches = max(
-                    1,
-                    int(samples_per_device) // int(self.per_device_batch_size))
+                    1, int(samples_per_device) // int(self.per_device_batch_size)
+                )
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
                 for _ in range(self.num_sgd_iter):
                     permutation = np.random.permutation(num_batches)
@@ -237,12 +255,13 @@ class MultiGPUTrainOneStep:
                         # Note: For minibatch SGD, the data is an offset into
                         # the pre-loaded entire train batch.
                         results = policy.learn_on_loaded_batch(
-                            permutation[batch_index] *
-                            self.per_device_batch_size,
-                            buffer_index=0)
+                            permutation[batch_index] * self.per_device_batch_size,
+                            buffer_index=0,
+                        )
 
                         learner_info_builder.add_learn_on_batch_results(
-                            results, policy_id)
+                            results, policy_id
+                        )
 
             # Tower reduce and finalize results.
             learner_info = learner_info_builder.finalize()
@@ -257,8 +276,11 @@ class MultiGPUTrainOneStep:
 
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = ray.put(self.workers.local_worker().get_weights(
-                    self.local_worker.policies_to_train))
+                weights = ray.put(
+                    self.workers.local_worker().get_weights(
+                        self.local_worker.policies_to_train
+                    )
+                )
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
 
@@ -314,10 +336,9 @@ class ApplyGradients:
     Updates the STEPS_TRAINED_COUNTER counter in the local iterator context.
     """
 
-    def __init__(self,
-                 workers,
-                 policies: List[PolicyID] = frozenset([]),
-                 update_all=True):
+    def __init__(
+        self, workers, policies: List[PolicyID] = frozenset([]), update_all=True
+    ):
         """Creates an ApplyGradients instance.
 
         Args:
@@ -334,8 +355,8 @@ class ApplyGradients:
     def __call__(self, item: Tuple[ModelGradients, int]) -> None:
         if not isinstance(item, tuple) or len(item) != 2:
             raise ValueError(
-                "Input must be a tuple of (grad_dict, count), got {}".format(
-                    item))
+                "Input must be a tuple of (grad_dict, count), got {}".format(item)
+            )
         gradients, count = item
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
@@ -352,8 +373,11 @@ class ApplyGradients:
         if self.update_all:
             if self.workers.remote_workers():
                 with metrics.timers[WORKER_UPDATE_TIMER]:
-                    weights = ray.put(self.workers.local_worker().get_weights(
-                        self.policies or self.local_worker.policies_to_train))
+                    weights = ray.put(
+                        self.workers.local_worker().get_weights(
+                            self.policies or self.local_worker.policies_to_train
+                        )
+                    )
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights, _get_global_vars())
         else:
@@ -361,12 +385,13 @@ class ApplyGradients:
                 raise ValueError(
                     "Could not find actor to update. When "
                     "update_all=False, `current_actor` must be set "
-                    "in the iterator context.")
+                    "in the iterator context."
+                )
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = self.workers.local_worker().get_weights(
-                    self.policies or self.local_worker.policies_to_train)
-                metrics.current_actor.set_weights.remote(
-                    weights, _get_global_vars())
+                    self.policies or self.local_worker.policies_to_train
+                )
+                metrics.current_actor.set_weights.remote(weights, _get_global_vars())
 
 
 class AverageGradients:
@@ -382,8 +407,9 @@ class AverageGradients:
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
-    def __call__(self, gradients: List[Tuple[ModelGradients, int]]
-                 ) -> Tuple[ModelGradients, int]:
+    def __call__(
+        self, gradients: List[Tuple[ModelGradients, int]]
+    ) -> Tuple[ModelGradients, int]:
         acc = None
         sum_count = 0
         for grad, count in gradients:
@@ -392,8 +418,10 @@ class AverageGradients:
             else:
                 acc = [a + b for a, b in zip(acc, grad)]
             sum_count += count
-        logger.info("Computing average of {} microbatch gradients "
-                    "({} samples total)".format(len(gradients), sum_count))
+        logger.info(
+            "Computing average of {} microbatch gradients "
+            "({} samples total)".format(len(gradients), sum_count)
+        )
         return acc, sum_count
 
 
@@ -415,11 +443,13 @@ class UpdateTargetNetwork:
     track when we should update the target next.
     """
 
-    def __init__(self,
-                 workers: WorkerSet,
-                 target_update_freq: int,
-                 by_steps_trained: bool = False,
-                 policies: List[PolicyID] = frozenset([])):
+    def __init__(
+        self,
+        workers: WorkerSet,
+        target_update_freq: int,
+        by_steps_trained: bool = False,
+        policies: List[PolicyID] = frozenset([]),
+    ):
         self.workers = workers
         self.local_worker = workers.local_worker()
         self.target_update_freq = target_update_freq
@@ -436,6 +466,7 @@ class UpdateTargetNetwork:
         if cur_ts - last_update > self.target_update_freq:
             to_update = self.policies or self.local_worker.policies_to_train
             self.workers.local_worker().foreach_trainable_policy(
-                lambda p, p_id: p_id in to_update and p.update_target())
+                lambda p, p_id: p_id in to_update and p.update_target()
+            )
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts

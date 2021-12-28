@@ -14,19 +14,22 @@ UNRESOLVED_SEARCH_SPACE = str(
     "space definitions. {cls} should however be instantiated with fully "
     "configured search spaces only. To use Ray Tune's automatic search space "
     "conversion, pass the space definition as part of the `config` argument "
-    "to `tune.run()` instead.")
+    "to `tune.run()` instead."
+)
 
 UNDEFINED_SEARCH_SPACE = str(
     "Trying to sample a configuration from {cls}, but no search "
     "space has been defined. Either pass the `{space}` argument when "
     "instantiating the search algorithm, or pass a `config` to "
-    "`tune.run()`.")
+    "`tune.run()`."
+)
 
 UNDEFINED_METRIC_MODE = str(
     "Trying to sample a configuration from {cls}, but the `metric` "
     "({metric}) or `mode` ({mode}) parameters have not been set. "
     "Either pass these arguments when instantiating the search algorithm, "
-    "or pass them to `tune.run()`.")
+    "or pass them to `tune.run()`."
+)
 
 
 class Searcher:
@@ -73,23 +76,28 @@ class Searcher:
 
 
     """
+
     FINISHED = "FINISHED"
     CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
-    def __init__(self,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
+    def __init__(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        max_concurrent: Optional[int] = None,
+        use_early_stopped_trials: Optional[bool] = None,
+    ):
         if use_early_stopped_trials is False:
             raise DeprecationWarning(
                 "Early stopped trials are now always used. If this is a "
-                "problem, file an issue: https://github.com/ray-project/ray.")
+                "problem, file an issue: https://github.com/ray-project/ray."
+            )
         if max_concurrent is not None:
             raise DeprecationWarning(
                 "`max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
-                "instead. This will raise an error in future versions of Ray.")
+                "instead. This will raise an error in future versions of Ray."
+            )
 
         self._metric = metric
         self._mode = mode
@@ -99,20 +107,21 @@ class Searcher:
             return
 
         assert isinstance(
-            metric, type(mode)), "metric and mode must be of the same type"
+            metric, type(mode)
+        ), "metric and mode must be of the same type"
         if isinstance(mode, str):
-            assert mode in ["min", "max"
-                            ], "if `mode` is a str must be 'min' or 'max'!"
+            assert mode in ["min", "max"], "if `mode` is a str must be 'min' or 'max'!"
         elif isinstance(mode, list):
-            assert len(mode) == len(
-                metric), "Metric and mode must be the same length"
-            assert all(mod in ["min", "max", "obs"] for mod in
-                       mode), "All of mode must be 'min' or 'max' or 'obs'!"
+            assert len(mode) == len(metric), "Metric and mode must be the same length"
+            assert all(
+                mod in ["min", "max", "obs"] for mod in mode
+            ), "All of mode must be 'min' or 'max' or 'obs'!"
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -148,10 +157,9 @@ class Searcher:
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False) -> None:
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ) -> None:
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -186,12 +194,14 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def add_evaluated_point(self,
-                            parameters: Dict,
-                            value: float,
-                            error: bool = False,
-                            pruned: bool = False,
-                            intermediate_values: Optional[List[float]] = None):
+    def add_evaluated_point(
+        self,
+        parameters: Dict,
+        value: float,
+        error: bool = False,
+        pruned: bool = False,
+        intermediate_values: Optional[List[float]] = None,
+    ):
         """Pass results from a point that has been evaluated separately.
 
         This method allows for information from outside the
@@ -298,22 +308,20 @@ class Searcher:
             session_str (str): Unique identifier of the current run
                 session.
         """
-        tmp_search_ckpt_path = os.path.join(checkpoint_dir,
-                                            ".tmp_searcher_ckpt")
+        tmp_search_ckpt_path = os.path.join(checkpoint_dir, ".tmp_searcher_ckpt")
         success = True
         try:
             self.save(tmp_search_ckpt_path)
         except NotImplementedError:
             if log_once("suggest:save_to_dir"):
-                logger.warning(
-                    "save not implemented for Searcher. Skipping save.")
+                logger.warning("save not implemented for Searcher. Skipping save.")
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
             os.replace(
                 tmp_search_ckpt_path,
-                os.path.join(checkpoint_dir,
-                             self.CKPT_FILE_TMPL.format(session_str)))
+                os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format(session_str)),
+            )
 
     def restore_from_dir(self, checkpoint_dir: str):
         """Restores the state of a searcher from a given checkpoint_dir.
@@ -340,8 +348,8 @@ class Searcher:
         full_paths = glob.glob(os.path.join(checkpoint_dir, pattern))
         if not full_paths:
             raise RuntimeError(
-                "Searcher unable to find checkpoint in {}".format(
-                    checkpoint_dir))  # TODO
+                "Searcher unable to find checkpoint in {}".format(checkpoint_dir)
+            )  # TODO
         most_recent_checkpoint = max(full_paths)
         self.restore(most_recent_checkpoint)
 
@@ -384,10 +392,7 @@ class ConcurrencyLimiter(Searcher):
         tune.run(trainable, search_alg=search_alg)
     """
 
-    def __init__(self,
-                 searcher: Searcher,
-                 max_concurrent: int,
-                 batch: bool = False):
+    def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
         assert type(max_concurrent) is int and max_concurrent > 0
         self.searcher = searcher
         self.max_concurrent = max_concurrent
@@ -401,18 +406,21 @@ class ConcurrencyLimiter(Searcher):
             raise RuntimeError(
                 f"The `ConcurrencyLimiter` only works with `Searcher` "
                 f"objects (got {type(searcher)}). Please try to pass "
-                f"`max_concurrent` to the search generator directly.")
+                f"`max_concurrent` to the search generator directly."
+            )
 
         self._set_searcher_max_concurrency()
 
         super(ConcurrencyLimiter, self).__init__(
-            metric=self.searcher.metric, mode=self.searcher.mode)
+            metric=self.searcher.metric, mode=self.searcher.mode
+        )
 
     def _set_searcher_max_concurrency(self):
         # If the searcher has special logic for handling max concurrency,
         # we do not do anything inside the ConcurrencyLimiter
         self._limit_concurrency = not self.searcher.set_max_concurrency(
-            self.max_concurrent)
+            self.max_concurrent
+        )
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
         # Determine if this behavior is acceptable, or if it should
@@ -420,23 +428,28 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         return True
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         self._set_searcher_max_concurrency()
         return set_search_properties_backwards_compatible(
-            self.searcher.set_search_properties, metric, mode, config, **spec)
+            self.searcher.set_search_properties, metric, mode, config, **spec
+        )
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._limit_concurrency:
             return self.searcher.suggest(trial_id)
 
-        assert trial_id not in self.live_trials, (
-            f"Trial ID {trial_id} must be unique: already found in set.")
+        assert (
+            trial_id not in self.live_trials
+        ), f"Trial ID {trial_id} must be unique: already found in set."
         if len(self.live_trials) >= self.max_concurrent:
             logger.debug(
                 f"Not providing a suggestion for {trial_id} due to "
-                "concurrency limit: %s/%s.", len(self.live_trials),
-                self.max_concurrent)
+                "concurrency limit: %s/%s.",
+                len(self.live_trials),
+                self.max_concurrent,
+            )
             return
 
         suggestion = self.searcher.suggest(trial_id)
@@ -445,13 +458,11 @@ class ConcurrencyLimiter(Searcher):
             self.num_unfinished_live_trials += 1
         return suggestion
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         if not self._limit_concurrency:
-            return self.searcher.on_trial_complete(
-                trial_id, result=result, error=error)
+            return self.searcher.on_trial_complete(trial_id, result=result, error=error)
 
         if trial_id not in self.live_trials:
             return
@@ -463,29 +474,32 @@ class ConcurrencyLimiter(Searcher):
                 # full batch is completed.
                 for trial_id, (result, error) in self.cached_results.items():
                     self.searcher.on_trial_complete(
-                        trial_id, result=result, error=error)
+                        trial_id, result=result, error=error
+                    )
                     self.live_trials.remove(trial_id)
                 self.cached_results = {}
                 self.num_unfinished_live_trials = 0
             else:
                 return
         else:
-            self.searcher.on_trial_complete(
-                trial_id, result=result, error=error)
+            self.searcher.on_trial_complete(trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
             self.num_unfinished_live_trials -= 1
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
         self.searcher.on_trial_result(trial_id, result)
 
-    def add_evaluated_point(self,
-                            parameters: Dict,
-                            value: float,
-                            error: bool = False,
-                            pruned: bool = False,
-                            intermediate_values: Optional[List[float]] = None):
-        return self.searcher.add_evaluated_point(parameters, value, error,
-                                                 pruned, intermediate_values)
+    def add_evaluated_point(
+        self,
+        parameters: Dict,
+        value: float,
+        error: bool = False,
+        pruned: bool = False,
+        intermediate_values: Optional[List[float]] = None,
+    ):
+        return self.searcher.add_evaluated_point(
+            parameters, value, error, pruned, intermediate_values
+        )
 
     def get_state(self) -> Dict:
         state = self.__dict__.copy()

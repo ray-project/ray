@@ -2,12 +2,12 @@ from typing import Tuple
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, \
-    PartialTrainerConfigDict
+from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, PartialTrainerConfigDict
 
 
-def check_multi_agent(config: PartialTrainerConfigDict) -> \
-        Tuple[MultiAgentPolicyConfigDict, bool]:
+def check_multi_agent(
+    config: PartialTrainerConfigDict,
+) -> Tuple[MultiAgentPolicyConfigDict, bool]:
     """Checks, whether a (partial) config defines a multi-agent setup.
 
     Args:
@@ -29,8 +29,7 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
     # as well as the Policy's class).
     if isinstance(policies, set):
         policies = multiagent_config["policies"] = {
-            pid: PolicySpec()
-            for pid in policies
+            pid: PolicySpec() for pid in policies
         }
     # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
     # PolicyID found in policies dict.

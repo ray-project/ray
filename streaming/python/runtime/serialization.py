@@ -53,5 +53,6 @@ class CrossLangSerializer(Serializer):
             key_record.stream = stream
             return key_record
         else:
-            raise Exception("Unsupported type id {}, type {}".format(
-                fields[0], type(fields[0])))
+            raise Exception(
+                "Unsupported type id {}, type {}".format(fields[0], type(fields[0]))
+            )

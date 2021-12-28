@@ -26,12 +26,13 @@ class EmptyOperator(operator.StreamOperator):
 def test_load_operator():
     # function_bytes, module_name, class_name,
     descriptor_func_bytes = gateway_client.serialize(
-        [None, __name__, MapFunc.__name__, "MapFunction"])
-    descriptor_op_bytes = gateway_client.serialize(
-        [descriptor_func_bytes, "", ""])
+        [None, __name__, MapFunc.__name__, "MapFunction"]
+    )
+    descriptor_op_bytes = gateway_client.serialize([descriptor_func_bytes, "", ""])
     map_operator = operator.load_operator(descriptor_op_bytes)
     assert type(map_operator) is operator.MapOperator
     descriptor_op_bytes = gateway_client.serialize(
-        [None, __name__, EmptyOperator.__name__])
+        [None, __name__, EmptyOperator.__name__]
+    )
     test_operator = operator.load_operator(descriptor_op_bytes)
     assert isinstance(test_operator, EmptyOperator)

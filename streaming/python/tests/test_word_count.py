@@ -7,27 +7,26 @@ from ray._private.test_utils import wait_for_condition
 
 def test_word_count():
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
-    ctx = StreamingContext.Builder() \
-        .build()
-    ctx.read_text_file(__file__) \
-        .set_parallelism(1) \
-        .flat_map(lambda x: x.split()) \
-        .map(lambda x: (x, 1)) \
-        .key_by(lambda x: x[0]) \
-        .reduce(lambda old_value, new_value:
-                (old_value[0], old_value[1] + new_value[1])) \
-        .filter(lambda x: "ray" not in x) \
-        .sink(lambda x: print("result", x))
+    ctx = StreamingContext.Builder().build()
+    ctx.read_text_file(__file__).set_parallelism(1).flat_map(lambda x: x.split()).map(
+        lambda x: (x, 1)
+    ).key_by(lambda x: x[0]).reduce(
+        lambda old_value, new_value: (old_value[0], old_value[1] + new_value[1])
+    ).filter(
+        lambda x: "ray" not in x
+    ).sink(
+        lambda x: print("result", x)
+    )
     ctx.submit("word_count")
     import time
+
     time.sleep(3)
     ray.shutdown()
 
 
 def test_simple_word_count():
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
-    ctx = StreamingContext.Builder() \
-        .build()
+    ctx = StreamingContext.Builder().build()
     sink_file = "/tmp/ray_streaming_test_simple_word_count.txt"
     if os.path.exists(sink_file):
         os.remove(sink_file)
@@ -38,14 +37,13 @@ def test_simple_word_count():
             print("sink_func", line)
             f.write(line)
 
-    ctx.from_values("a", "b", "c") \
-        .set_parallelism(1) \
-        .flat_map(lambda x: [x, x]) \
-        .map(lambda x: (x, 1)) \
-        .key_by(lambda x: x[0]) \
-        .reduce(lambda old_value, new_value:
-                (old_value[0], old_value[1] + new_value[1])) \
-        .sink(sink_func)
+    ctx.from_values("a", "b", "c").set_parallelism(1).flat_map(lambda x: [x, x]).map(
+        lambda x: (x, 1)
+    ).key_by(lambda x: x[0]).reduce(
+        lambda old_value, new_value: (old_value[0], old_value[1] + new_value[1])
+    ).sink(
+        sink_func
+    )
     ctx.submit("word_count")
 
     def check_succeed():

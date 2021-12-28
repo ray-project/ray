@@ -11,16 +11,17 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 class AvailActionsTestEnv(MultiAgentEnv):
     num_actions = 10
     action_space = Discrete(num_actions)
-    observation_space = Dict({
-        "obs": Dict({
-            "test": Dict({
-                "a": Discrete(2),
-                "b": MultiDiscrete([2, 3, 4])
-            }),
-            "state": MultiDiscrete([2, 2, 2])
-        }),
-        "action_mask": Box(0, 1, (num_actions, )),
-    })
+    observation_space = Dict(
+        {
+            "obs": Dict(
+                {
+                    "test": Dict({"a": Discrete(2), "b": MultiDiscrete([2, 3, 4])}),
+                    "state": MultiDiscrete([2, 2, 2]),
+                }
+            ),
+            "action_mask": Box(0, 1, (num_actions,)),
+        }
+    )
 
     def __init__(self, env_config):
         self.state = None
@@ -33,20 +34,21 @@ class AvailActionsTestEnv(MultiAgentEnv):
         return {
             "agent_1": {
                 "obs": self.observation_space["obs"].sample(),
-                "action_mask": self.action_mask
+                "action_mask": self.action_mask,
             }
         }
 
     def step(self, action_dict):
         if self.state > 0:
-            assert action_dict["agent_1"] == self.avail, \
-                "Failed to obey available actions mask!"
+            assert (
+                action_dict["agent_1"] == self.avail
+            ), "Failed to obey available actions mask!"
         self.state += 1
         rewards = {"agent_1": 1}
         obs = {
             "agent_1": {
                 "obs": self.observation_space["obs"].sample(),
-                "action_mask": self.action_mask
+                "action_mask": self.action_mask,
             }
         }
         dones = {"__all__": self.state > 20}
@@ -71,7 +73,9 @@ class TestQMix(unittest.TestCase):
         register_env(
             "action_mask_test",
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
-                grouping, obs_space=obs_space, act_space=act_space))
+                grouping, obs_space=obs_space, act_space=act_space
+            ),
+        )
 
         agent = QMixTrainer(
             env="action_mask_test",
@@ -81,7 +85,8 @@ class TestQMix(unittest.TestCase):
                     "avail_action": 3,
                 },
                 "framework": "torch",
-            })
+            },
+        )
         for _ in range(4):
             agent.train()  # OK if it doesn't trip the action assertion error
         assert agent.train()["episode_reward_mean"] == 21.0
@@ -92,4 +97,5 @@ class TestQMix(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

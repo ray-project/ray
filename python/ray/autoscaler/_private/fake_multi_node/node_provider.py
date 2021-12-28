@@ -5,10 +5,15 @@ from threading import RLock
 
 import ray
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_HEAD,
-                                 NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE,
-                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
-                                 STATUS_UP_TO_DATE)
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND,
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_STATUS,
+    STATUS_UP_TO_DATE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +35,8 @@ class FakeMultiNodeProvider(NodeProvider):
         if "RAY_FAKE_CLUSTER" not in os.environ:
             raise RuntimeError(
                 "FakeMultiNodeProvider requires ray to be started with "
-                "RAY_FAKE_CLUSTER=1 ray start ...")
+                "RAY_FAKE_CLUSTER=1 ray start ..."
+            )
         self._nodes = {
             FAKE_HEAD_NODE_ID: {
                 "tags": {
@@ -95,16 +101,16 @@ class FakeMultiNodeProvider(NodeProvider):
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 redis_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()),
+                    ray._private.services.get_node_ip_address()
+                ),
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
-                })
+                },
+            )
             node = ray.node.Node(
-                ray_params,
-                head=False,
-                shutdown_at_exit=False,
-                spawn_reaper=False)
+                ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
+            )
             self._nodes[next_id] = {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
@@ -112,7 +118,7 @@ class FakeMultiNodeProvider(NodeProvider):
                     TAG_RAY_NODE_NAME: next_id,
                     TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 },
-                "node": node
+                "node": node,
             }
 
     def terminate_node(self, node_id):

@@ -12,9 +12,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on "
-    "Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on " "Windows.")
 def test_multiple_directories(tmp_path, shutdown_only):
     num_dirs = 3
     temp_dirs = []
@@ -25,12 +23,12 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     # Limit our object store to 75 MiB of memory.
     min_spilling_size = 0
-    object_spilling_config = json.dumps({
-        "type": "filesystem",
-        "params": {
-            "directory_path": [str(directory) for directory in temp_dirs]
+    object_spilling_config = json.dumps(
+        {
+            "type": "filesystem",
+            "params": {"directory_path": [str(directory) for directory in temp_dirs]},
         }
-    })
+    )
     address = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
@@ -38,7 +36,8 @@ def test_multiple_directories(tmp_path, shutdown_only):
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": min_spilling_size,
-        })
+        },
+    )
 
     arr = np.ones(74 * 1024 * 1024, dtype=np.uint8)  # 74MB.
     object_refs = []
@@ -100,8 +99,8 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
     try:
         ray.init(
             object_store_memory=2_200_000_000,
-            _system_config={"object_spilling_threshold": thres}
-            if thres else {})
+            _system_config={"object_spilling_threshold": thres} if thres else {},
+        )
         objs = []
         for _ in range(num_objects):
             objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
@@ -111,20 +110,17 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
         ray.shutdown()
 
 
-@pytest.mark.skipif(
-    platform.system() != "Linux", reason="Failing on Windows/macOS.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_default():
     _test_object_spilling_threshold(None, 10, 5)
 
 
-@pytest.mark.skipif(
-    platform.system() != "Linux", reason="Failing on Windows/macOS.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_1_0():
     _test_object_spilling_threshold(1.0, 10, 0)
 
 
-@pytest.mark.skipif(
-    platform.system() != "Linux", reason="Failing on Windows/macOS.")
+@pytest.mark.skipif(platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_0_1():
     _test_object_spilling_threshold(0.1, 10, 5)
 

@@ -4,10 +4,13 @@ import unittest
 import ray
 import ray.rllib.agents.dqn.apex as apex
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
-    LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestApexDQN(unittest.TestCase):
@@ -50,7 +53,8 @@ class TestApexDQN(unittest.TestCase):
 
             # Test per-worker epsilon distribution.
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state())
+                lambda p, _: p.get_exploration_state()
+            )
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
@@ -64,7 +68,8 @@ class TestApexDQN(unittest.TestCase):
             # Test again per-worker epsilon distribution
             # (should not have changed).
             infos = trainer.workers.foreach_policy(
-                lambda p, _: p.get_exploration_state())
+                lambda p, _: p.get_exploration_state()
+            )
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
@@ -101,8 +106,9 @@ class TestApexDQN(unittest.TestCase):
             """
             for _ in range(n):
                 results = trainer.train()
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
-                LEARNER_STATS_KEY]["cur_lr"]
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "cur_lr"
+            ]
 
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
@@ -120,4 +126,5 @@ class TestApexDQN(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

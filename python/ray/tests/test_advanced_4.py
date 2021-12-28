@@ -45,16 +45,15 @@ def test_jemalloc_env_var_propagate():
     """
     expected = {}
     actual = ray._private.services.propagate_jemalloc_env_var(
-        jemalloc_path="",
-        jemalloc_conf="",
-        jemalloc_comps=[],
-        process_type=gcs_ptype)
+        jemalloc_path="", jemalloc_conf="", jemalloc_comps=[], process_type=gcs_ptype
+    )
     assert actual == expected
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=None,
         jemalloc_conf="a,b,c",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
     """
     When the shared library is specified
@@ -65,7 +64,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
 
     # comps should be a list type.
@@ -74,7 +74,8 @@ def test_jemalloc_env_var_propagate():
             jemalloc_path=library_path,
             jemalloc_conf="",
             jemalloc_comps="ray.ray_constants.PROCESS_TYPE_GCS_SERVER,",
-            process_type=gcs_ptype)
+            process_type=gcs_ptype,
+        )
 
     # When comps don't match the process_type, it should return an empty dict.
     expected = {}
@@ -82,7 +83,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf="",
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_RAYLET],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     """
     When the malloc config is specified
     """
@@ -93,7 +95,8 @@ def test_jemalloc_env_var_propagate():
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
-        process_type=gcs_ptype)
+        process_type=gcs_ptype,
+    )
     assert actual == expected
 
 
@@ -159,4 +162,5 @@ def test_local_mode_deadlock(shutdown_only_with_initialization_check):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -29,35 +29,32 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=20,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=20, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=100000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=150.0,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env("multi_agent_cartpole",
-                 lambda _: MultiAgentCartPole({"num_agents": 4}))
+    register_env(
+        "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": 4})
+    )
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -78,7 +75,8 @@ if __name__ == "__main__":
             # Map to either random behavior or PR learning behavior based on
             # the agent's ID.
             "policy_mapping_fn": (
-                lambda aid, **kwargs: ["pg_policy", "random"][aid % 2]),
+                lambda aid, **kwargs: ["pg_policy", "random"][aid % 2]
+            ),
             # We wouldn't have to specify this here as the RandomPolicy does
             # not learn anyways (it has an empty `learn_on_batch` method), but
             # it's good practice to define this list here either way.

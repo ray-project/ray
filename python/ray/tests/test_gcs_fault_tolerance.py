@@ -3,9 +3,12 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
-from ray._private.test_utils import (generate_system_config_map,
-                                     wait_for_condition, wait_for_pid_to_exit,
-                                     convert_actor_state)
+from ray._private.test_utils import (
+    generate_system_config_map,
+    wait_for_condition,
+    wait_for_pid_to_exit,
+    convert_actor_state,
+)
 
 
 @ray.remote
@@ -20,11 +23,14 @@ def increase(x):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [
+    "ray_start_regular",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_gcs_server_restart(ray_start_regular):
     actor1 = Increase.remote()
     result = ray.get(actor1.method.remote(1))
@@ -48,11 +54,14 @@ def test_gcs_server_restart(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [
+    "ray_start_regular",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
     # We reduce the number of actors because there are too many actors created
@@ -71,11 +80,14 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=2, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=2, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     """Checks that the node failure detector is correct when gcs server restart.
 
@@ -131,11 +143,14 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular", [
+    "ray_start_regular",
+    [
         generate_system_config_map(
-            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60)
+            num_heartbeats_timeout=20, gcs_rpc_server_reconnect_timeout_s=60
+        )
     ],
-    indirect=True)
+    indirect=True,
+)
 def test_del_actor_after_gcs_server_restart(ray_start_regular):
     actor = Increase.options(name="abc").remote()
     result = ray.get(actor.method.remote(1))
@@ -149,8 +164,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 
     def condition():
         actor_status = ray.state.actors(actor_id=actor_id)
-        if actor_status["State"] == convert_actor_state(
-                gcs_utils.ActorTableData.DEAD):
+        if actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD):
             return True
         else:
             return False
@@ -168,8 +182,11 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 def test_gcs_client_reconnect(ray_start_regular, auto_reconnect):
     redis_client = ray.worker.global_worker.redis_client
     channel = gcs_utils.GcsChannel(redis_client=redis_client)
-    gcs_client = gcs_utils.GcsClient(channel) if auto_reconnect \
+    gcs_client = (
+        gcs_utils.GcsClient(channel)
+        if auto_reconnect
         else gcs_utils.GcsClient(channel, nums_reconnect_retry=0)
+    )
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -185,4 +202,5 @@ def test_gcs_client_reconnect(ray_start_regular, auto_reconnect):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

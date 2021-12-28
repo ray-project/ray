@@ -19,7 +19,7 @@ class Partition(ABC):
             num_partition: num of partitions
         Returns:
             IDs of the downstream partitions that should receive the record.
-         """
+        """
         pass
 
 
@@ -62,7 +62,7 @@ class RoundRobinPartition(Partition):
 
 class ForwardPartition(Partition):
     """Default partition for operator if the operator can be chained with
-     succeeding operators."""
+    succeeding operators."""
 
     def __init__(self):
         self.__partitions = [0]
@@ -109,8 +109,9 @@ def load_partition(descriptor_partition_bytes: bytes):
         partition function
     """
     assert len(descriptor_partition_bytes) > 0
-    partition_bytes, module_name, function_name =\
-        gateway_client.deserialize(descriptor_partition_bytes)
+    partition_bytes, module_name, function_name = gateway_client.deserialize(
+        descriptor_partition_bytes
+    )
     if partition_bytes:
         return deserialize(partition_bytes)
     else:

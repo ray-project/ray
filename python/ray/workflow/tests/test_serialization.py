@@ -29,7 +29,8 @@ def get_num_uploads():
 
 @pytest.mark.skip(
     reason="TODO (Alex): After removing the special casing for"
-    "objectrefs in `WorkflowInputs` we can enable this stronger test.")
+    "objectrefs in `WorkflowInputs` we can enable this stronger test."
+)
 def test_dedupe_serialization(workflow_start_regular_shared):
     @ray.remote(num_cpus=0)
     class Counter:
@@ -56,7 +57,7 @@ def test_dedupe_serialization(workflow_start_regular_shared):
     # One for the ray.put
     assert ray.get(counter.get_count.remote()) == 1
 
-    single = identity.step((ref, ))
+    single = identity.step((ref,))
     double = identity.step(list_of_refs)
 
     gather.step(single, double).run()
@@ -71,7 +72,7 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
 
     assert get_num_uploads() == 0
 
-    single = identity.step((ref, ))
+    single = identity.step((ref,))
     double = identity.step(list_of_refs)
 
     result_ref, result_list = gather.step(single, double).run()
@@ -177,8 +178,7 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 
-    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id,
-                                            base_storage)
+    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id, base_storage)
     workflow_storage.asyncio_run(promise)
 
     # Be extremely explicit about shutting down. We want to make sure the
@@ -197,4 +197,5 @@ def test_embedded_objectrefs(workflow_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

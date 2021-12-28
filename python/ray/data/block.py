@@ -1,6 +1,15 @@
 import time
-from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+from typing import (
+    TypeVar,
+    List,
+    Generic,
+    Iterator,
+    Tuple,
+    Any,
+    Union,
+    Optional,
+    TYPE_CHECKING,
+)
 
 import numpy as np
 
@@ -63,11 +72,13 @@ class BlockExecStats:
         return _BlockExecStatsBuilder()
 
     def __repr__(self):
-        return repr({
-            "wall_time_s": self.wall_time_s,
-            "cpu_time_s": self.cpu_time_s,
-            "node_id": self.node_id
-        })
+        return repr(
+            {
+                "wall_time_s": self.wall_time_s,
+                "cpu_time_s": self.cpu_time_s,
+                "node_id": self.node_id,
+            }
+        )
 
 
 class _BlockExecStatsBuilder:
@@ -101,9 +112,15 @@ class BlockMetadata:
         exec_stats: Execution stats for this block.
     """
 
-    def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
-                 schema: Union[type, "pyarrow.lib.Schema"],
-                 input_files: List[str], exec_stats: Optional[BlockExecStats]):
+    def __init__(
+        self,
+        *,
+        num_rows: Optional[int],
+        size_bytes: Optional[int],
+        schema: Union[type, "pyarrow.lib.Schema"],
+        input_files: List[str],
+        exec_stats: Optional[BlockExecStats]
+    ):
         if input_files is None:
             input_files = []
         self.num_rows: Optional[int] = num_rows
@@ -175,15 +192,17 @@ class BlockAccessor(Generic[T]):
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def get_metadata(self, input_files: List[str],
-                     exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
+    def get_metadata(
+        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+    ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
             schema=self.schema(),
             input_files=input_files,
-            exec_stats=exec_stats)
+            exec_stats=exec_stats,
+        )
 
     def zip(self, other: "Block[T]") -> "Block[T]":
         """Zip this block with another block of the same type and size."""
@@ -201,16 +220,16 @@ class BlockAccessor(Generic[T]):
         import pyarrow
 
         if isinstance(block, pyarrow.Table):
-            from ray.data.impl.arrow_block import \
-                ArrowBlockAccessor
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
             return ArrowBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data.impl.arrow_block import \
-                ArrowBlockAccessor
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data.impl.simple_block import \
-                SimpleBlockAccessor
+            from ray.data.impl.simple_block import SimpleBlockAccessor
+
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
@@ -219,8 +238,9 @@ class BlockAccessor(Generic[T]):
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
-    def sort_and_partition(self, boundaries: List[T], key: Any,
-                           descending: bool) -> List["Block[T]"]:
+    def sort_and_partition(
+        self, boundaries: List[T], key: Any, descending: bool
+    ) -> List["Block[T]"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
@@ -230,14 +250,14 @@ class BlockAccessor(Generic[T]):
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List["Block[T]"], key: Any,
-            descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List["Block[T]"], key: Any, descending: bool
+    ) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block], key: "GroupKeyT",
-            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
+        blocks: List[Block], key: "GroupKeyT", agg: "AggregateFn"
+    ) -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

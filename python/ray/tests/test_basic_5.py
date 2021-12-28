@@ -20,13 +20,14 @@ def test_background_tasks_with_max_calls(shutdown_only):
         # TODO (Alex): We need to fix
         # https://github.com/ray-project/ray/issues/20203 to remove this flag.
         num_cpus=2,
-        _system_config={"worker_cap_initial_backoff_delay_ms": 0})
+        _system_config={"worker_cap_initial_backoff_delay_ms": 0},
+    )
 
     num_tasks = 3 if sys.platform == "win32" else 10
 
     @ray.remote
     def g():
-        time.sleep(.1)
+        time.sleep(0.1)
         return 0
 
     @ray.remote(max_calls=1, max_retries=0)
@@ -56,6 +57,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
     import ray
+
     ray.init(num_cpus=1)
 
     @ray.remote(num_cpus=1)

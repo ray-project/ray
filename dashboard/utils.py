@@ -26,8 +26,15 @@ from ray._private.utils import binary_to_hex
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import (aiohttp, aiosignal, aioredis, hdrs,
-                                         FrozenList, PathLike, RouteDef)
+from ray.dashboard.optional_deps import (
+    aiohttp,
+    aiosignal,
+    aioredis,
+    hdrs,
+    FrozenList,
+    PathLike,
+    RouteDef,
+)
 
 try:
     create_task = asyncio.create_task
@@ -112,12 +119,15 @@ class ClassMethodRouteTable:
         def _wrapper(handler):
             if path in cls._bind_map[method]:
                 bind_info = cls._bind_map[method][path]
-                raise Exception(f"Duplicated route path: {path}, "
-                                f"previous one registered at "
-                                f"{bind_info.filename}:{bind_info.lineno}")
+                raise Exception(
+                    f"Duplicated route path: {path}, "
+                    f"previous one registered at "
+                    f"{bind_info.filename}:{bind_info.lineno}"
+                )
 
-            bind_info = cls._BindInfo(handler.__code__.co_filename,
-                                      handler.__code__.co_firstlineno, None)
+            bind_info = cls._BindInfo(
+                handler.__code__.co_filename, handler.__code__.co_firstlineno, None
+            )
 
             @functools.wraps(handler)
             async def _handler_route(*args) -> aiohttp.web.Response:
@@ -130,8 +140,7 @@ class ClassMethodRouteTable:
                     return await handler(bind_info.instance, req)
                 except Exception:
                     logger.exception("Handle %s %s failed.", method, path)
-                    return rest_response(
-                        success=False, message=traceback.format_exc())
+                    return rest_response(success=False, message=traceback.format_exc())
 
             cls._bind_map[method][path] = bind_info
             _handler_route.__route_method__ = method
@@ -176,14 +185,14 @@ class ClassMethodRouteTable:
     def bind(cls, instance):
         def predicate(o):
             if inspect.ismethod(o):
-                return hasattr(o, "__route_method__") and hasattr(
-                    o, "__route_path__")
+                return hasattr(o, "__route_method__") and hasattr(o, "__route_path__")
             return False
 
         handler_routes = inspect.getmembers(instance, predicate)
         for _, h in handler_routes:
             cls._bind_map[h.__func__.__route_method__][
-                h.__func__.__route_path__].instance = instance
+                h.__func__.__route_path__
+            ].instance = instance
 
 
 def dashboard_module(enable):
@@ -201,11 +210,12 @@ def get_all_modules(module_type):
     import ray.dashboard.modules
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
-            ray.dashboard.modules.__path__,
-            ray.dashboard.modules.__name__ + "."):
+        ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
+    ):
         importlib.import_module(name)
     return [
-        m for m in module_type.__subclasses__()
+        m
+        for m in module_type.__subclasses__()
         if getattr(m, "__ray_dashboard_module_enable__", True)
     ]
 
@@ -231,8 +241,9 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def rest_response(success, message, convert_google_style=True,
-                  **kwargs) -> aiohttp.web.Response:
+def rest_response(
+    success, message, convert_google_style=True, **kwargs
+) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
@@ -244,10 +255,11 @@ def rest_response(success, message, convert_google_style=True,
         {
             "result": success,
             "msg": message,
-            "data": to_google_style(kwargs) if convert_google_style else kwargs
+            "data": to_google_style(kwargs) if convert_google_style else kwargs,
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
-        headers=headers)
+        headers=headers,
+    )
 
 
 def to_camel_case(snake_str):
@@ -302,23 +314,23 @@ def message_to_dict(message, decode_keys=None, **kwargs):
 
     if decode_keys:
         return _decode_keys(
-            MessageToDict(message, use_integers_for_enums=False, **kwargs))
+            MessageToDict(message, use_integers_for_enums=False, **kwargs)
+        )
     else:
         return MessageToDict(message, use_integers_for_enums=False, **kwargs)
 
 
 # The cache value type used by aiohttp_cache.
-_AiohttpCacheValue = namedtuple("AiohttpCacheValue",
-                                ["data", "expiration", "task"])
+_AiohttpCacheValue = namedtuple("AiohttpCacheValue", ["data", "expiration", "task"])
 # The methods with no request body used by aiohttp_cache.
 _AIOHTTP_CACHE_NOBODY_METHODS = {hdrs.METH_GET, hdrs.METH_DELETE}
 
 
 def aiohttp_cache(
-        ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
-        maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
-        enable=not env_bool(
-            dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False)):
+    ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
+    maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
+    enable=not env_bool(dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False),
+):
     assert maxsize > 0
     cache = collections.OrderedDict()
 
@@ -341,8 +353,7 @@ def aiohttp_cache(
                 value = cache.get(key)
                 if value is not None:
                     cache.move_to_end(key)
-                    if (not value.task.done()
-                            or value.expiration >= time.time()):
+                    if not value.task.done() or value.expiration >= time.time():
                         # Update task not done or the data is not expired.
                         return aiohttp.web.Response(**value.data)
 
@@ -351,15 +362,16 @@ def aiohttp_cache(
                         response = task.result()
                     except Exception:
                         response = rest_response(
-                            success=False, message=traceback.format_exc())
+                            success=False, message=traceback.format_exc()
+                        )
                     data = {
                         "status": response.status,
                         "headers": dict(response.headers),
                         "body": response.body,
                     }
-                    cache[key] = _AiohttpCacheValue(data,
-                                                    time.time() + ttl_seconds,
-                                                    task)
+                    cache[key] = _AiohttpCacheValue(
+                        data, time.time() + ttl_seconds, task
+                    )
                     cache.move_to_end(key)
                     if len(cache) > maxsize:
                         cache.popitem(last=False)
@@ -431,8 +443,9 @@ class Change:
         self.new = new
 
     def __str__(self):
-        return f"Change(owner: {type(self.owner)}), " \
-               f"old: {self.old}, new: {self.new}"
+        return (
+            f"Change(owner: {type(self.owner)}), " f"old: {self.old}, new: {self.new}"
+        )
 
 
 class NotifyQueue:
@@ -469,10 +482,7 @@ https://docs.python.org/3/library/json.html?highlight=json#json.JSONEncoder
     | None              | null          |
     +-------------------+---------------+
 """
-_json_compatible_types = {
-    dict, list, tuple, str, int, float, bool,
-    type(None), bytes
-}
+_json_compatible_types = {dict, list, tuple, str, int, float, bool, type(None), bytes}
 
 
 def is_immutable(self):
@@ -498,8 +508,7 @@ class Immutable(metaclass=ABCMeta):
 
 
 class ImmutableList(Immutable, Sequence):
-    """Makes a :class:`list` immutable.
-    """
+    """Makes a :class:`list` immutable."""
 
     __slots__ = ("_list", "_proxy")
 
@@ -512,7 +521,7 @@ class ImmutableList(Immutable, Sequence):
         self._proxy = [None] * len(list_value)
 
     def __reduce_ex__(self, protocol):
-        return type(self), (self._list, )
+        return type(self), (self._list,)
 
     def mutable(self):
         return self._list
@@ -546,8 +555,7 @@ class ImmutableList(Immutable, Sequence):
 
 
 class ImmutableDict(Immutable, Mapping):
-    """Makes a :class:`dict` immutable.
-    """
+    """Makes a :class:`dict` immutable."""
 
     __slots__ = ("_dict", "_proxy")
 
@@ -560,7 +568,7 @@ class ImmutableDict(Immutable, Mapping):
         self._proxy = {}
 
     def __reduce_ex__(self, protocol):
-        return type(self), (self._dict, )
+        return type(self), (self._dict,)
 
     def mutable(self):
         return self._dict
@@ -624,21 +632,23 @@ class Dict(ImmutableDict, MutableMapping):
         if len(self.signal) and old != value:
             if old is None:
                 co = self.signal.send(
-                    Change(owner=self, new=Dict.ChangeItem(key, value)))
+                    Change(owner=self, new=Dict.ChangeItem(key, value))
+                )
             else:
                 co = self.signal.send(
                     Change(
                         owner=self,
                         old=Dict.ChangeItem(key, old),
-                        new=Dict.ChangeItem(key, value)))
+                        new=Dict.ChangeItem(key, value),
+                    )
+                )
             NotifyQueue.put(co)
 
     def __delitem__(self, key):
         old = self._dict.pop(key, None)
         self._proxy.pop(key, None)
         if len(self.signal) and old is not None:
-            co = self.signal.send(
-                Change(owner=self, old=Dict.ChangeItem(key, old)))
+            co = self.signal.send(Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
     def reset(self, d):
@@ -654,18 +664,21 @@ for immutable_type in Immutable.__subclasses__():
     _json_compatible_types.add(immutable_type)
 
 
-async def get_aioredis_client(redis_address, redis_password,
-                              retry_interval_seconds, retry_times):
+async def get_aioredis_client(
+    redis_address, redis_password, retry_interval_seconds, retry_times
+):
     for x in range(retry_times):
         try:
             return await aioredis.create_redis_pool(
-                address=redis_address, password=redis_password)
+                address=redis_address, password=redis_password
+            )
         except (socket.gaierror, ConnectionError) as ex:
             logger.error("Connect to Redis failed: %s, retry...", ex)
             await asyncio.sleep(retry_interval_seconds)
     # Raise exception from create_redis_pool
     return await aioredis.create_redis_pool(
-        address=redis_address, password=redis_password)
+        address=redis_address, password=redis_password
+    )
 
 
 def async_loop_forever(interval_seconds, cancellable=False):
@@ -677,12 +690,15 @@ def async_loop_forever(interval_seconds, cancellable=False):
                     await coro(*args, **kwargs)
                 except asyncio.CancelledError as ex:
                     if cancellable:
-                        logger.info(f"An async loop forever coroutine "
-                                    f"is cancelled {coro}.")
+                        logger.info(
+                            f"An async loop forever coroutine " f"is cancelled {coro}."
+                        )
                         raise ex
                     else:
-                        logger.exception(f"Can not cancel the async loop "
-                                         f"forever coroutine {coro}.")
+                        logger.exception(
+                            f"Can not cancel the async loop "
+                            f"forever coroutine {coro}."
+                        )
                 except Exception:
                     logger.exception(f"Error looping coroutine {coro}.")
                 await asyncio.sleep(interval_seconds)

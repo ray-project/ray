@@ -15,7 +15,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--titles-file",
     required=True,
-    help="the file containing the wikipedia titles to lookup")
+    help="the file containing the wikipedia titles to lookup",
+)
 
 
 # A custom data source that reads articles from wikipedia
@@ -68,20 +69,25 @@ if __name__ == "__main__":
 
     ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
 
-    ctx = StreamingContext.Builder() \
-        .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \
+    ctx = (
+        StreamingContext.Builder()
+        .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
         .build()
+    )
     # A Ray streaming environment with the default configuration
     ctx.set_parallelism(1)  # Each operator will be executed by two actors
 
     # Reads articles from wikipedia, splits them in words,
     # shuffles words, and counts the occurrences of each word.
-    stream = ctx.source(Wikipedia(titles_file)) \
-        .flat_map(splitter) \
-        .key_by(lambda x: x[0]) \
-        .reduce(lambda old_value, new_value:
-                (old_value[0], old_value[1] + new_value[1])) \
+    stream = (
+        ctx.source(Wikipedia(titles_file))
+        .flat_map(splitter)
+        .key_by(lambda x: x[0])
+        .reduce(
+            lambda old_value, new_value: (old_value[0], old_value[1] + new_value[1])
+        )
         .sink(print)
+    )
     start = time.time()
     ctx.execute("wordcount")
     end = time.time()

@@ -29,7 +29,8 @@ if __name__ == "__main__":
         config=UCB_CONFIG,
         stop={"training_iteration": training_iterations},
         num_samples=2,
-        checkpoint_at_end=False)
+        checkpoint_at_end=False,
+    )
 
     print("The trials took", time.time() - start_time, "seconds\n")
 
@@ -37,16 +38,14 @@ if __name__ == "__main__":
     frame = pd.DataFrame()
     for key, df in analysis.trial_dataframes.items():
         frame = frame.append(df, ignore_index=True)
-    x = frame.groupby("agent_timesteps_total")[
-        "episode_reward_mean"].aggregate(["mean", "max", "min", "std"])
+    x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
+        ["mean", "max", "min", "std"]
+    )
 
     plt.plot(x["mean"])
     plt.fill_between(
-        x.index,
-        x["mean"] - x["std"],
-        x["mean"] + x["std"],
-        color="b",
-        alpha=0.2)
+        x.index, x["mean"] - x["std"], x["mean"] + x["std"], color="b", alpha=0.2
+    )
     plt.title("Episode reward mean")
     plt.xlabel("Training steps")
     plt.show()

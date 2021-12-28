@@ -21,16 +21,18 @@ class EndpointInfo:
 
 
 class DeploymentInfo:
-    def __init__(self,
-                 deployment_config: DeploymentConfig,
-                 replica_config: ReplicaConfig,
-                 start_time_ms: int,
-                 deployer_job_id: "ray._raylet.JobID",
-                 actor_name: Optional[str] = None,
-                 serialized_deployment_def: Optional[bytes] = None,
-                 version: Optional[str] = None,
-                 end_time_ms: Optional[int] = None,
-                 autoscaling_policy: Optional[AutoscalingPolicy] = None):
+    def __init__(
+        self,
+        deployment_config: DeploymentConfig,
+        replica_config: ReplicaConfig,
+        start_time_ms: int,
+        deployer_job_id: "ray._raylet.JobID",
+        actor_name: Optional[str] = None,
+        serialized_deployment_def: Optional[bytes] = None,
+        version: Optional[str] = None,
+        end_time_ms: Optional[int] = None,
+        autoscaling_policy: Optional[AutoscalingPolicy] = None,
+    ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -59,12 +61,13 @@ class DeploymentInfo:
     def actor_def(self):
         # Delayed import as replica depends on this file.
         from ray.serve.replica import create_replica_wrapper
+
         if self._cached_actor_def is None:
             assert self.actor_name is not None
             assert self.serialized_deployment_def is not None
             self._cached_actor_def = ray.remote(
-                create_replica_wrapper(self.actor_name,
-                                       self.serialized_deployment_def))
+                create_replica_wrapper(self.actor_name, self.serialized_deployment_def)
+            )
         return self._cached_actor_def
 
 
@@ -94,7 +97,8 @@ class ReplicaName:
         parsed = replica_name.split(cls.delimiter)
         assert len(parsed) == 2, (
             f"Given replica name {replica_name} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {cls.delimiter}")
+            f"ensure it has exactly two fields with delimiter {cls.delimiter}"
+        )
         return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
 
     def __str__(self):

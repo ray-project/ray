@@ -35,10 +35,10 @@ def PublicAPI(*args, **kwargs):
         if stability == "beta":
             obj.__doc__ += (
                 "\n    PublicAPI (beta): This API is in beta and may change "
-                "before becoming stable.")
+                "before becoming stable."
+            )
         else:
-            obj.__doc__ += (
-                "\n    PublicAPI: This API is stable across Ray releases.")
+            obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
         return obj
 
     return wrap
@@ -59,8 +59,7 @@ def DeveloperAPI(obj):
 
     if not obj.__doc__:
         obj.__doc__ = ""
-    obj.__doc__ += (
-        "\n    DeveloperAPI: This API may change across minor Ray releases.")
+    obj.__doc__ += "\n    DeveloperAPI: This API may change across minor Ray releases."
     return obj
 
 
@@ -77,6 +76,8 @@ def Deprecated(obj):
 
     if not obj.__doc__:
         obj.__doc__ = ""
-    obj.__doc__ += ("\n    DEPRECATED: This API is deprecated and may be "
-                    "removed in future Ray releases.")
+    obj.__doc__ += (
+        "\n    DEPRECATED: This API is deprecated and may be "
+        "removed in future Ray releases."
+    )
     return obj

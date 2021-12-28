@@ -86,7 +86,9 @@ async def test_replica_set(ray_instance):
             deployment_name="my_deployment",
             replica_tag=str(i),
             actor_handle=MockWorker.remote(),
-            max_concurrent_queries=1) for i in range(2)
+            max_concurrent_queries=1,
+        )
+        for i in range(2)
     ]
     rs.update_running_replicas(replicas)
 
@@ -108,7 +110,8 @@ async def test_replica_set(ray_instance):
 
     # Let's try to send another query.
     third_ref_pending_task = asyncio.get_event_loop().create_task(
-        rs.assign_replica(query))
+        rs.assign_replica(query)
+    )
     # We should fail to assign a replica, so this coroutine should still be
     # pending after some time.
     await asyncio.sleep(0.2)
@@ -128,11 +131,13 @@ async def test_replica_set(ray_instance):
     assert await third_ref == "DONE"
 
     # Finally, make sure that one of the replica processed the third query.
-    num_queries_set = {(await replica.actor_handle.num_queries.remote())
-                       for replica in replicas}
+    num_queries_set = {
+        (await replica.actor_handle.num_queries.remote()) for replica in replicas
+    }
     assert num_queries_set == {2, 1}
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

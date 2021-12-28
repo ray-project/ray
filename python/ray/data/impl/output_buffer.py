@@ -27,8 +27,9 @@ class BlockOutputBuffer(object):
         ...    yield output.next()
     """
 
-    def __init__(self, block_udf: Optional[Callable[[Block], Block]],
-                 target_max_block_size: int):
+    def __init__(
+        self, block_udf: Optional[Callable[[Block], Block]], target_max_block_size: int
+    ):
         self._target_max_block_size = target_max_block_size
         self._block_udf = block_udf
         self._buffer = DelegatingBlockBuilder()
@@ -53,11 +54,11 @@ class BlockOutputBuffer(object):
     def has_next(self) -> bool:
         """Returns true when a complete output block is produced."""
         if self._finalized:
-            return not self._returned_at_least_one_block \
-                or self._buffer.num_rows() > 0
+            return not self._returned_at_least_one_block or self._buffer.num_rows() > 0
         else:
-            return self._buffer.get_estimated_memory_usage() > \
-                self._target_max_block_size
+            return (
+                self._buffer.get_estimated_memory_usage() > self._target_max_block_size
+            )
 
     def next(self) -> Block:
         """Returns the next complete output block."""

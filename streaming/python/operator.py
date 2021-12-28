@@ -133,8 +133,9 @@ class SourceOperatorImpl(SourceOperator, StreamOperator):
     def open(self, collectors, runtime_context):
         super().open(collectors, runtime_context)
         self.source_context = SourceOperatorImpl.SourceContextImpl(collectors)
-        self.func.init(runtime_context.get_parallelism(),
-                       runtime_context.get_task_index())
+        self.func.init(
+            runtime_context.get_parallelism(), runtime_context.get_task_index()
+        )
 
     def fetch(self):
         self.func.fetch(self.source_context)
@@ -274,11 +275,12 @@ class ChainedOperator(StreamOperator, ABC):
         for i in range(0, num_operators - 1):
             forward_collectors = [succeeding_collectors[i]]
             self.operators[i].open(
-                forward_collectors,
-                self.__create_runtime_context(runtime_context, i))
+                forward_collectors, self.__create_runtime_context(runtime_context, i)
+            )
         self.operators[-1].open(
             collectors,
-            self.__create_runtime_context(runtime_context, num_operators - 1))
+            self.__create_runtime_context(runtime_context, num_operators - 1),
+        )
 
     def operator_type(self) -> OperatorType:
         return self.operators[0].operator_type()
@@ -294,8 +296,10 @@ class ChainedOperator(StreamOperator, ABC):
     def new_chained_operator(operators, configs):
         operator_type = operators[0].operator_type()
         logger.info(
-            "Building ChainedOperator from operators {} and configs {}."
-            .format(operators, configs))
+            "Building ChainedOperator from operators {} and configs {}.".format(
+                operators, configs
+            )
+        )
         if operator_type == OperatorType.SOURCE:
             return ChainedSourceOperator(operators, configs)
         elif operator_type == OperatorType.ONE_INPUT:
@@ -332,11 +336,8 @@ class ChainedTwoInputOperator(ChainedOperator):
 
 def load_chained_operator(chained_operator_bytes: bytes):
     """Load chained operator from serialized operators and configs"""
-    serialized_operators, configs = gateway_client.deserialize(
-        chained_operator_bytes)
-    operators = [
-        load_operator(desc_bytes) for desc_bytes in serialized_operators
-    ]
+    serialized_operators, configs = gateway_client.deserialize(chained_operator_bytes)
+    operators = [load_operator(desc_bytes) for desc_bytes in serialized_operators]
     return ChainedOperator.new_chained_operator(operators, configs)
 
 
@@ -354,11 +355,11 @@ def load_operator(descriptor_operator_bytes: bytes):
         a streaming operator
     """
     assert len(descriptor_operator_bytes) > 0
-    function_desc_bytes, module_name, class_name \
-        = gateway_client.deserialize(descriptor_operator_bytes)
+    function_desc_bytes, module_name, class_name = gateway_client.deserialize(
+        descriptor_operator_bytes
+    )
     if function_desc_bytes:
-        return create_operator_with_func(
-            function.load_function(function_desc_bytes))
+        return create_operator_with_func(function.load_function(function_desc_bytes))
     else:
         assert module_name
         assert class_name
