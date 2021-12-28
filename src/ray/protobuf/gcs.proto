@@ -250,6 +250,12 @@ message HeartbeatTableData {
 }
 
 message JobConfig {
+    enum ActorLifetime {
+    NONE = 0;
+    DETACHED = 1;
+    NON_DETACHED = 2;
+  }
+
   // The number of java workers per worker process.
   uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
@@ -264,6 +270,9 @@ message JobConfig {
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
+  // The default lifetime of actors which is not specified lifetime at runtime.
+  ActorLifetime default_actor_lifetime = 20;
+
 }
 
 message JobTableData {

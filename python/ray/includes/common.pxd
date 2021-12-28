@@ -265,7 +265,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_string &name, c_string &ray_namespace,
+            shared_ptr[c_bool] is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,

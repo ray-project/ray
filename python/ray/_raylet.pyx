@@ -1500,7 +1500,7 @@ cdef class CoreWorker:
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
-                     c_bool is_detached,
+                     is_detached,
                      c_string name,
                      c_string ray_namespace,
                      c_bool is_asyncio,
@@ -1519,6 +1519,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
+            shared_ptr[c_bool] is_detached_ptr = shared_ptr[c_bool](nullptr)
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1532,6 +1533,12 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
+	
+            if is_detached is not None:
+                if is_detached:
+                    is_detached_ptr = make_shared[c_bool](True)
+                else:
+                    is_detached_ptr = make_shared[c_bool](False)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -1539,7 +1546,7 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name,
+                        dynamic_worker_options, is_detached_ptr, name,
                         ray_namespace,
                         is_asyncio,
                         c_scheduling_strategy,

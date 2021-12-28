@@ -39,6 +39,7 @@ class JobConfig:
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
+        self._default_actor_lifetime = None
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -65,6 +66,20 @@ class JobConfig:
         if ray_namespace != self.ray_namespace:
             self.ray_namespace = ray_namespace
             self._cached_pb = None
+
+    def set_default_actor_lifetime(self, default_actor_lifetime: str) -> None:
+        if default_actor_lifetime == "detached":
+            self._default_actor_lifetime = \
+                ray.gcs_utils.JobConfig.ActorLifetime.DETACHED
+        elif default_actor_lifetime == "non-detached":
+            self._default_actor_lifetime = \
+                ray.gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
+        elif default_actor_lifetime is None:
+            self._default_actor_lifetime = \
+                ray.gcs_utils.JobConfig.ActorLifetime.NONE
+        else:
+            raise ValueError(
+                "Lifetime must be one of `detached`, `non-detached` or None.")
 
     def _validate_runtime_env(self):
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
@@ -96,6 +111,8 @@ class JobConfig:
                 parsed_env.serialize()
             pb.runtime_env_info.runtime_env_eager_install = eager_install
 
+            if self._default_actor_lifetime is not None:
+                pb.default_actor_lifetime = self._default_actor_lifetime
             self._cached_pb = pb
 
         return self._cached_pb

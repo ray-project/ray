@@ -34,6 +34,13 @@ namespace {
 // Duration between internal book-keeping heartbeats.
 const uint64_t kInternalHeartbeatMillis = 1000;
 
+using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
+
+inline bool IsDetachedHelper(ActorLifetime actor_lifetime) {
+  RAY_CHECK(actor_lifetime != ray::rpc::JobConfig_ActorLifetime_NONE);
+  return actor_lifetime == ray::rpc::JobConfig_ActorLifetime_DETACHED;
+}
+
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
@@ -1555,6 +1562,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     return Status::NotImplemented(
         "Async actor is currently not supported for the local mode");
   }
+
+  RAY_CHECK(job_config_ != nullptr);
+  if (actor_creation_options.is_detached == nullptr) {
+    /// Since this actor is not specified the lifetime when creating, let's use
+    /// the default value of the job.
+    actor_creation_options.is_detached =
+        std::make_shared<bool>(IsDetachedHelper(job_config_->default_actor_lifetime()));
+  }
+
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -1599,7 +1615,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
       actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, actor_creation_options.is_detached,
+      actor_creation_options.max_concurrency, *actor_creation_options.is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
       actor_creation_options.concurrency_groups, extension_data,
       actor_creation_options.execute_out_of_order);
@@ -1608,7 +1624,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), CurrentCallSite(),
                                               rpc_address_,
-                                              actor_creation_options.is_detached))
+                                              *actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();

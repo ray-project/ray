@@ -139,6 +139,12 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if Ray debugger is made available externally.")
+parser.add_argument(
+    "--default-actor-lifetime",
+    required=False,
+    type=str,
+    default=None,
+    help="The actor lifetime by default.")
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -201,7 +207,8 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         worker_shim_pid=args.worker_shim_pid,
         startup_token=args.startup_token,
-        ray_debugger_external=args.ray_debugger_external)
+        ray_debugger_external=args.ray_debugger_external,
+         _default_actor_lifetime=args.default_actor_lifetime)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
