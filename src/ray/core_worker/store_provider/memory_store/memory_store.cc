@@ -147,13 +147,15 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
-    std::function<void(const RayObject &)> unhandled_exception_handler)
+    std::function<void(const RayObject &)> unhandled_exception_handler,
+    std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
+                                                  const ObjectID &object_id)>
+        object_allocator)
     : ref_counter_(std::move(counter)),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
       unhandled_exception_handler_(unhandled_exception_handler),
-      std::function<std::shared_ptr<ray::RayObject>(const ray::RayObject &object,
-                                                  const ObjectID &object_id)> object_allocator_) {}
+      object_allocator_(std::move(object_allocator)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
