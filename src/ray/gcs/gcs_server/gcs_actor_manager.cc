@@ -159,6 +159,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::string(const JobID &)> get_ray_namespace,
+    std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
@@ -169,6 +170,7 @@ GcsActorManager::GcsActorManager(
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       get_ray_namespace_(get_ray_namespace),
+      get_num_java_workers_per_process_(std::move(get_num_java_workers_per_process)),
       runtime_env_manager_(runtime_env_manager),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
@@ -644,15 +646,12 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
-          // auto job = gcs_job_manager_->GetJob(actor_id.JobId());
 
           // For multiple actors in one process, if one actor is out of scope,
           // We shouldn't force kill the actor because other actors in the process
           // are still alive.
-
-          // auto force_kill =
-          //     job == nullptr || job->config().num_java_workers_per_process() <= 1;
-          DestroyActor(actor_id, GenActorOutOfScopeCause(), /*force_kill=*/false);
+          const auto force_kill = get_num_java_workers_per_process() <= 1;
+          DestroyActor(actor_id, GenActorOutOfScopeCause(), force_kill);
         }
       });
 }

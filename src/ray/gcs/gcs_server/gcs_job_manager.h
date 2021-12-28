@@ -59,6 +59,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   std::string GetRayNamespace(const JobID &job_id) const;
 
+  int32_t GcsJobManager::GetNumJavaWorkersPerProcess(const JobID &job_id) const;
+
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
