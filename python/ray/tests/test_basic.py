@@ -210,7 +210,10 @@ print("local", ray._private.runtime_env.VAR)
 
     out = run_string_as_driver(
         script,
-        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
+        dict(
+            os.environ, **{
+                "RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"
+            }))
     (remote_out, local_out) = out.strip().splitlines()[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
@@ -230,8 +233,10 @@ def check():
 print("remote", ray.get(check.remote()))
 """
 
-    run_string_as_driver(script,
-                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+    run_string_as_driver(
+        script,
+        dict(os.environ,
+             **{"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"}))
 
 
 def test_put_get(shutdown_only):

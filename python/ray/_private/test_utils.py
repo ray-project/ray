@@ -214,7 +214,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=dict(os.environ, **env) if env else None,
+        env=env,
     )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
@@ -247,7 +247,7 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=dict(os.environ, **env) if env else None,
+        env=env,
     )
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
