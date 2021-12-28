@@ -64,7 +64,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     in_size=prev_layer_size,
                     out_size=num_outputs,
                     initializer=normc_initializer(1.0),
-                    activation_fn=activation))
+                    activation_fn=activation,
+                    fcnet_dropout=fcnet_dropout))
             prev_layer_size = num_outputs
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
@@ -75,14 +76,16 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                         in_size=prev_layer_size,
                         out_size=hiddens[-1],
                         initializer=normc_initializer(1.0),
-                        activation_fn=activation))
+                        activation_fn=activation,
+                        fcnet_dropout=fcnet_dropout))
                 prev_layer_size = hiddens[-1]
             if num_outputs:
                 self._logits = SlimFC(
                     in_size=prev_layer_size,
                     out_size=num_outputs,
                     initializer=normc_initializer(0.01),
-                    activation_fn=None)
+                    activation_fn=None,
+                    fcnet_dropout=fcnet_dropout)
             else:
                 self.num_outputs = (
                     [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
@@ -104,7 +107,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                         in_size=prev_vf_layer_size,
                         out_size=size,
                         activation_fn=activation,
-                        initializer=normc_initializer(1.0)))
+                        initializer=normc_initializer(1.0),
+                        fcnet_dropout=fcnet_dropout))
                 prev_vf_layer_size = size
             self._value_branch_separate = nn.Sequential(*vf_layers)
 
@@ -112,7 +116,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             in_size=prev_layer_size,
             out_size=1,
             initializer=normc_initializer(0.01),
-            activation_fn=None)
+            activation_fn=None,
+            fcnet_dropout=fcnet_dropout)
         # Holds the current "base" output (before logits layer).
         self._features = None
         # Holds the last input, in case value branch is separate.
