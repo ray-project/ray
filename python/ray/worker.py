@@ -885,7 +885,6 @@ def init(
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
