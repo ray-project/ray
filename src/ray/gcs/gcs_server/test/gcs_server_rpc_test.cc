@@ -28,15 +28,26 @@ class GcsServerTest : public ::testing::Test {
   virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
-    config_.grpc_server_port = 0;
-    config_.grpc_server_name = "MockedGcsServer";
-    config_.grpc_server_thread_num = 1;
-    config_.redis_address = "127.0.0.1";
-    config_.node_ip_address = "127.0.0.1";
-    config_.enable_sharding_conn = false;
-    config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    gcs::GcsServerConfig config;
+    config.grpc_server_port = 0;
+    config.grpc_server_name = "MockedGcsServer";
+    config.grpc_server_thread_num = 1;
+    config.redis_address = "127.0.0.1";
+    config.node_ip_address = "127.0.0.1";
+    config.enable_sharding_conn = false;
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config, io_service_);
+    gcs_server_->Start();
 
-    StartServer();
+    thread_io_service_ = std::make_unique<std::thread>([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(io_service_));
+      io_service_.run();
+    });
+
+    while (gcs_server_->GetPort() == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     // Create gcs rpc client
     client_io_service_.reset(new instrumented_io_context());
@@ -62,27 +73,13 @@ class GcsServerTest : public ::testing::Test {
   }
 
   void ShutdownServer() {
-    gcs_server_->Stop();
-    io_service_->stop();
-    if (thread_io_service_->joinable()) {
-      thread_io_service_->join();
-    }
-    gcs_server_.reset();
-  }
-
-  void StartServer() {
-    io_service_.reset(new instrumented_io_context());
-
-    gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *io_service_);
-    gcs_server_->Start();
-
-    thread_io_service_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*io_service_));
-      io_service_->run();
-    });
-    while (gcs_server_->GetPort() == 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (gcs_server_) {
+      gcs_server_->Stop();
+      io_service_.stop();
+      if (thread_io_service_->joinable()) {
+        thread_io_service_->join();
+      }
+      gcs_server_.reset();
     }
   }
 
@@ -284,7 +281,7 @@ class GcsServerTest : public ::testing::Test {
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<instrumented_io_context> io_service_;
+  instrumented_io_context io_service_;
 
   // Gcs client
   std::unique_ptr<instrumented_io_context> client_io_service_;
@@ -294,8 +291,6 @@ class GcsServerTest : public ::testing::Test {
 
   // Timeout waiting for gcs server reply, default is 5s
   const std::chrono::milliseconds timeout_ms_{5000};
-
-  gcs::GcsServerConfig config_;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
@@ -476,7 +471,6 @@ TEST_F(GcsServerTest, TestPing) {
   std::promise<bool> returned;
   client_->Ping(ping_request,
                 [&returned](const Status &status, const rpc::PingReply &reply) {
-                  RAY_LOG(INFO) << "Ping return status: " << status;
                   if (status.ok()) {
                     returned.set_value(true);
                   }
@@ -490,14 +484,12 @@ TEST_F(GcsServerTest, TestPingTimeout) {
   std::promise<bool> returned;
   client_->Ping(ping_request,
                 [&returned](const Status &status, const rpc::PingReply &reply) {
-                  RAY_LOG(INFO) << "Ping return status: " << status;
                   EXPECT_TRUE(status.IsGrpcUnavailable());
                   if (status.ok()) {
                     returned.set_value(true);
                   }
                 });
   EXPECT_FALSE(WaitReady(returned.get_future(), timeout_ms_));
-  StartServer();
 }
 // TODO(sang): Add tests after adding asyncAdd
 

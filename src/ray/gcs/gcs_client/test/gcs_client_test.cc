@@ -85,7 +85,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   virtual void SetUpClient() {
-    RAY_LOG(INFO) << "GcsClientTest::SetUpClient";
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
                                   config_.redis_password);
     gcs_client_.reset(new gcs::GcsClient(options));
@@ -1092,10 +1091,9 @@ struct GcsClientReconnectionTest : public GcsClientTest {
   GcsClientReconnectionTest() {}
 
  protected:
-  void SetUp() override { GcsClientTest::SetUp(); }
+  void SetUp() { GcsClientTest::SetUp(); }
 
   virtual void SetUpClient() override {
-    RAY_LOG(INFO) << "GcsClientReconnectionTest::SetUpClient";
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
                                   config_.redis_password);
     auto mock_periodical_runner = std::make_unique<MockPeriodicalRunner>();
@@ -1107,46 +1105,40 @@ struct GcsClientReconnectionTest : public GcsClientTest {
 
 INSTANTIATE_TEST_SUITE_P(RedisMigration, GcsClientReconnectionTest, testing::Bool());
 
-TEST_P(GcsClientReconnectionTest, Test1) {
+TEST_P(GcsClientReconnectionTest, TestReconnectionNormally) {
   /// Test reconnect normally.
-  {
-    bool callback_called = false;
-    EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
-        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
-        [&callback_called]() { callback_called = true; }));
-    auto condition = [&callback_called]() { return callback_called; };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
+  bool callback_called = false;
+  EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
+      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      [&callback_called]() { callback_called = true; }));
+  auto condition = [&callback_called]() { return callback_called; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+}
 
-  gcs_client_.reset();
-  SetUpClient();
+TEST_P(GcsClientReconnectionTest, TestReconnectionInProgress) {
   /// Test reject to reconnect when reconnection in progress.
-  {
-    EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
-        rpc::GcsServiceFailureType::GCS_SERVER_RESTART, []() {
-          /// Sleep 1000ms to block the following reconnect requests.
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        }));
-    bool callback_called = false;
-    EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
-        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
-        [&callback_called]() { callback_called = true; }));
-    auto condition = [&callback_called]() { return callback_called; };
-    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
+  EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
+      rpc::GcsServiceFailureType::GCS_SERVER_RESTART, []() {
+        /// Sleep 1000ms to block the following reconnect requests.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      }));
+  bool callback_called = false;
+  EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
+      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      [&callback_called]() { callback_called = true; }));
+  auto condition = [&callback_called]() { return callback_called; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+}
 
-  gcs_client_.reset();
-  SetUpClient();
+TEST_P(GcsClientReconnectionTest, TestReconnectionWhenDisconnected) {
   /// Test gcs client disconnected, return false and not callback called.
-  {
-    gcs_client_->Disconnect();
-    bool callback_called = false;
-    EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
-        rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
-        [&callback_called]() { callback_called = true; }));
-    auto condition = [&callback_called]() { return callback_called; };
-    EXPECT_FALSE(WaitForCondition(condition, timeout_ms_.count()));
-  }
+  gcs_client_->Disconnect();
+  bool callback_called = false;
+  EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
+      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      [&callback_called]() { callback_called = true; }));
+  auto condition = [&callback_called]() { return callback_called; };
+  EXPECT_FALSE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 }  // namespace gcs

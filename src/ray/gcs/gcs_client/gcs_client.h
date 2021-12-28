@@ -208,16 +208,18 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// service failure is detected.
   ///
   /// \param type The type of GCS service failure.
-  /// \param callback The callback function called after reconnected to gcs successfully.
-  /// \return Returns true if the reconnect request is accepted, false if the client is
+  /// \param callback The callback function to be called after reconnected to gcs
+  /// successfully. \return Returns true if the reconnect request is accepted, false if
+  /// the client is
   // in reconnecting process and the reconnect request is rejected.
   bool GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
                                  const std::function<void()> callback = nullptr);
 
   /// Reconnect to GCS RPC server asynchronously.
   ///
-  /// \param callback The callback function called after reconnected to gcs successfully.
-  /// \return Returns true if the reconnect request is accepted, false if the client is
+  /// \param callback The callback function to be called after reconnected to gcs
+  /// successfully. \return Returns true if the reconnect request is accepted, false if
+  /// the client is
   // in reconnecting process and the reconnect request is rejected.
   bool ReconnectGcsServerAsync(const std::function<void()> callback);
 
@@ -225,8 +227,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   void DoReconnect(absl::Time start);
 
   /// Called when the ping rpc call returns.
-  void OnReconnected(const Status &status, absl::Time start,
-                     std::pair<std::string, int> address);
+  void OnReconnectionFinished(const Status &status, absl::Time start,
+                              std::pair<std::string, int> address);
 
   /// Execute all the pending callbacks during reconnection and clear it.
   void ExecutePendingCallbacks();
@@ -253,10 +255,14 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Retry interval to reconnect to a GCS server.
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 
+  // Protect the `reconnect_in_progress_` variable.
+  mutable absl::Mutex reconnect_flag_mutex_;
+
   // A flag to indicate whether reconnecting to gcs is in progress or not.
   // If false, reconnecting will be triggerd. If true, the current reconnect
   // request should be ignored.
-  std::atomic<bool> reconnect_in_progress_ = false;
+  std::atomic<bool> reconnect_in_progress_ = false GUARDED_BY(reconnect_flag_mutex_);
+  ;
 
   // Protect the `callbacks_` list.
   mutable absl::Mutex reconnect_callbacks_mutex_;
