@@ -92,6 +92,7 @@
                         <goal>shade</goal>
                     </goals>
                     <configuration>
+                        <createDependencyReducedPom>false</createDependencyReducedPom>
                         <minimizeJar>false</minimizeJar>
                         <artifactSet>
                             <includes>
