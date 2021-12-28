@@ -95,9 +95,6 @@ def main(results=None):
     results = results or []
 
     ray_config = {
-        "_system_config": {
-            "put_small_object_in_memory_store": True
-        },
         "logging_level": logging.WARNING
     }
 

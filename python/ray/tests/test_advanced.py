@@ -553,7 +553,6 @@ def test_future_resolution_skip_plasma(ray_start_cluster):
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 100 * 1024,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
@@ -591,7 +590,6 @@ def test_task_output_inline_bytes_limit(ray_start_cluster):
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 100 * 1024,
             "task_rpc_inlined_bytes_limit": 20,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
@@ -629,7 +627,6 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster):
             # max_grpc_message_size, this test fails.
             "task_rpc_inlined_bytes_limit": 18 * 1024,
             "max_grpc_message_size": 20 * 1024,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})

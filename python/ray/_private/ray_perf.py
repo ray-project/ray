@@ -96,7 +96,7 @@ def main(results=None):
 
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
 
-    ray.init(_system_config={"put_small_object_in_memory_store": True})
+    ray.init()
 
     value = ray.put(0)
 
@@ -121,7 +121,7 @@ def main(results=None):
     results += timeit("multi client put calls", put_multi_small, 1000)
 
     ray.shutdown()
-    ray.init(_system_config={"put_small_object_in_memory_store": False})
+    ray.init()
 
     value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
