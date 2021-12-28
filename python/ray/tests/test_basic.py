@@ -212,7 +212,8 @@ print("local", ray._private.runtime_env.VAR)
         script,
         dict(
             os.environ, **{
-                "RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"
+                "RAY_USER_SETUP_FUNCTION":
+                "ray._private.test_utils.set_setup_func"
             }))
     (remote_out, local_out) = out.strip().splitlines()[-2:]
     assert remote_out == "remote hello world"
