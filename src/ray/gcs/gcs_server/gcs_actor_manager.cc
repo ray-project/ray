@@ -650,7 +650,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           // For multiple actors in one process, if one actor is out of scope,
           // We shouldn't force kill the actor because other actors in the process
           // are still alive.
-          const auto force_kill = get_num_java_workers_per_process() <= 1;
+          auto force_kill = get_num_java_workers_per_process_(actor_id.JobId()) <= 1;
           DestroyActor(actor_id, GenActorOutOfScopeCause(), force_kill);
         }
       });

@@ -522,7 +522,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<std::string(const JobID &)> get_ray_namespace_;
   /// A callback to get the number of java workers per process config item by the
   /// given job id. It is necessary for deciding whether we should clear the Java actor.
-  std::function<int32_t(const JobID &)> get_num_java_workers_per_proce_;
+  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
