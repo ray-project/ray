@@ -32,6 +32,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")
+        fcnet_dropout = model_config.get("fcnet_dropout")
+
         # Generate free-floating bias variables for the second half of
         # the outputs.
         if self.free_log_std:
@@ -50,7 +52,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                     in_size=prev_layer_size,
                     out_size=size,
                     initializer=normc_initializer(1.0),
-                    activation_fn=activation))
+                    activation_fn=activation,
+                    fcnet_dropout=fcnet_dropout))
             prev_layer_size = size
 
         # The last layer is adjusted to be of size num_outputs, but it's a

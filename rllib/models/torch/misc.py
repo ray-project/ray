@@ -127,7 +127,8 @@ class SlimFC(nn.Module):
                  initializer: Any = None,
                  activation_fn: Any = None,
                  use_bias: bool = True,
-                 bias_init: float = 0.0):
+                 bias_init: float = 0.0,
+                 fcnet_dropout: float = 0.0):
         """Creates a standard FC layer, similar to torch.nn.Linear
 
         Args:
@@ -153,6 +154,9 @@ class SlimFC(nn.Module):
             activation_fn = get_activation_fn(activation_fn, "torch")
         if activation_fn is not None:
             layers.append(activation_fn())
+        # Add a dropout layer (if any; default=0.0 (no dropout layer)).
+        if fcnet_dropout > 0.0:
+            layers.append(nn.Dropout(p=fcnet_dropout))
         # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
