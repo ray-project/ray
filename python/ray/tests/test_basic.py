@@ -208,13 +208,8 @@ print("local", ray._private.runtime_env.VAR)
 
 """
 
-    out = run_string_as_driver(
-        script,
-        dict(
-            os.environ, **{
-                "RAY_USER_SETUP_FUNCTION":
-                "ray._private.test_utils.set_setup_func"
-            }))
+    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
+    out = run_string_as_driver(script, dict(os.environ, **env))
     (remote_out, local_out) = out.strip().splitlines()[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
