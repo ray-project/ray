@@ -45,9 +45,7 @@ class PrintCallback(TrainingCallback):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        if not results:
-            print(json.dumps({}))
-
+        assert results
         # Check that the dictionaries have the same keys.
         assert all(result.keys() == results[0].keys() for result in results)
 
