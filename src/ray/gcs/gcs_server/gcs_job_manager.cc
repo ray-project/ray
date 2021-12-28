@@ -23,8 +23,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   for (auto &pair : gcs_init_data.Jobs()) {
     const auto &job_id = pair.first;
     const auto &job_table_data = pair.second;
-    const auto &ray_namespace = job_table_data.config().ray_namespace();
-    ray_namespaces_[job_id] = ray_namespace;
+    cached_job_configs_[job_id] = std::make_unique<>(job_table_data.config()); 
   }
 }
 
@@ -53,7 +52,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       }
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();
-      ray_namespaces_[job_id] = mutable_job_table_data.config().ray_namespace();
+      cached_job_configs_[job_id] = std::make_unique<>(mutable_job_table_data.config()); 
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -168,9 +167,9 @@ void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
 }
 
 std::string GcsJobManager::GetRayNamespace(const JobID &job_id) const {
-  auto it = ray_namespaces_.find(job_id);
-  RAY_CHECK(it != ray_namespaces_.end()) << "Couldn't find job with id: " << job_id;
-  return it->second;
+  auto it = cached_job_configs_.find(job_id);
+  RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
+  return it->second.ray_namespace();
 }
 
 }  // namespace gcs
