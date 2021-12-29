@@ -386,11 +386,12 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     # Prepare requests.
     if use_gcs_for_bootstrap():
-        gcs_server_addr = cluster.address
+        gcs_server_addr = cluster.gcs_address
     else:
         redis_cli = ray._private.services.create_redis_client(
-            cluster.address, password=ray_constants.REDIS_DEFAULT_PASSWORD)
-        gcs_server_addr = redis_cli.get("GcsServerAddress").decode("utf-8")
+            cluster.redis_address,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        gcs_server_addr = redis_cli.get("GcsServerAddress").decode()
     options = (("grpc.enable_http_proxy", 0), )
     channel = grpc.insecure_channel(gcs_server_addr, options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)

@@ -96,8 +96,6 @@ class FakeMultiNodeProvider(NodeProvider):
                 resources=resources,
                 redis_address="{}:6379".format(
                     ray._private.services.get_node_ip_address()),
-                gcs_address="{}:6379".format(
-                    ray._private.services.get_node_ip_address()),
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
