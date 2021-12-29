@@ -128,8 +128,6 @@ class ReproSession:
         self.aws_instance_id = None
         self.aws_instance_ip = None
 
-        # self.aws_auth_env = {}
-
         self.ssh = None
 
         self.plugins = {}
