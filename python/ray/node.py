@@ -221,7 +221,8 @@ class Node:
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             if ray_params.gcs_server_port is None:
-                ray_params.gcs_server_port = self._get_unused_port()
+                ray_params.gcs_server_port = self._get_cached_port(
+                    "gcs_server_port")
             self._gcs_server_port = ray_params.gcs_server_port
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
