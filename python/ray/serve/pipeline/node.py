@@ -10,17 +10,17 @@ from ray.serve.pipeline.executor import (create_executor_from_step_config,
 
 
 class PipelineNode(ABC):
-    def deploy(self):
+    def instantiate(self):
         pass
 
-    # NOTE(simon): used _call as name so user don't confuse deployed and
-    # un-deployed pipeline objects.
+    # NOTE(simon): used _call as name so user don't confuse instantiateed and
+    # un-instantiateed pipeline objects.
     def _call(self, input_arg: Tuple[Any]) -> Any:
         pass
 
 
 class Pipeline:
-    """A deployed pipeline that can be called by the user."""
+    """A instantiateed pipeline that can be called by the user."""
 
     def __init__(self, entry_node: PipelineNode):
         self._entry_node = entry_node
@@ -39,7 +39,7 @@ class Pipeline:
 class ExecutorPipelineNode(PipelineNode):
     """Result of constructing a pipeline from user-defined steps.
 
-    Call .deploy() on this to instantiate the pipeline.
+    Call .instantiate() on this to instantiate the pipeline.
     """
 
     def __init__(self, callable_factory: Callable[[], Callable],
@@ -50,17 +50,17 @@ class ExecutorPipelineNode(PipelineNode):
         self._config: StepConfig = config
         self._incoming_edges: PipelineNode = incoming_edges
 
-        # Populated in .deploy().
+        # Populated in .instantiate().
         self._executor: Executor = None
 
         assert len(self._incoming_edges) > 0
 
-    def deploy(self) -> Pipeline:
+    def instantiate(self) -> Pipeline:
         """Instantiates executors for this and all dependent nodes.
 
-        After the pipeline is deployed, .call() and .call_async() can be used.
+        After the pipeline is instantiateed, .call() and .call_async() can be used.
         """
-        [node.deploy() for node in self._incoming_edges]
+        [node.instantiate() for node in self._incoming_edges]
         self._executor = create_executor_from_step_config(
             self._serialized_callable_factory, self._config)
 
@@ -69,13 +69,13 @@ class ExecutorPipelineNode(PipelineNode):
     def _call(self, input_arg: Tuple[Any]) -> Any:
         if self._executor is None:
             raise RuntimeError(
-                "Pipeline hasn't been deployed, call .deploy() first.")
+                "Pipeline hasn't been instantiateed, call .instantiate() first.")
         args = tuple(node._call(input_arg) for node in self._incoming_edges)
         return self._executor.call(*args)
 
 
 class InputPipelineNode(PipelineNode):
-    def deploy(self) -> PipelineNode:
+    def instantiate(self) -> PipelineNode:
         pass
 
     def _call(self, input_arg: Tuple[Any]) -> Any:
