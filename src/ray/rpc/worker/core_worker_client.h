@@ -347,7 +347,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RAY_LOG(INFO) << "jyao PushActorTask";
+      RAY_LOG(INFO) << "jjyao PushActorTask";
       RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request,
                                  std::move(rpc_callback), grpc_client_,
                                  /*method_timeout_ms*/ -1));
