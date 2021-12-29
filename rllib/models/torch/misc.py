@@ -141,6 +141,9 @@ class SlimFC(nn.Module):
         """
         super(SlimFC, self).__init__()
         layers = []
+        # Add a dropout layer (if any; default=0.0 (no dropout layer)).
+        if fcnet_dropout > 0.0:
+            layers.append(nn.Dropout(p=fcnet_dropout))
         # Actual nn.Linear layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer is None:
@@ -154,9 +157,6 @@ class SlimFC(nn.Module):
             activation_fn = get_activation_fn(activation_fn, "torch")
         if activation_fn is not None:
             layers.append(activation_fn())
-        # Add a dropout layer (if any; default=0.0 (no dropout layer)).
-        if fcnet_dropout > 0.0:
-            layers.append(nn.Dropout(p=fcnet_dropout))
         # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
