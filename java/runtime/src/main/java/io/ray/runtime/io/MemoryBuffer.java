@@ -78,9 +78,6 @@ public final class MemoryBuffer {
   /**
    * Creates a new memory buffer that represents the memory of the byte array.
    *
-   * <p>Since the byte array is backed by on-heap memory, this memory buffer holds its data on heap.
-   * The buffer must be at least of size 8 bytes.
-   *
    * @param buffer The byte array whose memory is represented by this memory buffer.
    * @param offset The offset of the sub array to be used; must be non-negative and no larger than
    *     <tt>array.length</tt>.
@@ -95,13 +92,6 @@ public final class MemoryBuffer {
     initHeapBuffer(buffer, offset, length);
   }
 
-  /**
-   * Creates a new memory buffer that represents the memory of the byte array.
-   *
-   * <p>The memory buffer references the given owner.
-   *
-   * @param buffer The byte array whose memory is represented by this memory buffer.
-   */
   MemoryBuffer(byte[] buffer) {
     this(buffer, 0, buffer.length);
   }
@@ -118,9 +108,8 @@ public final class MemoryBuffer {
 
   /**
    * Creates a new memory buffer that represents the memory backing the given direct byte buffer
-   * section of [buffer.position(), buffer,limit()). Note that the given ByteBuffer must be direct
-   * {@link ByteBuffer#allocateDirect(int)}, otherwise this method with throw an
-   * IllegalArgumentException.
+   * section of [buffer.position(), buffer,limit()). Note that the given ByteBuffer must be direct,
+   * otherwise this method with throw an IllegalArgumentException.
    *
    * @param buffer The byte buffer whose memory is represented by this memory buffer.
    * @throws IllegalArgumentException Thrown, if the given ByteBuffer is not direct.
@@ -167,28 +156,6 @@ public final class MemoryBuffer {
    */
   public int size() {
     return size;
-  }
-
-  /**
-   * Checks whether the memory buffer was freed.
-   *
-   * @return <tt>true</tt>, if the memory buffer has been freed, <tt>false</tt> otherwise.
-   */
-  public boolean isFreed() {
-    return address > addressLimit;
-  }
-
-  /**
-   * Frees this memory buffer.
-   *
-   * <p>After this operation has been called, no further operations are possible on the memory
-   * buffer and will fail. The actual memory (heap or off-heap) will only be released after this
-   * memory buffer object has become garbage collected.
-   */
-  public void free() {
-    // this ensures we can place no more data and trigger
-    // the checks for the freed buffer
-    address = addressLimit + 1;
   }
 
   /**
@@ -271,8 +238,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos < addressLimit) {
       return UNSAFE.getByte(heapMemory, pos);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -300,13 +265,10 @@ public final class MemoryBuffer {
     if ((offset | length | (offset + length) | (dst.length - (offset + length))) < 0) {
       throw new IndexOutOfBoundsException();
     }
-
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - length) {
       final long arrayAddress = BYTE_ARRAY_BASE_OFFSET + offset;
-      UNSAFE.copyMemory(heapMemory, pos, dst, arrayAddress, length);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
+      Platform.copyMemory(heapMemory, pos, dst, arrayAddress, length);
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -346,10 +308,8 @@ public final class MemoryBuffer {
       final long targetPointer = Platform.getAddress(target) + targetOffset;
       final long sourcePointer = address + offset;
       if (sourcePointer <= addressLimit - numBytes) {
-        UNSAFE.copyMemory(heapMemory, sourcePointer, null, targetPointer, numBytes);
+        Platform.copyMemory(heapMemory, sourcePointer, null, targetPointer, numBytes);
         target.position(targetOffset + numBytes);
-      } else if (address > addressLimit) {
-        throw new IllegalStateException("Buffer has been freed");
       } else {
         throw new IndexOutOfBoundsException();
       }
@@ -396,10 +356,8 @@ public final class MemoryBuffer {
       final long sourcePointer = Platform.getAddress(source) + sourceOffset;
       final long targetPointer = address + offset;
       if (targetPointer <= addressLimit - numBytes) {
-        UNSAFE.copyMemory(null, sourcePointer, heapMemory, targetPointer, numBytes);
+        Platform.copyMemory(null, sourcePointer, heapMemory, targetPointer, numBytes);
         source.position(sourceOffset + numBytes);
-      } else if (address > addressLimit) {
-        throw new IllegalStateException("Buffer has been freed");
       } else {
         throw new IndexOutOfBoundsException();
       }
@@ -421,8 +379,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos < addressLimit) {
       UNSAFE.putByte(heapMemory, pos, b);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -453,9 +409,7 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - length) {
       final long arrayAddress = BYTE_ARRAY_BASE_OFFSET + offset;
-      UNSAFE.copyMemory(src, arrayAddress, heapMemory, pos, length);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
+      Platform.copyMemory(src, arrayAddress, heapMemory, pos, length);
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -494,8 +448,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       UNSAFE.putChar(heapMemory, pos, value);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -514,8 +466,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       return UNSAFE.getShort(heapMemory, pos);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -534,8 +484,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 2) {
       UNSAFE.putShort(heapMemory, pos, value);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -554,8 +502,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 4) {
       return UNSAFE.getInt(heapMemory, pos);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -574,8 +520,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 4) {
       UNSAFE.putInt(heapMemory, pos, value);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -594,8 +538,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 8) {
       return UNSAFE.getLong(heapMemory, pos);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -622,8 +564,6 @@ public final class MemoryBuffer {
     final long pos = address + index;
     if (index >= 0 && pos <= addressLimit - 8) {
       UNSAFE.putLong(heapMemory, pos, value);
-    } else if (address > addressLimit) {
-      throw new IllegalStateException("Buffer has been freed");
     } else {
       // index is in fact invalid
       throw new IndexOutOfBoundsException();
@@ -905,7 +845,7 @@ public final class MemoryBuffer {
   public void copyToUnsafe(long offset, Object target, long targetPointer, int numBytes) {
     final long thisPointer = this.address + offset;
     checkArgument(thisPointer + numBytes <= addressLimit);
-    UNSAFE.copyMemory(this.heapMemory, thisPointer, target, targetPointer, numBytes);
+    Platform.copyMemory(this.heapMemory, thisPointer, target, targetPointer, numBytes);
   }
 
   /**
@@ -915,7 +855,7 @@ public final class MemoryBuffer {
   public void copyFromUnsafe(long offset, Object source, long sourcePointer, long numBytes) {
     final long thisPointer = this.address + offset;
     checkArgument(thisPointer + numBytes <= addressLimit);
-    UNSAFE.copyMemory(source, sourcePointer, this.heapMemory, thisPointer, numBytes);
+    Platform.copyMemory(source, sourcePointer, this.heapMemory, thisPointer, numBytes);
   }
 
   /**
