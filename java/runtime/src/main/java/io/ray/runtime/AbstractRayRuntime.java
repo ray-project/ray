@@ -28,7 +28,6 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
@@ -54,7 +53,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  GcsClient gcsClient;
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
@@ -395,14 +393,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public RuntimeContext getRuntimeContext() {
     return runtimeContext;
   }
-
-  @Override
-  public GcsClient getGcsClient() {
-    createGcsClient();
-    return gcsClient;
-  }
-
-  abstract void createGcsClient();
 
   @Override
   public void setIsContextSet(boolean isContextSet) {

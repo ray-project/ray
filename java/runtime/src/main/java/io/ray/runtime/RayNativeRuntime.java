@@ -42,6 +42,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private boolean startRayHead = false;
 
+  private GcsClient gcsClient;
+
   /**
    * In Java, GC runs in a standalone thread, and we can't control the exact timing of garbage
    * collection. By using this lock, when {@link NativeObjectStore#nativeRemoveLocalReference} is
@@ -209,13 +211,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  void createGcsClient() {
-    if (gcsClient == null) {
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-    }
-  }
-
-  @Override
   public Object getAsyncContext() {
     return new AsyncContext(
         workerContext.getCurrentWorkerId(), workerContext.getCurrentClassLoader());
@@ -236,6 +231,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     LOGGER.info("Actor {} is exiting.", runtimeContext.getCurrentActorId());
     throw new RayIntentionalSystemExitException(
         String.format("Actor %s is exiting.", runtimeContext.getCurrentActorId()));
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    if (gcsClient == null) {
+      synchronized (this) {
+        if (gcsClient == null) {
+          gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+        }
+      }
+    }
+    return gcsClient;
   }
 
   @Override
