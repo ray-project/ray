@@ -26,6 +26,7 @@ public class MockOutputStream extends OutputStream {
   }
 
   public void write(ByteBuffer byteBuffer, int numBytes) {
+    byteBuffer.position(byteBuffer.position() + numBytes);
     totalBytes += numBytes;
   }
 

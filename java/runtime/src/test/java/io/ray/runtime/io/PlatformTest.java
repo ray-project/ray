@@ -87,11 +87,11 @@ public class PlatformTest {
       }
       {
         for (int i = 0; i < nums; i++) {
-          Platform.wrapDirectBuffer(buffer, address, size);
+          Platform.wrapDirectByteBufferFromNativeAddress(buffer, address, size);
         }
         long startTime = System.nanoTime();
         for (int i = 0; i < nums; i++) {
-          Platform.wrapDirectBuffer(buffer, address, size);
+          Platform.wrapDirectByteBufferFromNativeAddress(buffer, address, size);
         }
         long duration = System.nanoTime() - startTime;
         buffer.putLong(0, 1);

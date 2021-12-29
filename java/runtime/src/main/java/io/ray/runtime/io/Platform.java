@@ -300,15 +300,9 @@ public final class Platform {
     return offHeapAddress;
   }
 
-  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
-  public static void wrapDirectBuffer(ByteBuffer buffer, long address, int size) {
-    UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
-    UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
-    buffer.clear();
-  }
-
   private static final ByteBuffer localBuffer = ByteBuffer.allocateDirect(0);
 
+  /** Create a direct buffer from native memory represented by address [address, address + size). */
   public static ByteBuffer createDirectByteBufferFromNativeAddress(long address, int size) {
     try {
       // ByteBuffer.allocateDirect(0) is about 30x slower than `localBuffer.duplicate()`.
@@ -320,5 +314,15 @@ public final class Platform {
     } catch (Throwable t) {
       throw new Error("Failed to wrap unsafe off-heap memory with ByteBuffer", t);
     }
+  }
+
+  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
+  public static void wrapDirectByteBufferFromNativeAddress(
+      ByteBuffer buffer, long address, int size) {
+    Preconditions.checkArgument(
+        buffer.isDirect(), "Can't wrap native memory into a non-direct ByteBuffer.");
+    UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
+    UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
+    buffer.clear();
   }
 }

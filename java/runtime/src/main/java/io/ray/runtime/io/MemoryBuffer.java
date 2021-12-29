@@ -12,7 +12,8 @@ import java.nio.ReadOnlyBufferException;
 /**
  * A class for operations on memory managed by Ray. The buffer may be backed by heap memory (byte
  * array) or by off-heap memory. If the memory is off-heap memory, it will be the memory allocated
- * by ray object store.
+ * by ray object store. Note that the buffer can auto grow on write operations and change into a
+ * heap buffer when growing.
  *
  * <p>This class is based on org.apache.flink.core.memory.MemorySegment and
  * org.apache.arrow.memory.ArrowBuf, we add this class mainly for:
@@ -36,19 +37,20 @@ public final class MemoryBuffer {
   // use this well to aggressively eliminate the non-applicable code paths.
   private static final boolean LITTLE_ENDIAN = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN);
 
-  // The heap byte array object relative to which we access the memory.
-  // Is non-null if the memory is on the heap, and is null, if the memory is off the heap.
+  // If the data in on the heap, `heapMemory` will be non-null, and its' the object relative to
+  // which we access the memory.
   // If we have this buffer, we must never void this reference, or the memory buffer will point
   // to undefined addresses outside the heap and may in out-of-order execution cases cause
   // buffer faults.
   private byte[] heapMemory;
-  // The direct byte buffer that allocated the off-heap memory. This memory buffer holds a
-  // reference to that buffer, so as long as this memory buffer lives, the memory will not be
-  // released.
+  // If the data is off the heap, `offHeapBuffer` will be non-null, and it's the direct byte buffer
+  // that allocated on the off-heap memory.
+  // This memory buffer holds a reference to that buffer, so as long as this memory buffer lives,
+  // the memory will not be released.
   private ByteBuffer offHeapBuffer;
   // The readable/writeable range is [address, addressLimit).
-  // The address to the data, relative to the heap memory byte array. If the heap memory byte array
-  // is null, this becomes an absolute memory address outside the heap.
+  // If the data in on the heap, this is the relative offset to the `heapMemory` byte array.
+  // If the data is off the heap, this is the absolute memory address.
   private long address;
   // The address one byte after the last addressable byte, i.e. `address + size` while the
   // buffer is not disposed.
@@ -936,7 +938,8 @@ public final class MemoryBuffer {
 
   /**
    * Creates a new memory buffer that represents the memory backing the given byte buffer section of
-   * {@code [buffer.position(), buffer,limit())}.
+   * {@code [buffer.position(), buffer.limit())}. The buffer will change into a heap buffer
+   * automatically if not enough.
    *
    * @param buffer a direct buffer or heap buffer
    */
@@ -962,7 +965,7 @@ public final class MemoryBuffer {
    * Create a heap buffer of specified initial size. The buffer will grow automatically if not
    * enough.
    */
-  public static MemoryBuffer newHeapBuffer(int size) {
-    return fromByteArray(new byte[size]);
+  public static MemoryBuffer newHeapBuffer(int initialSize) {
+    return fromByteArray(new byte[initialSize]);
   }
 }

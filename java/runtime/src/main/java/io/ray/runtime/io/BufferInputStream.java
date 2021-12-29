@@ -10,6 +10,7 @@ public class BufferInputStream extends InputStream {
     this.buffer = buffer;
   }
 
+  @Override
   public int read() {
     if (buffer.remaining() == 0) {
       return -1;
@@ -18,7 +19,8 @@ public class BufferInputStream extends InputStream {
     }
   }
 
-  public int read(byte[] bytes, int offset, int length) throws IOException {
+  @Override
+  public int read(byte[] bytes, int offset, int length) {
     if (length == 0) {
       return 0;
     }

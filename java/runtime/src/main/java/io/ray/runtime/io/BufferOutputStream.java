@@ -10,10 +10,12 @@ public class BufferOutputStream extends OutputStream {
     this.buffer = buffer;
   }
 
+  @Override
   public void write(int b) {
     buffer.writeByte((byte) b);
   }
 
+  @Override
   public void write(byte[] bytes, int offset, int length) {
     buffer.writeBytes(bytes, offset, length);
   }
