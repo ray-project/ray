@@ -1,3 +1,31 @@
+"""Create an AWS instance to reproduce Buildkite CI builds.
+
+This script will take a Buildkite build URL as an argument and create
+an AWS instance with the same properties running the same Docker container
+as the original Buildkite runner. The user is then attached to this instance
+and can reproduce any builds commands as if they were executed within the
+runner.
+
+This utility can be used to reproduce and debug build failures that come up
+on the Bildkite runner instances but not on a local machine.
+
+Optionally, build commands can be executed automatically. Filters can be added
+to exclude some of these commands. For instance, some users may want to execute
+all build commands except for the `bazel build` commands, which they would
+like to execute manually.
+
+Usage:
+
+    python repro-ci.py [-n instance-name] [-c] [-f filter1] [-f filter2] ...
+
+Arguments:
+    -n: Instance name to be used. If an instance with this name already exists,
+        it will be reused.
+    -c: Execute commands after setting up the machine.
+    -f: Filter these commands (do not execute commands that match this
+        regex pattern).
+
+"""
 import base64
 import json
 import logging
@@ -21,8 +49,6 @@ from pybuildkite.buildkite import Buildkite
 def maybe_fetch_buildkite_token():
     if os.environ.get("BUILDKITE_TOKEN", None) is None:
         print("Missing BUILDKITE_TOKEN, retrieving from AWS secrets store")
-        # NOTE(simon) This should automatically retrieve
-        # release-automation@anyscale.com's anyscale token
         os.environ["BUILDKITE_TOKEN"] = boto3.client(
             "secretsmanager", region_name="us-west-2"
         ).get_secret_value(
@@ -283,7 +309,7 @@ class ReproSession:
 
         while thread.is_alive():
             thread.join(2)
-            if quiet and time.monotonic() >= status and thread.is_alive():
+            if time.monotonic() >= status and thread.is_alive():
                 self.logger.info("Still executing...")
                 status = time.monotonic() + 30
 
@@ -325,7 +351,6 @@ class ReproSession:
         full_command = command_wrapper(full_command)
 
         self.logger.debug(f"Executing command: {command}")
-        # self.logger.debug(f"Full command: {full_command}")
 
         output = self.ssh_exec(full_command, quiet=quiet, get_pty=True)
 
