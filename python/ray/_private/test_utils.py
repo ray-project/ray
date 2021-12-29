@@ -342,11 +342,18 @@ def wait_for_condition(condition_predictor,
         RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
+    last_ex = None
     while time.time() - start <= timeout:
-        if condition_predictor(**kwargs):
-            return
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
 
 
 def wait_until_succeeded_without_exception(func,
