@@ -473,9 +473,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
 
-    # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
-        node_ip_address = services.address_to_ip(node_ip_address)
+        node_ip_address = services.convert_local_host_if_needed(
+            node_ip_address)
 
     try:
         resources = json.loads(resources)
@@ -1728,7 +1728,7 @@ def healthcheck(address, redis_password, component):
     if not address:
         address = services.get_ray_address_to_use_or_die()
     else:
-        address = services.address_to_ip(address)
+        address = services.convert_local_host_if_needed(address)
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
 

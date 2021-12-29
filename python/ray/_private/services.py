@@ -395,7 +395,7 @@ def validate_redis_address(address):
 
     if address == "auto":
         address = find_redis_address_or_die()
-    redis_address = address_to_ip(address)
+    redis_address = convert_local_host_if_needed(address)
 
     redis_address_parts = redis_address.split(":")
     if len(redis_address_parts) != 2:
@@ -413,26 +413,27 @@ def validate_redis_address(address):
     return redis_address, redis_ip, redis_port
 
 
-def address_to_ip(address):
-    """Convert a hostname to a numerical IP addresses in an address.
+def convert_local_host_if_needed(address):
+    """Convert to a reachable across nodes IP if the address is "localhost"
+            or "127.0.0.1".
 
-    This should be a no-op if address already contains an actual numerical IP
-    address.
+    This should be a no-op if address isn't a local host.
 
     Args:
         address: This can be either a string containing a hostname (or an IP
             address) and a port or it can be just an IP address.
 
     Returns:
-        The same address but with the hostname replaced by a numerical IP
-            address.
+        The same address but with the local host replaced by reachable across
+            nodes IP.
     """
     address_parts = address.split(":")
-    ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1":
+    if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
         ip_address = get_node_ip_address()
-    return ":".join([ip_address] + address_parts[1:])
+        return ":".join([ip_address] + address_parts[1:])
+    else:
+        return address
 
 
 def node_ip_address_from_perspective(address):
