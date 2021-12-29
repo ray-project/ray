@@ -712,11 +712,16 @@ class ActorClass:
                     "a different name or get the existing actor using "
                     f"ray.get_actor('{name}', namespace='{namespace}')")
 
-        if lifetime is not None:
-            detached = lifetime == "detached"
-        else:
-            # TODO(qwang): AN api change?
+        if lifetime is None:
             detached = None
+        elif lifetime == "detached":
+            detached = True
+        elif lifetime == "non-detached":
+            detached = False
+        else:
+            raise ValueError(
+                "actor `lifetime` argument must be either 'detached', 'non-detached' or 'None'."
+            )
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
