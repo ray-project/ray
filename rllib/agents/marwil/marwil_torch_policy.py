@@ -40,6 +40,10 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
         rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
         policy._moving_average_sqd_adv_norm.add_(
             rate * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
+
+        # detach to get rid of the growing memory occupancy by grad fn chain.
+        policy._moving_average_sqd_adv_norm = policy._moving_average_sqd_adv_norm.detach()
+
         # Exponentially weighted advantages.
         exp_advs = torch.exp(
             policy.config["beta"] *
