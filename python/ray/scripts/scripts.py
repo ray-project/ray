@@ -473,7 +473,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
 
+    explicit_node_ip_address = False
     if node_ip_address is not None:
+        explicit_node_ip_address = True
         node_ip_address = services.convert_local_host_if_needed(
             node_ip_address)
 
@@ -644,11 +646,14 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
                 cli_logger.print(
-                    "ray{}init(address{}{}{})", cf.magenta("."),
+                    "ray{}init(address{}{}{}{})", cf.magenta("."),
                     cf.magenta("="), cf.yellow("'auto'"),
                     ", _redis_password{}{}".format(
                         cf.magenta("="), cf.yellow("'" + redis_password + "'"))
-                    if redis_password else "")
+                    if redis_password else "", ", _node_ip_address{}{}".format(
+                        cf.magenta("="),
+                        cf.yellow("'" + node_ip_address + "'"))
+                    if explicit_node_ip_address else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")
