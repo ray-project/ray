@@ -465,13 +465,14 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
+          RAY_LOG(INFO) << "jjyao callback";
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
           auto &queue = it->second;
           auto callback_it = queue.inflight_task_callbacks.find(task_id);
           if (callback_it == queue.inflight_task_callbacks.end()) {
-            RAY_LOG(DEBUG) << "The task " << task_id
+            RAY_LOG(INFO) << "The task " << task_id
                            << " has already been marked as failed. Ingore the reply.";
             return;
           }
@@ -481,6 +482,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         reply_callback(status, reply);
       };
 
+  RAY_LOG(INFO) << "jjyao PushActorTask " << skip_queue;
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 

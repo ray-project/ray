@@ -2385,6 +2385,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::SendReplyCallback send_reply_callback) {
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
+    RAY_LOG(INFO) << "jyao wrong recipient";
     return;
   }
 
@@ -2401,6 +2402,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    RAY_LOG(INFO) << "jyao HandlePushTaskActor";
     task_execution_service_.post(
         [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
           // We have posted an exit task onto the main event loop,
