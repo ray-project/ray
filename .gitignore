@@ -170,6 +170,8 @@ cpp/example/thirdparty/
 rust/ray-rs/target/
 rust/ray-rs-derive/target/
 rust/ray-rs-sys/target/
+rust/*/Cargo.lock
+
 
 # streaming/python
 streaming/python/generated/
