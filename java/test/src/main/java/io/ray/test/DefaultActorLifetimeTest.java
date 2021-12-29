@@ -1,4 +1,5 @@
 package io.ray.test;
+
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.options.ActorLifetime;
@@ -13,8 +14,9 @@ import org.testng.annotations.Test;
 @Test(groups = "cluster")
 public class DefaultActorLifetimeTest {
 
-    private static class OwnerActor {
+  private static class OwnerActor {
     private ActorHandle<ChildActor> childActor;
+
     public ActorHandle<ChildActor> createChildActor(ActorLifetime childActorLifetime) {
       if (childActorLifetime == null) {
         childActor = Ray.actor(ChildActor::new).remote();
@@ -26,9 +28,11 @@ public class DefaultActorLifetimeTest {
       }
       return null;
     }
+
     int getPid() {
       return SystemUtil.pid();
     }
+
     String ready() {
       return "ok";
     }
@@ -48,18 +52,18 @@ public class DefaultActorLifetimeTest {
     try {
       System.setProperty("ray.job.num-java-workers-per-process", "1");
       Ray.init();
-      
+
       /// 1. create owner and invoke createChildActor.
       ActorHandle<OwnerActor> owner = Ray.actor(OwnerActor::new).remote();
       ActorHandle<ChildActor> child =
           owner.task(OwnerActor::createChildActor, childActorLifetime).remote().get();
       Assert.assertEquals("ok", child.task(ChildActor::ready).remote().get());
       int ownerPid = owner.task(OwnerActor::getPid).remote().get();
-      
+
       /// 2. Kill owner and make sure it's dead.
       Runtime.getRuntime().exec("kill -9 " + ownerPid);
       TimeUnit.SECONDS.sleep(1);
-      
+
       Supplier<Boolean> isOwnerDead =
           () -> {
             try {
@@ -70,7 +74,7 @@ public class DefaultActorLifetimeTest {
             }
           };
       Assert.assertTrue(TestUtils.waitForCondition(isOwnerDead, 3000));
-      
+
       /// 3. Assert child state.
       Supplier<Boolean> isChildDead =
           () -> {
@@ -81,7 +85,7 @@ public class DefaultActorLifetimeTest {
               return true;
             }
           };
-      
+
       Supplier<Boolean> childNotDead =
           () -> {
             try {
@@ -91,7 +95,7 @@ public class DefaultActorLifetimeTest {
               return false;
             }
           };
-          
+
       if (childActorLifetime != null) {
         /// childActorLifetime is specifying at runtime.
         if (childActorLifetime == ActorLifetime.DETACHED) {
@@ -140,5 +144,4 @@ public class DefaultActorLifetimeTest {
   public void testF(ActorLifetime defaultActorLifetime, ActorLifetime childActor) {
     Assert.assertTrue(internalTestDefaultActorLifetime(defaultActorLifetime, childActor));
   }
-
 }

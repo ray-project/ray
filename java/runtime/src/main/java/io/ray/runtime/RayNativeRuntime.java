@@ -102,7 +102,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       int numWorkersPerProcess =
           rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
-    	
+
       JobConfig.ActorLifetime defaultActorLifetime = JobConfig.ActorLifetime.NONE;
       if (rayConfig.defaultActorLifetime == ActorLifetime.DETACHED) {
         defaultActorLifetime = JobConfig.ActorLifetime.DETACHED;
