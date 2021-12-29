@@ -138,7 +138,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
   };
 
@@ -181,7 +180,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
-  task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   stats_accessor_ = std::make_unique<StatsInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);

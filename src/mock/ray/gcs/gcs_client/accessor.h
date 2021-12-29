@@ -91,45 +91,6 @@ class MockJobInfoAccessor : public JobInfoAccessor {
 namespace ray {
 namespace gcs {
 
-class MockTaskInfoAccessor : public TaskInfoAccessor {
- public:
-  MOCK_METHOD(Status, AsyncAdd,
-              (const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGet,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskTableData> &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncAddTaskLease,
-              (const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGetTaskLease,
-              (const TaskID &task_id,
-               const OptionalItemCallback<rpc::TaskLeaseData> &callback),
-              (override));
-  MOCK_METHOD(
-      Status, AsyncSubscribeTaskLease,
-      (const TaskID &task_id,
-       (const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe),
-       const StatusCallback &done),
-      (override));
-  MOCK_METHOD(Status, AsyncUnsubscribeTaskLease, (const TaskID &task_id), (override));
-  MOCK_METHOD(Status, AttemptTaskReconstruction,
-              (const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
-  MOCK_METHOD(bool, IsTaskLeaseUnsubscribed, (const TaskID &task_id), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockNodeInfoAccessor : public NodeInfoAccessor {
  public:
   MOCK_METHOD(Status, RegisterSelf,
@@ -269,28 +230,23 @@ namespace gcs {
 
 class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
-  MOCK_METHOD(Status, AsyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(Status, SyncCreatePlacementGroup,
+              (const PlacementGroupSpecification &placement_group_spec), (override));
   MOCK_METHOD(Status, AsyncGet,
               (const PlacementGroupID &placement_group_id,
                const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &placement_group_name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
+               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncGetAll,
               (const MultiItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
-  MOCK_METHOD(Status, AsyncRemovePlacementGroup,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
+  MOCK_METHOD(Status, SyncRemovePlacementGroup,
+              (const PlacementGroupID &placement_group_id), (override));
+  MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id),
               (override));
 };
 
