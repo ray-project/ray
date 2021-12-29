@@ -1552,7 +1552,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
-                              ActorCreationOptions actor_creation_options,
+                               ActorCreationOptions actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
