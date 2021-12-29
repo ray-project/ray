@@ -8,8 +8,8 @@ import org.testng.annotations.Test;
 public class BufferWritableByteChannelTest {
   @Test
   public void testWrite() {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
-    MemoryBuffer buffer2 = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    MemoryBuffer buffer2 = MemoryBuffer.newHeapBuffer(32);
     try (BufferWritableByteChannel channel = new BufferWritableByteChannel(buffer)) {
       channel.write(ByteBuffer.allocate(100));
       buffer2.write(ByteBuffer.allocate(100));

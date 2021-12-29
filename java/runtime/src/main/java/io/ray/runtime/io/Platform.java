@@ -1,9 +1,7 @@
 package io.ray.runtime.io;
 
 import com.google.common.base.Preconditions;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -39,6 +37,7 @@ public final class Platform {
       getClassByName("java.nio.DirectByteBuffer");
 
   static {
+    // Check whether the underlying system having unaligned-access capability.
     boolean unalign;
     String arch = System.getProperty("os.arch", "");
     if (arch.equals("ppc64le") || arch.equals("ppc64")) {
@@ -89,63 +88,18 @@ public final class Platform {
 
   // Access fields and constructors once and store them, for performance:
 
-  private static final Constructor<?> DBB_CONSTRUCTOR;
-  private static final Field DBB_CLEANER_FIELD;
   private static final long BUFFER_ADDRESS_FIELD_OFFSET;
   private static final long BUFFER_CAPACITY_FIELD_OFFSET;
 
   static {
     try {
-      Class<?> cls = DIRECT_BYTE_BUFFER_CLASS;
-      Constructor<?> constructor = cls.getDeclaredConstructor(Long.TYPE, Integer.TYPE);
-      constructor.setAccessible(true);
-      Field cleanerField = cls.getDeclaredField("cleaner");
-      cleanerField.setAccessible(true);
-      DBB_CONSTRUCTOR = constructor;
-      DBB_CLEANER_FIELD = cleanerField;
       Field addressField = Buffer.class.getDeclaredField("address");
       BUFFER_ADDRESS_FIELD_OFFSET = UNSAFE.objectFieldOffset(addressField);
       Preconditions.checkArgument(BUFFER_ADDRESS_FIELD_OFFSET != 0);
       Field capacityField = Buffer.class.getDeclaredField("capacity");
       BUFFER_CAPACITY_FIELD_OFFSET = UNSAFE.objectFieldOffset(capacityField);
       Preconditions.checkArgument(BUFFER_CAPACITY_FIELD_OFFSET != 0);
-    } catch (NoSuchMethodException | NoSuchFieldException e) {
-      throw new IllegalStateException(e);
-    }
-  }
-
-  private static final Method CLEANER_CREATE_METHOD;
-
-  static {
-    // The implementation of Cleaner changed from JDK 8 to 9
-    // Split java.version on non-digit chars:
-    int majorVersion = Integer.parseInt(System.getProperty("java.version").split("\\D+")[0]);
-    String cleanerClassName;
-    if (majorVersion < 9) {
-      cleanerClassName = "sun.misc.Cleaner";
-    } else {
-      cleanerClassName = "jdk.internal.ref.Cleaner";
-    }
-    try {
-      Class<?> cleanerClass = Class.forName(cleanerClassName);
-      Method createMethod = cleanerClass.getMethod("create", Object.class, Runnable.class);
-      // Accessing jdk.internal.ref.Cleaner should actually fail by default in JDK 9+,
-      // unfortunately, unless the user has allowed access with something like
-      // --add-opens java.base/java.lang=ALL-UNNAMED  If not, we can't really use the Cleaner
-      // hack below. It doesn't break, just means the user might run into the default JVM limit
-      // on off-heap memory and increase it or set the flag above. This tests whether it's
-      // available:
-      try {
-        createMethod.invoke(null, null, null);
-      } catch (IllegalAccessException e) {
-        // Don't throw an exception, but can't log here?
-        createMethod = null;
-      } catch (InvocationTargetException ite) {
-        // shouldn't happen; report it
-        throw new IllegalStateException(ite);
-      }
-      CLEANER_CREATE_METHOD = createMethod;
-    } catch (ClassNotFoundException | NoSuchMethodException e) {
+    } catch (NoSuchFieldException e) {
       throw new IllegalStateException(e);
     }
   }
@@ -355,7 +309,7 @@ public final class Platform {
     buffer.clear();
   }
 
-  public static ByteBuffer wrapDirectBuffer(long address, int size) {
+  public static ByteBuffer createDirectByteBufferFromNativeAddress(long address, int size) {
     try {
       ByteBuffer buffer = localBuffer.duplicate();
       UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);

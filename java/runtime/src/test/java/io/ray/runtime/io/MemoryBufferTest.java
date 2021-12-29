@@ -11,7 +11,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testBufferWrite() {
-    MemoryBuffer buffer = MemoryUtils.buffer(8);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
     buffer.writeBoolean(true);
     buffer.writeByte(Byte.MIN_VALUE);
     buffer.writeChar('a');
@@ -41,13 +41,13 @@ public class MemoryBufferTest {
       byte[] bytes = new byte[8];
       int offset = 2;
       bytes[offset] = 1;
-      MemoryBuffer buffer = MemoryUtils.wrap(bytes, offset, 2);
+      MemoryBuffer buffer = MemoryBuffer.fromByteArray(bytes, offset, 2);
       assertEquals(buffer.readByte(), bytes[offset]);
     }
     {
       byte[] bytes = new byte[8];
       int offset = 2;
-      MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.wrap(bytes, offset, 2));
+      MemoryBuffer buffer = MemoryBuffer.fromByteBuffer(ByteBuffer.wrap(bytes, offset, 2));
       assertEquals(buffer.readByte(), bytes[offset]);
     }
     {
@@ -55,7 +55,7 @@ public class MemoryBufferTest {
       int offset = 2;
       direct.put(offset, (byte) 1);
       direct.position(offset);
-      MemoryBuffer buffer = MemoryUtils.wrap(direct);
+      MemoryBuffer buffer = MemoryBuffer.fromByteBuffer(direct);
       assertEquals(buffer.readByte(), direct.get(offset));
     }
   }
@@ -65,7 +65,7 @@ public class MemoryBufferTest {
     byte[] data = new byte[10];
     new Random().nextBytes(data);
     {
-      MemoryBuffer buffer = MemoryUtils.wrap(data, 5, 5);
+      MemoryBuffer buffer = MemoryBuffer.fromByteArray(data, 5, 5);
       assertEquals(buffer.sliceAsByteBuffer(), ByteBuffer.wrap(data, 5, 5));
     }
     {
@@ -73,7 +73,7 @@ public class MemoryBufferTest {
       direct.put(data);
       direct.flip();
       direct.position(5);
-      MemoryBuffer buffer = MemoryUtils.wrap(direct);
+      MemoryBuffer buffer = MemoryBuffer.fromByteBuffer(direct);
       assertEquals(buffer.sliceAsByteBuffer(), direct);
       assertEquals(
           Platform.getAddress(buffer.sliceAsByteBuffer()), Platform.getAddress(direct) + 5);
@@ -82,11 +82,11 @@ public class MemoryBufferTest {
       long address = 0;
       try {
         address = Platform.allocateMemory(10);
-        ByteBuffer direct = Platform.wrapDirectBuffer(address, 10);
+        ByteBuffer direct = Platform.createDirectByteBufferFromNativeAddress(address, 10);
         direct.put(data);
         direct.flip();
         direct.position(5);
-        MemoryBuffer buffer = MemoryUtils.wrap(direct);
+        MemoryBuffer buffer = MemoryBuffer.fromByteBuffer(direct);
         assertEquals(buffer.sliceAsByteBuffer(), direct);
         assertEquals(Platform.getAddress(buffer.sliceAsByteBuffer()), address + 5);
       } finally {
@@ -97,7 +97,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testBulkOperations() {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     ByteBuffer buffer2 = ByteBuffer.allocate(1000);
     buffer.writeBytes(new byte[] {1, 2, 3, 4});
     buffer2.put(new byte[] {1, 2, 3, 4});
@@ -112,6 +112,6 @@ public class MemoryBufferTest {
     buffer2.put(ByteBuffer.wrap(new byte[] {1, 2, 3, 4}));
     buffer2.flip();
     assertEquals(buffer.sliceAsByteBuffer(0, buffer.writerIndex()), buffer2);
-    assertTrue(buffer.equalTo(MemoryUtils.wrap(buffer2), 0, 0, buffer.writerIndex()));
+    assertTrue(buffer.equalTo(MemoryBuffer.fromByteBuffer(buffer2), 0, 0, buffer.writerIndex()));
   }
 }

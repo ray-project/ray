@@ -8,8 +8,8 @@ import org.testng.annotations.Test;
 public class BufferOutputStreamTest {
   @Test
   public void testWrite() throws Exception {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
-    MemoryBuffer buffer2 = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    MemoryBuffer buffer2 = MemoryBuffer.newHeapBuffer(32);
     try (BufferOutputStream stream = new BufferOutputStream(buffer)) {
       stream.write(ByteBuffer.allocate(100), 100);
       buffer2.write(ByteBuffer.allocate(100), 100);

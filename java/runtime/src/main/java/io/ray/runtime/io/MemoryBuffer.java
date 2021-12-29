@@ -18,7 +18,7 @@ import java.nio.ReadOnlyBufferException;
  * org.apache.arrow.memory.ArrowBuf, we add this class mainly for:
  *
  * <ul>
- *   <li>read/write data into a chunk of direct memory
+ *   <li>read/write data into a chunk of direct memory.
  *   <li>additional binary compare, swap, and copy methods.
  *   <li>little-endian access.
  *   <li>independent read/write index.
@@ -28,50 +28,33 @@ import java.nio.ReadOnlyBufferException;
  * by the just-in-time compiler.
  */
 public final class MemoryBuffer {
-
-  /** The unsafe handle for transparent memory copied (heap / off-heap). */
-  @SuppressWarnings("restriction")
+  // The unsafe handle for transparent memory copied (heap / off-heap).
   private static final sun.misc.Unsafe UNSAFE = Platform.UNSAFE;
-
-  /** The beginning of the byte array contents, relative to the byte array object. */
-  @SuppressWarnings("restriction")
+  // The beginning of the byte array contents, relative to the byte array object.
   private static final long BYTE_ARRAY_BASE_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
-
-  /**
-   * Constant that flags the byte order. Because this is a boolean constant, the JIT compiler can
-   * use this well to aggressively eliminate the non-applicable code paths.
-   */
+  // Constant that flags the byte order. Because this is a boolean constant, the JIT compiler can
+  // use this well to aggressively eliminate the non-applicable code paths.
   private static final boolean LITTLE_ENDIAN = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN);
 
-  /**
-   * The heap byte array object relative to which we access the memory.
-   *
-   * <p>Is non-<tt>null</tt> if the memory is on the heap, and is <tt>null</tt>, if the memory if
-   * off the heap. If we have this buffer, we must never void this reference, or the memory buffer
-   * will point to undefined addresses outside the heap and may in out-of-order execution cases
-   * cause bufferation faults.
-   */
+  // The heap byte array object relative to which we access the memory.
+  // Is non-null if the memory is on the heap, and is null, if the memory is off the heap.
+  // If we have this buffer, we must never void this reference, or the memory buffer will point
+  // to undefined addresses outside the heap and may in out-of-order execution cases cause
+  // buffer faults.
   private byte[] heapMemory;
-
-  /**
-   * The direct byte buffer that allocated the off-heap memory. This memory buffer holds a reference
-   * to that buffer, so as long as this memory buffer lives, the memory will not be released.
-   */
+  // The direct byte buffer that allocated the off-heap memory. This memory buffer holds a
+  // reference to that buffer, so as long as this memory buffer lives, the memory will not be
+  // released.
   private ByteBuffer offHeapBuffer;
-
-  /**
-   * The address to the data, relative to the heap memory byte array. If the heap memory byte array
-   * is <tt>null</tt>, this becomes an absolute memory address outside the heap.
-   */
+  // The readable/writeable range is [address, addressLimit).
+  // The address to the data, relative to the heap memory byte array. If the heap memory byte array
+  // is null, this becomes an absolute memory address outside the heap.
   private long address;
-
-  // The address one byte after the last addressable byte, i.e. <tt>address + size</tt> while the
+  // The address one byte after the last addressable byte, i.e. `address + size` while the
   // buffer is not disposed.
   private long addressLimit;
-
   // The size in bytes of the memory buffer.
   private int size;
-
   private int readerIndex;
   private int writerIndex;
 
@@ -83,17 +66,13 @@ public final class MemoryBuffer {
    *     <tt>array.length</tt>.
    * @param length buffer size
    */
-  MemoryBuffer(byte[] buffer, int offset, int length) {
+  private MemoryBuffer(byte[] buffer, int offset, int length) {
     Preconditions.checkArgument(offset >= 0 && length >= 0);
     if (offset + length > buffer.length) {
       throw new IllegalArgumentException(
           String.format("%d exceeds buffer size %d", offset + length, buffer.length));
     }
     initHeapBuffer(buffer, offset, length);
-  }
-
-  MemoryBuffer(byte[] buffer) {
-    this(buffer, 0, buffer.length);
   }
 
   private void initHeapBuffer(byte[] buffer, int offset, int length) {
@@ -107,26 +86,17 @@ public final class MemoryBuffer {
   }
 
   /**
-   * Creates a new memory buffer that represents the memory backing the given direct byte buffer
-   * section of [buffer.position(), buffer,limit()). Note that the given ByteBuffer must be direct,
-   * otherwise this method with throw an IllegalArgumentException.
-   *
-   * @param buffer The byte buffer whose memory is represented by this memory buffer.
-   * @throws IllegalArgumentException Thrown, if the given ByteBuffer is not direct.
-   */
-  MemoryBuffer(ByteBuffer buffer) {
-    this(Platform.getAddress(buffer) + buffer.position(), buffer.remaining());
-    this.offHeapBuffer = buffer;
-  }
-
-  /**
-   * Creates a new memory buffer that represents the memory at the absolute address given by the
-   * pointer.
+   * Creates a new memory buffer that represents the native memory at the absolute address given by
+   * the pointer.
    *
    * @param offHeapAddress The address of the memory represented by this memory buffer.
    * @param size The size of this memory buffer.
+   * @param offHeapBuffer The byte buffer whose memory is represented by this memory buffer which
+   *     may be null if the memory is not allocated by `DirectByteBuffer`. Hold this buffer to avoid
+   *     the memory being released.
    */
-  MemoryBuffer(long offHeapAddress, int size) {
+  private MemoryBuffer(long offHeapAddress, int size, ByteBuffer offHeapBuffer) {
+    this.offHeapBuffer = offHeapBuffer;
     if (offHeapAddress <= 0) {
       throw new IllegalArgumentException("negative pointer or size");
     }
@@ -925,7 +895,7 @@ public final class MemoryBuffer {
         duplicate.limit(start + offset + length);
         return duplicate.slice();
       } else {
-        return Platform.wrapDirectBuffer(address + offset, length);
+        return Platform.createDirectByteBufferFromNativeAddress(address + offset, length);
       }
     }
   }
@@ -944,15 +914,55 @@ public final class MemoryBuffer {
    * @return a new MemoryBuffer object.
    */
   public MemoryBuffer cloneReference() {
-    if (offHeapBuffer != null) {
-      return new MemoryBuffer(offHeapBuffer);
-    } else if (heapMemory != null) {
-      MemoryBuffer buf = new MemoryBuffer(heapMemory);
+    if (heapMemory != null) {
+      MemoryBuffer buf = new MemoryBuffer(heapMemory, 0, heapMemory.length);
       buf.address = address;
       buf.size = size;
       return buf;
     } else {
-      return new MemoryBuffer(address, size);
+      return new MemoryBuffer(address, size, offHeapBuffer);
     }
+  }
+
+  /** Creates a new memory buffer that targets to the given heap memory region. */
+  public static MemoryBuffer fromByteArray(byte[] buffer, int offset, int length) {
+    return new MemoryBuffer(buffer, offset, length);
+  }
+
+  /** Creates a new memory buffer that targets to the given heap memory region. */
+  public static MemoryBuffer fromByteArray(byte[] buffer) {
+    return new MemoryBuffer(buffer, 0, buffer.length);
+  }
+
+  /**
+   * Creates a new memory buffer that represents the memory backing the given byte buffer section of
+   * {@code [buffer.position(), buffer,limit())}.
+   *
+   * @param buffer a direct buffer or heap buffer
+   */
+  public static MemoryBuffer fromByteBuffer(ByteBuffer buffer) {
+    if (buffer.isDirect()) {
+      return new MemoryBuffer(
+          Platform.getAddress(buffer) + buffer.position(), buffer.remaining(), buffer);
+    } else {
+      int offset = buffer.arrayOffset() + buffer.position();
+      return new MemoryBuffer(buffer.array(), offset, buffer.remaining());
+    }
+  }
+
+  /**
+   * Creates a new memory buffer that represents the provided native memory.  The buffer will
+   * change into a heap buffer automatically if not enough.
+   */
+  public static MemoryBuffer fromNativeAddress(long address, int size) {
+    return new MemoryBuffer(address, size, null);
+  }
+
+  /**
+   * Create a heap buffer of specified initial size. The buffer will grow automatically if not
+   * enough.
+   */
+  public static MemoryBuffer newHeapBuffer(int size) {
+    return fromByteArray(new byte[size]);
   }
 }

@@ -25,7 +25,8 @@ public class PlatformTest {
     {
       ByteBuffer buffer1 = ByteBuffer.allocateDirect(10);
       buffer1.putInt(10);
-      ByteBuffer buffer2 = Platform.wrapDirectBuffer(Platform.getAddress(buffer1), 10);
+      ByteBuffer buffer2 =
+          Platform.createDirectByteBufferFromNativeAddress(Platform.getAddress(buffer1), 10);
       assertEquals(buffer2.getInt(), 10);
     }
     assertThrows(
@@ -41,7 +42,7 @@ public class PlatformTest {
     try {
       int size = 16;
       address = Platform.allocateMemory(size);
-      ByteBuffer buffer = Platform.wrapDirectBuffer(address, size);
+      ByteBuffer buffer = Platform.createDirectByteBufferFromNativeAddress(address, size);
       buffer.putLong(0, 1);
       assertEquals(1, buffer.getLong(0));
     } finally {
@@ -59,11 +60,11 @@ public class PlatformTest {
       ByteBuffer buffer = null;
       {
         for (int i = 0; i < nums; i++) {
-          buffer = Platform.wrapDirectBuffer(address, size);
+          buffer = Platform.createDirectByteBufferFromNativeAddress(address, size);
         }
         long startTime = System.nanoTime();
         for (int i = 0; i < nums; i++) {
-          buffer = Platform.wrapDirectBuffer(address, size);
+          buffer = Platform.createDirectByteBufferFromNativeAddress(address, size);
         }
         long duration = System.nanoTime() - startTime;
         buffer.putLong(0, 1);
