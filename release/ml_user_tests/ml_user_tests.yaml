@@ -1,5 +1,4 @@
 - name: horovod_user_test_latest
-  team: ml
   cluster:
     app_config: horovod/app_config.yaml
     compute_template: horovod/compute_tpl.yaml
@@ -14,7 +13,6 @@
     script: python horovod/horovod_user_test.py
 
 - name: horovod_user_test_master
-  team: ml
   cluster:
     app_config: ../horovod_tests/app_config_master.yaml
     compute_template: horovod/compute_tpl.yaml
@@ -28,35 +26,32 @@
     script: python horovod/horovod_user_test.py
 
 
-- name: train_tensorflow_mnist_test
-  team: ml
-  cluster:
-      app_config: train/app_config.yaml
-      compute_template: train/compute_tpl.yaml
+-   name: train_tensorflow_mnist_test
+    cluster:
+        app_config: train/app_config.yaml
+        compute_template: train/compute_tpl.yaml
 
-  driver_setup: train/driver_setup.sh
+    driver_setup: train/driver_setup.sh
 
-  run:
-      use_connect: True
-      timeout: 36000
-      script: python train/train_tensorflow_mnist_test.py
+    run:
+        use_connect: True
+        timeout: 36000
+        script: python train/train_tensorflow_mnist_test.py
 
-- name: train_torch_linear_test
-  team: ml
-  cluster:
-      app_config: train/app_config.yaml
-      compute_template: train/compute_tpl.yaml
+-   name: train_torch_linear_test
+    cluster:
+        app_config: train/app_config.yaml
+        compute_template: train/compute_tpl.yaml
 
-  driver_setup: train/driver_setup.sh
+    driver_setup: train/driver_setup.sh
 
-  run:
-      use_connect: True
-      timeout: 36000
-      script: python train/train_torch_linear_test.py
+    run:
+        use_connect: True
+        timeout: 36000
+        script: python train/train_torch_linear_test.py
 
 
 - name: xgboost_gpu_connect_latest
-  team: ml
   cluster:
     app_config: xgboost/app_config_gpu.yaml
     compute_template: xgboost/tpl_gpu_small_scaling.yaml
@@ -67,7 +62,6 @@
     script: python xgboost/train_gpu_connect.py
 
 - name: xgboost_gpu_connect_master
-  team: ml
   cluster:
     app_config: xgboost/app_config_gpu_master.yaml
     compute_template: xgboost/tpl_gpu_small_scaling.yaml
@@ -78,7 +72,6 @@
     script: python xgboost/train_gpu_connect.py
 
 - name: ray_lightning_user_test_latest
-  team: ml
   cluster:
     app_config: ray-lightning/app_config.yaml
     compute_template: ray-lightning/compute_tpl.yaml
@@ -93,7 +86,6 @@
 
 
 - name: ray_lightning_user_test_master
-  team: ml
   cluster:
     app_config: ray-lightning/app_config_master.yaml
     compute_template: ray-lightning/compute_tpl.yaml
@@ -109,7 +101,6 @@
 
 
 - name: tune_rllib_connect_test
-  team: ml
   cluster:
     app_config: ../rllib_tests/app_config.yaml
     compute_template: tune_rllib/compute_tpl.yaml
