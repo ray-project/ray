@@ -542,9 +542,12 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
     def to_ref(df):
         if isinstance(df, pandas.DataFrame):
             return ray.put(df)
-        assert isinstance(df, ray.ObjectRef), df
-        return df
-
+        elif isinstance(df, ray.ObjectRef):
+            return df
+        else:
+            raise ValueError(
+                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
+            )
     return from_pandas_refs([
         to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
     ])

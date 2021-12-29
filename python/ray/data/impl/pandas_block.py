@@ -23,9 +23,6 @@ T = TypeVar("T")
 
 class PandasRow(TableRow):
     def as_pydict(self) -> dict:
-        # TODO (kfsorm): If the type of column name is not str, e.g. int.
-        # The result keys will stay as int. Should we enforce `str(k)`?
-        # Maybe we don't even allow non-str column names?
         return {k: v[0] for k, v in self._row.to_dict("list").items()}
 
     def __getitem__(self, key: str) -> Any:
