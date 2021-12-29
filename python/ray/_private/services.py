@@ -468,7 +468,7 @@ def node_ip_address_from_perspective(address):
     return node_ip_address
 
 
-def get_node_ip_address(address="8.8.8.8:53", use_hostname=False):
+def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
     if sys.platform == "darwin" or sys.platform == "win32":
@@ -476,10 +476,7 @@ def get_node_ip_address(address="8.8.8.8:53", use_hostname=False):
         # we use loopback ip as the ip address
         # to prevent security popups.
         return "127.0.0.1"
-    if use_hostname:
-        return socket.gethostname()
-    else:
-        return node_ip_address_from_perspective(address)
+    return node_ip_address_from_perspective(address)
 
 
 def create_redis_client(redis_address, password=None):

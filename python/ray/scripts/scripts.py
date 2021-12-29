@@ -237,13 +237,6 @@ def debug(address):
     type=str,
     help="the IP address of this node")
 @click.option(
-    "--use-hostname",
-    required=False,
-    hidden=True,
-    is_flag=True,
-    default=False,
-    help="use hostname to communicate with other nodes")
-@click.option(
     "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--port",
@@ -463,9 +456,9 @@ def debug(address):
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
 @add_click_logging_options
-def start(node_ip_address, use_hostname, address, port, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port,
-          gcs_server_port, min_worker_port, max_worker_port, worker_port_list,
+def start(node_ip_address, address, port, redis_password, redis_shard_ports,
+          object_manager_port, node_manager_port, gcs_server_port,
+          min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port,
@@ -481,7 +474,7 @@ def start(node_ip_address, use_hostname, address, port, redis_password,
             "gcs_server_port can be only assigned when you specify --head.")
 
     # Convert hostnames to numerical IP address.
-    if node_ip_address is not None and not use_hostname:
+    if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
     try:
@@ -593,8 +586,7 @@ def start(node_ip_address, use_hostname, address, port, redis_password,
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(
-                use_hostname=use_hostname))
+            node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port,
