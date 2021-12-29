@@ -1574,8 +1574,6 @@ def start_raylet(redis_address,
     else:
         rust_worker_command = []
 
-    print(rust_worker_command)
-
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if

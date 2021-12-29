@@ -5,25 +5,49 @@ mod test {
     use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs, get, get_execute_result};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
-    const VEC_SIZE: usize = 100_000;
     #[test]
     fn test_init_submit_execute_shutdown() {
-        std::thread::sleep(std::time::Duration::from_millis(2000));
+        const VEC_SIZE: usize = 1 << 12;
+        let num_jobs = 1 << 10;
+
         InitRust();
-        let num_jobs = 16;
 
-        println!("{}", IsInitialized());
-        let (a, b, c): (Vec<_>, Vec<_>, Vec<_>) =
-            ((0u64..100).collect(), (0u64..100).collect(), (0u64..100).collect());
-
-        let ids: Vec<_> = (0..num_jobs).map(|_| {
+        let now = std::time::Instant::now();
+        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+            let (a, b): (Vec<_>, Vec<_>) =
+                ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
             add_two_vecs.remote(a, b)
         }).collect();
 
-        for i in 0..num_jobs {
-            println!("Job {}: {:?}", i, get::<Vec<u64>>(ids[i]));
-        }
+        ids.reverse();
+        println!("Submission: {:?}", now.elapsed().as_millis());
+
+        let results: Vec<_> = (0..num_jobs).map(|_| {
+            get::<Vec<u64>>(ids.pop().unwrap())
+        }).collect();
+
+        println!("Execute + Get: {:?}", now.elapsed().as_millis());
+
         Shutdown();
+    }
+
+
+    #[test]
+    fn test_get_execute_result() {
+        let (a, b): (Vec<_>, Vec<_>) =
+            ((0u64..100).collect(), (0u64..100).collect());
+        let a_ser = rmp_serde::to_vec(&a).unwrap();
+        let b_ser = rmp_serde::to_vec(&b).unwrap();
+
+        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
+        let ret_ffi: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
+            &get_execute_result(
+                vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],
+                vec![a_ser.len() as u64, b_ser.len() as u64],
+                &fn_name,
+            )
+        ).unwrap();
+        assert_eq!(ret_ffi, (0u64..200).step_by(2).collect::<Vec<u64>>());
     }
 
     #[test]
