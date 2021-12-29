@@ -70,13 +70,13 @@ class JobConfig:
     def set_default_actor_lifetime(self, default_actor_lifetime: str) -> None:
         if default_actor_lifetime == "detached":
             self._default_actor_lifetime = \
-                ray.gcs_utils.JobConfig.ActorLifetime.DETACHED
+                gcs_utils.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non-detached":
             self._default_actor_lifetime = \
-                ray.gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
+                gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
         elif default_actor_lifetime is None:
             self._default_actor_lifetime = \
-                ray.gcs_utils.JobConfig.ActorLifetime.NONE
+                gcs_utils.JobConfig.ActorLifetime.NONE
         else:
             raise ValueError(
                 "Lifetime must be one of `detached`, `non-detached` or None.")

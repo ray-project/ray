@@ -714,7 +714,7 @@ class ActorClass:
 
         if lifetime is not None:
             detached = lifetime == "detached"
-        elif lifetime == "detached":
+        else:
             # TODO(qwang): AN api change?
             detached = None
 

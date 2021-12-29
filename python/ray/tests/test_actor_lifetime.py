@@ -1,12 +1,13 @@
 import ray
 import os
 import time
-import ray.test_utils
+import ray._private.test_utils as test_utils
 import signal
 import sys
 import pytest
+import ray._private.gcs_utils as gcs_utils
 
-from ray.test_utils import (
+from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
 )
