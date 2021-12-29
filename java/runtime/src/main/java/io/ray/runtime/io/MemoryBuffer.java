@@ -951,8 +951,8 @@ public final class MemoryBuffer {
   }
 
   /**
-   * Creates a new memory buffer that represents the provided native memory.  The buffer will
-   * change into a heap buffer automatically if not enough.
+   * Creates a new memory buffer that represents the provided native memory. The buffer will change
+   * into a heap buffer automatically if not enough.
    */
   public static MemoryBuffer fromNativeAddress(long address, int size) {
     return new MemoryBuffer(address, size, null);

@@ -56,7 +56,7 @@ public class PlatformTest {
     try {
       int size = 16;
       address = Platform.allocateMemory(size);
-      long nums = 100_000_000;
+      long nums = 10_000_000;
       ByteBuffer buffer = null;
       {
         for (int i = 0; i < nums; i++) {
@@ -68,7 +68,22 @@ public class PlatformTest {
         }
         long duration = System.nanoTime() - startTime;
         buffer.putLong(0, 1);
-        System.out.printf("wrapDirectBuffer costs %sns %sms\n", duration, duration / 1000_000);
+        System.out.printf(
+            "createDirectByteBufferFromNativeAddress costs %sns %sms\n",
+            duration, duration / 1000_000);
+      }
+      {
+        for (int i = 0; i < nums; i++) {
+          buffer = ByteBuffer.allocateDirect(size);
+        }
+        long startTime = System.nanoTime();
+        for (int i = 0; i < nums; i++) {
+          buffer = ByteBuffer.allocateDirect(size);
+        }
+        long duration = System.nanoTime() - startTime;
+        buffer.putLong(0, 1);
+        System.out.printf(
+            "ByteBuffer.allocateDirect costs %sns %sms\n", duration, duration / 1000_000);
       }
       {
         for (int i = 0; i < nums; i++) {

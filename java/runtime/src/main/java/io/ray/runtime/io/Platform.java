@@ -300,8 +300,6 @@ public final class Platform {
     return offHeapAddress;
   }
 
-  private static final ByteBuffer localBuffer = ByteBuffer.allocateDirect(0);
-
   /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
   public static void wrapDirectBuffer(ByteBuffer buffer, long address, int size) {
     UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
@@ -309,8 +307,11 @@ public final class Platform {
     buffer.clear();
   }
 
+  private static final ByteBuffer localBuffer = ByteBuffer.allocateDirect(0);
+
   public static ByteBuffer createDirectByteBufferFromNativeAddress(long address, int size) {
     try {
+      // ByteBuffer.allocateDirect(0) is about 30x slower than `localBuffer.duplicate()`.
       ByteBuffer buffer = localBuffer.duplicate();
       UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
       UNSAFE.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
