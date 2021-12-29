@@ -39,7 +39,7 @@ mod test {
         let a_ser = rmp_serde::to_vec(&a).unwrap();
         let b_ser = rmp_serde::to_vec(&b).unwrap();
 
-        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
+        let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
         let ret_ffi: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
             &get_execute_result(
                 vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],
@@ -69,16 +69,6 @@ mod test {
             &add_two_vecs.ray_call(args_ptrs).destroy_into_vec()
         ).unwrap();
         assert_eq!(ret, (0u64..200).step_by(2).collect::<Vec<u64>>());
-
-        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
-        let ret_ffi: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
-            &get_execute_result(
-                vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],
-                vec![a_ser.len() as u64, b_ser.len() as u64],
-                &fn_name,
-            )
-        ).unwrap();
-        assert_eq!(ret_ffi, (0u64..200).step_by(2).collect::<Vec<u64>>());
 
         let args_ptrs3 = RustBuffer::from_vec(rmp_serde::to_vec(
             &(

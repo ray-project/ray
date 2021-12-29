@@ -55,7 +55,7 @@ type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
 
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
-        let_cxx_string!(fn_name = "ray_rs_sys::ray_rust_ffi_add_two_vecs");
+        let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
         Mutex::new([
             (fn_name.as_bytes().to_vec(), add_two_vecs.get_invoker()),
         ].iter().cloned().collect::<HashMap<_,_>>())
@@ -65,7 +65,11 @@ lazy_static::lazy_static! {
 
 pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
-    let ret = GLOBAL_FUNCTION_MAP.lock().unwrap().get(&fn_name.as_bytes().to_vec()).unwrap()(args_buffer);
+    let ret = GLOBAL_FUNCTION_MAP
+        .lock()
+        .unwrap()
+        .get(&fn_name.as_bytes().to_vec())
+        .expect(&format!("Could not find symbol for fn of name {:?}", fn_name))(args_buffer);
     ret.destroy_into_vec()
 }
 
