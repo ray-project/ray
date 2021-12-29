@@ -292,30 +292,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     }
   }
 
-  auto default_actor_lifetime = job_config->default_actor_lifetime();
-  if (language == Language::JAVA) {
-    if (default_actor_lifetime == rpc::JobConfig_ActorLifetime_DETACHED) {
-      options.push_back("-Dray.job.default-actor-lifetime=DETACHED");
-      } else if (default_actor_lifetime == rpc::JobConfig_ActorLifetime_NON_DETACHED) {
-        options.push_back("-Dray.job.default-actor-lifetime=NON_DETACHED");
-      } else {
-        // It's rpc::JobConfig_ActorLifetime_NONE, and it indicates we don't specify it.
-        RAY_LOG(DEBUG) << "default_actor_lifetime is not specified to this worker, "
-                       << "so it's no need to append any option for that.";
-      }
-    } else if (language == Language::PYTHON) {
-	
-      if (default_actor_lifetime == rpc::JobConfig_ActorLifetime_DETACHED) {
-        options.push_back("--default-actor-lifetime=detached");
-      } else if (default_actor_lifetime == rpc::JobConfig_ActorLifetime_NON_DETACHED) {
-        options.push_back("--default-actor-lifetime=non-detached");
-      } else {
-        // It's rpc::JobConfig_ActorLifetime_NONE, and it indicates we don't specify it.
-        RAY_LOG(DEBUG) << "--default-actor-lifetime is not specified to this worker, "
-                       << "so it's no need to append any option for that.";
-      }
-    }
-
   // Append user-defined per-job options here
   if (language == Language::JAVA) {
     if (!job_config->jvm_options().empty()) {

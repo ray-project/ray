@@ -334,12 +334,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
 
-    if (options.lifetime == null) {
-      LOGGER.debug(
-          "This actor is not specified lifetime, set a default value: {}",
-          rayConfig.defaultActorLifetime);
-      options.lifetime = rayConfig.defaultActorLifetime;
-    }
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
