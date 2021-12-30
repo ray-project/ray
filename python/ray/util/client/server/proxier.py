@@ -108,14 +108,14 @@ def _match_running_client_server(command: List[str]) -> bool:
 
 class ProxyManager():
     def __init__(self,
-                 redis_address: Optional[str],
+                 address: Optional[str],
                  *,
                  session_dir: Optional[str] = None,
                  redis_password: Optional[str] = None,
                  runtime_env_agent_port: int = 0):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
-        self._redis_address = redis_address
+        self._address = address
         self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
@@ -152,27 +152,28 @@ class ProxyManager():
         raise RuntimeError("Unable to succeed in selecting a random port.")
 
     @property
-    def redis_address(self) -> str:
+    def address(self) -> str:
         """
-        Returns the provided Ray Redis address, or creates a new cluster.
+        Returns the provided Ray bootstrap address, or creates a new cluster.
         """
-        if self._redis_address:
-            return self._redis_address
+        if self._address:
+            return self._address
         # Start a new, locally scoped cluster.
         connection_tuple = ray.init()
-        self._redis_address = connection_tuple["redis_address"]
+        self._address = connection_tuple["address"]
         self._session_dir = connection_tuple["session_dir"]
-        return self._redis_address
+        return self._address
 
     @property
     def node(self) -> ray.node.Node:
         """Gets a 'ray.Node' object for this node (the head node).
-        If it does not already exist, one is created using the redis_address.
+        If it does not already exist, one is created using the bootstrap
+        address.
         """
         if self._node:
             return self._node
 
-        ray_params = RayParams(redis_address=self.redis_address)
+        ray_params = RayParams(redis_address=self.address)
         if self._redis_password:
             ray_params.redis_password = self._redis_password
 
@@ -282,7 +283,7 @@ class ProxyManager():
             )
 
         proc = start_ray_client_server(
-            self.redis_address,
+            self.address,
             self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
@@ -736,7 +737,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
 
 
 def serve_proxier(connection_str: str,
-                  redis_address: Optional[str],
+                  address: Optional[str],
                   *,
                   redis_password: Optional[str] = None,
                   session_dir: Optional[str] = None,
@@ -745,16 +746,16 @@ def serve_proxier(connection_str: str,
     # before calling ray.init within the RayletServicers.
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
-    if redis_address is not None and redis_password is not None:
+    if address is not None and redis_password is not None:
         gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
-            redis_address, redis_password)
+            address, redis_password)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=GRPC_OPTIONS)
     proxy_manager = ProxyManager(
-        redis_address,
+        address,
         session_dir=session_dir,
         redis_password=redis_password,
         runtime_env_agent_port=runtime_env_agent_port)
