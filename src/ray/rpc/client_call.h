@@ -250,6 +250,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
+    RAY_LOG(INFO) << "jjyao CreateCall " << call_name << " " << ((void *)tag);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -271,16 +272,19 @@ class ClientCallManager {
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
+        RAY_LOG(INFO) << "jjyao shutdown";
         break;
       } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
         // If we timed out and shutdown, then exit immediately. This should not
         // be needed, but gRPC seems to not return SHUTDOWN correctly in these
         // cases (e.g., test_wait will hang on shutdown without this check).
+        RAY_LOG(INFO) << "jjyao timeout";
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
         // If the client deadline is exceeded, event is obtained at this block.
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        RAY_LOG(INFO) << "jjyao Poll " << ((void*)tag);
         // Refresh the tag.
         got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();
