@@ -469,7 +469,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 def test_ray_status():
     import ray
-    address = ray.init(num_cpus=3).get("redis_address")
+    address = ray.init(num_cpus=3).get("address")
     runner = CliRunner()
 
     def output_ready():

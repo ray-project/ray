@@ -9,6 +9,7 @@ import requests
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
@@ -563,6 +564,39 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
+def test_reconfigure_with_queries(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=10, num_replicas=3)
+    class A:
+        def __init__(self):
+            self.state = None
+
+        def reconfigure(self, config):
+            self.state = config
+
+        async def __call__(self):
+            await signal.wait.remote()
+            return self.state["a"]
+
+    A.options(version="1", user_config={"a": 1}).deploy()
+    handle = A.get_handle()
+    refs = []
+    for _ in range(30):
+        refs.append(handle.remote())
+
+    @ray.remote(num_cpus=0)
+    def reconfigure():
+        A.options(version="1", user_config={"a": 2}).deploy()
+
+    reconfigure_ref = reconfigure.remote()
+    signal.send.remote()
+    ray.get(reconfigure_ref)
+    for ref in refs:
+        assert ray.get(ref) == 1
+    assert ray.get(handle.remote()) == 2
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_down(serve_instance, use_handle):
@@ -1107,6 +1141,31 @@ def test_deploy_empty_bundle(serve_instance):
 
     # This should succesfully terminate within the provided time-frame.
     D.deploy()
+
+
+def test_deployment_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(Exception) as exception_info:
+        # This is an invalid configuration since dynamic upload of working
+        # directories is not supported. The error this causes in the controller
+        # code should be caught and reported back to the `deploy` caller.
+
+        f.options(ray_actor_options={
+            "runtime_env": {
+                "working_dir": "."
+            }
+        }).deploy()
+
+    assert isinstance(exception_info.value, RayTaskError)
+
+    # This is the file where deployment exceptions should
+    # be caught. If this frame is not present in the stacktrace,
+    # the stacktrace is incomplete.
+    assert os.sep.join(("ray", "serve",
+                        "deployment_state.py")) in str(exception_info.value)
 
 
 if __name__ == "__main__":

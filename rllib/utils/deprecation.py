@@ -21,17 +21,17 @@ def deprecation_warning(
     """Warns (via the `logger` object) or throws a deprecation warning/error.
 
     Args:
-        old (str): A description of the "thing" that is to be deprecated.
-        new (Optional[str]): A description of the new "thing" that replaces it.
-        help (Optional[str]): An optional help text to tell the user, what to
+        old: A description of the "thing" that is to be deprecated.
+        new: A description of the new "thing" that replaces it.
+        help: An optional help text to tell the user, what to
             do instead of using `old`.
-        error (Optional[Union[bool, Exception]]): Whether or which exception to
-            raise. If True, raise ValueError. If False, just warn.
-            If error is-a subclass of Exception, raise that Exception.
+        error: Whether or which exception to raise. If True, raise ValueError.
+            If False, just warn. If `error` is-a subclass of Exception,
+            raise that Exception.
 
     Raises:
         ValueError: If `error=True`.
-        Exception: Of type `error`, iff error is-a Exception subclass.
+        Exception: Of type `error`, iff `error` is a sub-class of `Exception`.
     """
     msg = "`{}` has been deprecated.{}".format(
         old, (" Use `{}` instead.".format(new) if new else f" {help}"
@@ -47,16 +47,39 @@ def deprecation_warning(
 
 
 def Deprecated(old=None, *, new=None, help=None, error):
-    """Annotation for documenting a (soon-to-be) deprecated method.
+    """Decorator for documenting a deprecated class, method, or function.
 
-    Methods tagged with this decorator should produce a
-    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
-    to not break existing code at this point.
-    In a next major release, this warning can then be made an error
-    (error=True), which means at this point that the method is already
-    no longer supported but will still inform the user about the
-    deprecation event.
-    In a further major release, the method should be erased.
+    Automatically adds a `deprecation.deprecation_warning(old=...,
+    error=False)` to not break existing code at this point to the decorated
+    class' constructor, method, or function.
+
+    In a next major release, this warning should then be made an error
+    (by setting error=True), which means at this point that the
+    class/method/function is no longer supported, but will still inform
+    the user about the deprecation event.
+
+    In a further major release, the class, method, function should be erased
+    entirely from the codebase.
+
+    Examples:
+        >>> # Deprecated class: Patches the constructor to warn if the class is
+        ... # used.
+        ... @Deprecated(new="NewAndMuchCoolerClass", error=False)
+        ... class OldAndUncoolClass:
+        ...     ...
+
+        >>> # Deprecated class method: Patches the method to warn if called.
+        ... class StillCoolClass:
+        ...     ...
+        ...     @Deprecated(new="StillCoolClass.new_and_much_cooler_method()",
+        ...                 error=False)
+        ...     def old_and_uncool_method(self, uncool_arg):
+        ...         ...
+
+        >>> # Deprecated function: Patches the function to warn if called.
+        ... @Deprecated(new="new_and_much_cooler_function", error=False)
+        ... def old_and_uncool_function(*uncool_args):
+        ...     ...
     """
 
     def _inner(obj):

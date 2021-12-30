@@ -8,7 +8,7 @@ from numpy import nan
 
 import ray
 from ray import tune
-from ray.tune.utils.mock import MyTrainableClass
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):

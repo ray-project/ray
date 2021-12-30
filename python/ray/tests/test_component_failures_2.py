@@ -112,6 +112,7 @@ def test_get_node_info_after_raylet_died(ray_start_cluster_head):
     def get_node_info():
         return ray._private.services.get_node_to_connect_for_driver(
             cluster.redis_address,
+            cluster.gcs_address,
             cluster.head_node.node_ip_address,
             redis_password=cluster.redis_password)
 

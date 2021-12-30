@@ -2,6 +2,7 @@ import pytest
 import ray
 import subprocess
 import sys
+from ray._private.test_utils import Semaphore
 
 
 @pytest.fixture
@@ -94,6 +95,66 @@ def test_jemalloc_env_var_propagate():
         jemalloc_comps=[ray.ray_constants.PROCESS_TYPE_GCS_SERVER],
         process_type=gcs_ptype)
     assert actual == expected
+
+
+def test_back_pressure(shutdown_only_with_initialization_check):
+    ray.init()
+
+    signal_actor = Semaphore.options(max_pending_calls=10).remote(value=0)
+
+    try:
+        for i in range(10):
+            signal_actor.acquire.remote()
+    except ray.exceptions.PendingCallsLimitExceeded:
+        assert False
+
+    with pytest.raises(ray.exceptions.PendingCallsLimitExceeded):
+        signal_actor.acquire.remote()
+
+    @ray.remote
+    def release(signal_actor):
+        ray.get(signal_actor.release.remote())
+        return 1
+
+    # Release signal actor through common task,
+    # because actor tasks will be back pressured
+    for i in range(10):
+        ray.get(release.remote(signal_actor))
+
+    # Check whether we can call remote actor normally after
+    # back presssure released.
+    try:
+        signal_actor.acquire.remote()
+    except ray.exceptions.PendingCallsLimitExceeded:
+        assert False
+
+    ray.shutdown()
+
+
+def test_local_mode_deadlock(shutdown_only_with_initialization_check):
+    ray.init(local_mode=True)
+
+    @ray.remote
+    class Foo:
+        def __init__(self):
+            pass
+
+        def ping_actor(self, actor):
+            actor.ping.remote()
+            return 3
+
+    @ray.remote
+    class Bar:
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return 1
+
+    foo = Foo.remote()
+    bar = Bar.remote()
+    # Expect ping_actor call returns normally without deadlock.
+    assert ray.get(foo.ping_actor.remote(bar)) == 3
 
 
 if __name__ == "__main__":

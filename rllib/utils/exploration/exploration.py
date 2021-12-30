@@ -32,12 +32,12 @@ class Exploration:
                  num_workers: int, worker_index: int):
         """
         Args:
-            action_space (Space): The action space in which to explore.
-            framework (str): One of "tf" or "torch".
-            policy_config (TrainerConfigDict): The Policy's config dict.
-            model (ModelV2): The Policy's model.
-            num_workers (int): The overall number of workers used.
-            worker_index (int): The index of the worker using this class.
+            action_space: The action space in which to explore.
+            framework: One of "tf" or "torch".
+            policy_config: The Policy's config dict.
+            model: The Policy's model.
+            num_workers: The overall number of workers used.
+            worker_index: The index of the worker using this class.
         """
         self.action_space = action_space
         self.policy_config = policy_config
@@ -64,11 +64,9 @@ class Exploration:
         """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            timestep (Optional[Union[TensorType, int]]): An optional timestep
-                tensor.
-            explore (Optional[Union[TensorType, bool]]): An optional explore
-                boolean flag.
-            tf_sess (Optional[tf.Session]): The tf-session object to use.
+            timestep: An optional timestep tensor.
+            explore: An optional explore boolean flag.
+            tf_sess: The tf-session object to use.
             **kwargs: Forward compatibility kwargs.
         """
         pass
@@ -88,20 +86,19 @@ class Exploration:
         exploratory action.
 
         Args:
-            action_distribution (ActionDistribution): The instantiated
+            action_distribution: The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
-            timestep (Union[TensorType, int]): The current sampling time step.
-                It can be a tensor for TF graph mode, otherwise an integer.
-            explore (Union[TensorType, bool]): True: "Normal" exploration
-                behavior. False: Suppress all exploratory behavior and return
+            timestep: The current sampling time step. It can be a tensor
+                for TF graph mode, otherwise an integer.
+            explore: True: "Normal" exploration behavior.
+                False: Suppress all exploratory behavior and return
                 a deterministic action.
 
         Returns:
-            Tuple:
-            - The chosen exploration action or a tf-op to fetch the exploration
-              action from the graph.
-            - The log-likelihood of the exploration action.
+            A tuple consisting of 1) the chosen exploration action or a
+            tf-op to fetch the exploration action from the graph and
+            2) the log-likelihood of the exploration action.
         """
         pass
 
@@ -118,10 +115,10 @@ class Exploration:
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
-            policy (Policy): The Policy object that holds this Exploration.
-            environment (BaseEnv): The environment object we are acting in.
-            episode (int): The number of the episode that is starting.
-            tf_sess (Optional[tf.Session]): In case of tf, the session object.
+            policy: The Policy object that holds this Exploration.
+            environment: The environment object we are acting in.
+            episode: The number of the episode that is starting.
+            tf_sess: In case of tf, the session object.
         """
         pass
 
@@ -135,10 +132,10 @@ class Exploration:
         """Handles necessary exploration logic at the end of an episode.
 
         Args:
-            policy (Policy): The Policy object that holds this Exploration.
-            environment (BaseEnv): The environment object we are acting in.
-            episode (int): The number of the episode that is starting.
-            tf_sess (Optional[tf.Session]): In case of tf, the session object.
+            policy: The Policy object that holds this Exploration.
+            environment: The environment object we are acting in.
+            episode: The number of the episode that is starting.
+            tf_sess: In case of tf, the session object.
         """
         pass
 
@@ -153,9 +150,9 @@ class Exploration:
         sampler after policy.postprocess_trajectory() is called.
 
         Args:
-            policy (Policy): The owning policy object.
-            sample_batch (SampleBatch): The SampleBatch object to post-process.
-            tf_sess (Optional[tf.Session]): An optional tf.Session object.
+            policy: The owning policy object.
+            sample_batch: The SampleBatch object to post-process.
+            tf_sess: An optional tf.Session object.
         """
         return sample_batch
 
@@ -169,12 +166,11 @@ class Exploration:
         and the Exploration component's loss terms.
 
         Args:
-            optimizers (List[LocalOptimizer]): The list of the Policy's
-                local optimizers.
+            optimizers: The list of the Policy's local optimizers.
 
         Returns:
-            List[LocalOptimizer]: The updated list of local optimizers to use
-                on the different loss terms.
+            The updated list of local optimizers to use on the different
+            loss terms.
         """
         return optimizers
 
@@ -184,10 +180,10 @@ class Exploration:
         """Returns the current exploration state.
 
         Args:
-            sess (Optional[tf.Session]): An optional tf Session object to use.
+            sess: An optional tf Session object to use.
 
         Returns:
-            Dict[str, TensorType]: The Exploration object's current state.
+            The Exploration object's current state.
         """
         return {}
 
@@ -202,8 +198,8 @@ class Exploration:
         therefore don't need to keep track of it.
 
         Args:
-            state (object): The state to set this Exploration to.
-            sess (Optional[tf.Session]): An optional tf Session object to use.
+            state: The state to set this Exploration to.
+            sess: An optional tf Session object to use.
         """
         pass
 
