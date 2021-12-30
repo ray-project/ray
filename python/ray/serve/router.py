@@ -51,7 +51,7 @@ class ReplicaSet:
             event_loop: asyncio.AbstractEventLoop,
     ):
         self.deployment_name = deployment_name
-        self.in_flight_queries: Dict[ReplicaTag, set] = dict()
+        self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
