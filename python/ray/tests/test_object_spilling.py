@@ -14,9 +14,11 @@ from ray.tests.conftest import (file_system_object_spilling_config,
                                 mock_distributed_fs_object_spilling_config)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
+from ray._raylet import GcsClientOptions
 
 
 def run_basic_workload():
@@ -42,8 +44,12 @@ def is_dir_empty(temp_folder,
 
 def assert_no_thrashing(address):
     state = ray.state.GlobalState()
-    state._initialize_global_state(address,
-                                   ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    if use_gcs_for_bootstrap():
+        options = GcsClientOptions.from_gcs_address(address)
+    else:
+        options = GcsClientOptions.from_redis_address(
+            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
     consumed_bytes = 0
@@ -169,7 +175,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
     ref2 = ray.put(arr)  # noqa
 
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -255,7 +261,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -294,7 +300,7 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config,
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -333,7 +339,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -366,7 +372,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     x_id = f.remote()  # noqa
     ray.get(x_id)
-    s = memory_summary(address=address["redis_address"], stats_only=True)
+    s = memory_summary(address=address["address"], stats_only=True)
     assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
@@ -380,10 +386,10 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     ray.get(func_with_ref.remote(obj))
 
-    s = memory_summary(address=address["redis_address"], stats_only=True)
+    s = memory_summary(address=address["address"], stats_only=True)
     # 50MB * 5 references + 30MB used for task execution.
     assert "Objects consumed by Ray tasks: 280 MiB." in s, s
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -445,7 +451,7 @@ async def test_spill_during_get(object_spilling_config, shutdown_only,
     assert duration <= timedelta(
         seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -477,7 +483,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 ref = random.choice(replay_buffer)
                 sample = ray.get(ref, timeout=0)
                 assert np.array_equal(sample, arr)
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(

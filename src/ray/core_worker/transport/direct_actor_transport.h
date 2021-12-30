@@ -29,6 +29,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"

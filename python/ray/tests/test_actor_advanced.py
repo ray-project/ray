@@ -13,9 +13,9 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
-    SignalActor, wait_for_condition, wait_for_pid_to_exit, convert_actor_state)
+    make_global_state_accessor, SignalActor, wait_for_condition,
+    wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray._raylet import GlobalStateAccessor
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -613,7 +613,7 @@ def test_calling_put_on_actor_handle(ray_start_regular):
 
 
 def test_named_but_not_detached(ray_start_regular):
-    redis_address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     driver_script = """
 import ray
@@ -629,7 +629,7 @@ assert ray.get(actor.ping.remote()) == "pong"
 handle = ray.get_actor("actor")
 assert ray.util.list_named_actors() == ["actor"]
 assert ray.get(handle.ping.remote()) == "pong"
-""".format(redis_address)
+""".format(address)
 
     # Creates and kills actor once the driver exits.
     run_string_as_driver(driver_script)
@@ -687,7 +687,7 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(ValueError, match="Please use a different name"):
         DetachedActor._remote(lifetime="detached", name="d_actor")
 
-    redis_address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     get_actor_name = "d_actor"
     create_actor_name = "DetachedActor"
@@ -720,7 +720,7 @@ class DetachedActor:
 
 actor = DetachedActor._remote(lifetime="detached", name="{}")
 ray.get(actor.ping.remote())
-""".format(redis_address, get_actor_name, create_actor_name)
+""".format(address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
     assert len(ray.util.list_named_actors()) == 2
@@ -773,7 +773,7 @@ def test_detached_actor_cleanup(ray_start_regular):
     # name should have been cleaned up from GCS.
     create_and_kill_actor(dup_actor_name)
 
-    redis_address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
     driver_script = """
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -801,7 +801,7 @@ while actor_status["State"] != convert_actor_state(gcs_utils.ActorTableData.DEAD
     if wait_time >= max_wait_time:
         assert None, (
             "It took too much time to kill an actor")
-""".format(redis_address, dup_actor_name)
+""".format(address, dup_actor_name)
 
     run_string_as_driver(driver_script)
     # Make sure we can create a detached actor created/killed
@@ -1075,9 +1075,7 @@ def test_get_actor_no_input(ray_start_regular_shared):
 def test_actor_resource_demand(shutdown_only):
     ray.shutdown()
     cluster = ray.init(num_cpus=3)
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(num_cpus=2)
     class Actor:
@@ -1128,9 +1126,7 @@ def test_actor_resource_demand(shutdown_only):
 
 def test_kill_pending_actor_with_no_restart_true():
     cluster = ray.init()
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(resources={"WORKER": 1.0})
     class PendingActor:
@@ -1162,9 +1158,7 @@ def test_kill_pending_actor_with_no_restart_true():
 
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)
     class PendingActor:

@@ -15,11 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/stats.h"
-
-DEFINE_stats(placement_group_resource_persist_latency_ms,
-             "Time to persist placement resources to Redis.", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
@@ -89,7 +85,7 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
                     start](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
-      STATS_placement_group_resource_persist_latency_ms.Record(
+      ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
           absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
