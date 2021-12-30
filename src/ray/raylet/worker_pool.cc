@@ -269,7 +269,7 @@ Process WorkerPool::StartWorkerProcess(
     options.push_back("-Dray.raylet.startup-token=" +
                       std::to_string(worker_startup_token_counter_));
                       
-    options.push_back("-Dray.job.logging-level=" + job_config->logging_level());
+    options.push_back("-Dray.logging-level=" + job_config->logging_level());
   }
 
   // Append user-defined per-process options here
