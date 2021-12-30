@@ -1565,7 +1565,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   RAY_CHECK(job_config_ != nullptr);
   if (actor_creation_options.is_detached == nullptr) {
-    /// Since this actor is not specified the lifetime when creating, let's use
+    /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
     actor_creation_options.is_detached =
         std::make_shared<bool>(IsDetachedHelper(job_config_->default_actor_lifetime()));
