@@ -97,7 +97,7 @@ public class DefaultActorLifetimeTest {
           };
 
       if (childActorLifetime != null) {
-        /// childActorLifetime is specifying at runtime.
+        /// childActorLifetime is specified at runtime.
         if (childActorLifetime == ActorLifetime.DETACHED) {
           Assert.assertTrue(TestUtils.waitForCondition(childNotDead, 5000));
         } else {
