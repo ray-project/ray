@@ -271,7 +271,7 @@ message JobConfig {
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
   // The default lifetime of actors with lifetime not specified explicitly at runtime.
-  ActorLifetime default_actor_lifetime = 20;
+  ActorLifetime default_actor_lifetime = 7;
 }
 
 message JobTableData {
