@@ -10,7 +10,7 @@ public final class MapReferenceResolver implements ReferenceResolver {
   // TODO use IdentityObjectIntMap to avoid box and reduce hash lookup.
   private final IdentityHashMap<Object, Integer> writtenObjects = new IdentityHashMap<>();
   private final ArrayList<Object> readObjects = new ArrayList<>();
-  private final IntArray readReferenceIds = new IntArray(0);
+  private final IntArray readReferenceIds = new IntArray(8);
 
   // last read object which is not a reference
   private Object readObject;

@@ -210,6 +210,14 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    if env is not None and gcs_utils.use_gcs_for_bootstrap():
+        env.update({
+            "RAY_bootstrap_with_gcs": "1",
+            "RAY_gcs_grpc_based_pubsub": "1",
+            "RAY_gcs_storage": "memory",
+            "RAY_bootstrap_with_gcs": "1",
+        })
+
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -334,11 +342,18 @@ def wait_for_condition(condition_predictor,
         RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
+    last_ex = None
     while time.time() - start <= timeout:
-        if condition_predictor(**kwargs):
-            return
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
 
 
 def wait_until_succeeded_without_exception(func,

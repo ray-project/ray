@@ -12,10 +12,10 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
+import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.serializers.BufferCallback;
 import io.ray.runtime.serialization.serializers.DefaultSerializer;
 import io.ray.runtime.serialization.serializers.SerializedObject;
-import io.ray.runtime.serialization.util.Platform;
 import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -67,10 +67,10 @@ public class RaySerDeTest {
   @DataProvider(name = "javaSerde")
   public static Object[][] javaSerdeConfig() {
     return new Object[][] {
-      {RaySerde.builder().withReferenceTracking(true).withCodegen(true).build()},
-      {RaySerde.builder().withReferenceTracking(false).withCodegen(true).build()},
-      {RaySerde.builder().withReferenceTracking(true).withCodegen(false).build()},
-      {RaySerde.builder().withReferenceTracking(false).withCodegen(false).build()},
+      {RaySerde.builder().withReferenceTracking(true).build()},
+      {RaySerde.builder().withReferenceTracking(false).build()},
+      {RaySerde.builder().withReferenceTracking(true).build()},
+      {RaySerde.builder().withReferenceTracking(false).build()},
     };
   }
 

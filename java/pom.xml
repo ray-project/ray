@@ -78,7 +78,6 @@
             <artifactId>snakeyaml</artifactId>
           </exclusion>
         </exclusions>
-        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>org.projectlombok</groupId>
