@@ -104,7 +104,7 @@ public class DefaultActorLifetimeTest {
           Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
         }
       } else {
-        /// Code path of not specifying childActorLifetime, so it's
+        /// Code path of childActorLifetime not specified, so it
         /// depends on the default actor lifetime.
         if (defaultActorLifetime == null) {
           Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
