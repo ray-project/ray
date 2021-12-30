@@ -250,7 +250,6 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    RAY_LOG(INFO) << "jjyao CreateCall " << call_name << " " << ((void *)tag);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
@@ -284,7 +283,6 @@ class ClientCallManager {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
         // If the client deadline is exceeded, event is obtained at this block.
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        RAY_LOG(INFO) << "jjyao Poll " << ((void*)tag);
         // Refresh the tag.
         got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();

@@ -80,7 +80,7 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
                    << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
-  RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+  RAY_LOG(INFO) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
   pending_actor_tasks_[seq_no] = InboundRequest(
       std::move(accept_request), std::move(reject_request), std::move(steal_request),
@@ -88,15 +88,19 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
       concurrency_group_name, function_descriptor);
 
   if (dependencies.size() > 0) {
+    RAY_LOG(INFO) << "jjyao wait for dependencies";
     waiter_.Wait(dependencies, [seq_no, this]() {
+      RAY_LOG(INFO) << "jjyao wait for dependencies end";
       RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
         it->second.MarkDependenciesSatisfied();
+        RAY_LOG(INFO) << "jjyao ScheduleRequests()";
         ScheduleRequests();
       }
     });
   }
+  RAY_LOG(INFO) << "jjyao ScheduleRequests()";
   ScheduleRequests();
 }
 
@@ -122,8 +126,8 @@ void ActorSchedulingQueue::ScheduleRequests() {
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first < next_seq_no_) {
     auto head = pending_actor_tasks_.begin();
-    RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
-                   << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
+    RAY_LOG(INFO) << "Cancelling stale RPC with seqno "
+                  << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
     head->second.Cancel();
     pending_actor_tasks_.erase(head);
   }
@@ -145,6 +149,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
       RAY_CHECK(pool_manager_ != nullptr);
       auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                              request.FunctionDescriptor());
+      RAY_LOG(INFO) << "jjyao Request accept";
       if (pool == nullptr) {
         request.Accept();
       } else {
@@ -162,8 +167,8 @@ void ActorSchedulingQueue::ScheduleRequests() {
   } else {
     // Set a timeout on the queued tasks to avoid an infinite wait on failure.
     wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-    RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
-                   << pending_actor_tasks_.size();
+    RAY_LOG(INFO) << "waiting for " << next_seq_no_ << " queue size "
+                  << pending_actor_tasks_.size();
     wait_timer_.async_wait([this](const boost::system::error_code &error) {
       if (error == boost::asio::error::operation_aborted) {
         return;  // time deadline was adjusted
@@ -176,8 +181,8 @@ void ActorSchedulingQueue::ScheduleRequests() {
 /// Called when we time out waiting for an earlier task to show up.
 void ActorSchedulingQueue::OnSequencingWaitTimeout() {
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-  RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
-                 << ", cancelling all queued tasks";
+  RAY_LOG(INFO) << "timed out waiting for " << next_seq_no_
+                << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
     head->second.Cancel();

@@ -104,8 +104,10 @@ class _StatusTracker:
         self.reduce_refs = []
 
     def register_objectrefs(self, map_refs, reduce_refs):
+        print("register_objectrefs begin")
         self.map_refs = map_refs
         self.reduce_refs = reduce_refs
+        print("register_objectrefs end")
 
     def get_progress(self):
         if self.map_refs:
