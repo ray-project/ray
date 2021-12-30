@@ -141,7 +141,7 @@ public class DefaultActorLifetimeTest {
   @Test(
       groups = {"cluster"},
       dataProvider = "parameters")
-  public void testF(ActorLifetime defaultActorLifetime, ActorLifetime childActor) {
+  public void testDefaultActorLifetime(ActorLifetime defaultActorLifetime, ActorLifetime childActor) {
     Assert.assertTrue(internalTestDefaultActorLifetime(defaultActorLifetime, childActor));
   }
 }
