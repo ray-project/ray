@@ -58,6 +58,44 @@ assert ray.get(lib.task.remote()) == {}
         subprocess.check_call([sys.executable, v2_driver])
 
 
+def test_export_queue_isolation(call_ray_start):
+    address = call_ray_start
+    driver_template = """
+import ray
+
+ray.init(address="{}")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+
+count = 0
+for k in ray.worker.global_worker.redis_client.keys():
+    if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
+        count += 1
+
+# Check exports aren't shared across the 5 jobs.
+assert count < 5, count
+"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, "v1"))
+        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
+        with open(v1_driver, "w") as f:
+            f.write(driver_template.format(address))
+
+        try:
+            subprocess.check_call([sys.executable, v1_driver])
+        except Exception:
+            # Ignore the first run, since it runs extra exports.
+            pass
+
+        # Further runs do not increase the num exports count.
+        for _ in range(5):
+            subprocess.check_call([sys.executable, v1_driver])
+
+
 def test_job_gc(call_ray_start):
     address = call_ray_start
 
@@ -176,7 +214,7 @@ ray.shutdown()
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s, {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s, {finished}"
 
     assert running["StartTime"] > 0
     assert running["EndTime"] == 0
@@ -195,7 +233,7 @@ ray.shutdown()
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
     assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s {finished}"
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
 

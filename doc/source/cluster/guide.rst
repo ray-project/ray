@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _deployment-guide:
 
 Ray Deployment Guide

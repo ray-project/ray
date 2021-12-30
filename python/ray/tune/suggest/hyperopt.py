@@ -265,9 +265,6 @@ class HyperOptSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
         if self._points_to_evaluate > 0:
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1

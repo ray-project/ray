@@ -43,7 +43,6 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_namespace(ray_start_cluster):
     """
     Most of the "checks" in this test case rely on the fact that

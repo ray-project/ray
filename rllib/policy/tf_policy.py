@@ -285,7 +285,11 @@ class TFPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         # Switch off is_training flag in our batch.
-        input_dict["is_training"] = False
+        if isinstance(input_dict, SampleBatch):
+            input_dict.set_training(False)
+        else:
+            # Deprecated dict input.
+            input_dict["is_training"] = False
 
         builder = TFRunBuilder(self.get_session(),
                                "compute_actions_from_input_dict")
@@ -1002,7 +1006,8 @@ class TFPolicy(Policy):
                 builder.add_feed_dict(
                     dict(zip(self._state_inputs, state_batches)))
 
-            if "state_in_0" in input_dict:
+            if "state_in_0" in input_dict and \
+                    SampleBatch.SEQ_LENS not in input_dict:
                 builder.add_feed_dict({
                     self._seq_lens: np.ones(len(input_dict["state_in_0"]))
                 })

@@ -627,7 +627,7 @@ class Trial:
         """
         return self.num_failures < self.max_failures or self.max_failures < 0
 
-    def update_last_result(self, result, terminate=False):
+    def update_last_result(self, result):
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 

@@ -13,9 +13,9 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
-    SignalActor, wait_for_condition, wait_for_pid_to_exit)
+    make_global_state_accessor, SignalActor, wait_for_condition,
+    wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray._raylet import GlobalStateAccessor
 
 
 def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
@@ -756,7 +756,8 @@ def test_detached_actor_cleanup(ray_start_regular):
             actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(
                 actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
@@ -777,6 +778,7 @@ def test_detached_actor_cleanup(ray_start_regular):
 import ray
 import ray._private.gcs_utils as gcs_utils
 import time
+from ray._private.test_utils import convert_actor_state
 ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
@@ -792,7 +794,7 @@ ray.kill(detached_actor)
 actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
-while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+while actor_status["State"] != convert_actor_state(gcs_utils.ActorTableData.DEAD): # noqa
     actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
@@ -875,7 +877,8 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
@@ -1072,9 +1075,7 @@ def test_get_actor_no_input(ray_start_regular_shared):
 def test_actor_resource_demand(shutdown_only):
     ray.shutdown()
     cluster = ray.init(num_cpus=3)
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(num_cpus=2)
     class Actor:
@@ -1125,9 +1126,7 @@ def test_actor_resource_demand(shutdown_only):
 
 def test_kill_pending_actor_with_no_restart_true():
     cluster = ray.init()
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(resources={"WORKER": 1.0})
     class PendingActor:
@@ -1159,9 +1158,7 @@ def test_kill_pending_actor_with_no_restart_true():
 
 def test_kill_pending_actor_with_no_restart_false():
     cluster = ray.init()
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(resources={"WORKER": 1.0}, max_restarts=1)
     class PendingActor:

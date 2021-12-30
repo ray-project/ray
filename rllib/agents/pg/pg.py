@@ -24,12 +24,12 @@ class PGTrainer(Trainer):
     the default `execution_plan()` of `Trainer`.
     """
 
-    @override(Trainer)
-    def get_default_policy_class(self, config) -> Type[Policy]:
-        return PGTorchPolicy if config.get("framework") == "torch" \
-            else PGTFPolicy
-
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
+
+    @override(Trainer)
+    def get_default_policy_class(self, config) -> Type[Policy]:
+        return PGTorchPolicy if config.get("framework") == "torch" \
+            else PGTFPolicy

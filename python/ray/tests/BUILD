@@ -10,6 +10,7 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+    "test_actor.py",
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
@@ -23,7 +24,10 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
+    "test_basic_4.py",
+    "test_basic_5.py",
     "test_cancel.py",
+    "test_gcs_fault_tolerance.py",
     "test_metrics_agent.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
@@ -32,11 +36,13 @@ py_test_module_list(
     "test_global_gc.py",
     "test_grpc_client_credentials.py",
     "test_iter.py",
+    "test_job.py",
     "test_joblib.py",
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
+    "test_memstat.py",
     "test_mldataset.py",
   ],
   size = "medium",
@@ -96,6 +102,12 @@ py_test_module_list(
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
+    "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
+    "test_object_manager.py",
+    "test_multi_tenancy.py",
+    "test_scheduling.py",
+    "test_scheduling_2.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -112,7 +124,6 @@ py_test_module_list(
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
-    "test_job.py",
     "test_kv.py",
     "test_microbenchmarks.py",
     "test_mini.py",
@@ -160,6 +171,9 @@ py_test_module_list(
     "test_actor_advanced.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_failure_3.py",
+    "test_chaos.py",
+    "test_reference_counting_2.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -182,84 +196,25 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
-
-
-
-# Flaky tests.
-py_test_module_list(
-  files = [
-    "test_runtime_env_complicated.py"
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build", "flaky", "team:serve"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_actor.py",
-    "test_memstat.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_object_spilling_2.py",
-    "test_object_spilling_3.py",
-    "test_object_manager.py",
-    "test_multi_tenancy.py",
-    "test_scheduling.py",
-    "test_scheduling_2.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_failure_3.py",
-    "test_chaos.py",
-    "test_reference_counting_2.py",
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "flaky", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
-# Flaky tests only on Mac.
-py_test_module_list(
-  files = [
-    "test_gcs_fault_tolerance.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
-  deps = ["//:ray_lib"],
-)
-
 py_test_module_list(
   files = [
     "test_runtime_env.py",
     "test_runtime_env_working_dir.py",
-    "test_runtime_env_working_dir_2.py"
+    "test_runtime_env_working_dir_2.py",
+    "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["flaky-mac", "exclusive", "team:serve"],
+  tags = ["exclusive", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
 py_test_module_list(
   files = [
-    "test_runtime_env_conda.py"
+    "test_runtime_env_conda_and_pip.py",
+    "test_runtime_env_conda_and_pip_2.py",
+    "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -361,6 +316,8 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
+    "test_basic_4.py",
+    "test_basic_5.py",
     "test_asyncio.py",
     "test_multiprocessing.py",
     "test_list_actors.py",

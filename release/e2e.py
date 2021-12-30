@@ -82,6 +82,7 @@ A notable one is the `RAY_WHEELS` variable which points to the wheels that
 should be tested (e.g. latest master wheels). You might want to include
 something like this in your `post_build_cmds`:
 
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
 
 If you want to force rebuilds, consider using something like
@@ -282,9 +283,12 @@ GLOBAL_CONFIG = {
 
 REPORT_S = 30
 RETRY_MULTIPLIER = 2
+VALID_TEAMS = ["ml", "core", "serve"]
 
 
 class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
     RUNTIME_ERROR = 4
@@ -544,15 +548,6 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
-def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
-    """Wrap pip package install in quotation marks"""
-    if app_config.get("python", {}).get("pip_packages"):
-        new_pip_packages = []
-        for pip_package in app_config["python"]["pip_packages"]:
-            new_pip_packages.append(f"\"{pip_package}\"")
-        app_config["python"]["pip_packages"] = new_pip_packages
-
-
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
@@ -579,20 +574,17 @@ def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
     return alert
 
 
-def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
-                  results: Dict[Any, Any], artifacts: Dict[Any, Any],
-                  category: str):
+def report_result(*, test_suite: str, test_name: str, status: str,
+                  last_logs: str, results: Dict[Any, Any],
+                  artifacts: Dict[Any, Any], category: str, team: str):
+    #   session_url: str, commit_url: str,
+    #   runtime: float, stable: bool, frequency: str, return_code: int):
+    """Report the test result to database."""
     now = datetime.datetime.utcnow()
     rds_data_client = boto3.client("rds-data", region_name="us-west-2")
 
     schema = GLOBAL_CONFIG["RELEASE_AWS_DB_TABLE"]
 
-    sql = (
-        f"INSERT INTO {schema} "
-        f"(created_on, test_suite, test_name, status, last_logs, "
-        f"results, artifacts, category) "
-        f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
-        f":results, :artifacts, :category)")
     parameters = [{
         "name": "created_on",
         "typeHint": "TIMESTAMP",
@@ -636,7 +628,20 @@ def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
         "value": {
             "stringValue": category
         }
+    }, {
+        "name": "team",
+        "value": {
+            "stringValue": team
+        }
     }]
+    columns = [param["name"] for param in parameters]
+    values = [f":{param['name']}" for param in parameters]
+    column_str = ", ".join(columns).strip(", ")
+    value_str = ", ".join(values).strip(", ")
+
+    sql = (f"INSERT INTO {schema} " f"({column_str}) " f"VALUES ({value_str})")
+
+    logger.info(f"Query: {sql}")
 
     # Default boto3 call timeout is 45 seconds.
     retry_delay_s = 64
@@ -1345,6 +1350,15 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    # A lot of staging tests share the same app config yaml, except the flags.
+    # `app_env_vars` in test config will help this one.
+    # Here we extend the env_vars to use the one specified in the test config.
+    if test_config.get("app_env_vars") is not None:
+        if app_config["env_vars"] is None:
+            app_config["env_vars"] = test_config["app_env_vars"]
+        else:
+            app_config["env_vars"].update(test_config["app_env_vars"])
+        logger.info(f"Using app config:\n{app_config}")
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -1378,9 +1392,6 @@ def run_test_config(
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
-
-    # Only wrap pip packages after we installed the app config packages
-    _wrap_app_config_pip_installs(app_config)
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1977,9 +1988,14 @@ def run_test_config(
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
 
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.copytree(temp_dir, out_dir)
-        logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -2036,6 +2052,18 @@ def run_test(test_config_file: str,
     driver_setup_script = test_config.get("driver_setup", None)
     if driver_setup_script:
         run_bash_script(local_dir, driver_setup_script)
+    logger.info(test_config)
+    team = test_config.get("team", "unspecified").strip(" ").lower()
+    # When running local test, this validates the team name.
+    # If the team name is not specified, they will be recorded as "unspecified"
+    if not report and team not in VALID_TEAMS:
+        raise ValueError(
+            f"Incorrect team name {team} has given."
+            "Please specify team under the name field in the test config. "
+            "For example, within nightly_tests.yaml,\n"
+            "\tname: test_xxx\n"
+            f"\tteam: {'|'.join(VALID_TEAMS)}\n"
+            "\tcluster:...")
 
     result = run_test_config(
         local_dir,
@@ -2085,7 +2113,7 @@ def run_test(test_config_file: str,
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
-        )
+            team=team)
 
         if not has_errored(result):
             # Check if result are met if test succeeded
@@ -2113,7 +2141,7 @@ def run_test(test_config_file: str,
             except Exception as e:
                 # On database error the test should still pass
                 # Todo: flag somewhere else?
-                logger.error(f"Error persisting results to database: {e}")
+                logger.exception(f"Error persisting results to database: {e}")
         else:
             logger.info(f"Usually I would now report the following results:\n"
                         f"{report_kwargs}")
@@ -2124,6 +2152,7 @@ def run_test(test_config_file: str,
             # catch these cases.
             exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
             logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
             sys.exit(exit_code)
 
         return report_kwargs

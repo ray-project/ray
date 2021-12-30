@@ -4,7 +4,7 @@ import time
 
 import pytest
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
 
 # RayConfig to enable recording call sites during ObjectRej creations.
@@ -233,6 +233,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_multi_node_stats(shutdown_only):
     # NOTE(mwtian): using env var only enables the feature on workers, while
     # using head_node_args={"_system_config": ray_config} only enables the

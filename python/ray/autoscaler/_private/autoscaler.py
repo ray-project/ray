@@ -235,7 +235,8 @@ class StandardAutoscaler:
                 index=i,
                 pending=self.pending_launches,
                 node_types=self.available_node_types,
-                prom_metrics=self.prom_metrics)
+                prom_metrics=self.prom_metrics,
+                event_summarizer=self.event_summarizer)
             node_launcher.daemon = True
             node_launcher.start()
 
@@ -329,6 +330,11 @@ class StandardAutoscaler:
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
+
+        # Record the amount of time the autoscaler took for
+        # this _update() iteration.
+        update_time = time.time() - self.last_update_time
+        self.prom_metrics.update_time.observe(update_time)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
         """Terminates nodes to enforce constraints defined by the autoscaling
@@ -474,10 +480,20 @@ class StandardAutoscaler:
         # node provider node id -> ip -> raylet id
 
         # Convert node provider node ids to ips.
-        node_ips = {
-            self.provider.internal_ip(provider_node_id)
-            for provider_node_id in provider_node_ids_to_drain
-        }
+        node_ips = set()
+        failed_ip_fetch = False
+        for provider_node_id in provider_node_ids_to_drain:
+            # If the provider's call to fetch ip fails, the exception is not
+            # fatal. Log the exception and proceed.
+            try:
+                ip = self.provider.internal_ip(provider_node_id)
+                node_ips.add(ip)
+            except Exception:
+                logger.exception("Failed to get ip of node with id"
+                                 f" {provider_node_id} during scale-down.")
+                failed_ip_fetch = True
+        if failed_ip_fetch:
+            self.prom_metrics.drain_node_exceptions.inc()
 
         # Only attempt to drain connected nodes, i.e. nodes with ips in
         # LoadMetrics.
@@ -491,6 +507,9 @@ class StandardAutoscaler:
             self.load_metrics.raylet_id_by_ip[ip]
             for ip in connected_node_ips
         }
+
+        if not raylet_ids_to_drain:
+            return
 
         logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:

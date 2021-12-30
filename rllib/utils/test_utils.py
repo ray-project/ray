@@ -526,8 +526,8 @@ def check_train_results(train_results):
     info = train_results["info"]
     assert LEARNER_INFO in info, \
         f"'learner' not in train_results['infos'] ({info})!"
-    assert "num_steps_trained" in info,\
-        f"'num_steps_trained' not in train_results['infos'] ({info})!"
+    assert "num_steps_trained" in info or "num_env_steps_trained" in info, \
+        f"'num_(env_)?steps_trained' not in train_results['infos'] ({info})!"
 
     learner_info = info[LEARNER_INFO]
 
@@ -690,6 +690,7 @@ def run_learning_tests_from_yaml(
                     "timesteps_total": "ts",
                     "episodes_this_iter": "train_episodes",
                     "episode_reward_mean": "reward_mean",
+                    "evaluation/episode_reward_mean": "eval_reward_mean",
                 },
                 sort_by_metric=True,
                 max_report_frequency=30,

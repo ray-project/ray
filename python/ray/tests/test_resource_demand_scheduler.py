@@ -1409,6 +1409,12 @@ class LoadMetricsTest(unittest.TestCase):
         # Ensure summary_dict is json-serializable
         json.dumps(summary_dict)
 
+        # Backwards compatibility check: head_ip is correctly processed
+        # when included as an argument to LoadMetricsSummary.
+        summary_dict["head_ip"] = "1.1.1.1"
+        # No compatibility issue.
+        LoadMetricsSummary(**summary_dict)
+
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):

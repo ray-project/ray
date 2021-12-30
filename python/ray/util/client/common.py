@@ -12,9 +12,9 @@ import grpc
 import os
 import uuid
 import inspect
+import pickle
 from ray.util.inspect import is_cython, is_class_method,\
     is_function_or_method, is_static_method
-import json
 import logging
 import threading
 from collections import OrderedDict
@@ -414,14 +414,7 @@ def set_task_options(task: ray_client_pb2.ClientTask,
         task.ClearField(field)
         return
 
-    # If there's a non-null "placement_group" in `options`, convert the
-    # placement group to a dict so that `options` can be passed to json.dumps.
-    pg = options.get("placement_group", None)
-    if pg and pg != "default":
-        options["placement_group"] = options["placement_group"].to_dict()
-
-    options_str = json.dumps(options)
-    getattr(task, field).json_options = options_str
+    getattr(task, field).pickled_options = pickle.dumps(options)
 
 
 def return_refs(futures: List[concurrent.futures.Future]
