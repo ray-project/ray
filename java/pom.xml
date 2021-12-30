@@ -58,7 +58,6 @@
     <module>runtime</module>
     <module>serve</module>
     <module>test</module>
-    <module>serialization</module>
   </modules>
 
   <properties>
