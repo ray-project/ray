@@ -59,7 +59,6 @@ class ReplicaSet:
         # policies like: min load, pick min of two replicas, pick replicas on
         # the same node.
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
-        self.replica_infos: Dict[ReplicaTag, RunningReplicaInfo] = dict()
 
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
