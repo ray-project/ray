@@ -16,12 +16,13 @@ class TrainingCallback(metaclass=abc.ABCMeta):
         """
         pass
 
-    def start_training(self, logdir: str, **info):
+    def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
 
         Args:
             logdir (str): Path to the file directory where logs
                 should be persisted.
+            config (Dict): The config dict passed into ``trainer.run()``.
             **info: kwargs dict for forward compatibility.
         """
         pass

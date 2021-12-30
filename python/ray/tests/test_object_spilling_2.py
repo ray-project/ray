@@ -40,7 +40,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
     del replay_buffer
     del ref
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -81,7 +81,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
     del replay_buffer
     del ref
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -143,7 +143,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
     # After all, make sure all objects are deleted upon worker failures.
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
@@ -265,7 +265,7 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
         if file_size >= min_spilling_size:
             is_test_passing = True
     assert is_test_passing
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 # https://github.com/ray-project/ray/issues/12912
@@ -301,7 +301,7 @@ def test_release_resource(object_spilling_config, shutdown_only):
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
     assert not ready
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(

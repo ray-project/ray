@@ -499,6 +499,11 @@ Status GcsSubscriber::SubscribeAllNodeResources(
 Status GcsSubscriber::SubscribeResourcesBatch(
     const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
     const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    // This channel is not used.
+    // TODO (iycheng) remove legacy code
+    return Status::OK();
+  }
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::ResourceUsageBatchData resources_batch_data;
     resources_batch_data.ParseFromString(data);

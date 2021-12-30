@@ -19,7 +19,7 @@ def _init_ray():
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
     def ok():
-        s = memory_summary(address=address["redis_address"], stats_only=True)
+        s = memory_summary(address=address["address"], stats_only=True)
         print(s)
         if restored:
             if "Restored {} MiB".format(restored) not in s:

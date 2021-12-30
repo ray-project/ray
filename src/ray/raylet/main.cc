@@ -122,17 +122,21 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
-  // `enable_async_conn` as false.
-  ray::gcs::GcsClientOptions client_options(
-      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
-      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-
-  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  } else {
+    // Async context is not used by `redis_client_` in `gcs_client`, so we set
+    // `enable_async_conn` as false.
+    ray::gcs::GcsClientOptions client_options(
+        redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+        /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  }
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-  std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
+  std::unique_ptr<ray::raylet::Raylet> raylet;
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
@@ -258,10 +262,9 @@ int main(int argc, char *argv[]) {
         ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
-        raylet.reset(new ray::raylet::Raylet(
-            main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-            redis_password, node_manager_config, object_manager_config, gcs_client,
-            metrics_export_port));
+        raylet = std::make_unique<ray::raylet::Raylet>(
+            main_service, raylet_socket_name, node_ip_address, node_manager_config,
+            object_manager_config, gcs_client, metrics_export_port);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
