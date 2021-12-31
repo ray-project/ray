@@ -694,8 +694,7 @@ if __name__ == "__main__":
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
             f.write(
-                code_test.format(
-                    repr(ray_start_regular_shared["redis_address"])))
+                code_test.format(repr(ray_start_regular_shared["address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 
