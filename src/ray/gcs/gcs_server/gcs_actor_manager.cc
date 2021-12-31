@@ -19,7 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace {
 const ray::rpc::ActorDeathCause GenRuntimeEnvFailedCause(const std::string &error_msg) {
@@ -537,8 +537,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Remove the actor from the unresolved actor map.
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor =
-      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+  const auto &actor_namespace = iter->second->GetRayNamespace();
+  auto actor = std::make_shared<GcsActor>(
+      request.task_spec(),
+      actor_namespace.empty() ? get_ray_namespace_(job_id) : actor_namespace);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
@@ -757,10 +759,6 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
     }
   }
   return actor_ids;
-}
-
-void GcsActorManager::CollectStats() const {
-  stats::PendingActors.Record(pending_actors_.size());
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
@@ -1309,25 +1307,40 @@ std::string GcsActorManager::DebugString() const {
   for (const auto &pair : named_actors_) {
     num_named_actors += pair.second.size();
   }
+
   std::ostringstream stream;
-  stream << "GcsActorManager: {RegisterActor request count: "
+  stream << "GcsActorManager: "
+         << "\n- RegisterActor request count: "
          << counts_[CountType::REGISTER_ACTOR_REQUEST]
-         << ", CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]
-         << ", GetActorInfo request count: " << counts_[CountType::GET_ACTOR_INFO_REQUEST]
-         << ", GetNamedActorInfo request count: "
+         << "\n- CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]
+         << "\n- GetActorInfo request count: "
+         << counts_[CountType::GET_ACTOR_INFO_REQUEST]
+         << "\n- GetNamedActorInfo request count: "
          << counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST]
-         << ", GetAllActorInfo request count: "
+         << "\n- GetAllActorInfo request count: "
          << counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST]
-         << ", KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
-         << ", ListNamedActors request count: "
+         << "\n- KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
+         << "\n- ListNamedActors request count: "
          << counts_[CountType::LIST_NAMED_ACTORS_REQUEST]
-         << ", Registered actors count: " << registered_actors_.size()
-         << ", Destroyed actors count: " << destroyed_actors_.size()
-         << ", Named actors count: " << num_named_actors
-         << ", Unresolved actors count: " << unresolved_actors_.size()
-         << ", Pending actors count: " << pending_actors_.size()
-         << ", Created actors count: " << created_actors_.size() << "}";
+         << "\n- Registered actors count: " << registered_actors_.size()
+         << "\n- Destroyed actors count: " << destroyed_actors_.size()
+         << "\n- Named actors count: " << num_named_actors
+         << "\n- Unresolved actors count: " << unresolved_actors_.size()
+         << "\n- Pending actors count: " << pending_actors_.size()
+         << "\n- Created actors count: " << created_actors_.size()
+         << "\n- owners_: " << owners_.size()
+         << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
+         << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
+         << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
   return stream.str();
+}
+
+void GcsActorManager::RecordMetrics() const {
+  ray::stats::STATS_gcs_actors_count.Record(registered_actors_.size(), "Registered");
+  ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
+  ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
+  ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
+  ray::stats::STATS_gcs_actors_count.Record(pending_actors_.size(), "Pending");
 }
 
 }  // namespace gcs

@@ -1,6 +1,7 @@
 from collections import defaultdict
 import numpy as np
 import random
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
@@ -228,18 +229,29 @@ class Episode:
             Zeros in case the agent has never performed any actions in the
             episode.
         """
+        policy_id = self.policy_for(agent_id)
+        policy = self.policy_map[policy_id]
+
         # Agent has already taken at least one action in the episode.
         if agent_id in self._agent_to_last_action:
-            return flatten_to_single_ndarray(
-                self._agent_to_last_action[agent_id])
+            if policy.config.get("_disable_action_flattening"):
+                return self._agent_to_last_action[agent_id]
+            else:
+                return flatten_to_single_ndarray(
+                    self._agent_to_last_action[agent_id])
         # Agent has not acted yet, return all zeros.
         else:
-            policy_id = self.policy_for(agent_id)
-            policy = self.policy_map[policy_id]
-            flat = flatten_to_single_ndarray(policy.action_space.sample())
-            if hasattr(policy.action_space, "dtype"):
-                return np.zeros_like(flat, dtype=policy.action_space.dtype)
-            return np.zeros_like(flat)
+            if policy.config.get("_disable_action_flattening"):
+                return tree.map_structure(
+                    lambda s: np.zeros_like(s.sample(), s.dtype) if
+                    hasattr(s, "dtype") else np.zeros_like(s.sample()),
+                    policy.action_space_struct,
+                )
+            else:
+                flat = flatten_to_single_ndarray(policy.action_space.sample())
+                if hasattr(policy.action_space, "dtype"):
+                    return np.zeros_like(flat, dtype=policy.action_space.dtype)
+                return np.zeros_like(flat)
 
     @DeveloperAPI
     def prev_action_for(self,
@@ -257,13 +269,26 @@ class Episode:
             Zero in case the agent has never performed any actions (or only
             one) in the episode.
         """
+        policy_id = self.policy_for(agent_id)
+        policy = self.policy_map[policy_id]
+
         # We are at t > 1 -> There has been a previous action by this agent.
         if agent_id in self._agent_to_prev_action:
-            return flatten_to_single_ndarray(
-                self._agent_to_prev_action[agent_id])
+            if policy.config.get("_disable_action_flattening"):
+                return self._agent_to_prev_action[agent_id]
+            else:
+                return flatten_to_single_ndarray(
+                    self._agent_to_prev_action[agent_id])
         # We're at t <= 1, so return all zeros.
         else:
-            return np.zeros_like(self.last_action_for(agent_id))
+            if policy.config.get("_disable_action_flattening"):
+                return tree.map_structure(
+                    lambda a: np.zeros_like(a, a.dtype) if  # noqa
+                    hasattr(a, "dtype") else np.zeros_like(a),  # noqa
+                    self.last_action_for(agent_id),
+                )
+            else:
+                return np.zeros_like(self.last_action_for(agent_id))
 
     @DeveloperAPI
     def last_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:

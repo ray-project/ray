@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import List, Optional, Dict, Union, Callable
 
 from ray import cloudpickle
-from ray.train.constants import TIMESTAMP, TUNE_INSTALLED
+from ray.train.constants import TIMESTAMP, TUNE_INSTALLED, \
+    TRAIN_CHECKPOINT_SUBDIR
 from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, \
     TUNE_CHECKPOINT_ID
 from ray.train.session import TrainingResult
@@ -256,7 +257,7 @@ class CheckpointManager:
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
-        checkpoint_dir = Path("checkpoints")
+        checkpoint_dir = Path(TRAIN_CHECKPOINT_SUBDIR)
         return construct_path(checkpoint_dir, self.run_dir)
 
     @property

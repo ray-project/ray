@@ -175,20 +175,17 @@ def actor_critic_loss(
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
-    model_out_t, _ = model({
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": True,
-    }, [], None)
+    model_out_t, _ = model(
+        SampleBatch(obs=train_batch[SampleBatch.CUR_OBS], _is_training=True),
+        [], None)
 
-    model_out_tp1, _ = model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": True,
-    }, [], None)
+    model_out_tp1, _ = model(
+        SampleBatch(obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True),
+        [], None)
 
-    target_model_out_tp1, _ = target_model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": True,
-    }, [], None)
+    target_model_out_tp1, _ = target_model(
+        SampleBatch(obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True),
+        [], None)
 
     alpha = torch.exp(model.log_alpha)
 

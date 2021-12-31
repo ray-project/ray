@@ -1,4 +1,5 @@
 from typing import Any, Callable, List, Optional, TYPE_CHECKING
+import time
 
 import ray
 from ray.data.context import DatasetContext
@@ -49,6 +50,7 @@ class PipelineExecutor:
 
     def __next__(self):
         output = None
+        start = time.perf_counter()
 
         while output is None:
             if all(s is None for s in self._stages):
@@ -89,6 +91,8 @@ class PipelineExecutor:
                 except StopIteration:
                     pass
 
+        self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
+        self._pipeline._stats.add(output._stats)
         return output
 
 
@@ -113,3 +117,6 @@ class PipelineSplitExecutorCoordinator:
         ret = self.cur_splits[split_index]
         self.cur_splits[split_index] = None
         return ret
+
+    def get_stats(self):
+        return self.executor._pipeline._stats

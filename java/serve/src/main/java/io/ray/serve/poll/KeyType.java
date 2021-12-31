@@ -1,8 +1,9 @@
 package io.ray.serve.poll;
 
+import io.ray.serve.RayServeException;
 import java.io.Serializable;
 import java.util.Objects;
-import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
+import org.apache.commons.lang3.StringUtils;
 
 /** Key type of long poll. */
 public class KeyType implements Serializable {
@@ -13,11 +14,15 @@ public class KeyType implements Serializable {
 
   private final String key;
 
-  private int hash;
+  private int hashCode;
+
+  private String name;
 
   public KeyType(LongPollNamespace longPollNamespace, String key) {
     this.longPollNamespace = longPollNamespace;
     this.key = key;
+    this.hashCode = Objects.hash(this.longPollNamespace, this.key);
+    this.name = parseName();
   }
 
   public LongPollNamespace getLongPollNamespace() {
@@ -30,10 +35,7 @@ public class KeyType implements Serializable {
 
   @Override
   public int hashCode() {
-    if (hash == 0) {
-      hash = Objects.hash(longPollNamespace, key);
-    }
-    return hash;
+    return hashCode;
   }
 
   @Override
@@ -49,8 +51,41 @@ public class KeyType implements Serializable {
         && Objects.equals(key, keyType.getKey());
   }
 
+  private String parseName() {
+    if (longPollNamespace == null && StringUtils.isBlank(key)) {
+      return "";
+    }
+    if (StringUtils.isBlank(key)) {
+      return longPollNamespace.toString();
+    }
+    if (longPollNamespace == null) {
+      return key;
+    }
+    return "(" + longPollNamespace.toString() + ", " + key + ")";
+  }
+
   @Override
   public String toString() {
-    return ReflectionToStringBuilder.toString(this);
+    return name;
+  }
+
+  public static KeyType parseFrom(String key) {
+    if (key == null) {
+      return null;
+    }
+    if (StringUtils.isBlank(key)) {
+      return new KeyType(null, null);
+    }
+    if (key.startsWith("(")) {
+      String[] fields = StringUtils.split(StringUtils.substring(key, 1, key.length() - 1), ",", 2);
+      if (fields.length != 2) {
+        throw new RayServeException("Illegal KeyType string: " + key);
+      }
+      return new KeyType(LongPollNamespace.parseFrom(fields[0]), fields[1].trim());
+    }
+    if (key.contains(LongPollNamespace.class.getSimpleName())) {
+      return new KeyType(LongPollNamespace.parseFrom(key), null);
+    }
+    return new KeyType(null, key);
   }
 }

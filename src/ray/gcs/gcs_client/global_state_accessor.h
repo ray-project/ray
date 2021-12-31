@@ -31,10 +31,8 @@ class GlobalStateAccessor {
  public:
   /// Constructor of GlobalStateAccessor.
   ///
-  /// \param redis_address The address of GCS Redis.
-  /// \param redis_password The password of GCS Redis.
-  explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password);
+  /// \param gcs_client_options The client options to connect to gcs
+  explicit GlobalStateAccessor(const GcsClientOptions &gcs_client_options);
 
   ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 

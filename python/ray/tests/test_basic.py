@@ -194,7 +194,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_user_setup_function():
     script = """
 import ray
@@ -209,16 +208,14 @@ print("local", ray._private.runtime_env.VAR)
 
 """
 
-    out = run_string_as_driver(
-        script,
-        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
-    (remote_out, local_out) = out.strip().split("\n")[-2:]
+    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
+    out = run_string_as_driver(script, dict(os.environ, **env))
+    (remote_out, local_out) = out.strip().splitlines()[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
 
 
 # https://github.com/ray-project/ray/issues/17842
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_disable_cuda_devices():
     script = """
 import ray
@@ -232,8 +229,10 @@ def check():
 print("remote", ray.get(check.remote()))
 """
 
-    run_string_as_driver(script,
-                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+    run_string_as_driver(
+        script,
+        dict(os.environ,
+             **{"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"}))
 
 
 def test_put_get(shutdown_only):
@@ -356,7 +355,6 @@ def test_ray_options(shutdown_only):
 def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
-
     signal_actor = SignalActor.remote()
 
     @ray.remote

@@ -350,10 +350,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
-  /// Collect stats from gcs actor manager in-memory data structures.
-  void CollectStats() const;
-
   std::string DebugString() const;
+
+  /// Collect stats from gcs actor manager in-memory data structures.
+  void RecordMetrics() const;
 
   bool GetSchedulePendingActorsPosted() const;
 

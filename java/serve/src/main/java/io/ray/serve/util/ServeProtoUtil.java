@@ -1,7 +1,6 @@
 package io.ray.serve.util;
 
 import com.google.common.collect.Lists;
-import com.google.gson.Gson;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
@@ -12,18 +11,12 @@ import io.ray.serve.RayServeException;
 import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
-import io.ray.serve.generated.LongPollResult;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.generated.UpdatedObject;
-import io.ray.serve.poll.KeyType;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
-
-  private static final Gson GSON = new Gson();
 
   public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
 
@@ -124,22 +117,6 @@ public class ServeProtoUtil {
     }
 
     return builder.build();
-  }
-
-  public static Map<KeyType, UpdatedObject> parseUpdatedObjects(byte[] longPollResultBytes)
-      throws InvalidProtocolBufferException {
-    if (longPollResultBytes == null) {
-      return null;
-    }
-    LongPollResult longPollResult = LongPollResult.parseFrom(longPollResultBytes);
-    Map<String, UpdatedObject> updatedObjects = longPollResult.getUpdatedObjectsMap();
-    if (updatedObjects == null || updatedObjects.isEmpty()) {
-      return null;
-    }
-    Map<KeyType, UpdatedObject> udpates = new HashMap<>(updatedObjects.size());
-    updatedObjects.forEach(
-        (key, value) -> udpates.put(ServeProtoUtil.GSON.fromJson(key, KeyType.class), value));
-    return udpates;
   }
 
   public static Map<String, EndpointInfo> parseEndpointSet(byte[] endpointSetBytes) {
