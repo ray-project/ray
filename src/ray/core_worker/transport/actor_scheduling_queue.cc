@@ -124,7 +124,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
   while (!pending_actor_tasks_.empty() &&
          pending_actor_tasks_.begin()->first < next_seq_no_) {
     auto head = pending_actor_tasks_.begin();
-    RAY_LOG(DEBUG) << "Cancelling stale RPC with seqno "
+    RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
     head->second.Cancel();
     pending_actor_tasks_.erase(head);
