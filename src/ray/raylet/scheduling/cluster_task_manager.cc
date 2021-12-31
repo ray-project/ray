@@ -1027,11 +1027,39 @@ void ClusterTaskManager::RecordMetrics() const {
   /// This method intentionally doesn't call RecomputeDebugStats() because
   /// that function is expensive. RecomputeDebugStats is called by DebugStr method
   /// and they are always periodically called by node manager.
-  stats::NumReceivedTasks.Record(internal_stats_.num_tasks_to_schedule);
-  stats::NumDispatchedTasks.Record(internal_stats_.num_tasks_to_dispatch);
   stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
   stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-  stats::NumInfeasibleTasks.Record(internal_stats_.num_infeasible_tasks);
+
+  /// Worker startup failure
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_job_config_not_exist, "JobConfigMissing");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_registration_timeout,
+      "RegistrationTimedOut");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_process_rate_limit, "RateLimited");
+
+  /// Queued tasks.
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_cancelled_tasks,
+                                           "Cancelled");
+  ray::stats::STATS_scheduler_tasks.Record(executing_task_args_.size(), "Executing");
+  ray::stats::STATS_scheduler_tasks.Record(waiting_tasks_index_.size(), "Waiting");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_dispatch,
+                                           "Dispatched");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_schedule,
+                                           "Received");
+
+  /// Pending task count.
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_infeasible_tasks, "Infeasible");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_resource, "WaitingForResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_plasma_memory, "WaitingForPlasmaMemory");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_remote_node_resources, "WaitingForRemoteResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_tasks_waiting_for_workers, "WaitingForWorkers");
 }
 
 std::string ClusterTaskManager::DebugStr() const {

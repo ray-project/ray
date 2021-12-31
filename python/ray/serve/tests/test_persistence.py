@@ -15,7 +15,7 @@ def driver():
     return "OK!"
 
 driver.deploy()
-""".format(ray.worker._global_node._redis_address)
+""".format(ray.worker._global_node.address)
     run_string_as_driver(script)
 
     handle = serve.get_deployment("driver").get_handle()

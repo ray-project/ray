@@ -235,6 +235,10 @@
       python/ray/tests/test_basic_2
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_basic_3
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_4
+    - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_5
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_output
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
@@ -321,13 +325,21 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - ./dashboard/tests/run_ui_tests.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/... -//python/ray/dashboard:test_dashboard
+    # Enable job related tests after ray.init can accept gcs address
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/...
       -//python/ray/dashboard:test_actor
       -//python/ray/dashboard:test_job_manager
+      -//python/ray/dashboard:test_cli_integration
+      -//python/ray/dashboard:test_http_job_server
+      -//python/ray/dashboard:test_job_submission
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
       -- python/ray/serve/... -//python/ray/serve:test_cli -//python/ray/serve:test_standalone
     # Re-enable after fixing.
     #- bazel test --config=ci $(./scripts/bazel_export_options)
@@ -346,6 +358,8 @@
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_failure_2
       -//python/ray/tests:test_job
@@ -353,7 +367,9 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,client_tests
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
 - label: ":redis: HA GCS (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -361,7 +377,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
@@ -372,7 +390,9 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
