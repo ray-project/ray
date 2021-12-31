@@ -30,7 +30,7 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs(
       {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
-       redis_password, "--node-ip-address", GetNodeIpAddress()});
+       redis_password, "--node-ip-address", GetNodeIpAddress(), "--include-dashboard", "true"} );
   if (!head_args.empty()) {
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }

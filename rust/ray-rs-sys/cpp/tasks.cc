@@ -45,12 +45,24 @@ std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& a
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   TaskOptions options{};
   std::vector<rpc::ObjectReference> return_refs;
-  BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
   auto function_descriptor = FunctionDescriptorBuilder::BuildRust(static_cast<std::string>(name));
   auto ray_args = TransformArgs(args);
+
+  BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!bundle_id.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(
+        bundle_id.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        bundle_id.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
   return_refs =
       core_worker.SubmitTask(RayFunction(ray::Language::RUST, function_descriptor), ray_args, options, 1,
-                             false, std::move(bundle_id), true, "");
+                             false, scheduling_strategy, "");
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
@@ -147,14 +159,14 @@ Status ExecuteTask(
   size_t data_size = ret.size();
 
   RAY_LOG(DEBUG) << "DATA SIZE" << data_size;
-  
+
   auto &result_id = return_ids[0];
   auto result_ptr = &(*results)[0];
   int64_t task_output_inlined_bytes = 0;
 
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
       result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
-      task_output_inlined_bytes, result_ptr));
+      &task_output_inlined_bytes, result_ptr));
   auto result = *result_ptr;
   if (result != nullptr) {
     if (result->HasData()) {

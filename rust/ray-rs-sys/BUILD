@@ -15,7 +15,6 @@ rust_test(
     env = {"RUST_TEST_NOCAPTURE": "1"},
 )
 
-
 rust_library(
     name = "ray_rs_sys",
     srcs = glob(["src/**/*.rs"]),
@@ -64,8 +63,12 @@ cc_library(
     ],
 )
 
+# This needs to be statically linked
+# So that the "ray_rs_c_linked" library
+# has access to the rust methods it needs
 rust_static_library(
     name = "ray_rs_sys_static",
+    crate_name = "ray_rs_sys",
     srcs = glob(["src/**/*.rs"]),
     proc_macro_deps = [crate("paste")],
     deps = [

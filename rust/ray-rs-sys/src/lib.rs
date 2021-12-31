@@ -55,11 +55,9 @@ type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
 
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
-        let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
-        let_cxx_string!(nested_fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs_nested");
         Mutex::new([
-            (fn_name.as_bytes().to_vec(), add_two_vecs.get_invoker()),
-            (nested_fn_name.as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
+            (add_two_vecs.name().as_bytes().to_vec(), add_two_vecs.get_invoker()),
+            (add_two_vecs_nested.name().as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
         ].iter().cloned().collect::<HashMap<_,_>>())
     };
 
