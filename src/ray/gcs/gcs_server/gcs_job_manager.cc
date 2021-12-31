@@ -127,7 +127,6 @@ void GcsJobManager::ClearJobInfos(const JobID &job_id) {
   for (auto &listener : job_finished_listeners_) {
     listener(std::make_shared<JobID>(job_id));
   }
-  cache_num_java_worker_per_processes_.erase(job_id);
 }
 
 /// Add listener to monitor the add action of nodes.
