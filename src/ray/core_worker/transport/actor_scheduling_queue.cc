@@ -88,7 +88,7 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
       concurrency_group_name, function_descriptor);
 
   if (dependencies.size() > 0) {
-    RAY_LOG(INFO) << "jjyao wait for dependencies";
+    RAY_LOG(INFO) << "jjyao wait for dependencies " << dependencies.size();
     waiter_.Wait(dependencies, [seq_no, this]() {
       RAY_LOG(INFO) << "jjyao wait for dependencies end";
       RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);

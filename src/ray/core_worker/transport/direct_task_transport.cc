@@ -665,7 +665,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
           RAY_LOG(INFO) << "Task " << task_id << " finished from worker "
-                        << addr.worker_id << " of raylet " << addr.raylet_id;
+                        << addr.worker_id << " of raylet " << addr.raylet_id
                         << " " << status;
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);

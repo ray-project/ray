@@ -2426,7 +2426,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   // execution of a task that is now ready to run.
   task_execution_service_.post(
       [=] {
-        RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+        RAY_LOG(INFO) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },
       "CoreWorker.ArgWaitComplete");
