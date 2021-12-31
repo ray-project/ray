@@ -76,3 +76,7 @@ crate_universe(
 load("@ray-rs-toml//:defs.bzl", "pinned_rust_install")
 
 pinned_rust_install()
+
+# When the bazel version is updated, make sure to update it
+# in setup.py as well.
+versions.check(minimum_bazel_version = "4.2.1")

@@ -86,11 +86,27 @@
 
   cluster:
     app_config: ray_sgd_training_app.yaml
-    compute_template: ray_sgd_training_compute.yaml
+    compute_template: ray_sgd_training_compute_no_gpu.yaml
 
   run:
-    timeout: 14400
-    prepare: python wait_cluster.py 66 2400
+    timeout: 7200
+    prepare: python wait_cluster.py 21 2400
     script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu --large-dataset --debug
 
   stable: false
+
+- name: datasets_ingest_400G
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Chen Shen"
+
+  cluster:
+    app_config: ray_sgd_training_app.yaml
+    compute_template: dataset_ingest_400G_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
+
+  stable: false
+

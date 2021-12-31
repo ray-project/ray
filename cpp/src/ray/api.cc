@@ -22,7 +22,7 @@
 
 namespace ray {
 
-static bool is_init_;
+static bool is_init_ = false;
 
 void SetConfigToWorker() {
   ray::internal::ConfigInternal::Instance().worker_type = ray::core::WorkerType::WORKER;
@@ -60,7 +60,6 @@ void Init(ray::RayConfig &config, int argc, char **argv) {
       internal::ProcessHelper::GetInstance().RayStart(internal::TaskExecutor::ExecuteTask);
     }
     auto runtime = internal::AbstractRayRuntime::DoInit();
-    internal::RayRuntimeHolder::Instance().Init(runtime);
     is_init_ = true;
   }
 }

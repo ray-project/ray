@@ -18,27 +18,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "src/ray/protobuf/gcs.pb.h"
-
-// The end to end placement group creation latency.
-// The time from placement group creation request has received
-// <-> Placement group creation succeeds (meaning all resources
-// are committed to nodes and available).
-DEFINE_stats(placement_group_creation_latency_ms,
-             "end to end latency of placement group creation", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
-// The time from placement group scheduling has started
-// <-> Placement group creation succeeds.
-DEFINE_stats(placement_group_scheduling_latency_ms,
-             "scheduling latency of placement groups", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
-DEFINE_stats(pending_placement_group, "Number of total pending placement groups", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(registered_placement_group, "Number of total registered placement groups",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
-             (), (), ray::stats::GAUGE);
 
 namespace ray {
 namespace gcs {
@@ -307,8 +288,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       absl::Microseconds(1);
   stats->set_scheduling_latency_us(scheduling_latency_us);
   stats->set_end_to_end_creation_latency_us(creation_latency_us);
-  STATS_placement_group_scheduling_latency_ms.Record(scheduling_latency_us / 1e3);
-  STATS_placement_group_creation_latency_ms.Record(creation_latency_us / 1e3);
+  ray::stats::STATS_gcs_placement_group_scheduling_latency_ms.Record(
+      scheduling_latency_us / 1e3);
+  ray::stats::STATS_gcs_placement_group_creation_latency_ms.Record(creation_latency_us /
+                                                                   1e3);
   stats->set_scheduling_state(rpc::PlacementGroupStats::FINISHED);
 
   // Update states and persists the information.
@@ -774,12 +757,6 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   }
 }
 
-void GcsPlacementGroupManager::CollectStats() const {
-  STATS_pending_placement_group.Record(pending_placement_groups_.size());
-  STATS_registered_placement_group.Record(registered_placement_groups_.size());
-  STATS_infeasible_placement_group.Record(infeasible_placement_groups_.size());
-}
-
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
   // To avoid scheduling exhaution in some race conditions.
@@ -859,9 +836,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
-  uint64_t num_pgs = 0;
+  uint64_t named_num_pgs = 0;
   for (auto it : named_placement_groups_) {
-    num_pgs += it.second.size();
+    named_num_pgs += it.second.size();
   }
   std::ostringstream stream;
   stream << "GcsPlacementGroupManager: "
@@ -881,9 +858,20 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
          << "\n- Registered placement groups count: "
          << registered_placement_groups_.size()
-         << "\n- Named placement group count: " << num_pgs
-         << "\n- Pending placement groups count: " << pending_placement_groups_.size();
+         << "\n- Named placement group count: " << named_num_pgs
+         << "\n- Pending placement groups count: " << pending_placement_groups_.size()
+         << "\n- Infeasible placement groups count: "
+         << infeasible_placement_groups_.size();
   return stream.str();
+}
+
+void GcsPlacementGroupManager::RecordMetrics() const {
+  ray::stats::STATS_gcs_placement_group_count.Record(pending_placement_groups_.size(),
+                                                     "Pending");
+  ray::stats::STATS_gcs_placement_group_count.Record(registered_placement_groups_.size(),
+                                                     "Registered");
+  ray::stats::STATS_gcs_placement_group_count.Record(infeasible_placement_groups_.size(),
+                                                     "Infeasible");
 }
 
 }  // namespace gcs

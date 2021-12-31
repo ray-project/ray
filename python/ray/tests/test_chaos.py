@@ -10,6 +10,7 @@ import time
 from ray.experimental import shuffle
 from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data.impl.progress_bar import ProgressBar
+from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 from ray.exceptions import RayTaskError, ObjectLostError
 
@@ -123,6 +124,29 @@ def test_chaos_actor_retry(set_kill_interval):
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
     # assert_no_system_failure(p, 10)
+
+
+def test_chaos_defer(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        # defer for 3s
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_client.PrepareBundleResources"
+            "=2000000:2000000")
+        m.setenv("RAY_event_stats", "true")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        ray.init(address="auto")  # this will connect to gpu nodes
+        cluster.add_node(num_cpus=0, num_gpus=1)
+        bundle = [{"GPU": 1}, {"CPU": 1}]
+        pg = placement_group(bundle)
+        # PG will not be ready within 3s
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(pg.ready(), timeout=1)
+        # it'll be ready eventually
+        ray.get(pg.ready())
 
 
 @ray.remote(num_cpus=0)

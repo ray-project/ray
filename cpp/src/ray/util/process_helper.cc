@@ -50,8 +50,14 @@ void ProcessHelper::StopRayNode() {
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
     const std::string &redis_address, const std::string &redis_password) {
+  std::vector<std::string> address;
+  boost::split(address, redis_address, boost::is_any_of(":"));
+  RAY_CHECK(address.size() == 2);
+  ray::gcs::GcsClientOptions client_options(address[0], std::stoi(address[1]),
+                                            redis_password);
+
   auto global_state_accessor =
-      std::make_unique<ray::gcs::GlobalStateAccessor>(redis_address, redis_password);
+      std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
   return global_state_accessor;
 }

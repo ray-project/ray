@@ -1,6 +1,9 @@
+from typing import Callable, List, Optional, Tuple
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.schedules.schedule import Schedule
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -11,13 +14,15 @@ def _linear_interpolation(left, right, alpha):
 
 class PiecewiseSchedule(Schedule):
     def __init__(self,
-                 endpoints,
-                 framework,
-                 interpolation=_linear_interpolation,
-                 outside_value=None):
-        """
+                 endpoints: List[Tuple[int, float]],
+                 framework: Optional[str] = None,
+                 interpolation: Callable[[TensorType, TensorType, TensorType],
+                                         TensorType] = _linear_interpolation,
+                 outside_value: Optional[float] = None):
+        """Initializes a PiecewiseSchedule instance.
+
         Args:
-            endpoints (List[Tuple[int,float]]): A list of tuples
+            endpoints: A list of tuples
                 `(t, value)` such that the output
                 is an interpolation (given by the `interpolation` callable)
                 between two values.
@@ -26,13 +31,13 @@ class PiecewiseSchedule(Schedule):
                 output=20.0 + 0.8 * (30.0 - 20.0) = 28.0
                 NOTE: All the values for time must be sorted in an increasing
                 order.
-
-            interpolation (callable): A function that takes the left-value,
+            framework: The framework descriptor string, e.g. "tf",
+                "torch", or None.
+            interpolation: A function that takes the left-value,
                 the right-value and an alpha interpolation parameter
                 (0.0=only left value, 1.0=only right value), which is the
                 fraction of distance from left endpoint to right endpoint.
-
-            outside_value (Optional[float]): If t in call to `value` is
+            outside_value: If t in call to `value` is
                 outside of all the intervals in `endpoints` this value is
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
@@ -46,7 +51,7 @@ class PiecewiseSchedule(Schedule):
         self.endpoints = [(int(e[0]), float(e[1])) for e in endpoints]
 
     @override(Schedule)
-    def _value(self, t):
+    def _value(self, t: TensorType) -> TensorType:
         # Find t in our list of endpoints.
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
             # When found, return an interpolation (default: linear).
@@ -59,7 +64,7 @@ class PiecewiseSchedule(Schedule):
         return self.outside_value
 
     @override(Schedule)
-    def _tf_value_op(self, t):
+    def _tf_value_op(self, t: TensorType) -> TensorType:
         assert self.outside_value is not None, \
             "tf-version of PiecewiseSchedule requires `outside_value` to be " \
             "provided!"

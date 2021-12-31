@@ -98,9 +98,11 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(
+            observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -909,13 +911,19 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and \
-                    isinstance(view_req.space,
-                               (gym.spaces.Dict, gym.spaces.Tuple)):
+            data_col = view_req.data_col or view_col
+            # Flattened dummy batch.
+            if (isinstance(view_req.space,
+                           (gym.spaces.Tuple, gym.spaces.Dict))) and \
+                    ((data_col == SampleBatch.OBS and
+                      not self.config["_disable_preprocessor_api"]) or
+                     (data_col == SampleBatch.ACTIONS and
+                      not self.config.get("_disable_action_flattening"))):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
+            # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:

@@ -27,8 +27,9 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
-    GcsErrorSubscriber, GcsLogSubscriber
+    GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -880,7 +881,6 @@ def init(
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -1272,9 +1272,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()
@@ -1375,8 +1372,13 @@ def connect(node,
     worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1385,6 +1387,8 @@ def connect(node,
         worker.gcs_error_subscriber = GcsErrorSubscriber(
             channel=worker.gcs_channel.channel())
         worker.gcs_log_subscriber = GcsLogSubscriber(
+            channel=worker.gcs_channel.channel())
+        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
             channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
@@ -1418,7 +1422,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1449,11 +1453,19 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
-        node.redis_password,
-    )
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
+        # As the synchronous and the asynchronous context of redis client is
+        # not used in this gcs client. We would not open connection for it
+        # by setting `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -1589,6 +1601,7 @@ def disconnect(exiting_interpreter=False):
         # in this disconnect method.
         worker.threads_stopped.set()
         if worker.gcs_pubsub_enabled:
+            worker.gcs_function_key_subscriber.close()
             worker.gcs_error_subscriber.close()
             worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
@@ -2034,7 +2047,8 @@ def make_decorator(num_returns=None,
                    placement_group="default",
                    worker=None,
                    retry_exceptions=None,
-                   concurrency_groups=None):
+                   concurrency_groups=None,
+                   scheduling_strategy: SchedulingStrategyT = None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2064,7 +2078,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group)
+                runtime_env, placement_group, scheduling_strategy)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2092,7 +2106,8 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(
                 function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, accelerator_type, max_restarts,
-                max_task_retries, runtime_env, concurrency_groups)
+                max_task_retries, runtime_env, concurrency_groups,
+                scheduling_strategy)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2202,6 +2217,17 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
+            schedule a remote function or actor. Possible values are
+            None: ray will figure out the scheduling strategy to use, it
+            will either be the PlacementGroupSchedulingStrategy using parent's
+            placement group if parent has one and has
+            placement_group_capture_child_tasks set to true,
+            or "DEFAULT";
+            "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
+            `PlacementGroupSchedulingStrategy`:
+            placement group based scheduling.
     """
     worker = global_worker
 
@@ -2226,6 +2252,7 @@ def remote(*args, **kwargs):
         "retry_exceptions",
         "placement_group",
         "concurrency_groups",
+        "scheduling_strategy",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2261,6 +2288,7 @@ def remote(*args, **kwargs):
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
+    scheduling_strategy = kwargs.get("scheduling_strategy")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2278,4 +2306,5 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [])
+        concurrency_groups=concurrency_groups or [],
+        scheduling_strategy=scheduling_strategy)

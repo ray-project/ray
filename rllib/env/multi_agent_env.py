@@ -327,15 +327,21 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         obs = self.env_states[env_id].reset()
         assert isinstance(obs, dict), "Not a multi-agent obs"
         if obs is not None and env_id in self.dones:
             self.dones.remove(env_id)
+        obs = {env_id: obs}
         return obs
 
     @override(BaseEnv)
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
+        if as_dict:
+            return {
+                _id: env_state
+                for _id, env_state in enumerate(self.env_states)
+            }
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
@@ -344,6 +350,23 @@ class MultiAgentEnvWrapper(BaseEnv):
             env_id = 0
         assert isinstance(env_id, int)
         return self.envs[env_id].render()
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space(self) -> gym.spaces.Dict:
+        space = {
+            _id: env.observation_space
+            for _id, env in enumerate(self.envs)
+        }
+        return gym.spaces.Dict(space)
+
+    @property
+    @override(BaseEnv)
+    @PublicAPI
+    def action_space(self) -> gym.Space:
+        space = {_id: env.action_space for _id, env in enumerate(self.envs)}
+        return gym.spaces.Dict(space)
 
 
 class _MultiAgentEnvState:

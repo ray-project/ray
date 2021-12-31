@@ -90,20 +90,13 @@ def cql_loss(policy: Policy, model: ModelV2,
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    model_out_t, _ = model({
-        "obs": obs,
-        "is_training": True,
-    }, [], None)
+    model_out_t, _ = model(SampleBatch(obs=obs, _is_training=True), [], None)
 
-    model_out_tp1, _ = model({
-        "obs": next_obs,
-        "is_training": True,
-    }, [], None)
+    model_out_tp1, _ = model(
+        SampleBatch(obs=next_obs, _is_training=True), [], None)
 
-    target_model_out_tp1, _ = target_model({
-        "obs": next_obs,
-        "is_training": True,
-    }, [], None)
+    target_model_out_tp1, _ = target_model(
+        SampleBatch(obs=next_obs, _is_training=True), [], None)
 
     action_dist_class = _get_dist_class(policy, policy.config,
                                         policy.action_space)
@@ -335,7 +328,7 @@ def compute_gradients_fn(policy, postprocessed_batch):
     model = policy.model
     policy._loss(policy, model, policy.dist_class, batches[0])
     stats = {
-        LEARNER_STATS_KEY: policy._convert_to_non_torch_type(
+        LEARNER_STATS_KEY: policy._convert_to_numpy(
             cql_stats(policy, batches[0]))
     }
     return [None, stats]
