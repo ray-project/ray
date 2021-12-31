@@ -261,8 +261,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // A flag to indicate whether reconnecting to gcs is in progress or not.
   // If false, reconnecting will be triggerd. If true, the current reconnect
   // request should be ignored.
-  std::atomic<bool> reconnect_in_progress_ = false GUARDED_BY(reconnect_flag_mutex_);
-  ;
+  std::atomic<bool> reconnect_in_progress_ GUARDED_BY(reconnect_flag_mutex_) = false;
 
   // Protect the `callbacks_` list.
   mutable absl::Mutex reconnect_callbacks_mutex_;
