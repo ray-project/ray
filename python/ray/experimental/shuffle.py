@@ -136,9 +136,7 @@ def render_progress_bar(tracker, input_num_partitions, output_num_partitions):
 
     while (num_map < input_num_partitions
            or num_reduce < output_num_partitions):
-        print("get_progress start")
         new_num_map, new_num_reduce = ray.get(tracker.get_progress.remote())
-        print(f"get_progress end {new_num_map} {new_num_reduce}")
         map_bar.update(new_num_map - num_map)
         reduce_bar.update(new_num_reduce - num_reduce)
         num_map = new_num_map

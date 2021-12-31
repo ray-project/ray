@@ -76,7 +76,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
   auto accept_callback = [this, reply, task_spec,
                           resource_ids](rpc::SendReplyCallback send_reply_callback) {
-    RAY_LOG(INFO) << "jjyao accept_callback";
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
@@ -91,11 +90,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
     bool is_application_level_error = false;
-    RAY_LOG(INFO) << "jjyao task_handler_ ";
     auto status =
         task_handler_(task_spec, resource_ids, &return_objects,
                       reply->mutable_borrowed_refs(), &is_application_level_error);
-    RAY_LOG(INFO) << "jjyao task_handler_ " << status;
     reply->set_is_application_level_error(is_application_level_error);
 
     bool objects_valid = return_objects.size() == num_returns;
@@ -147,7 +144,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         RAY_CHECK_OK(task_done_());
       }
     }
-    RAY_LOG(INFO) << "jjyao send_reply_callback";
     if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
@@ -165,15 +161,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   };
 
   auto reject_callback = [](rpc::SendReplyCallback send_reply_callback) {
-    RAY_LOG(INFO) << "jjyao reject_callback";
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
   auto steal_callback = [this, task_spec,
                          reply](rpc::SendReplyCallback send_reply_callback) {
-    RAY_LOG(INFO) << "Task " << task_spec.TaskId() << " was stolen from "
-                  << worker_context_.GetWorkerID()
-                  << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
+                   << worker_context_.GetWorkerID()
+                   << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
     reply->set_task_stolen(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
@@ -186,7 +181,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       auto cg_it = concurrency_groups_cache_.find(task_spec.ActorId());
       RAY_CHECK(cg_it != concurrency_groups_cache_.end());
       if (execute_out_of_order_) {
-        RAY_LOG(INFO) << "jjyao case 1";
         it = actor_scheduling_queues_
                  .emplace(
                      task_spec.CallerWorkerId(),
@@ -195,7 +189,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                          fiber_max_concurrency_, cg_it->second)))
                  .first;
       } else {
-        RAY_LOG(INFO) << "jjyao case 2";
         it = actor_scheduling_queues_
                  .emplace(task_spec.CallerWorkerId(),
                           std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
@@ -205,7 +198,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       }
     }
 
-    RAY_LOG(INFO) << "jjyao case 3";
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
                     std::move(send_reply_callback), task_spec.ConcurrencyGroupName(),
