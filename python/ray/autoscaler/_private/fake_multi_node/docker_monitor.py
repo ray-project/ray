@@ -157,8 +157,8 @@ def start_monitor(config_file: str):
     volume_dir = provider_config["shared_volume_dir"]
     os.makedirs(volume_dir, mode=0o755, exist_ok=True)
 
-    boostrap_config_path = os.path.join(volume_dir, "bootstrap_config.yaml")
-    shutil.copy(config_file, boostrap_config_path)
+    bootstrap_config_path = os.path.join(volume_dir, "bootstrap_config.yaml")
+    shutil.copy(config_file, bootstrap_config_path)
 
     docker_compose_config_path = os.path.join(volume_dir,
                                               "docker-compose.yaml")

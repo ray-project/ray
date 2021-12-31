@@ -152,7 +152,8 @@ class DockerCluster:
                         f"Error pulling image {self._docker_image}: {e}")
 
     def setup(self):
-        self._tempdir = tempfile.mkdtemp()
+        self._tempdir = tempfile.mkdtemp(
+            dir=os.environ.get("RAY_TEMPDIR", None))
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
         self._nodes_file = os.path.join(self._tempdir, "nodes.json")
         self.update_config()
