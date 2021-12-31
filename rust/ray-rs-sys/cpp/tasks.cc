@@ -185,6 +185,7 @@ Status ExecuteTask(
 } // namespace internal
 void InitRust() {
  ray::RayConfig config;
+ // config.
  ray::Init(config, internal::ExecuteTask, 0, nullptr);
 }
 

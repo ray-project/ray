@@ -14,6 +14,7 @@ uniffi = "0.16.0"
 lazy_static = "1.4.0"
 rmp-serde = "0.15.5"
 serde = "1.0.132"
+libloading = "0.7.2"
 
 # [build-dependencies]
 # cxx-build = "1.0"

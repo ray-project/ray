@@ -38,10 +38,14 @@ macro_rules! impl_ray_function {
 
                 // Return object ref
                 // This should submit the
-                pub fn remote(&self, $($arg: $argty),*) -> UniquePtr<ray_api_ffi::ObjectID> {
+                pub fn remote<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
+                    &self,
+                    $($arg: [<$argp Borrow>]),*
+                ) -> UniquePtr<ray_api_ffi::ObjectID>
+                {
                     let mut task_args = Vec::new();
                     $(
-                        let result = rmp_serde::to_vec(&$arg).unwrap();
+                        let result = rmp_serde::to_vec($arg.borrow()).unwrap();
                         task_args.push(RustTaskArg {
                             buf: result,
                             object_id: String::new()
