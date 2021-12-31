@@ -2,13 +2,39 @@
 mod test {
     use uniffi::RustBuffer;
     use rmp_serde;
-    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_three_vecs, get, get_execute_result};
+    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_two_vecs_nested, add_three_vecs, get, get_execute_result};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
+    // #[test]
+    // fn test_init_submit_execute_shutdown() {
+    //     const VEC_SIZE: usize = 1 << 12;
+    //     let num_jobs = 1 << 0;
+    //
+    //     InitRust();
+    //
+    //     let now = std::time::Instant::now();
+    //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+    //         let (a, b): (Vec<_>, Vec<_>) =
+    //             ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+    //         add_two_vecs.remote(a, b)
+    //     }).collect();
+    //
+    //     ids.reverse();
+    //     println!("Submission: {:?}", now.elapsed().as_millis());
+    //
+    //     let results: Vec<_> = (0..num_jobs).map(|_| {
+    //         get::<Vec<u64>>(ids.pop().unwrap())
+    //     }).collect();
+    //
+    //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
+    //
+    //     Shutdown();
+    // }
+
     #[test]
-    fn test_init_submit_execute_shutdown() {
+    fn test_nested_remote() {
         const VEC_SIZE: usize = 1 << 12;
-        let num_jobs = 1 << 10;
+        let num_jobs = 1 << 0;
 
         InitRust();
 
@@ -16,7 +42,7 @@ mod test {
         let mut ids: Vec<_> = (0..num_jobs).map(|_| {
             let (a, b): (Vec<_>, Vec<_>) =
                 ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-            add_two_vecs.remote(a, b)
+            add_two_vecs_nested.remote(a, b)
         }).collect();
 
         ids.reverse();

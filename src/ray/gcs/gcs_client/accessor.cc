@@ -1076,7 +1076,7 @@ Status WorkerInfoAccessor::AsyncReportWorkerFailure(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
     const StatusCallback &callback) {
   rpc::Address worker_address = data_ptr->worker_address();
-  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
+  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.Utf8DebugString();
   rpc::ReportWorkerFailureRequest request;
   request.mutable_worker_failure()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportWorkerFailure(
@@ -1086,7 +1086,7 @@ Status WorkerInfoAccessor::AsyncReportWorkerFailure(
           callback(status);
         }
         RAY_LOG(DEBUG) << "Finished reporting worker failure, "
-                       << worker_address.DebugString() << ", status = " << status;
+                       << worker_address.Utf8DebugString() << ", status = " << status;
       });
   return Status::OK();
 }

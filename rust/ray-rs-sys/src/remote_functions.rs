@@ -165,6 +165,11 @@ macro_rules! remote {
     }
 }
 
+pub fn get<R: serde::de::DeserializeOwned>(id : UniquePtr<ray_api_ffi::ObjectID>) -> R {
+    let buf = ray_api_ffi::GetRaw(id);
+    rmp_serde::from_read_ref::<_, R>(&buf).unwrap()
+}
+
 remote! {
 pub fn add_two_vecs(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
     assert_eq!(a.len(), b.len());
@@ -173,6 +178,12 @@ pub fn add_two_vecs(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
         ret[i] = a[i] + b[i];
     }
     ret
+}
+}
+
+remote! {
+pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
+    get(add_two_vecs.remote(a, b))
 }
 }
 

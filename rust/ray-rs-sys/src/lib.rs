@@ -24,7 +24,7 @@ use core::pin::Pin;
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 mod remote_functions;
-pub use remote_functions::{add_two_vecs, add_three_vecs};
+pub use remote_functions::{add_two_vecs, add_three_vecs, add_two_vecs_nested, get};
 
 pub struct RustTaskArg {
     buf: Vec<u8>,
@@ -56,8 +56,10 @@ type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
         let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
+        let_cxx_string!(nested_fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs_nested");
         Mutex::new([
             (fn_name.as_bytes().to_vec(), add_two_vecs.get_invoker()),
+            (nested_fn_name.as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
         ].iter().cloned().collect::<HashMap<_,_>>())
     };
 
@@ -92,10 +94,6 @@ extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
     GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
 }
 
-pub fn get<R: serde::de::DeserializeOwned>(id : UniquePtr<ray_api_ffi::ObjectID>) -> R {
-    let buf = ray_api_ffi::GetRaw(id);
-    rmp_serde::from_read_ref::<_, R>(&buf).unwrap()
-}
 
 // struct FunctionManager {
 //     cache: FunctionPtrMap,
