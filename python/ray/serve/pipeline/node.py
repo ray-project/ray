@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, List, Tuple
 
 import ray
 from ray import cloudpickle, ObjectRef
@@ -48,7 +48,8 @@ class ExecutorPipelineNode(PipelineNode):
         self._serialized_callable_factory: bytes = cloudpickle.dumps(
             callable_factory)
         self._config: StepConfig = config
-        self._incoming_edges: PipelineNode = incoming_edges
+        self._incoming_edges: List[PipelineNode] = incoming_edges
+        self._outgoing_edges: List[PipelineNode] = list()
 
         # Populated in .instantiate().
         self._executor: Executor = None
@@ -81,6 +82,14 @@ class InputPipelineNode(PipelineNode):
     def _call(self, input_arg: Tuple[Any]) -> Any:
         return input_arg
 
+class InjectedPipelineNode(PipelineNode):
+    def instantiate(self) -> PipelineNode:
+        pass
+
+    def _call(self, input_arg: Tuple[Any]) -> Any:
+        return input_arg
+
 
 # Special node that's used to designate the input of a pipeline.
 INPUT = InputPipelineNode()
+INJECTED = InjectedPipelineNode()
