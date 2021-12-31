@@ -36,12 +36,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Boolean value) {
+    public void write(MemoryBuffer buffer, Boolean value) {
       buffer.writeBoolean(value);
     }
 
     @Override
-    public Boolean read(RaySerde raySerDe, MemoryBuffer buffer, Class<Boolean> type) {
+    public Boolean read(MemoryBuffer buffer) {
       return buffer.readBoolean();
     }
   }
@@ -52,12 +52,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Byte value) {
+    public void write(MemoryBuffer buffer, Byte value) {
       buffer.writeByte(value);
     }
 
     @Override
-    public Byte read(RaySerde raySerDe, MemoryBuffer buffer, Class<Byte> type) {
+    public Byte read(MemoryBuffer buffer) {
       return buffer.readByte();
     }
   }
@@ -68,12 +68,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Character value) {
+    public void write(MemoryBuffer buffer, Character value) {
       buffer.writeChar(value);
     }
 
     @Override
-    public Character read(RaySerde raySerDe, MemoryBuffer buffer, Class<Character> type) {
+    public Character read(MemoryBuffer buffer) {
       return buffer.readChar();
     }
   }
@@ -84,12 +84,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Short value) {
+    public void write(MemoryBuffer buffer, Short value) {
       buffer.writeShort(value);
     }
 
     @Override
-    public Short read(RaySerde raySerDe, MemoryBuffer buffer, Class<Short> type) {
+    public Short read(MemoryBuffer buffer) {
       return buffer.readShort();
     }
   }
@@ -100,12 +100,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Integer value) {
+    public void write(MemoryBuffer buffer, Integer value) {
       buffer.writeInt(value);
     }
 
     @Override
-    public Integer read(RaySerde raySerDe, MemoryBuffer buffer, Class<Integer> type) {
+    public Integer read(MemoryBuffer buffer) {
       return buffer.readInt();
     }
   }
@@ -116,12 +116,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Long value) {
+    public void write(MemoryBuffer buffer, Long value) {
       buffer.writeLong(value);
     }
 
     @Override
-    public Long read(RaySerde raySerDe, MemoryBuffer buffer, Class<Long> type) {
+    public Long read(MemoryBuffer buffer) {
       return buffer.readLong();
     }
   }
@@ -132,12 +132,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Float value) {
+    public void write(MemoryBuffer buffer, Float value) {
       buffer.writeFloat(value);
     }
 
     @Override
-    public Float read(RaySerde raySerDe, MemoryBuffer buffer, Class<Float> type) {
+    public Float read(MemoryBuffer buffer) {
       return buffer.readFloat();
     }
   }
@@ -148,12 +148,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Double value) {
+    public void write(MemoryBuffer buffer, Double value) {
       buffer.writeDouble(value);
     }
 
     @Override
-    public Double read(RaySerde raySerDe, MemoryBuffer buffer, Class<Double> type) {
+    public Double read(MemoryBuffer buffer) {
       return buffer.readDouble();
     }
   }
@@ -164,14 +164,14 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, LocalDate value) {
+    public void write(MemoryBuffer buffer, LocalDate value) {
       buffer.writeInt(value.getYear());
       buffer.writeByte((byte) value.getMonthValue());
       buffer.writeByte((byte) value.getDayOfMonth());
     }
 
     @Override
-    public LocalDate read(RaySerde raySerDe, MemoryBuffer buffer, Class<LocalDate> type) {
+    public LocalDate read(MemoryBuffer buffer) {
       return LocalDate.of(buffer.readInt(), buffer.readByte(), buffer.readByte());
     }
   }
@@ -182,12 +182,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Date value) {
+    public void write(MemoryBuffer buffer, Date value) {
       buffer.writeLong(value.getTime());
     }
 
     @Override
-    public Date read(RaySerde raySerDe, MemoryBuffer buffer, Class<Date> type) {
+    public Date read(MemoryBuffer buffer) {
       return new Date(buffer.readLong());
     }
   }
@@ -198,12 +198,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Timestamp value) {
+    public void write(MemoryBuffer buffer, Timestamp value) {
       buffer.writeLong(value.getTime());
     }
 
     @Override
-    public Timestamp read(RaySerde raySerDe, MemoryBuffer buffer, Class<Timestamp> type) {
+    public Timestamp read(MemoryBuffer buffer) {
       return new Timestamp(buffer.readLong());
     }
   }
@@ -214,13 +214,13 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Instant value) {
+    public void write(MemoryBuffer buffer, Instant value) {
       buffer.writeLong(value.getEpochSecond());
       buffer.writeInt(value.getNano());
     }
 
     @Override
-    public Instant read(RaySerde raySerDe, MemoryBuffer buffer, Class<Instant> type) {
+    public Instant read(MemoryBuffer buffer) {
       return Instant.ofEpochSecond(buffer.readLong(), buffer.readInt());
     }
   }
@@ -234,12 +234,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, StringBuilder value) {
+    public void write(MemoryBuffer buffer, StringBuilder value) {
       stringSerializer.writeJavaString(buffer, value.toString());
     }
 
     @Override
-    public StringBuilder read(RaySerde raySerDe, MemoryBuffer buffer, Class<StringBuilder> type) {
+    public StringBuilder read(MemoryBuffer buffer) {
       return new StringBuilder(stringSerializer.readJavaString(buffer));
     }
   }
@@ -253,12 +253,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, StringBuffer value) {
+    public void write(MemoryBuffer buffer, StringBuffer value) {
       stringSerializer.writeJavaString(buffer, value.toString());
     }
 
     @Override
-    public StringBuffer read(RaySerde raySerDe, MemoryBuffer buffer, Class<StringBuffer> type) {
+    public StringBuffer read(MemoryBuffer buffer) {
       return new StringBuffer(stringSerializer.readJavaString(buffer));
     }
   }
@@ -282,12 +282,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Enum value) {
+    public void write(MemoryBuffer buffer, Enum value) {
       buffer.writeInt(value.ordinal());
     }
 
     @Override
-    public Enum read(RaySerde raySerDe, MemoryBuffer buffer, Class<Enum> type) {
+    public Enum read(MemoryBuffer buffer) {
       return enumConstants[buffer.readInt()];
     }
   }
@@ -298,7 +298,7 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, BigDecimal value) {
+    public void write(MemoryBuffer buffer, BigDecimal value) {
       final byte[] bytes = value.unscaledValue().toByteArray();
       Preconditions.checkArgument(bytes.length <= 16);
       buffer.writeByte((byte) value.scale());
@@ -307,7 +307,7 @@ public class Serializers {
     }
 
     @Override
-    public BigDecimal read(RaySerde raySerDe, MemoryBuffer buffer, Class<BigDecimal> type) {
+    public BigDecimal read(MemoryBuffer buffer) {
       int scale = buffer.readByte();
       int len = buffer.readByte();
       byte[] bytes = buffer.readBytes(len);
@@ -322,7 +322,7 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, BigInteger value) {
+    public void write(MemoryBuffer buffer, BigInteger value) {
       final byte[] bytes = value.toByteArray();
       Preconditions.checkArgument(bytes.length <= 16);
       buffer.writeByte((byte) bytes.length);
@@ -330,7 +330,7 @@ public class Serializers {
     }
 
     @Override
-    public BigInteger read(RaySerde raySerDe, MemoryBuffer buffer, Class<BigInteger> type) {
+    public BigInteger read(MemoryBuffer buffer) {
       int len = buffer.readByte();
       byte[] bytes = buffer.readBytes(len);
       return new BigInteger(bytes);
@@ -343,12 +343,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, boolean[] value) {
+    public void write(MemoryBuffer buffer, boolean[] value) {
       writePrimitiveArray(buffer, value, Platform.BOOLEAN_ARRAY_OFFSET, value.length, 1);
     }
 
     @Override
-    public boolean[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<boolean[]> type) {
+    public boolean[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       boolean[] values = new boolean[size];
       buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.BOOLEAN_ARRAY_OFFSET, size);
@@ -363,12 +363,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, byte[] value) {
+    public void write(MemoryBuffer buffer, byte[] value) {
       raySerDe.writeSerializedObject(buffer, new SerializedObject.ByteArraySerializedObject(value));
     }
 
     @Override
-    public byte[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<byte[]> type) {
+    public byte[] read(MemoryBuffer buffer) {
       ByteBuffer buf = raySerDe.readSerializedObject(buffer);
       int remaining = buf.remaining();
       if (buf.hasArray() && remaining == buf.array().length) {
@@ -387,12 +387,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, char[] value) {
+    public void write(MemoryBuffer buffer, char[] value) {
       writePrimitiveArray(buffer, value, Platform.CHAR_ARRAY_OFFSET, value.length, 2);
     }
 
     @Override
-    public char[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<char[]> type) {
+    public char[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 2;
       char[] values = new char[numElements];
@@ -408,12 +408,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, short[] value) {
+    public void write(MemoryBuffer buffer, short[] value) {
       writePrimitiveArray(buffer, value, Platform.SHORT_ARRAY_OFFSET, value.length, 2);
     }
 
     @Override
-    public short[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<short[]> type) {
+    public short[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 2;
       short[] values = new short[numElements];
@@ -429,12 +429,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, int[] value) {
+    public void write(MemoryBuffer buffer, int[] value) {
       writePrimitiveArray(buffer, value, Platform.INT_ARRAY_OFFSET, value.length, 4);
     }
 
     @Override
-    public int[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<int[]> type) {
+    public int[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 4;
       int[] values = new int[numElements];
@@ -450,12 +450,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, long[] value) {
+    public void write(MemoryBuffer buffer, long[] value) {
       writePrimitiveArray(buffer, value, Platform.LONG_ARRAY_OFFSET, value.length, 8);
     }
 
     @Override
-    public long[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<long[]> type) {
+    public long[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 8;
       long[] values = new long[numElements];
@@ -471,12 +471,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, float[] value) {
+    public void write(MemoryBuffer buffer, float[] value) {
       writePrimitiveArray(buffer, value, Platform.FLOAT_ARRAY_OFFSET, value.length, 4);
     }
 
     @Override
-    public float[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<float[]> type) {
+    public float[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 4;
       float[] values = new float[numElements];
@@ -492,12 +492,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, double[] value) {
+    public void write(MemoryBuffer buffer, double[] value) {
       writePrimitiveArray(buffer, value, Platform.DOUBLE_ARRAY_OFFSET, value.length, 8);
     }
 
     @Override
-    public double[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<double[]> type) {
+    public double[] read(MemoryBuffer buffer) {
       int size = buffer.readInt();
       int numElements = size / 8;
       double[] values = new double[numElements];
@@ -518,7 +518,7 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, String[] value) {
+    public void write(MemoryBuffer buffer, String[] value) {
       int len = value.length;
       buffer.writeInt(len);
       for (String elem : value) {
@@ -527,7 +527,7 @@ public class Serializers {
     }
 
     @Override
-    public String[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<String[]> type) {
+    public String[] read(MemoryBuffer buffer) {
       int numElements = buffer.readInt();
       String[] value = new String[numElements];
       referenceResolver.reference(value);
@@ -562,7 +562,7 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T[] arr) {
+    public void write(MemoryBuffer buffer, T[] arr) {
       int len = arr.length;
       buffer.writeInt(len);
       final Serializer<T> componentTypeSerializer = this.componentTypeSerializer;
@@ -578,7 +578,7 @@ public class Serializers {
     }
 
     @Override
-    public T[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<T[]> type) {
+    public T[] read(MemoryBuffer buffer) {
       int numElements = buffer.readInt();
       Object[] value = newArray(numElements);
       ReferenceResolver referenceResolver = raySerDe.getReferenceResolver();
@@ -621,10 +621,10 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, List<?> value) {}
+    public void write(MemoryBuffer buffer, List<?> value) {}
 
     @Override
-    public List<?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<List<?>> type) {
+    public List<?> read(MemoryBuffer buffer) {
       return Collections.EMPTY_LIST;
     }
   }
@@ -636,10 +636,10 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Set<?> value) {}
+    public void write(MemoryBuffer buffer, Set<?> value) {}
 
     @Override
-    public Set<?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<Set<?>> type) {
+    public Set<?> read(MemoryBuffer buffer) {
       return Collections.EMPTY_SET;
     }
   }
@@ -651,10 +651,10 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Map<?, ?> value) {}
+    public void write(MemoryBuffer buffer, Map<?, ?> value) {}
 
     @Override
-    public Map<?, ?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<Map<?, ?>> type) {
+    public Map<?, ?> read(MemoryBuffer buffer) {
       return Collections.EMPTY_MAP;
     }
   }
@@ -666,12 +666,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, List<?> value) {
+    public void write(MemoryBuffer buffer, List<?> value) {
       raySerDe.serializeReferencableToJava(buffer, value.get(0));
     }
 
     @Override
-    public List<?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<List<?>> type) {
+    public List<?> read(MemoryBuffer buffer) {
       return Collections.singletonList(raySerDe.deserializeReferencableFromJava(buffer));
     }
   }
@@ -683,12 +683,12 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Set<?> value) {
+    public void write(MemoryBuffer buffer, Set<?> value) {
       raySerDe.serializeReferencableToJava(buffer, value.iterator().next());
     }
 
     @Override
-    public Set<?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<Set<?>> type) {
+    public Set<?> read(MemoryBuffer buffer) {
       return Collections.singleton(raySerDe.deserializeReferencableFromJava(buffer));
     }
   }
@@ -700,14 +700,14 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Map<?, ?> value) {
+    public void write(MemoryBuffer buffer, Map<?, ?> value) {
       Entry<?, ?> entry = value.entrySet().iterator().next();
       raySerDe.serializeReferencableToJava(buffer, entry.getKey());
       raySerDe.serializeReferencableToJava(buffer, entry.getValue());
     }
 
     @Override
-    public Map<?, ?> read(RaySerde raySerDe, MemoryBuffer buffer, Class<Map<?, ?>> type) {
+    public Map<?, ?> read(MemoryBuffer buffer) {
       Object key = raySerDe.deserializeReferencableFromJava(buffer);
       Object value = raySerDe.deserializeReferencableFromJava(buffer);
       return Collections.singletonMap(key, value);
@@ -733,7 +733,7 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Class value) {
+    public void write(MemoryBuffer buffer, Class value) {
       Short classId = raySerDe.getClassResolver().getRegisteredClassId(value);
       if (classId != null) {
         buffer.writeByte(USE_CLASS_ID);
@@ -750,7 +750,7 @@ public class Serializers {
     }
 
     @Override
-    public Class read(RaySerde raySerDe, MemoryBuffer buffer, Class<Class> type) {
+    public Class read(MemoryBuffer buffer) {
       byte tag = buffer.readByte();
       if (tag == USE_CLASS_ID) {
         return raySerDe.getClassResolver().getRegisteredClass(buffer.readShort());
@@ -778,13 +778,13 @@ public class Serializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, ByteBuffer value) {
+    public void write(MemoryBuffer buffer, ByteBuffer value) {
       raySerDe.writeSerializedObject(
           buffer, new SerializedObject.ByteBufferSerializedObject(value));
     }
 
     @Override
-    public ByteBuffer read(RaySerde raySerDe, MemoryBuffer buffer, Class<ByteBuffer> type) {
+    public ByteBuffer read(MemoryBuffer buffer) {
       return raySerDe.readSerializedObject(buffer);
     }
   }

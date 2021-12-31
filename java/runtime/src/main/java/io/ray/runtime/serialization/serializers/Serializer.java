@@ -14,9 +14,9 @@ public abstract class Serializer<T> {
   protected final Class<T> cls;
   protected final boolean needToWriteReference;
 
-  public abstract void write(RaySerde raySerDe, MemoryBuffer buffer, T value);
+  public abstract void write(MemoryBuffer buffer, T value);
 
-  public abstract T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type);
+  public abstract T read(MemoryBuffer buffer);
 
   public Serializer(RaySerde raySerDe, Class<T> cls) {
     this.raySerDe = raySerDe;

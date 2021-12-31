@@ -59,12 +59,12 @@ public final class StringSerializer extends Serializer<String> {
   }
 
   @Override
-  public void write(RaySerde raySerDe, MemoryBuffer buffer, String value) {
+  public void write(MemoryBuffer buffer, String value) {
     writeJavaString(buffer, value);
   }
 
   @Override
-  public String read(RaySerde raySerDe, MemoryBuffer buffer, Class<String> type) {
+  public String read(MemoryBuffer buffer) {
     return readJavaString(buffer);
   }
 

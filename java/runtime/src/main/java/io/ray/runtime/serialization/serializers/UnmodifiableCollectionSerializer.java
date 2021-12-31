@@ -47,7 +47,7 @@ public class UnmodifiableCollectionSerializer extends Serializer<Object> {
   }
 
   @Override
-  public void write(RaySerde raySerDe, MemoryBuffer buffer, Object value) {
+  public void write(MemoryBuffer buffer, Object value) {
     Preconditions.checkArgument(value.getClass() == cls);
     final UnmodifiableCollection unmodifiableCollection = this.unmodifiableCollection;
     try {
@@ -59,7 +59,7 @@ public class UnmodifiableCollectionSerializer extends Serializer<Object> {
   }
 
   @Override
-  public Object read(RaySerde raySerDe, MemoryBuffer buffer, Class<Object> type) {
+  public Object read(MemoryBuffer buffer) {
     final Object sourceCollection = raySerDe.deserializeReferencableFromJava(buffer);
     return unmodifiableCollection.create(sourceCollection);
   }

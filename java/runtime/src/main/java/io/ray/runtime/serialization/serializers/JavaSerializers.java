@@ -95,7 +95,7 @@ public class JavaSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Object value) {
+    public void write(MemoryBuffer buffer, Object value) {
       try {
         objectOutput.setBuffer(buffer);
         ObjectOutputStream objectOutputStream =
@@ -112,7 +112,7 @@ public class JavaSerializers {
     }
 
     @Override
-    public Object read(RaySerde raySerDe, MemoryBuffer buffer, Class type) {
+    public Object read(MemoryBuffer buffer) {
       try {
         objectInput.setBuffer(buffer);
         ObjectInputStream objectInputStream =
@@ -152,7 +152,7 @@ public class JavaSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Object value) {
+    public void write(MemoryBuffer buffer, Object value) {
       try {
         Method writeReplaceMethod = getWriteReplaceMethod(value.getClass());
         Objects.requireNonNull(writeReplaceMethod);
@@ -166,8 +166,8 @@ public class JavaSerializers {
     }
 
     @Override
-    public Object read(RaySerde raySerDe, MemoryBuffer buffer, Class type) {
-      Preconditions.checkArgument(type == ReplaceStub.class);
+    public Object read(MemoryBuffer buffer) {
+      Preconditions.checkArgument(cls == ReplaceStub.class);
       try {
         return raySerDe.deserializeReferencableFromJava(buffer);
       } catch (Exception e) {
@@ -259,14 +259,14 @@ public class JavaSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, Object value) {
+    public void write(MemoryBuffer buffer, Object value) {
       raySerDe.serializeReferencableToJava(buffer, Proxy.getInvocationHandler(value));
       raySerDe.serializeReferencableToJava(buffer, value.getClass().getInterfaces());
     }
 
     @Override
-    public Object read(RaySerde raySerDe, MemoryBuffer buffer, Class type) {
-      Preconditions.checkArgument(type == ReplaceStub.class);
+    public Object read(MemoryBuffer buffer) {
+      Preconditions.checkArgument(cls == ReplaceStub.class);
       InvocationHandler invocationHandler =
           (InvocationHandler) raySerDe.deserializeReferencableFromJava(buffer);
       Preconditions.checkNotNull(invocationHandler);
@@ -293,13 +293,13 @@ public class JavaSerializers {
 
     @SuppressWarnings("unchecked")
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
-      return (T) javaSerializer.read(raySerDe, buffer, type);
+    public T read(MemoryBuffer buffer) {
+      return (T) javaSerializer.read(buffer);
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      javaSerializer.write(raySerDe, buffer, value);
+    public void write(MemoryBuffer buffer, T value) {
+      javaSerializer.write(buffer, value);
     }
   }
 
@@ -313,13 +313,13 @@ public class JavaSerializers {
 
     @SuppressWarnings("unchecked")
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
-      return (T) javaSerializer.read(raySerDe, buffer, type);
+    public T read(MemoryBuffer buffer) {
+      return (T) javaSerializer.read(buffer);
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      javaSerializer.write(raySerDe, buffer, value);
+    public void write(MemoryBuffer buffer, T value) {
+      javaSerializer.write(buffer, value);
     }
   }
 }

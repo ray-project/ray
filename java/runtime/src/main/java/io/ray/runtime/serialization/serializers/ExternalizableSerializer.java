@@ -27,7 +27,7 @@ public class ExternalizableSerializer<T extends Externalizable> extends Serializ
   }
 
   @Override
-  public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+  public void write(MemoryBuffer buffer, T value) {
     objectOutput.setBuffer(buffer);
     try {
       value.writeExternal(objectOutput);
@@ -37,7 +37,7 @@ public class ExternalizableSerializer<T extends Externalizable> extends Serializ
   }
 
   @Override
-  public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+  public T read(MemoryBuffer buffer) {
     T t;
     if (constructor != null) {
       try {
@@ -46,7 +46,7 @@ public class ExternalizableSerializer<T extends Externalizable> extends Serializ
         throw new RuntimeException(e);
       }
     } else {
-      t = Platform.newInstance(type);
+      t = Platform.newInstance(cls);
     }
     objectInput.setBuffer(buffer);
     try {

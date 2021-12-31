@@ -36,7 +36,7 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+    public void write(MemoryBuffer buffer, T value) {
       int len = value.size();
       buffer.writeInt(len);
       writeElements(raySerDe, buffer, value);
@@ -59,9 +59,9 @@ public class CollectionSerializers {
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+    public T read(MemoryBuffer buffer) {
       int numElements = buffer.readInt();
-      T collection = newInstance(type, numElements);
+      T collection = newInstance(cls, numElements);
       readElements(raySerDe, buffer, collection, numElements);
       return collection;
     }
@@ -178,16 +178,16 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+    public void write(MemoryBuffer buffer, T value) {
       buffer.writeInt(value.size());
       raySerDe.serializeReferencableToJava(buffer, value.comparator());
       super.writeElements(raySerDe, buffer, value);
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+    public T read(MemoryBuffer buffer) {
       int numElements = buffer.readInt();
-      T collection = newCollection(raySerDe, buffer, type, numElements);
+      T collection = newCollection(raySerDe, buffer, cls, numElements);
       readElements(raySerDe, buffer, collection, numElements);
       return collection;
     }
@@ -225,13 +225,13 @@ public class CollectionSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      fallbackSerializer.write(raySerDe, buffer, value);
+    public void write(MemoryBuffer buffer, T value) {
+      fallbackSerializer.write(buffer, value);
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
-      return fallbackSerializer.read(raySerDe, buffer, type);
+    public T read(MemoryBuffer buffer) {
+      return fallbackSerializer.read(buffer);
     }
   }
 }

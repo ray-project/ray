@@ -181,7 +181,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   }
 
   @Override
-  public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+  public void write(MemoryBuffer buffer, T value) {
     if (raySerDe.checkClassVersion()) {
       buffer.writeInt(classVersionHash);
     }
@@ -205,7 +205,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
           buffer.writeDouble((Double) fieldValue);
         } else {
           Serializer serializer = finalFieldSerializers[i];
-          serializer.write(raySerDe, buffer, fieldValue);
+          serializer.write(buffer, fieldValue);
         }
       }
     }
@@ -217,7 +217,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         CollectionSerializer collectionSerializer =
             (CollectionSerializer) classResolver.getSerializer(fieldValueClass);
         collectionSerializer.setElementSerializer(tuple2.f1);
-        collectionSerializer.write(raySerDe, buffer, fieldValue);
+        collectionSerializer.write(buffer, fieldValue);
         collectionSerializer.clearElementSerializer();
       }
     }
@@ -232,7 +232,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         MapSerializer mapSerializer = (MapSerializer) classResolver.getSerializer(fieldValueClass);
         mapSerializer.setKeySerializer(keySerializer);
         mapSerializer.setValueSerializer(valueSerializer);
-        mapSerializer.write(raySerDe, buffer, fieldValue);
+        mapSerializer.write(buffer, fieldValue);
         mapSerializer.clearKeyValueSerializer();
       }
     }
@@ -276,7 +276,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
 
   @SuppressWarnings("unchecked")
   @Override
-  public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+  public T read(MemoryBuffer buffer) {
     if (raySerDe.checkClassVersion()) {
       int hash = buffer.readInt();
       Serializers.checkClassVersion(raySerDe, hash, classVersionHash);
@@ -302,7 +302,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
           fieldValue = buffer.readDouble();
         } else {
           Serializer serializer = finalFieldSerializers[i];
-          fieldValue = serializer.read(raySerDe, buffer, fieldClass);
+          fieldValue = serializer.read(buffer);
         }
         raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
         fieldAccessor.set(bean, fieldValue);
@@ -322,7 +322,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         CollectionSerializer collectionSerializer =
             (CollectionSerializer) classResolver.getSerializer(fieldValueClass);
         collectionSerializer.setElementSerializer(tuple2.f1);
-        fieldValue = collectionSerializer.read(raySerDe, buffer, fieldValueClass);
+        fieldValue = collectionSerializer.read(buffer);
         collectionSerializer.clearElementSerializer();
         raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
         tuple2.f0.putObject(bean, fieldValue);
@@ -345,7 +345,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         Serializer valueSerializer = kvSerializers.f1;
         mapSerializer.setKeySerializer(keySerializer);
         mapSerializer.setValueSerializer(valueSerializer);
-        fieldValue = mapSerializer.read(raySerDe, buffer, fieldValueClass);
+        fieldValue = mapSerializer.read(buffer);
         mapSerializer.clearKeyValueSerializer();
         raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
         tuple2.f0.putObject(bean, fieldValue);

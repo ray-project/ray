@@ -40,8 +40,8 @@ public class UnmodifiableCollectionSerializerTest {
               raySerDe,
               ((Class) value.getClass()),
               UnmodifiableCollection.valueOfType(value.getClass()));
-      serializer.write(raySerDe, buffer, value);
-      Object newObj = serializer.read(raySerDe, buffer, ((Class) value.getClass()));
+      serializer.write(buffer, value);
+      Object newObj = serializer.read(buffer);
       assertEquals(newObj.getClass(), value.getClass());
       UnmodifiableCollection unmodifiableCollection =
           UnmodifiableCollection.valueOfType(newObj.getClass());

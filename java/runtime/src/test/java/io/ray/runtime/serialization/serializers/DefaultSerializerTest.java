@@ -24,8 +24,8 @@ public class DefaultSerializerTest {
     DefaultSerializer serializer = new DefaultSerializer(raySerDe, Foo.class);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     Foo foo = new Foo();
-    serializer.write(raySerDe, buffer, foo);
-    Object obj = serializer.read(raySerDe, buffer, Foo.class);
+    serializer.write(buffer, foo);
+    Object obj = serializer.read(buffer);
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
   }
 
@@ -47,8 +47,8 @@ public class DefaultSerializerTest {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(false).build();
     DefaultSerializer serializer = new DefaultSerializer(raySerDe, foo.getClass());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
-    serializer.write(raySerDe, buffer, foo);
-    Object obj = serializer.read(raySerDe, buffer, foo.getClass());
+    serializer.write(buffer, foo);
+    Object obj = serializer.read(buffer);
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
   }
 
@@ -61,11 +61,11 @@ public class DefaultSerializerTest {
     DefaultSerializer<ComplexObjects.Cyclic> serializer =
         new DefaultSerializer<>(raySerDe, ComplexObjects.Cyclic.class);
     raySerDe.getReferenceResolver().writeReferenceOrNull(buffer, cyclic);
-    serializer.write(raySerDe, buffer, cyclic);
+    serializer.write(buffer, cyclic);
     byte tag = raySerDe.getReferenceResolver().readReferenceOrNull(buffer);
     Preconditions.checkArgument(tag == RaySerde.NOT_NULL);
     raySerDe.getReferenceResolver().preserveReferenceId();
-    ComplexObjects.Cyclic cyclic1 = serializer.read(raySerDe, buffer, ComplexObjects.Cyclic.class);
+    ComplexObjects.Cyclic cyclic1 = serializer.read(buffer);
     raySerDe.reset();
     assertEquals(cyclic1, cyclic);
   }
@@ -87,8 +87,8 @@ public class DefaultSerializerTest {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     DefaultSerializer<A> serializer = new DefaultSerializer<>(raySerDe, A.class);
     A a = new A();
-    serializer.write(raySerDe, buffer, a);
-    assertEquals(a, serializer.read(raySerDe, buffer, A.class));
+    serializer.write(buffer, a);
+    assertEquals(a, serializer.read(buffer));
   }
 
   static class B {
@@ -109,8 +109,8 @@ public class DefaultSerializerTest {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(false).build();
     DefaultSerializer<C> serializer = new DefaultSerializer<>(raySerDe, C.class);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
-    serializer.write(raySerDe, buffer, c);
-    C newC = serializer.read(raySerDe, buffer, C.class);
+    serializer.write(buffer, c);
+    C newC = serializer.read(buffer);
     assertEquals(newC.f1, c.f1);
     assertEquals(((B) newC).f1, ((B) c).f1);
   }

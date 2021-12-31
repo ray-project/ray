@@ -19,8 +19,8 @@ public class JavaSerializerTest {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(false).build();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     CollectionJavaSerializer javaSerializer = new CollectionJavaSerializer(raySerDe, setClass);
-    javaSerializer.write(raySerDe, buffer, set);
-    Object read = javaSerializer.read(raySerDe, buffer, setClass);
+    javaSerializer.write(buffer, set);
+    Object read = javaSerializer.read(buffer);
     assertEquals(set, read);
 
     assertSame(

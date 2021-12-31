@@ -148,14 +148,14 @@ public final class RaySerde {
       MemoryBuffer buffer, T obj, Serializer<T> serializer) {
     if (serializer.needToWriteReference()) {
       if (!referenceResolver.writeReferenceOrNull(buffer, obj)) {
-        serializer.write(this, buffer, obj);
+        serializer.write(buffer, obj);
       }
     } else {
       if (obj == null) {
         buffer.writeByte(RaySerde.NULL);
       } else {
         buffer.writeByte(RaySerde.NOT_NULL);
-        serializer.write(this, buffer, obj);
+        serializer.write(buffer, obj);
       }
     }
   }
@@ -184,7 +184,7 @@ public final class RaySerde {
       buffer.writeDouble((Double) obj);
     } else {
       Serializer serializer = classResolver.getSerializer(cls);
-      serializer.write(this, buffer, obj);
+      serializer.write(buffer, obj);
     }
   }
 
@@ -300,7 +300,7 @@ public final class RaySerde {
       T obj;
       if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
         int nextReadRefId = referenceResolver.preserveReferenceId();
-        obj = serializer.read(this, buffer, serializer.getType());
+        obj = serializer.read(buffer);
         referenceResolver.setReadObject(nextReadRefId, obj);
       } else {
         obj = (T) referenceResolver.getReadObject();
@@ -311,7 +311,7 @@ public final class RaySerde {
       if (headFlag == RaySerde.NULL) {
         return null;
       } else {
-        return serializer.read(this, buffer, serializer.getType());
+        return serializer.read(buffer);
       }
     }
   }
@@ -332,7 +332,7 @@ public final class RaySerde {
       return buffer.readDouble();
     } else {
       Serializer serializer = classResolver.getSerializer(cls);
-      return serializer.read(this, buffer, cls);
+      return serializer.read(buffer);
     }
   }
 

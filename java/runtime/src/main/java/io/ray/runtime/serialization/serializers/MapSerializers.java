@@ -2,7 +2,6 @@ package io.ray.runtime.serialization.serializers;
 
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.serialization.RaySerde;
-import io.ray.runtime.serialization.resolver.ReferenceResolver;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Comparator;
@@ -17,7 +16,6 @@ public class MapSerializers {
 
   public static class MapSerializer<T extends Map> extends Serializer<T> {
     protected final boolean supportCodegenHook;
-    private final ReferenceResolver referenceResolver;
     private Serializer keySerializer;
     private Serializer valueSerializer;
 
@@ -28,7 +26,6 @@ public class MapSerializers {
     public MapSerializer(RaySerde raySerDe, Class<T> cls, boolean supportCodegenHook) {
       super(raySerDe, cls);
       this.supportCodegenHook = supportCodegenHook;
-      this.referenceResolver = raySerDe.getReferenceResolver();
     }
 
     public void setKeySerializer(Serializer keySerializer) {
@@ -45,7 +42,7 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+    public void write(MemoryBuffer buffer, T value) {
       buffer.writeInt(value.size());
       writeElements(raySerDe, buffer, value);
     }
@@ -87,9 +84,9 @@ public class MapSerializers {
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+    public T read(MemoryBuffer buffer) {
       int size = buffer.readInt();
-      T map = newInstance(type, size);
+      T map = newInstance(cls, size);
       readElements(raySerDe, buffer, size, map);
       return map;
     }
@@ -202,16 +199,16 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
+    public void write(MemoryBuffer buffer, T value) {
       buffer.writeInt(value.size());
       raySerDe.serializeReferencableToJava(buffer, value.comparator());
       writeElements(raySerDe, buffer, value);
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
+    public T read(MemoryBuffer buffer) {
       int len = buffer.readInt();
-      T map = newMap(raySerDe, buffer, type, len);
+      T map = newMap(raySerDe, buffer, cls, len);
       readElements(raySerDe, buffer, len, map);
       return map;
     }
@@ -248,13 +245,13 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      fallbackSerializer.write(raySerDe, buffer, value);
+    public void write(MemoryBuffer buffer, T value) {
+      fallbackSerializer.write(buffer, value);
     }
 
     @Override
-    public T read(RaySerde raySerDe, MemoryBuffer buffer, Class<T> type) {
-      return fallbackSerializer.read(raySerDe, buffer, type);
+    public T read(MemoryBuffer buffer) {
+      return fallbackSerializer.read(buffer);
     }
   }
 }
