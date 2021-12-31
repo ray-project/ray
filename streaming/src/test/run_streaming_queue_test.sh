@@ -34,7 +34,7 @@ if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:redis-server" "//:redis-cli"
+bazel build "//:raylet" "//:gcs_server" "//:redis-server" "//:redis-cli"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
 

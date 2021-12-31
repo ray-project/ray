@@ -40,9 +40,6 @@ static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
 class Buffer;
 class RayObject;
 
-// Magic argument to signal to mock_worker we should check message order.
-static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
-
 /// Wait until the future is ready, or timeout is reached.
 ///
 /// \param[in] future The future to wait for.

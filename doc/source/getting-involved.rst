@@ -222,9 +222,6 @@ The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
-* Raylet integration tests commands:
-    * ``bazel test //:core_worker_test``
-
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``
 
@@ -264,7 +261,7 @@ In Python APIs, consider forcing the use of kwargs instead of positional argumen
         pass
 
 For callback APIs, consider adding a ``**kwargs`` placeholder as a "forward compatibility placeholder" in case more args need to be passed to the callback in the future, e.g.:
- 
+
 .. code-block:: python
 
     def tune_user_callback(model, score, **future_kwargs):
