@@ -2,9 +2,7 @@ package io.ray.runtime.serialization.util;
 
 import java.util.Arrays;
 
-/**
- * A resizable int array which avoids the boxing that occurs with {@code ArrayList<Integer>}.
- */
+/** A resizable int array which avoids the boxing that occurs with {@code ArrayList<Integer>}. */
 public class IntArray {
   public int[] items;
   public int size;

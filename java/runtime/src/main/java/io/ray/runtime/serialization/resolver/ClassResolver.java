@@ -155,7 +155,6 @@ public class ClassResolver {
     addDefaultSerializer(
         Collections.singletonMap(null, null).getClass(),
         Serializers.CollectionsSingletonMapSerializer.class);
-
     addDefaultSerializer(
         JavaSerializers.LambdaSerializer.ReplaceStub.class, JavaSerializers.LambdaSerializer.class);
     addDefaultSerializer(

@@ -14,7 +14,7 @@ public class ThreadSafeRaySerdeTest {
 
   @Test
   public void testSerialize() throws InterruptedException {
-    ComplexObjects.BeanA beanA = ComplexObjects.BeanA.createBeanA(2);
+    ComplexObjects.BeanA beanA = ComplexObjects.BeanA.create(2);
     ThreadSafeRaySerde serde =
         RaySerde.builder().withReferenceTracking(true).buildThreadSafeSerde();
     ExecutorService executorService = Executors.newFixedThreadPool(12);

@@ -98,7 +98,8 @@ public class ClassResolverTest {
       classResolver.reset();
       buffer.writerIndex(0);
       buffer.readerIndex(0);
-      List<ComplexObjects.Foo> fooList = Arrays.asList(ComplexObjects.Foo.create(), ComplexObjects.Foo.create());
+      List<ComplexObjects.Foo> fooList =
+          Arrays.asList(ComplexObjects.Foo.create(), ComplexObjects.Foo.create());
       Assert.assertEquals(raySerDe.deserialize(raySerDe.serialize(fooList)), fooList);
       Assert.assertEquals(raySerDe.deserialize(raySerDe.serialize(fooList)), fooList);
     }

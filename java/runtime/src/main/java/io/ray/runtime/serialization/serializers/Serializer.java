@@ -1,5 +1,6 @@
 package io.ray.runtime.serialization.serializers;
 
+import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
@@ -11,6 +12,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 public abstract class Serializer<T> {
   protected final RaySerde raySerDe;
   protected final Class<T> cls;
+  protected final boolean needToWriteReference;
 
   public abstract void write(RaySerde raySerDe, MemoryBuffer buffer, T value);
 
@@ -19,14 +21,30 @@ public abstract class Serializer<T> {
   public Serializer(RaySerde raySerDe, Class<T> cls) {
     this.raySerDe = raySerDe;
     this.cls = cls;
+    if (raySerDe.isReferenceTracking()) {
+      needToWriteReference =
+          !Primitives.isWrapperType(Primitives.wrap(cls))
+              || !raySerDe.isBasicTypesReferenceIgnored();
+    } else {
+      needToWriteReference = false;
+    }
+  }
+
+  public final Class<T> getType() {
+    return cls;
+  }
+
+  public final boolean needToWriteReference() {
+    return needToWriteReference;
   }
 
   /**
    * Serializer sub class must have a constructor which take parameters of type {@link RaySerde} and
    * {@link Class}, or {@link RaySerde} or {@link Class} or no-arg constructor.
    */
-  public static Serializer newSerializer(
-      RaySerde raySerDe, Class type, Class<? extends Serializer> serializerClass) {
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  public static <T> Serializer<T> newSerializer(
+      RaySerde raySerDe, Class<T> type, Class<? extends Serializer> serializerClass) {
     try {
       try {
         Constructor<? extends Serializer> ctr =

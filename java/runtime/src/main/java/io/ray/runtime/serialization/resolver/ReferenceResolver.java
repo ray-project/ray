@@ -6,15 +6,6 @@ import io.ray.runtime.serialization.RaySerde;
 // TODO add putIfAbsent for cuckoo hash.
 /** This class is used to track objects that have already been read or written. */
 public interface ReferenceResolver {
-  /** Returns an id for the object if it has been written previously, otherwise returns -1. */
-  int getWriteRefId(Object object);
-
-  /**
-   * Returns a new id for an object that is being written for the first time. The id should be
-   * consistent with {@link #nextReadRefId}
-   */
-  int addWriteObject(Object object);
-
   /**
    * Write reference and tag for the obj if the obj has been written previously, write null/not-null
    * tag otherwise.

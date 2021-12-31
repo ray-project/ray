@@ -28,6 +28,8 @@ public final class RaySerde {
   private BufferCallback bufferCallback;
   private Iterator<ByteBuffer> outOfBandBuffers;
   private final boolean referenceTracking;
+  private final boolean basicTypesReferenceIgnored;
+
   private final ReferenceResolver referenceResolver;
   private final ClassResolver classResolver;
   private final SerializationContext serializationContext;
@@ -39,6 +41,7 @@ public final class RaySerde {
   private RaySerde(SerdeBuilder builder) {
     this.isLittleEndian = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
     this.referenceTracking = builder.referenceTracking;
+    this.basicTypesReferenceIgnored = builder.basicTypesReferenceIgnored;
     if (referenceTracking) {
       this.referenceResolver = new MapReferenceResolver();
     } else {
@@ -138,6 +141,22 @@ public final class RaySerde {
   public void serializeReferencableToJava(MemoryBuffer buffer, Object obj) {
     if (!referenceResolver.writeReferenceOrNull(buffer, obj)) {
       serializeNonReferenceToJava(buffer, obj);
+    }
+  }
+
+  public <T> void serializeReferencableToJava(
+      MemoryBuffer buffer, T obj, Serializer<T> serializer) {
+    if (serializer.needToWriteReference()) {
+      if (!referenceResolver.writeReferenceOrNull(buffer, obj)) {
+        serializer.write(this, buffer, obj);
+      }
+    } else {
+      if (obj == null) {
+        buffer.writeByte(RaySerde.NULL);
+      } else {
+        buffer.writeByte(RaySerde.NOT_NULL);
+        serializer.write(this, buffer, obj);
+      }
     }
   }
 
@@ -275,6 +294,28 @@ public final class RaySerde {
     }
   }
 
+  @SuppressWarnings("unchecked")
+  public <T> T deserializeReferencableFromJava(MemoryBuffer buffer, Serializer<T> serializer) {
+    if (serializer.needToWriteReference()) {
+      T obj;
+      if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
+        int nextReadRefId = referenceResolver.preserveReferenceId();
+        obj = serializer.read(this, buffer, serializer.getType());
+        referenceResolver.setReadObject(nextReadRefId, obj);
+      } else {
+        obj = (T) referenceResolver.getReadObject();
+      }
+      return obj;
+    } else {
+      byte headFlag = buffer.readByte();
+      if (headFlag == RaySerde.NULL) {
+        return null;
+      } else {
+        return serializer.read(this, buffer, serializer.getType());
+      }
+    }
+  }
+
   /** Deserialize not-null and non-reference object from <code>buffer</code>. */
   public Object deserializeNonReferenceFromJava(MemoryBuffer buffer) {
     return readData(buffer, classResolver.readClass(buffer));
@@ -321,6 +362,10 @@ public final class RaySerde {
     return referenceTracking;
   }
 
+  public boolean isBasicTypesReferenceIgnored() {
+    return basicTypesReferenceIgnored;
+  }
+
   public ReferenceResolver getReferenceResolver() {
     return referenceResolver;
   }
@@ -352,6 +397,7 @@ public final class RaySerde {
   public static final class SerdeBuilder {
     private boolean checkClassVersion = true;
     private boolean referenceTracking = true;
+    private boolean basicTypesReferenceIgnored = true;
     private ClassLoader classLoader;
     private boolean jdkClassSerializableCheck = true;
 
@@ -359,6 +405,11 @@ public final class RaySerde {
 
     public SerdeBuilder withReferenceTracking(boolean referenceTracking) {
       this.referenceTracking = referenceTracking;
+      return this;
+    }
+
+    public SerdeBuilder ignoreBasicTypesReference(boolean ignoreBasicTypesReference) {
+      this.basicTypesReferenceIgnored = ignoreBasicTypesReference;
       return this;
     }
 

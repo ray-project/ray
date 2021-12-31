@@ -90,7 +90,7 @@ public class Descriptor {
    * field name first and declaring class second. Super class and sub class can have same name
    * field.
    */
-  private static synchronized SortedMap<Field, Descriptor> getAllDescriptorsMap(Class<?> clz) {
+  public static synchronized SortedMap<Field, Descriptor> getAllDescriptorsMap(Class<?> clz) {
     SortedMap<Field, Descriptor> map = descriptorCache.get(clz);
     if (map != null) {
       return map;

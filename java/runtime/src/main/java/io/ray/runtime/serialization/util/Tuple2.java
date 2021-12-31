@@ -4,16 +4,12 @@ import java.io.Serializable;
 import java.util.Objects;
 
 public class Tuple2<T0, T1> implements Serializable {
-
   private static final long serialVersionUID = 1L;
 
   /** Field 0 of the tuple. */
-  public T0 f0;
+  public final T0 f0;
   /** Field 1 of the tuple. */
-  public T1 f1;
-
-  /** Creates a new tuple where all fields are null. */
-  public Tuple2() {}
+  public final T1 f1;
 
   /**
    * Creates a new tuple and assigns the given values to the tuple's fields.

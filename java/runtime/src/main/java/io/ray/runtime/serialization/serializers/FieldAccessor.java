@@ -33,6 +33,11 @@ public abstract class FieldAccessor {
     }
   }
 
+  @Override
+  public String toString() {
+    return "FieldAccessor{" + "field=" + field + '}';
+  }
+
   public static FieldAccessor createAccessor(Field field) {
     if (field.getType() == boolean.class) {
       return new BooleanAccessor(field);

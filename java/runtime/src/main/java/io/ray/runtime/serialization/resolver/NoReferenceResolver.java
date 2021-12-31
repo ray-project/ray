@@ -4,15 +4,6 @@ import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.serialization.RaySerde;
 
 public final class NoReferenceResolver implements ReferenceResolver {
-  @Override
-  public int getWriteRefId(Object object) {
-    return -1;
-  }
-
-  @Override
-  public int addWriteObject(Object object) {
-    return -1;
-  }
 
   @Override
   public boolean writeReferenceOrNull(MemoryBuffer buffer, Object obj) {

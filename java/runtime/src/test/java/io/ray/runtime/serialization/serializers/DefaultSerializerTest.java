@@ -58,7 +58,8 @@ public class DefaultSerializerTest {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(true).build();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
 
-    DefaultSerializer<ComplexObjects.Cyclic> serializer = new DefaultSerializer<>(raySerDe, ComplexObjects.Cyclic.class);
+    DefaultSerializer<ComplexObjects.Cyclic> serializer =
+        new DefaultSerializer<>(raySerDe, ComplexObjects.Cyclic.class);
     raySerDe.getReferenceResolver().writeReferenceOrNull(buffer, cyclic);
     serializer.write(raySerDe, buffer, cyclic);
     byte tag = raySerDe.getReferenceResolver().readReferenceOrNull(buffer);

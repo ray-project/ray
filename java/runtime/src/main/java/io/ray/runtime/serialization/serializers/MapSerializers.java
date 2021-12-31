@@ -2,6 +2,7 @@ package io.ray.runtime.serialization.serializers;
 
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.serialization.RaySerde;
+import io.ray.runtime.serialization.resolver.ReferenceResolver;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Comparator;
@@ -16,6 +17,9 @@ public class MapSerializers {
 
   public static class MapSerializer<T extends Map> extends Serializer<T> {
     protected final boolean supportCodegenHook;
+    private final ReferenceResolver referenceResolver;
+    private Serializer keySerializer;
+    private Serializer valueSerializer;
 
     public MapSerializer(RaySerde raySerDe, Class<T> cls) {
       this(raySerDe, cls, !JavaSerializers.isDynamicGeneratedCLass(cls));
@@ -24,6 +28,20 @@ public class MapSerializers {
     public MapSerializer(RaySerde raySerDe, Class<T> cls, boolean supportCodegenHook) {
       super(raySerDe, cls);
       this.supportCodegenHook = supportCodegenHook;
+      this.referenceResolver = raySerDe.getReferenceResolver();
+    }
+
+    public void setKeySerializer(Serializer keySerializer) {
+      this.keySerializer = keySerializer;
+    }
+
+    public void setValueSerializer(Serializer valueSerializer) {
+      this.valueSerializer = valueSerializer;
+    }
+
+    public void clearKeyValueSerializer() {
+      keySerializer = null;
+      valueSerializer = null;
     }
 
     @Override
@@ -32,12 +50,40 @@ public class MapSerializers {
       writeElements(raySerDe, buffer, value);
     }
 
-    protected final void writeElements(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      for (Object object : value.entrySet()) {
-        Map.Entry entry = (Map.Entry) object;
-        raySerDe.serializeReferencableToJava(buffer, entry.getKey());
-        raySerDe.serializeReferencableToJava(buffer, entry.getValue());
+    protected final void writeElements(RaySerde raySerDe, MemoryBuffer buffer, T map) {
+      Serializer keySerializer = this.keySerializer;
+      Serializer valueSerializer = this.valueSerializer;
+      if (keySerializer != null && valueSerializer != null) {
+        for (Object object : map.entrySet()) {
+          Map.Entry entry = (Map.Entry) object;
+          Object key = entry.getKey();
+          Object value = entry.getValue();
+          raySerDe.serializeReferencableToJava(buffer, key, keySerializer);
+          raySerDe.serializeReferencableToJava(buffer, value, valueSerializer);
+        }
+      } else if (keySerializer != null) {
+        for (Object object : map.entrySet()) {
+          Map.Entry entry = (Map.Entry) object;
+          raySerDe.serializeReferencableToJava(buffer, entry.getKey(), keySerializer);
+          raySerDe.serializeReferencableToJava(buffer, entry.getValue());
+        }
+      } else if (valueSerializer != null) {
+        for (Object object : map.entrySet()) {
+          Map.Entry entry = (Map.Entry) object;
+          raySerDe.serializeReferencableToJava(buffer, entry.getKey());
+          raySerDe.serializeReferencableToJava(buffer, entry.getValue(), valueSerializer);
+        }
+      } else {
+        for (Object object : map.entrySet()) {
+          Map.Entry entry = (Map.Entry) object;
+          raySerDe.serializeReferencableToJava(buffer, entry.getKey());
+          raySerDe.serializeReferencableToJava(buffer, entry.getValue());
+        }
       }
+      // Restore the Serializer. the kvSerializer may be set to others if the nested key or value
+      // serialization has map field.
+      this.keySerializer = keySerializer;
+      this.valueSerializer = keySerializer;
     }
 
     @Override
@@ -49,10 +95,29 @@ public class MapSerializers {
     }
 
     protected final void readElements(RaySerde raySerDe, MemoryBuffer buffer, int size, T map) {
-      for (int i = 0; i < size; i++) {
+      Serializer keySerializer = this.keySerializer;
+      Serializer valueSerializer = this.valueSerializer;
+      if (keySerializer != null && valueSerializer != null) {
+        for (int i = 0; i < size; i++) {
+          Object key = raySerDe.deserializeReferencableFromJava(buffer, keySerializer);
+          Object value = raySerDe.deserializeReferencableFromJava(buffer, valueSerializer);
+          map.put(key, value);
+        }
+      } else if (keySerializer != null) {
+        for (int i = 0; i < size; i++) {
+          Object key = raySerDe.deserializeReferencableFromJava(buffer, keySerializer);
+          map.put(key, raySerDe.deserializeReferencableFromJava(buffer));
+        }
+      } else if (valueSerializer != null) {
         Object key = raySerDe.deserializeReferencableFromJava(buffer);
-        Object value = raySerDe.deserializeReferencableFromJava(buffer);
+        Object value = raySerDe.deserializeReferencableFromJava(buffer, valueSerializer);
         map.put(key, value);
+      } else {
+        for (int i = 0; i < size; i++) {
+          Object key = raySerDe.deserializeReferencableFromJava(buffer);
+          Object value = raySerDe.deserializeReferencableFromJava(buffer);
+          map.put(key, value);
+        }
       }
     }
 
@@ -81,7 +146,7 @@ public class MapSerializers {
      * Write data except size and elements.
      *
      * <ol>
-     *   In codegen, follows is call order:
+     *   In codegen, here is the call order:
      *   <li>write map class if not final
      *   <li>write map size
      *   <li>writeHeader

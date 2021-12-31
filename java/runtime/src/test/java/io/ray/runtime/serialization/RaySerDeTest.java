@@ -182,17 +182,36 @@ public class RaySerDeTest {
   @Test(dataProvider = "referenceTrackingConfig")
   public void serializeBeanTest(boolean referenceTracking) {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
-    ComplexObjects.BeanA beanA = ComplexObjects.BeanA.createBeanA(2);
-    byte[] bytes = raySerDe.serialize(beanA);
-    Object o = raySerDe.deserialize(bytes);
-    assertEquals(beanA, o);
+    {
+      ComplexObjects.BeanB bean = ComplexObjects.BeanB.create(2);
+      byte[] bytes = raySerDe.serialize(bean);
+      Object o = raySerDe.deserialize(bytes);
+      assertEquals(bean, o);
+    }
+    {
+      ComplexObjects.BeanA beanA = ComplexObjects.BeanA.create(2);
+      byte[] bytes = raySerDe.serialize(beanA);
+      Object o = raySerDe.deserialize(bytes);
+      assertEquals(beanA, o);
+    }
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void serializeGenericsTest(boolean referenceTracking) {
+    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
+    {
+      ComplexObjects.MapCollectionBean bean = ComplexObjects.MapCollectionBean.create(2);
+      byte[] bytes = raySerDe.serialize(bean);
+      Object o = raySerDe.deserialize(bytes);
+      assertEquals(bean, o);
+    }
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
   public void registerTest(boolean referenceTracking) {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
     raySerDe.register(ComplexObjects.BeanA.class);
-    ComplexObjects.BeanA beanA = ComplexObjects.BeanA.createBeanA(2);
+    ComplexObjects.BeanA beanA = ComplexObjects.BeanA.create(2);
     assertEquals(beanA, serDe(raySerDe, beanA));
   }
 

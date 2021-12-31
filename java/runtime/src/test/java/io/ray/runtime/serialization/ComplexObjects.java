@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,9 +33,8 @@ public class ComplexObjects {
     private List<BeanB> beanBList;
     private Map<String, BeanB> stringBeanBMap;
     private int[][] int2DArray;
-    private List<List<Double>> double2DList;
 
-    public static BeanA createBeanA(int arrSize) {
+    public static BeanA create(int arrSize) {
       BeanA beanA = new BeanA();
       Random rnd = new Random(37);
       beanA.setF1((short) rnd.nextInt());
@@ -44,7 +44,7 @@ public class ComplexObjects {
       beanA.setF5(rnd.nextDouble());
       beanA.f15 = rnd.nextInt();
       beanA.setF12(true);
-      beanA.setBeanB(BeanB.createBeanB(arrSize));
+      beanA.setBeanB(BeanB.create(arrSize));
       BigDecimal decimal = new BigDecimal(new BigInteger("122222222222222225454657712222222222"));
       beanA.setF16(decimal);
       StringBuilder sb = new StringBuilder();
@@ -66,17 +66,6 @@ public class ComplexObjects {
           beanA.setDoubleList(doubleList);
         }
         {
-          List<List<Double>> double2DList = new ArrayList<>();
-          for (int i = 0; i < arrSize; i++) {
-            List<Double> dList = new ArrayList<>();
-            for (int j = 0; j < arrSize; j++) {
-              dList.add(rnd.nextDouble());
-            }
-            double2DList.add(dList);
-          }
-          beanA.setDouble2DList(double2DList);
-        }
-        {
           int[] arr = new int[arrSize];
           for (int i = 0; i < arr.length; i++) {
             arr[i] = rnd.nextInt();
@@ -96,21 +85,21 @@ public class ComplexObjects {
         {
           List<BeanB> beanBList = new ArrayList<>();
           for (int i = 0; i < arrSize; i++) {
-            beanBList.add(BeanB.createBeanB(arrSize));
+            beanBList.add(BeanB.create(arrSize));
           }
           beanA.setBeanBList(beanBList);
         }
         {
           Map<String, BeanB> stringBeanBMap = new HashMap<>();
           for (int i = 0; i < arrSize; i++) {
-            stringBeanBMap.put("key" + i, BeanB.createBeanB(arrSize));
+            stringBeanBMap.put("key" + i, BeanB.create(arrSize));
           }
           beanA.setStringBeanBMap(stringBeanBMap);
         }
         {
           List<BeanB> beanBList = new ArrayList<>();
           for (int i = 0; i < arrSize; i++) {
-            beanBList.add(BeanB.createBeanB(arrSize));
+            beanBList.add(BeanB.create(arrSize));
           }
           beanA.setBeanBIterable(beanBList);
         }
@@ -129,7 +118,7 @@ public class ComplexObjects {
     private int[] intArr;
     private List<Integer> intList;
 
-    public static BeanB createBeanB(int arrSize) {
+    public static BeanB create(int arrSize) {
       Random rnd = new Random(37);
       BeanB beanB = new BeanB();
       beanB.setF1((short) rnd.nextInt());
@@ -155,6 +144,33 @@ public class ComplexObjects {
         }
       }
       return beanB;
+    }
+  }
+
+  @Data
+  public static final class MapCollectionBean implements Serializable {
+    private List<Integer> f1;
+    private List<List<Double>> f2;
+    private Map<Integer, String> f3;
+    private Map<String, Object> f4;
+
+    public static MapCollectionBean create(int arrSize) {
+      MapCollectionBean bean = new MapCollectionBean();
+      // bean.f1 = new ArrayList<>();
+      bean.f2 = new LinkedList<>();
+      // bean.f3 = new HashMap<>();
+      // bean.f4 = new LinkedHashMap<>();
+      for (int i = 0; i < arrSize; i++) {
+        // bean.f1.add(i);
+        List<Double> innerList = new ArrayList<>();
+        for (int j = 0; j < arrSize; j++) {
+          innerList.add(1.1);
+        }
+        // bean.f2.add(innerList);
+        // bean.f3.put(i, "v" + i);
+        // bean.f4.put("k" + i, new ArrayList<>());
+      }
+      return bean;
     }
   }
 

@@ -16,6 +16,7 @@ import java.util.TreeSet;
 public class CollectionSerializers {
   public static class CollectionSerializer<T extends Collection> extends Serializer<T> {
     private final boolean supportCodegenHook;
+    private Serializer elemSerializer;
 
     public CollectionSerializer(RaySerde raySerDe, Class<T> cls) {
       this(raySerDe, cls, !JavaSerializers.isDynamicGeneratedCLass(cls));
@@ -26,6 +27,14 @@ public class CollectionSerializers {
       this.supportCodegenHook = supportCodegenHook;
     }
 
+    public void setElementSerializer(Serializer serializer) {
+      elemSerializer = serializer;
+    }
+
+    public void clearElementSerializer() {
+      elemSerializer = null;
+    }
+
     @Override
     public void write(RaySerde raySerDe, MemoryBuffer buffer, T value) {
       int len = value.size();
@@ -34,8 +43,18 @@ public class CollectionSerializers {
     }
 
     protected final void writeElements(RaySerde raySerDe, MemoryBuffer buffer, T value) {
-      for (Object elem : value) {
-        raySerDe.serializeReferencableToJava(buffer, elem);
+      Serializer elemSerializer = this.elemSerializer;
+      if (elemSerializer == null) {
+        for (Object elem : value) {
+          raySerDe.serializeReferencableToJava(buffer, elem);
+        }
+      } else {
+        for (Object elem : value) {
+          raySerDe.serializeReferencableToJava(buffer, elem, elemSerializer);
+        }
+        // Restore the elemSerializer. the elemSerializer may be set to others if the nested
+        // serialization has collection field.
+        this.elemSerializer = elemSerializer;
       }
     }
 
@@ -49,9 +68,17 @@ public class CollectionSerializers {
 
     protected final void readElements(
         RaySerde raySerDe, MemoryBuffer buffer, T collection, int numElements) {
-      for (int i = 0; i < numElements; i++) {
-        Object elem = raySerDe.deserializeReferencableFromJava(buffer);
-        collection.add(elem);
+      Serializer elemSerializer = this.elemSerializer;
+      if (elemSerializer == null) {
+        for (int i = 0; i < numElements; i++) {
+          Object elem = raySerDe.deserializeReferencableFromJava(buffer);
+          collection.add(elem);
+        }
+      } else {
+        for (int i = 0; i < numElements; i++) {
+          collection.add(raySerDe.deserializeReferencableFromJava(buffer, elemSerializer));
+        }
+        this.elemSerializer = elemSerializer;
       }
     }
 
@@ -82,7 +109,7 @@ public class CollectionSerializers {
      * Write data except size and elements.
      *
      * <ol>
-     *   In codegen, follows is call order:
+     *   In codegen, here is the call order:
      *   <li>write collection class if not final
      *   <li>write collection size
      *   <li>writeHeader

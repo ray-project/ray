@@ -4,11 +4,10 @@ import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.serialization.RaySerde;
 import io.ray.runtime.serialization.util.IntArray;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
+import org.nustaq.serialization.util.FSTIdentity2IdMap;
 
 public final class MapReferenceResolver implements ReferenceResolver {
-  // TODO use IdentityObjectIntMap to avoid box and reduce hash lookup.
-  private final IdentityHashMap<Object, Integer> writtenObjects = new IdentityHashMap<>();
+  private final FSTIdentity2IdMap writtenObjects = new FSTIdentity2IdMap(11);
   private final ArrayList<Object> readObjects = new ArrayList<>();
   private final IntArray readReferenceIds = new IntArray(8);
 
@@ -18,39 +17,24 @@ public final class MapReferenceResolver implements ReferenceResolver {
   public MapReferenceResolver() {}
 
   @Override
-  public int getWriteRefId(Object object) {
-    Integer value = writtenObjects.get(object);
-    if (value == null) {
-      return -1;
-    } else {
-      return value;
-    }
-  }
-
-  @Override
-  public int addWriteObject(Object object) {
-    int id = writtenObjects.size();
-    writtenObjects.put(object, id);
-    return id;
-  }
-
-  @Override
   public boolean writeReferenceOrNull(MemoryBuffer buffer, Object obj) {
     if (obj == null) {
       buffer.writeByte(RaySerde.NULL);
       return true;
     } else {
-      int writtenId = getWriteRefId(obj);
-      // The obj has been written previously.
-      if (writtenId != -1) {
+      // The id should be consistent with `#nextReadRefId`
+      int newWriteRefId = writtenObjects.size();
+      int writtenRefId = writtenObjects.putOrGet(obj, newWriteRefId);
+      if (writtenRefId >= 0) {
+        // The obj has been written previously.
         buffer.writeByte(RaySerde.NOT_NULL_REF);
-        buffer.writeInt(writtenId);
+        buffer.writeInt(writtenRefId);
         return true;
       } else {
-        addWriteObject(obj);
+        // The object is being written for the first time.
+        buffer.writeByte(RaySerde.NOT_NULL);
+        return false;
       }
-      buffer.writeByte(RaySerde.NOT_NULL);
-      return false;
     }
   }
 

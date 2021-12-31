@@ -509,10 +509,12 @@ public class Serializers {
 
   public static final class StringArraySerializer extends Serializer<String[]> {
     private final StringSerializer stringSerializer;
+    private final ReferenceResolver referenceResolver;
 
     public StringArraySerializer(RaySerde raySerDe) {
       super(raySerDe, String[].class);
       stringSerializer = new StringSerializer(raySerDe);
+      referenceResolver = raySerDe.getReferenceResolver();
     }
 
     @Override
@@ -520,13 +522,7 @@ public class Serializers {
       int len = value.length;
       buffer.writeInt(len);
       for (String elem : value) {
-        // TODO reference support
-        if (elem != null) {
-          buffer.writeByte(RaySerde.NOT_NULL);
-          stringSerializer.writeJavaString(buffer, elem);
-        } else {
-          buffer.writeByte(RaySerde.NULL);
-        }
+        raySerDe.serializeReferencableToJava(buffer, elem, stringSerializer);
       }
     }
 
@@ -534,13 +530,10 @@ public class Serializers {
     public String[] read(RaySerde raySerDe, MemoryBuffer buffer, Class<String[]> type) {
       int numElements = buffer.readInt();
       String[] value = new String[numElements];
-      raySerDe.getReferenceResolver().reference(value);
+      referenceResolver.reference(value);
       for (int i = 0; i < numElements; i++) {
-        if (buffer.readByte() == RaySerde.NOT_NULL) {
-          value[i] = stringSerializer.readJavaString(buffer);
-        } else {
-          value[i] = null;
-        }
+        String elem = raySerDe.deserializeReferencableFromJava(buffer, stringSerializer);
+        value[i] = elem;
       }
       return value;
     }
@@ -574,11 +567,8 @@ public class Serializers {
       buffer.writeInt(len);
       final Serializer<T> componentTypeSerializer = this.componentTypeSerializer;
       if (componentTypeSerializer != null) {
-        ReferenceResolver referenceResolver = raySerDe.getReferenceResolver();
         for (T t : arr) {
-          if (!referenceResolver.writeReferenceOrNull(buffer, t)) {
-            componentTypeSerializer.write(raySerDe, buffer, t);
-          }
+          raySerDe.serializeReferencableToJava(buffer, t, componentTypeSerializer);
         }
       } else {
         for (T t : arr) {
@@ -595,24 +585,9 @@ public class Serializers {
       referenceResolver.reference(value);
       @SuppressWarnings("rawtypes")
       final Serializer componentTypeSerializer = this.componentTypeSerializer;
-      final Class<T> innerType = this.innerType;
       if (componentTypeSerializer != null) {
-        boolean referenceTracking = raySerDe.isReferenceTracking();
         for (int i = 0; i < numElements; i++) {
-          Object elem = null;
-          // It's not a reference, we need read field data.
-          if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
-            int nextReadRefId = referenceResolver.preserveReferenceId();
-            elem = componentTypeSerializer.read(raySerDe, buffer, innerType);
-            if (referenceTracking) {
-              referenceResolver.setReadObject(nextReadRefId, elem);
-            }
-          } else {
-            if (referenceTracking) {
-              elem = referenceResolver.getReadObject();
-            }
-          }
-          value[i] = elem;
+          value[i] = raySerDe.deserializeReferencableFromJava(buffer, componentTypeSerializer);
         }
       } else {
         for (int i = 0; i < numElements; i++) {
