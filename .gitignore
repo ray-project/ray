@@ -164,6 +164,8 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+dependency-reduced-pom.xml
+
 # Cpp
 cpp/example/thirdparty/
 

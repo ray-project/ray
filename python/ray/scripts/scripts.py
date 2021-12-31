@@ -392,11 +392,6 @@ def debug(address):
     type=str,
     help="the file that contains the autoscaling config")
 @click.option(
-    "--no-redirect-worker-output",
-    is_flag=True,
-    default=False,
-    help="do not redirect worker stdout and stderr to files")
-@click.option(
     "--no-redirect-output",
     is_flag=True,
     default=False,
@@ -463,11 +458,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port,
           dashboard_agent_listen_port, dashboard_agent_grpc_port, block,
-          plasma_directory, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, system_config, enable_object_reconstruction,
-          metrics_export_port, no_monitor, tracing_startup_hook,
-          ray_debugger_external):
+          plasma_directory, autoscaling_config, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          system_config, enable_object_reconstruction, metrics_export_port,
+          no_monitor, tracing_startup_hook, ray_debugger_external):
     """Start Ray processes manually on the local machine."""
     if gcs_server_port and not head:
         raise ValueError(
@@ -492,7 +486,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
 
-    redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
@@ -506,7 +499,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
-        redirect_worker_output=redirect_worker_output,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
@@ -550,12 +542,17 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if address is not None:
+        address_env = os.environ.get("RAY_REDIS_ADDRESS")
+        underlying_address = \
+            address_env if address_env is not None else address
+        if underlying_address is not None:
             cli_logger.print(
-                "Will use value of `{}` as remote Redis server address(es). "
+                "Will use `{}` as external Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
-            external_addresses = address.split(",")
+                "with `{}` in local.", cf.bold(underlying_address),
+                cf.bold("--port"))
+            external_addresses = underlying_address.split(",")
+
             # We reuse primary redis as sharding when there's only one
             # instance provided.
             if len(external_addresses) == 1:
@@ -703,16 +700,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
+        # TODO(mwtian): wait only when using Redis to bootstrap.
         services.wait_for_redis_to_start(
             redis_address_ip, redis_address_port, password=redis_password)
-
-        # Create a Redis client.
-        redis_client = services.create_redis_client(
-            redis_address, password=redis_password)
-
-        # Check that the version information on this node matches the version
-        # information that the cluster was started with.
-        services.check_version_info(redis_client)
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
@@ -723,6 +713,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         ray_params.update(redis_address=redis_address)
         node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
+
+        # Ray and Python versions should probably be checked before
+        # initializing Node.
+        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
