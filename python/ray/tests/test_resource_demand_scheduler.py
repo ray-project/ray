@@ -380,6 +380,7 @@ def test_add_min_workers_nodes():
             "max_workers": 0,
         },
     }
+    # yapf: disable
     assert _add_min_workers_nodes([],
                                   {},
                                   types, None, None, None) == \
@@ -426,6 +427,7 @@ def test_add_min_workers_nodes():
                                   }, {
                                       "gpubla": 10
                                   })
+    # yapf: enable
 
 
 def test_get_nodes_to_launch_with_min_workers():
