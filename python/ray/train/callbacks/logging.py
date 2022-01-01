@@ -40,7 +40,7 @@ class TrainingLogdirMixin:
 
 
 class TrainingSingleFileLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, abc.ABC):
+        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
     """Abstract Train logging callback class.
 
     Args:
@@ -143,7 +143,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
 
 
 class TrainingSingleWorkerLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, abc.ABC):
+        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
