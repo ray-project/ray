@@ -117,7 +117,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
-  virtual void StealTasks(std::unique_ptr<StealTasksRequest> request,
+  virtual void StealTasks(const StealTasksRequest &request,
                           const ClientCallback<StealTasksReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
@@ -278,6 +278,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AssignObjectOwner, grpc_client_,
                          /*method_timeout_ms*/ -1, override)
 
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, StealTasks, grpc_client_,
+                         /*method_timeout_ms*/ -1, override)
+
   void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
                      const ClientCallback<PushTaskReply> &callback) override {
     if (skip_queue) {
@@ -304,12 +307,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_,
-                    /*method_timeout_ms*/ -1);
-  }
-
-  void StealTasks(std::unique_ptr<StealTasksRequest> request,
-                  const ClientCallback<StealTasksReply> &callback) override {
-    INVOKE_RPC_CALL(CoreWorkerService, StealTasks, *request, callback, grpc_client_,
                     /*method_timeout_ms*/ -1);
   }
 

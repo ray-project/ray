@@ -22,7 +22,7 @@ def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password="test")
     agent_port = ray.worker.global_worker.node.metrics_agent_port
     pm = proxier.ProxyManager(
-        ray_instance["redis_address"],
+        ray_instance["address"],
         session_dir=ray_instance["session_dir"],
         redis_password="test",
         runtime_env_agent_port=agent_port)
@@ -165,7 +165,7 @@ def test_delay_in_rewriting_environment(shutdown_only):
     ray_instance = ray.init()
     server = proxier.serve_proxier(
         "localhost:25010",
-        ray_instance["redis_address"],
+        ray_instance["address"],
         session_dir=ray_instance["session_dir"])
 
     def delay_in_rewrite(_input: JobConfig):
@@ -202,7 +202,7 @@ def test_startup_error_yields_clean_result(shutdown_only):
     ray_instance = ray.init()
     server = proxier.serve_proxier(
         "localhost:25030",
-        ray_instance["redis_address"],
+        ray_instance["address"],
         session_dir=ray_instance["session_dir"])
 
     def raise_not_rewrite(input: JobConfig):
