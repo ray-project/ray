@@ -7,7 +7,7 @@ mod test {
     use std::sync::Mutex;
     use lazy_static::lazy_static;
 
-    const NUM_CLUSTER_TESTS: usize = 2;
+    const NUM_CLUSTER_TESTS: usize = 3;
 
     lazy_static! {
         static ref CLUSTER_TEST_COUNTER: Mutex<(usize, usize)> = Mutex::new((0, 0));
@@ -37,30 +37,30 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_init_submit_execute_shutdown() {
-        try_init();
-        const VEC_SIZE: usize = 1 << 12;
-        let num_jobs = 1 << 0;
-
-        let (a, b): (Vec<_>, Vec<_>) =
-            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-
-        let now = std::time::Instant::now();
-        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            add_two_vecs.remote(&a, &b)
-        }).collect();
-
-        ids.reverse();
-        println!("Submission: {:?}", now.elapsed().as_millis());
-
-        let results: Vec<_> = (0..num_jobs).map(|_| {
-            get::<Vec<u64>>(ids.pop().unwrap())
-        }).collect();
-
-        println!("Execute + Get: {:?}", now.elapsed().as_millis());
-        try_shutdown();
-    }
+    // #[test]
+    // fn test_init_submit_execute_shutdown() {
+    //     try_init();
+    //     const VEC_SIZE: usize = 1 << 12;
+    //     let num_jobs = 1 << 0;
+    //
+    //     let (a, b): (Vec<_>, Vec<_>) =
+    //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+    //
+    //     let now = std::time::Instant::now();
+    //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+    //         add_two_vecs.remote(&a, &b)
+    //     }).collect();
+    //
+    //     ids.reverse();
+    //     println!("Submission: {:?}", now.elapsed().as_millis());
+    //
+    //     let results: Vec<_> = (0..num_jobs).map(|_| {
+    //         get::<Vec<u64>>(ids.pop().unwrap())
+    //     }).collect();
+    //
+    //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
+    //     try_shutdown();
+    // }
 
     #[test]
     fn test_nested_remote() {
@@ -88,6 +88,7 @@ mod test {
 
     #[test]
     fn test_get_execute_result() {
+        try_init();
         let (a, b): (Vec<_>, Vec<_>) =
             ((0u64..100).collect(), (0u64..100).collect());
         let a_ser = rmp_serde::to_vec(&a).unwrap();
@@ -103,6 +104,7 @@ mod test {
             )
         ).unwrap();
         assert_eq!(ret_ffi, (0u64..200).step_by(2).collect::<Vec<u64>>());
+        try_shutdown();
     }
 
     #[test]

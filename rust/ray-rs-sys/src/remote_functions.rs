@@ -131,7 +131,7 @@ macro_rules! remote_internal {
 
             // TODO: convert this `no_mangle` name to use module_path!():: $name
             #[no_mangle]
-            extern "C" fn [<ray_rust_ffi_ $name>](args: RustBuffer) -> RustBuffer {
+            pub extern "C" fn [<ray_rust_ffi_ $name>](args: RustBuffer) -> RustBuffer {
                 let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
                     &args.destroy_into_vec()
                 ).unwrap();
@@ -142,6 +142,7 @@ macro_rules! remote_internal {
                 RustBuffer::from_vec(result)
             }
 
+            #[allow(non_upper_case_globals)]
             lazy_static::lazy_static! {
                 pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
                     = [<RayFunction $lit_n>]::new(

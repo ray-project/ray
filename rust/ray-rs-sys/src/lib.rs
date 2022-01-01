@@ -23,8 +23,9 @@ use uniffi::ffi::RustBuffer;
 use core::pin::Pin;
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
-mod remote_functions;
+pub mod remote_functions;
 pub use remote_functions::{add_two_vecs, add_three_vecs, add_two_vecs_nested, get};
+pub use remote_functions::{ray_rust_ffi_add_two_vecs, ray_rust_ffi_add_two_vecs_nested};
 
 pub struct RustTaskArg {
     buf: Vec<u8>,
@@ -46,7 +47,7 @@ impl RustTaskArg {
 }
 
 
-use std::{collections::HashMap, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex, os::raw::c_char};
 
 use libloading::{Library, Symbol};
 
@@ -71,8 +72,9 @@ lazy_static::lazy_static! {
 }
 
 // Prints each argument on a separate line
-pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut i8) {
+pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char) {
     let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
+
     for ptr in slice {
         let arg = unsafe { std::ffi::CStr::from_ptr(*ptr).to_str().unwrap() };
         if arg.starts_with("--ray_code_search_path=") {
@@ -100,6 +102,7 @@ pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) 
     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
     // Check if we get a cache hit
     let libs = LIBRARIES.lock().unwrap();
+
     let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
 
     let mut ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
@@ -112,6 +115,7 @@ pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) 
             let ret = unsafe {
                     lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
             };
+            ray_api_ffi::LogInfo(&format!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret));
             if let Some(symbol) = ret {
                 let static_symbol = unsafe {
                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
@@ -190,7 +194,7 @@ pub mod ray_api_ffi {
 
     extern "Rust" {
         fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
-        unsafe fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut i8);
+        unsafe fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char);
     }
 
     // extern "Rust" {
@@ -211,6 +215,9 @@ pub mod ray_api_ffi {
     unsafe extern "C++" {
         include!("ray/api.h");
         include!("rust/ray-rs-sys/cpp/wrapper.h");
+
+        fn LogDebug(str: &str);
+        fn LogInfo(str: &str);
 
         fn GetRaw(id: UniquePtr<ObjectID>) -> Vec<u8>;
 

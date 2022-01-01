@@ -15,7 +15,7 @@ rust_test(
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
     env = {
       "RUST_TEST_NOCAPTURE": "1",
-      "RAY_RUST_LIBRARY_PATHS": "--ray_code_search_path=$(location ray_rs_sys_shared)"
+      "RAY_RUST_LIBRARY_PATHS": "--ray_code_search_path=/home/jonch/.cache/bazel/_bazel_jonch/3819ce4da5bb63a59f7ecd1a722a08d9/execroot/com_github_ray_project_ray/bazel-out/k8-opt/bin/rust/ray-rs-sys/libray_rs_sys-1398298517.so"
     },
     # args = [
     #     "--ray_code_search_path=$(location ray_rs_sys_shared)",
@@ -71,9 +71,6 @@ cc_library(
     ],
 )
 
-# This needs to be statically linked
-# So that the "ray_rs_c_linked" library
-# has access to the rust methods it needs
 rust_shared_library(
     name = "ray_rs_sys_shared",
     crate_name = "ray_rs_sys",
@@ -86,6 +83,9 @@ rust_shared_library(
         "//cpp:ray_api",
         ":ray_rs_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
+
+    # or rustc_flags = ["-C", "link-args=-rdynamic"]?
+    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
     visibility = ["//visibility:public"],
 )
 

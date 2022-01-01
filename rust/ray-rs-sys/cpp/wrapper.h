@@ -32,4 +32,8 @@ struct Config {
 
 void PutAndGetConfig();
 
+void LogDebug(rust::Str str);
+
+void LogInfo(rust::Str str);
+
 }

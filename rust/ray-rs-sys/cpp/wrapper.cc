@@ -79,4 +79,11 @@ void PutAndGetConfig() {
   Get(ref);
 }
 
+void LogDebug(rust::Str str) {
+  RAY_LOG(DEBUG) << static_cast<std::string>(str);
+}
+
+void LogInfo(rust::Str str) {
+  RAY_LOG(INFO) << static_cast<std::string>(str);
+}
 }
