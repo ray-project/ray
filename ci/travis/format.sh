@@ -136,11 +136,11 @@ MYPY_FILES=(
 )
 
 BLACK_EXCLUDES=(
-    '--exclude' 'python/ray/cloudpickle/*'
-    '--exclude' 'python/build/*'
-    '--exclude' 'python/ray/core/src/ray/gcs/*'
-    '--exclude' 'python/ray/thirdparty_files/*'
-    '--exclude' 'python/ray/_private/thirdparty/*'
+    '--extend-exclude' 'python/ray/cloudpickle/*'
+    '--extend-exclude' 'python/build/*'
+    '--extend-exclude' 'python/ray/core/src/ray/gcs/*'
+    '--extend-exclude' 'python/ray/thirdparty_files/*'
+    '--extend-exclude' 'python/ray/_private/thirdparty/*'
 )
 
 YAPF_EXCLUDES=(
