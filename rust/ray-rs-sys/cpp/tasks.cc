@@ -183,10 +183,16 @@ Status ExecuteTask(
   return ray::Status::OK();
 }
 } // namespace internal
-void InitRust() {
- ray::RayConfig config;
- // config.
- ray::Init(config, internal::ExecuteTask, 0, nullptr);
+void InitRust(rust::Str str) {
+  ray::RayConfig config;
+
+  std::vector<std::string> args = { "nil", static_cast<std::string>(str) };
+  char** result = new char*[args.size()];
+  for (size_t index = 0; index < args.size(); index++) {
+      result[index] = const_cast<char*>(args[index].c_str());
+  }
+  ray::Init(config, internal::ExecuteTask, 2, result);
+  delete[] result;
 }
 
 }

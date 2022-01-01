@@ -27,7 +27,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(const rust::Vec<RustT
 
 std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& args);
 
-void InitRust();
+void InitRust(rust::Str str);
 
 namespace internal {
 Status ExecuteTask(

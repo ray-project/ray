@@ -147,7 +147,12 @@ macro_rules! remote_internal {
                     = [<RayFunction $lit_n>]::new(
                         [<ray_rust_private_ $name>],
                         [<ray_rust_ffi_ $name>],
-                        String::from(concat!(module_path!(), "::", stringify!([<ray_rust_ffi_ $name>])))
+                        String::from(
+                            // concat!(module_path!(), "::", // we are temporarily disabling this
+                            // When using proc macros we can modify the extern "C" fn name itself to include the
+                            // module path
+                            // Else, one could also reasonably mangle for Ray namespace using a random string...
+                            stringify!([<ray_rust_ffi_ $name>]))
                     );
             }
         }

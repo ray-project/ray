@@ -2,47 +2,53 @@
 mod test {
     use uniffi::RustBuffer;
     use rmp_serde;
-    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_two_vecs_nested, add_three_vecs, get, get_execute_result};
+    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_two_vecs_nested, add_three_vecs, get, get_execute_result, load_libraries_from_paths};
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
+    use std::sync::Mutex;
+    use lazy_static::lazy_static;
 
-    // #[test]
-    // fn test_init_submit_execute_shutdown() {
-    //     const VEC_SIZE: usize = 1 << 12;
-    //     let num_jobs = 1 << 0;
-    //
-    //     InitRust();
-    //
-    //     let now = std::time::Instant::now();
-    //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-    //         let (a, b): (Vec<_>, Vec<_>) =
-    //             ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-    //         add_two_vecs.remote(a, b)
-    //     }).collect();
-    //
-    //     ids.reverse();
-    //     println!("Submission: {:?}", now.elapsed().as_millis());
-    //
-    //     let results: Vec<_> = (0..num_jobs).map(|_| {
-    //         get::<Vec<u64>>(ids.pop().unwrap())
-    //     }).collect();
-    //
-    //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
-    //
-    //     Shutdown();
-    // }
+    const NUM_CLUSTER_TESTS: usize = 2;
+
+    lazy_static! {
+        static ref CLUSTER_TEST_COUNTER: Mutex<(usize, usize)> = Mutex::new((0, 0));
+    }
+
+    fn try_init() {
+        let mut guard = CLUSTER_TEST_COUNTER.lock().unwrap();
+        if guard.0 == 0 {
+            let arg = std::env::var("RAY_RUST_LIBRARY_PATHS").unwrap();
+            if arg.starts_with("--ray_code_search_path=") {
+                let (_, path_str) = arg.split_at("--ray_code_search_path=".len());
+                let paths = path_str.split(":").collect();
+                println!("{:?}", paths);
+                load_libraries_from_paths(&paths);
+            }
+            InitRust(&arg);
+        }
+        guard.0 += 1;
+    }
+
+    fn try_shutdown() {
+        let mut guard = CLUSTER_TEST_COUNTER.lock().unwrap();
+        guard.1 += 1;
+        if guard.1 == NUM_CLUSTER_TESTS {
+            Shutdown();
+            println!("Shutting down. Status: running = {}", IsInitialized());
+        }
+    }
 
     #[test]
-    fn test_nested_remote() {
+    fn test_init_submit_execute_shutdown() {
+        try_init();
         const VEC_SIZE: usize = 1 << 12;
         let num_jobs = 1 << 0;
 
-        InitRust();
+        let (a, b): (Vec<_>, Vec<_>) =
+            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
 
         let now = std::time::Instant::now();
         let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            let (a, b): (Vec<_>, Vec<_>) =
-                ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-            add_two_vecs_nested.remote(a, b)
+            add_two_vecs.remote(&a, &b)
         }).collect();
 
         ids.reverse();
@@ -53,10 +59,32 @@ mod test {
         }).collect();
 
         println!("Execute + Get: {:?}", now.elapsed().as_millis());
-
-        Shutdown();
+        try_shutdown();
     }
 
+    #[test]
+    fn test_nested_remote() {
+        try_init();
+        const VEC_SIZE: usize = 1 << 12;
+        let num_jobs = 1 << 0;
+        let (a, b): (Vec<_>, Vec<_>) =
+            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+
+        let now = std::time::Instant::now();
+        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+            add_two_vecs_nested.remote(&a, &b)
+        }).collect();
+
+        ids.reverse();
+        println!("Submission: {:?}", now.elapsed().as_millis());
+
+        let results: Vec<_> = (0..num_jobs).map(|_| {
+            get::<Vec<u64>>(ids.pop().unwrap())
+        }).collect();
+
+        println!("Execute + Get: {:?}", now.elapsed().as_millis());
+        try_shutdown();
+    }
 
     #[test]
     fn test_get_execute_result() {
@@ -65,7 +93,8 @@ mod test {
         let a_ser = rmp_serde::to_vec(&a).unwrap();
         let b_ser = rmp_serde::to_vec(&b).unwrap();
 
-        let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
+        // let_cxx_string!(fn_name = "ray_rs_sys::remote_functions::ray_rust_ffi_add_two_vecs");
+        let_cxx_string!(fn_name = "ray_rust_ffi_add_two_vecs");
         let ret_ffi: Vec<u64> = rmp_serde::from_read_ref::<_, Vec<u64>>(
             &get_execute_result(
                 vec![a_ser.as_ptr() as u64, b_ser.as_ptr() as u64],

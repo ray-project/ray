@@ -49,7 +49,7 @@ TEST(RayClusterModeTest, FullTest) {
     config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
-  / put and get object
+  /// put and get object
   auto obj = ray::Put(12345);
   auto get_result = *(ray::Get(obj));
   EXPECT_EQ(12345, get_result);
@@ -195,15 +195,6 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result14, 166);
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
-
-  /// Test Put, Get & Remote for large objects
-  std::array<int, 100000> arr;
-  auto r17 = ray::Task(ReturnLargeArray).Remote(arr);
-  auto r18 = ray::Task(ReturnLargeArray).Remote(r17);
-  // std::cout << "18 ID:" << r18.ID();
-  // std::cout << "17 ID:" << r17.ID();
-  EXPECT_EQ(arr, *(ray::Get(r18)));
-  EXPECT_EQ(arr, *(ray::Get(r17)));
 
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));

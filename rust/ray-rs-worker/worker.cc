@@ -14,10 +14,12 @@
 
 #include <ray/api.h>
 #include "rust/ray-rs-sys/cpp/tasks.h"
+#include "rust/ray-rs-sys/src/lib.rs.h"
 
 int main(int argc, char **argv) {
   RAY_LOG(INFO) << "RUST default worker started.";
   ray::SetConfigToWorker();
+  ray::load_code_paths_from_cmdline(argc, (int8_t**)argv);
   ray::RayConfig config;
   ray::Init(config, ray::internal::ExecuteTask, argc, argv);
   ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();

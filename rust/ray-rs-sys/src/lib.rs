@@ -48,28 +48,80 @@ impl RustTaskArg {
 
 use std::{collections::HashMap, sync::Mutex};
 
+use libloading::{Library, Symbol};
+
 type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 
-type FunctionPtrMap = HashMap<Vec<u8>, InvokerFunction>;
+type FunctionPtrMap = HashMap<Vec<u8>, Symbol<'static, InvokerFunction>>;
 
 
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
         Mutex::new([
-            (add_two_vecs.name().as_bytes().to_vec(), add_two_vecs.get_invoker()),
-            (add_two_vecs_nested.name().as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
+            // (add_two_vecs.name().as_bytes().to_vec(), add_two_vecs.get_invoker()),
+            // (add_two_vecs_nested.name().as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
         ].iter().cloned().collect::<HashMap<_,_>>())
     };
+}
 
+lazy_static::lazy_static! {
+    static ref LIBRARIES: Mutex<Vec<Library>> = {
+        Mutex::new(Vec::new())
+    };
+}
+
+// Prints each argument on a separate line
+pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut i8) {
+    let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
+    for ptr in slice {
+        let arg = unsafe { std::ffi::CStr::from_ptr(*ptr).to_str().unwrap() };
+        if arg.starts_with("--ray_code_search_path=") {
+            let (_, path_str) = arg.clone().split_at("--ray_code_search_path=".len());
+            let paths = path_str.split(":").collect();
+            load_libraries_from_paths(&paths);
+        }
+    }
+}
+
+// For safety to hold, the libraries cannot be unloaded once loaded
+// Below, we are doing the incredibly unsafe "std::mem::transmute"
+// to have the library lifetime be static
+pub fn load_libraries_from_paths(paths: &Vec<&str>) {
+    let mut libs = LIBRARIES.lock().unwrap();
+    for path in paths {
+        match unsafe { Library::new(path).ok() } {
+            Some(lib) => libs.push(lib),
+            None => panic!("Shared-object library not found at path: {}", path),
+        }
+    }
 }
 
 pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
-    let ret = GLOBAL_FUNCTION_MAP
-        .lock()
-        .unwrap()
-        .get(&fn_name.as_bytes().to_vec())
-        .expect(&format!("Could not find symbol for fn of name {:?}", fn_name))(args_buffer);
+    // Check if we get a cache hit
+    let libs = LIBRARIES.lock().unwrap();
+    let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
+
+    let mut ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
+    // Check if we can get fn from available libraries
+
+    // TODO(jon-chuang): figure out if you can narrow search
+    // by mapping library name to function crate name...
+    if let None = ret_ref {
+        for lib in libs.iter() {
+            let ret = unsafe {
+                    lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
+            };
+            if let Some(symbol) = ret {
+                let static_symbol = unsafe {
+                    std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
+                };
+                fn_map.insert(fn_name.as_bytes().to_vec(), static_symbol);
+                ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
+            }
+        }
+    }
+    let ret = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name))(args_buffer);
     ret.destroy_into_vec()
 }
 
@@ -86,11 +138,11 @@ pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) 
 // If we were to apply the function for the user directly in the application code
 // and return the buffer (as was suggested for the C++ API), we would probably also
 // reduce the attack surface
-#[no_mangle]
-extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
-    let key_as_vec = key.destroy_into_vec();
-    GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
-}
+// #[no_mangle]
+// extern "C" fn get_function_ptr(key: RustBuffer) -> Option<InvokerFunction> {
+//     let key_as_vec = key.destroy_into_vec();
+//     GLOBAL_FUNCTION_MAP.lock().unwrap().get(&key_as_vec).cloned()
+// }
 
 
 // struct FunctionManager {
@@ -138,6 +190,7 @@ pub mod ray_api_ffi {
 
     extern "Rust" {
         fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
+        unsafe fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut i8);
     }
 
     // extern "Rust" {
@@ -152,7 +205,7 @@ pub mod ray_api_ffi {
         // fn Binary(self: &ObjectID) -> &CxxString;
 
         fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
-        fn InitRust();
+        fn InitRust(arg_str: &str);
     }
 
     unsafe extern "C++" {
