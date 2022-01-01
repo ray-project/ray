@@ -337,4 +337,21 @@ bool IsRayletFailed(const std::string &raylet_pid);
 /// Teriminate the process without cleaning up the resources.
 void QuickExit();
 
+#define DEFINE_CONTAINER_OSTREAM_OPERATOR(container)                      \
+  template<typename T>                                                    \
+  std::ostream &operator<<(std::ostream& os, const container<T> &c) {     \
+      os << "[";                                                          \
+      for (auto it = c.begin(); it != c.end(); ++it) {                    \
+          if (it != c.begin()) {                                          \
+              os << ", ";                                                 \
+          }                                                               \
+          os << *it;                                                      \
+      }                                                                   \
+      os << "]";                                                          \
+      return os;                                                          \
+  }
+
+DEFINE_CONTAINER_OSTREAM_OPERATOR(std::vector);
+#undef DEFINE_CONTAINER_OSTREAM_OPERATOR
+
 }  // namespace ray

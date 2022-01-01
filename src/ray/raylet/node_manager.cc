@@ -1458,7 +1458,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
-  RAY_LOG(INFO) << "jjyao object_manager wait " << object_ids.size();
+  RAY_LOG(INFO) << "jjyao object_manager wait " << object_ids;
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, -1, object_ids.size(),
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
