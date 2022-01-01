@@ -380,6 +380,9 @@ def test_add_min_workers_nodes():
             "max_workers": 0,
         },
     }
+    # Formatting is disabled to prevent Black from erroring while formatting
+    # this file. See https://github.com/ray-project/ray/issues/21313 for more
+    # information.
     # yapf: disable
     assert _add_min_workers_nodes([],
                                   {},
