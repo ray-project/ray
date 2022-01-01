@@ -63,7 +63,7 @@ def test_print(ray_start_4_cpus):
     num_workers = 4
 
     def train_func():
-        train.report(loss=0)
+        train.report(rank=train.world_rank())
 
     stream = io.StringIO()
     with redirect_stdout(stream):
@@ -75,8 +75,10 @@ def test_print(ray_start_4_cpus):
     output = stream.getvalue()
     results = json.loads(output)
 
-    assert set(results.keys()) == (BASIC_AUTOFILLED_KEYS | {"loss"})
-    assert results["loss"] == (num_workers * [0])
+    assert len(results) == num_workers
+    for i, result in enumerate(results):
+        assert set(result.keys()) == (BASIC_AUTOFILLED_KEYS | {"rank"})
+        assert result["rank"] == i
 
 
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])

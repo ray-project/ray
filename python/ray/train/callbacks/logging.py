@@ -28,12 +28,14 @@ class PrintCallback(TrainingCallback):
         >>> callback = PrintCallback()
         >>> results = [{"loss": 2.290156}, {"loss": 2.275099}]
         >>> callback.handle_result(results)
-        {
-            "loss": [
-                2.290156,
-                2.275099
-            ]
-        }
+        [
+            {
+                "loss": 2.290156
+            },
+            {
+                "loss": 2.275099
+            }
+        ]
     """
 
     def handle_result(self, results: List[Dict], **info):
@@ -45,15 +47,7 @@ class PrintCallback(TrainingCallback):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        # Check that the dictionaries have the same keys.
-        assert all(result.keys() == results[0].keys() for result in results)
-
-        dictionary = collections.defaultdict(list)
-        for result in results:
-            for key in result:
-                dictionary[key].append(result[key])
-
-        print(json.dumps(dictionary, indent=4))
+        print(json.dumps(results, indent=4))
 
 
 class TrainingLogdirMixin:
