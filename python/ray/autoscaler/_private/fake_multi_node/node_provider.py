@@ -87,6 +87,23 @@ DOCKER_WORKER_CMD = (
     "--block\"")
 
 
+def host_dir(container_dir: str):
+    """Replace local dir with potentially different host dir.
+
+    E.g. in docker-in-docker environments, the host dir might be
+    different to the mounted directory in the container.
+
+    This method will do a simple global replace to adjust the paths.
+    """
+    ray_tempdir = os.environ.get("RAY_TEMPDIR", None)
+    ray_hostdir = os.environ.get("RAY_HOSTDIR", None)
+
+    if not ray_tempdir or not ray_hostdir:
+        return container_dir
+
+    return container_dir.replace(ray_tempdir, ray_hostdir)
+
+
 def create_node_spec(head: bool,
                      docker_image: str,
                      mounted_cluster_dir: str,
@@ -144,11 +161,12 @@ def create_node_spec(head: bool,
             f"{host_client_port}:10001",
         ]
         node_spec["volumes"] += [
-            f"{node_state_path}:{node_state_path}",
-            f"{docker_status_path}:{docker_status_path}",
-            f"{docker_compose_path}:{docker_compose_path}",
-            f"{bootstrap_config_path}:{bootstrap_cfg_path_on_container}",
-            f"{private_key_path}:{bootstrap_key_path_on_container}",
+            f"{host_dir(node_state_path)}:{node_state_path}",
+            f"{host_dir(docker_status_path)}:{docker_status_path}",
+            f"{host_dir(docker_compose_path)}:{docker_compose_path}",
+            f"{host_dir(bootstrap_config_path)}:"
+            f"{bootstrap_cfg_path_on_container}",
+            f"{host_dir(private_key_path)}:{bootstrap_key_path_on_container}",
         ]
 
         # Create file if it does not exist on local filesystem
@@ -163,12 +181,16 @@ def create_node_spec(head: bool,
         node_spec["depends_on"] = [FAKE_HEAD_NODE_ID]
 
     node_spec["volumes"] += [
-        f"{mounted_cluster_dir}:/cluster/shared",
-        f"{mounted_node_dir}:/cluster/node",
-        f"{public_key_path}:/home/ray/.ssh/authorized_keys",
+        f"{host_dir(mounted_cluster_dir)}:/cluster/shared",
+        f"{host_dir(mounted_node_dir)}:/cluster/node",
+        f"{host_dir(public_key_path)}:/home/ray/.ssh/authorized_keys",
     ]
 
     env_vars = env_vars or {}
+
+    env_vars.setdefault("RAY_TEMPDIR", os.environ.get("RAY_TEMPDIR", ""))
+    env_vars.setdefault("RAY_HOSTDIR", os.environ.get("RAY_HOSTDIR", ""))
+
     node_spec["environment"] = [f"{k}={v}" for k, v in env_vars.items()]
 
     return node_spec
@@ -335,6 +357,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def _save_node_state(self):
         with open(self._node_state_path, "wt") as f:
             json.dump(self._nodes, f)
+
+        # Make sure this is always writeable from inside the containers
+        os.chmod(self._node_state_path, 0o777)
 
     def _update_docker_compose_config(self):
         config = copy.deepcopy(DOCKER_COMPOSE_SKELETON)

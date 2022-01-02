@@ -109,9 +109,11 @@ def monitor_docker(docker_compose_path: str,
     while not os.path.exists(docker_compose_path):
         # Wait until cluster is created
         time.sleep(0.5)
-        continue
 
     print("Docker compose config detected, starting status monitoring")
+
+    # Make sure this is always writeable from inside the containers
+    os.chmod(docker_compose_path, 0o777)
 
     docker_config = {"force_update": True}
 

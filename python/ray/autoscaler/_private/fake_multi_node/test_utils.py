@@ -66,12 +66,14 @@ class DockerCluster:
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
 
     def connect(self, client: bool = True, timeout: int = 120):
+        host = os.environ.get("RAY_TESTHOST", "127.0.0.1")
+
         if client:
             port = self.client_port
-            address = f"ray://127.0.0.1:{port}"
+            address = f"ray://{host}:{port}"
         else:
             port = self.gcs_port
-            address = f"127.0.0.1:{port}"
+            address = f"{host}:{port}"
 
         timeout_at = time.monotonic() + timeout
         while time.monotonic() < timeout_at:
