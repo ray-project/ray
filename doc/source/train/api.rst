@@ -72,6 +72,13 @@ TBXLoggerCallback
 
 .. autoclass:: ray.train.callbacks.TBXLoggerCallback
 
+.. _train-api-mlflow-logger-callback:
+
+MLflowLoggerCallback
+~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.MLflowLoggerCallback
+
 Checkpointing
 -------------
 

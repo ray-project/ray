@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Optional
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -10,23 +10,28 @@ torch, _ = try_import_torch()
 
 
 class PolynomialSchedule(Schedule):
-    def __init__(self,
-                 schedule_timesteps,
-                 final_p,
-                 framework,
-                 initial_p=1.0,
-                 power=2.0):
-        """
-        Polynomial interpolation between initial_p and final_p over
-        schedule_timesteps. After this many time steps, always `final_p` is
-        returned.
+    """Polynomial interpolation between `initial_p` and `final_p`.
 
-        Agrs:
-            schedule_timesteps (int): Number of time steps for which to
+    Over `schedule_timesteps`. After this many time steps, always returns
+    `final_p`.
+    """
+
+    def __init__(self,
+                 schedule_timesteps: int,
+                 final_p: float,
+                 framework: Optional[str],
+                 initial_p: float = 1.0,
+                 power: float = 2.0):
+        """Initializes a PolynomialSchedule instance.
+
+        Args:
+            schedule_timesteps: Number of time steps for which to
                 linearly anneal initial_p to final_p
-            final_p (float): Final output value.
-            initial_p (float): Initial output value.
-            framework (Optional[str]): One of "tf", "torch", or None.
+            final_p: Final output value.
+            framework: The framework descriptor string, e.g. "tf",
+                "torch", or None.
+            initial_p: Initial output value.
+            power: The exponent to use (default: quadratic).
         """
         super().__init__(framework=framework)
         assert schedule_timesteps > 0
@@ -36,7 +41,7 @@ class PolynomialSchedule(Schedule):
         self.power = power
 
     @override(Schedule)
-    def _value(self, t: Union[int, TensorType]):
+    def _value(self, t: TensorType) -> TensorType:
         """Returns the result of:
         final_p + (initial_p - final_p) * (1 - `t`/t_max) ** power
         """
@@ -47,7 +52,7 @@ class PolynomialSchedule(Schedule):
             1.0 - (t / self.schedule_timesteps))**self.power
 
     @override(Schedule)
-    def _tf_value_op(self, t: Union[int, TensorType]):
+    def _tf_value_op(self, t: TensorType) -> TensorType:
         t = tf.math.minimum(t, self.schedule_timesteps)
         return self.final_p + (self.initial_p - self.final_p) * (
             1.0 - (t / self.schedule_timesteps))**self.power

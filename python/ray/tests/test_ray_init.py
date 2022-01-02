@@ -13,6 +13,7 @@ from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
 from ray._raylet import ClientObjectRef
 from ray.util.client.worker import Worker
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 import grpc
 
 
@@ -25,6 +26,8 @@ def password():
 
 
 class TestRedisPassword:
+    @pytest.mark.skipif(
+        use_gcs_for_bootstrap(), reason="Not valid for gcs bootstrap")
     def test_redis_password(self, password, shutdown_only):
         @ray.remote
         def f():
@@ -160,7 +163,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        address, "127.0.0.3", redis_password=password)
+        address, cluster.gcs_address, "127.0.0.3", redis_password=password)
     assert node_info.node_manager_port == node2.node_manager_port
 
 

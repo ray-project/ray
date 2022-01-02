@@ -1,11 +1,13 @@
+import sys
+import unittest
+
 import dask
 import dask.array as da
 import dask.dataframe as dd
 import pytest
 import numpy as np
 import pandas as pd
-import sys
-import unittest
+
 import ray
 from ray.util.client.common import ClientObjectRef
 from ray.util.dask.callbacks import ProgressBarCallback
@@ -21,7 +23,8 @@ def ray_start_1_cpu():
 
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_ray_dask_basic(ray_start_1_cpu):
-    from ray.util.dask import ray_dask_get
+    from ray.util.dask import ray_dask_get, enable_dask_on_ray, \
+        disable_dask_on_ray
 
     @ray.remote
     def stringify(x):
@@ -37,10 +40,24 @@ def test_ray_dask_basic(ray_start_1_cpu):
 
     add = dask.delayed(add)
 
+    expected = "The answer is 6"
+    # Test with explicit scheduler argument.
+    assert add(2, 4).compute(scheduler=ray_dask_get) == expected
+
+    # Test with config setter.
+    enable_dask_on_ray()
+    assert add(2, 4).compute() == expected
+    disable_dask_on_ray()
+
+    # Test with config setter as context manager.
+    with enable_dask_on_ray():
+        assert add(2, 4).compute() == expected
+
+    # Test within Ray task.
+
     @ray.remote
     def call_add():
         z = add(2, 4)
-        # Can call Dask graphs from inside Ray.
         with ProgressBarCallback():
             r = z.compute(scheduler=ray_dask_get)
         return r

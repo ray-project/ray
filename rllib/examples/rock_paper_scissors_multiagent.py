@@ -12,6 +12,7 @@ import os
 from pettingzoo.classic import rps_v2
 import random
 
+import ray
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
@@ -151,13 +152,14 @@ def run_with_custom_entropy_loss(args, stop):
         if args.framework == "torch":
             # Required by PGTorchPolicy's stats fn.
             model.tower_stats["policy_loss"] = torch.tensor([0.0])
-            return torch.mean(-0.1 * action_dist.entropy() -
-                              (action_dist.logp(train_batch["actions"]) *
-                               train_batch["advantages"]))
-        else:
-            return (-0.1 * action_dist.entropy() - tf.reduce_mean(
+            policy.policy_loss = torch.mean(-0.1 * action_dist.entropy() - (
                 action_dist.logp(train_batch["actions"]) *
                 train_batch["advantages"]))
+        else:
+            policy.policy_loss = -0.1 * action_dist.entropy() - tf.reduce_mean(
+                action_dist.logp(train_batch["actions"]) *
+                train_batch["advantages"])
+        return policy.policy_loss
 
     policy_cls = PGTorchPolicy if args.framework == "torch" \
         else PGTFPolicy
@@ -173,6 +175,8 @@ def run_with_custom_entropy_loss(args, stop):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    ray.init()
 
     stop = {
         "training_iteration": args.stop_iters,
