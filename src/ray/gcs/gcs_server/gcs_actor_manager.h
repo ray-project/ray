@@ -201,6 +201,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -384,7 +385,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
+  /// \param[in] force_kill Whether destory the actor forcelly.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+                    bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -517,6 +520,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
+  /// A callback to get the number of java workers per process config item by the
+  /// given job id. It is necessary for deciding whether we should clear the Java actor.
+  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
