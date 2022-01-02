@@ -282,6 +282,16 @@ class ImpalaTrainer(Trainer):
                     "term/optimizer! Auto-setting it to True.")
                 config["_tf_policy_handles_more_than_one_loss"] = True
 
+    @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+
+        # Start the learner thread.
+        self._learner_thread = make_learner_thread(
+            self.workers.local_worker(), self.config)
+        self._learner_thread.start()
+
+
     @staticmethod
     @override(Trainer)
     def execution_plan(workers, config, **kwargs):
@@ -294,9 +304,9 @@ class ImpalaTrainer(Trainer):
         else:
             train_batches = gather_experiences_directly(workers, config)
 
-        # Start the learner thread.
-        learner_thread = make_learner_thread(workers.local_worker(), config)
-        learner_thread.start()
+        ## Start the learner thread.
+        #learner_thread = make_learner_thread(workers.local_worker(), config)
+        #learner_thread.start()
 
         # This sub-flow sends experiences to the learner.
         enqueue_op = train_batches \
@@ -334,6 +344,9 @@ class ImpalaTrainer(Trainer):
 
         return StandardMetricsReporting(merged_op, workers, config) \
             .for_each(learner_thread.add_learner_metrics)
+
+    def training_iteration(self) -> ResultDict:
+
 
     @classmethod
     @override(Trainer)
