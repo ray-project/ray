@@ -169,7 +169,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
-        RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+        RAY_LOG(INFO) << "jjyao Activating pull for object " << obj_id;
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -199,7 +199,7 @@ void PullManager::DeactivatePullBundleRequest(
       continue;
     }
     if (it->second.empty()) {
-      RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
+      RAY_LOG(INFO) << "jjyao Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
