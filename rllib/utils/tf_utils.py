@@ -285,6 +285,44 @@ def make_tf_callable(session_or_none: Optional["tf1.Session"],
     return make_wrapper
 
 
+def merge_inputs_to_1d(inputs, spaces_struct=None, time_axis=False):
+    flat_inputs = tree.flatten(inputs)
+    flat_spaces = tree.flatten(spaces_struct) if spaces_struct is not None \
+        else [None] * len(flat_inputs)
+
+    B = None
+    T = None
+    out = []
+    for input_, space in zip(flat_inputs, flat_spaces):
+        input_ = tf.convert_to_tensor(input_)
+        shape = tf.shape(input_)
+        # Store batch and (if applicable) time dimension.
+        if B is None:
+            B = shape[0]
+            if time_axis:
+                T = shape[1]
+
+        # One-hot encoding.
+        if isinstance(space, (Discrete, MultiDiscrete)):
+            if time_axis:
+                input_ = tf.reshape(input_, [B * T])
+            out.append(tf.cast(one_hot(input_, space), tf.float32))
+        # Flatten.
+        else:
+            if time_axis:
+                input_ = tf.reshape(input_, [B * T, -1])
+            else:
+                input_ = tf.reshape(input_, [B, -1])
+            out.append(tf.cast(input_, tf.float32))
+
+    merged = tf.concat(out, axis=-1)
+    # Restore the time-dimension, if applicable.
+    if time_axis:
+        merged = tf.reshape(merged, [B, T, -1])
+
+    return merged
+
+
 def minimize_and_clip(
         optimizer: LocalOptimizer,
         objective: TensorType,

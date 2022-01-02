@@ -232,6 +232,42 @@ def l2_loss(x: TensorType) -> TensorType:
     return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
+def merge_inputs_to_1d(inputs, spaces_struct=None, time_axis=False):
+    flat_inputs = tree.flatten(inputs)
+    flat_spaces = tree.flatten(spaces_struct) if spaces_struct is not None \
+        else [None] * len(flat_inputs)
+
+    B = None
+    T = None
+    out = []
+    for input_, space in zip(flat_inputs, flat_spaces):
+        # Store batch and (if applicable) time dimension.
+        if B is None:
+            B = input_.shape[0]
+            if time_axis:
+                T = input_.shape[1]
+
+        # One-hot encoding.
+        if isinstance(space, (Discrete, MultiDiscrete)):
+            if time_axis:
+                input_ = torch.reshape(input_, [B * T])
+            out.append(one_hot(input_, space).float())
+        # Flatten.
+        else:
+            if time_axis:
+                input_ = torch.reshape(input_, [B * T, -1])
+            else:
+                input_ = torch.reshape(input_, [B, -1])
+            out.append(input_.float())
+
+    merged = torch.cat(out, dim=-1)
+    # Restore the time-dimension, if applicable.
+    if time_axis:
+        merged = torch.reshape(merged, [B, T, -1])
+
+    return merged
+
+
 def minimize_and_clip(optimizer: "torch.optim.Optimizer",
                       clip_val: float = 10.0) -> None:
     """Clips grads found in `optimizer.param_groups` to given value in place.

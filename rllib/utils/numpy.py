@@ -1,9 +1,11 @@
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from typing import List, Optional
 
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import TensorType, TensorStructType, Union
 
 tf1, tf, tfv = try_import_tf()
@@ -270,9 +272,37 @@ def lstm(x,
     return unrolled_outputs, (c_states, h_states)
 
 
+def merge_inputs_to_1d(inputs, spaces=None):
+    flat_inputs = tree.flatten(inputs)
+    flat_spaces = flatten_space(spaces) if spaces is not None else \
+        [None] * len(flat_inputs)
+
+    out = []
+    for input_, space in zip(flat_inputs, flat_spaces):
+        assert isinstance(input_, np.ndarray)
+        # One-hot encoding.
+        if isinstance(space, (Discrete, MultiDiscrete)):
+            if isinstance(space, Discrete):
+                out.append(one_hot(input_, depth=space.n).astype(np.float32))
+            elif isinstance(space, MultiDiscrete):
+                out.append(
+                    np.concatenate(
+                        [
+                            one_hot(input_[:, i], depth=n).astype(np.float32)
+                            for i, n in enumerate(space.nvec)
+                        ],
+                        axis=-1))
+        # Flatten.
+        else:
+            out.append(
+                input_.reshape([input_.shape[0], -1]).astype(np.float32))
+
+    return np.concatenate(out, axis=-1)
+
+
 def one_hot(x: Union[TensorType, int],
             depth: int = 0,
-            on_value: int = 1.0,
+            on_value: float = 1.0,
             off_value: float = 0.0) -> np.ndarray:
     """One-hot utility function for numpy.
 

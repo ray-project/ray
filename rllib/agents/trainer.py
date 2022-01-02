@@ -2185,6 +2185,11 @@ class Trainer(Trainable):
         # (so model will know, whether inputs are preprocessed or not).
         if config["_disable_preprocessor_api"] is True:
             model_config["_disable_preprocessor_api"] = True
+        # If no action flattening, propagate into model's config as well
+        # (so model will know, whether action inputs are lready flattened or
+        # not).
+        if config["_disable_action_flattening"] is True:
+            model_config["_disable_action_flattening"] = True
 
         # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",

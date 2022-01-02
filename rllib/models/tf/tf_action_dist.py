@@ -1,8 +1,9 @@
-from math import log
-import numpy as np
 import functools
 import gym
+from math import log
+import numpy as np
 import tree  # pip install dm_tree
+from typing import Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -265,11 +266,17 @@ class DiagGaussian(TFActionDistribution):
     second half the gaussian standard deviations.
     """
 
-    def __init__(self, inputs: List[TensorType], model: ModelV2):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 *,
+                 action_space: Optional[gym.spaces.Space] = None):
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
+        # Remember to squeeze action samples in case action space is Box(shape)
+        self.zero_action_dim = action_space and action_space.shape == ()
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
@@ -278,6 +285,9 @@ class DiagGaussian(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
+        # Cover case where action space is Box(shape=()).
+        if int(tf.shape(x).shape[0]) == 1:
+            x = tf.expand_dims(x, axis=1)
         return -0.5 * tf.reduce_sum(
             tf.math.square((tf.cast(x, tf.float32) - self.mean) / self.std),
             axis=1
@@ -300,7 +310,10 @@ class DiagGaussian(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self) -> TensorType:
-        return self.mean + self.std * tf.random.normal(tf.shape(self.mean))
+        sample = self.mean + self.std * tf.random.normal(tf.shape(self.mean))
+        if self.zero_action_dim:
+            return tf.squeeze(sample, axis=-1)
+        return sample
 
     @staticmethod
     @override(ActionDistribution)
