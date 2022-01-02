@@ -28,7 +28,6 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
@@ -54,7 +53,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  protected GcsClient gcsClient;
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
@@ -217,19 +215,19 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
-    return gcsClient.getPlacementGroupInfo(id);
+    return getGcsClient().getPlacementGroupInfo(id);
   }
 
   @Override
   public PlacementGroup getPlacementGroup(String name, String namespace) {
     return namespace == null
-        ? gcsClient.getPlacementGroupInfo(name, runtimeContext.getNamespace())
-        : gcsClient.getPlacementGroupInfo(name, namespace);
+        ? getGcsClient().getPlacementGroupInfo(name, runtimeContext.getNamespace())
+        : getGcsClient().getPlacementGroupInfo(name, namespace);
   }
 
   @Override
   public List<PlacementGroup> getAllPlacementGroups() {
-    return gcsClient.getAllPlacementGroupInfo();
+    return getGcsClient().getAllPlacementGroupInfo();
   }
 
   @Override
@@ -394,11 +392,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   public RuntimeContext getRuntimeContext() {
     return runtimeContext;
-  }
-
-  @Override
-  public GcsClient getGcsClient() {
-    return gcsClient;
   }
 
   @Override

@@ -3,8 +3,8 @@
 Installing Ray
 ==============
 
-Ray currently supports MacOS and Linux.
-Windows wheels are now available, but :ref:`Windows support <windows-support>` is experimental and under development.
+Ray currently supports Linux, MacOS and Windows.
+Ray on Windows is currently in beta.
 
 Official Releases
 -----------------
@@ -43,7 +43,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 
 ===================  ===================  ======================
-       Linux                MacOS         Windows (experimental)
+       Linux                MacOS         Windows (beta)
 ===================  ===================  ======================
 `Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
@@ -195,18 +195,8 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 Windows Support
 ---------------
 
-Windows support is currently limited and "alpha" quality.
-Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
-Unusual, unattended, or production usage is **not** recommended.
-
-If you encounter any issues, please try the following:
-
-- Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
-- In the case that your issue has been addressed, try installing the :ref:`latest nightly wheels <install-nightlies>`.
-
-If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
-
-.. _windows-dependencies:
+Windows support is currently in beta. Please submit any issues you encounter on
+`GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
 ----------------------------

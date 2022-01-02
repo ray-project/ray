@@ -41,3 +41,8 @@ ignore =
   B016
   B017
 avoid-escape = no
+# Error E731 is ignored because of the migration from YAPF to Black.
+# See https://github.com/ray-project/ray/issues/21315 for more information.
+per-file-ignores =
+    rllib/evaluation/worker_set.py:E731
+    rllib/evaluation/sampler.py:E731
