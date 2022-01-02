@@ -613,10 +613,12 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   bool active = active_object_pull_requests_.count(object_id) > 0;
   if (active) {
     if (TryPinObject(object_id)) {
-      RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
+      RAY_LOG(INFO) << "jjyao Pinned newly created object " << object_id;
     } else {
-      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
+      RAY_LOG(INFO) << "jjyao Failed to pin newly created object " << object_id;
     }
+  } else {
+    RAY_LOG(INFO) << "jjyao not active pull " << object_id;
   }
 }
 
