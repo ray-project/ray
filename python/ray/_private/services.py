@@ -439,21 +439,21 @@ def extract_ip_port(bootstrap_address: str):
     return ip, port
 
 
-def address_to_ip(addr: str):
+def address_to_ip(address: str):
     """Convert a hostname to a numerical IP addresses in an address.
 
     This should be a no-op if address already contains an actual numerical IP
     address.
 
     Args:
-        addr: This can be either a string containing a hostname (or an IP
+        address: This can be either a string containing a hostname (or an IP
             address) and a port or it can be just an IP address.
 
     Returns:
         The same address but with the hostname replaced by a numerical IP
             address.
     """
-    address_parts = addr.split(":")
+    address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
     if ip_address == "127.0.0.1":

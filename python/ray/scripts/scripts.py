@@ -242,7 +242,6 @@ def debug(address):
     "--port",
     type=int,
     required=False,
-    default=ray_constants.DEFAULT_PORT,
     help=f"the port of the head ray process. If not provided, defaults to "
     f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
     f" allocate an available port.")
@@ -465,10 +464,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           no_monitor, tracing_startup_hook, ray_debugger_external):
     """Start Ray processes manually on the local machine."""
     if use_gcs_for_bootstrap() and gcs_server_port is not None:
-        cli_logger.abort("`{}` is deprecated. Specify {} instead.",
-                         cf.bold("--gcs-server-port"), cf.bold("--port"))
-        raise ValueError(
-            "`--gcs-server-port` is deprecated. Specify `--port` instead.")
+        cli_logger.error(
+            "`{}` is deprecated and ignored. Use {} to specify "
+            "GCS server port on head node.", cf.bold("--gcs-server-port"),
+            cf.bold("--port"))
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -526,12 +525,20 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if head:
         # Start head node.
 
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
         # TODO(mwtian): use a more robust mechanism to avoid collision,
         # e.g. node._get_cached_port()
         if port == 0:
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
+
+        # Set bootstrap port.
+        ray_params.redis_port = port
+
+        if not use_gcs_for_bootstrap():
+            ray_params.gcs_server_port = gcs_server_port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
@@ -681,7 +688,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         head_only_flags = {
             "--port": port,
             "--redis-shard-ports": redis_shard_ports,
-            "--include-dashboard": include_dashboard
+            "--include-dashboard": include_dashboard,
         }
         for flag, val in head_only_flags.items():
             if val is None:
