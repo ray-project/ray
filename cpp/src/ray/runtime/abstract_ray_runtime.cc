@@ -131,7 +131,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       RAY_CHECK(arg.id);
       auto id = ObjectID::FromBinary(*arg.id);
       auto owner_address = ray::rpc::Address{};
-      if (CoreWorkerProcess::IsInitialized()) {
+      if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
         auto &core_worker = CoreWorkerProcess::GetCoreWorker();
         owner_address = core_worker.GetOwnerAddress(id);
       }
