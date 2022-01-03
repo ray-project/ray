@@ -62,7 +62,7 @@ def test_export_queue_isolation(call_ray_start):
     address = call_ray_start
     driver_template = """
 import ray
-
+import ray.experimental.internal_kv as kv
 ray.init(address="{}")
 
 @ray.remote
@@ -72,7 +72,7 @@ def f():
 ray.get(f.remote())
 
 count = 0
-for k in ray.worker.global_worker.redis_client.keys():
+for k in kv._internal_kv_list(""):
     if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
         count += 1
 
@@ -190,9 +190,9 @@ print("My job id: ", str(ray.get_runtime_context().job_id))
 ray.shutdown()
     """
 
-    non_hanging = driver_template.format(ray_start_regular["redis_address"],
+    non_hanging = driver_template.format(ray_start_regular["address"],
                                          "sleep(1)")
-    hanging_driver = driver_template.format(ray_start_regular["redis_address"],
+    hanging_driver = driver_template.format(ray_start_regular["address"],
                                             "sleep(60)")
 
     out = run_string_as_driver(non_hanging)
