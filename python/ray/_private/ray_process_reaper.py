@@ -21,6 +21,8 @@ SIGTERM_GRACE_PERIOD_SECONDS = 1
 
 def reap_process_group(*args):
     def sigterm_handler(*args):
+        import faulthandler
+        faulthandler.dump_traceback()
         # Give a one-second grace period for other processes to clean up.
         time.sleep(SIGTERM_GRACE_PERIOD_SECONDS)
         # SIGKILL the pgroup (including ourselves) as a last-resort.

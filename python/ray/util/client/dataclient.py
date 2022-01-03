@@ -292,16 +292,18 @@ class DataClient:
         if not self._in_shutdown:
             return
 
-        self.lock.release()
-
         # Do not try disconnect() or throw exceptions in self.data_thread.
         # Otherwise deadlock can occur.
         if threading.current_thread().ident == self.data_thread.ident:
             return
 
-        from ray.util import disconnect
-        disconnect()
-
+        # Try disconnecting without lock
+        self.lock.release()
+        try:
+            from ray.util import disconnect
+            disconnect()
+        except Exception:
+            logger.exception("Failure during disconnect.")
         self.lock.acquire()
 
         if self._last_exception is not None:

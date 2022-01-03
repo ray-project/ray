@@ -425,6 +425,7 @@ class Worker:
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
+            faulthandler.dump_traceback()
             shutdown(True)
             sys.exit(1)
 
@@ -1052,6 +1053,7 @@ atexit.register(shutdown, True)
 
 # TODO(edoakes): this should only be set in the driver.
 def sigterm_handler(signum, frame):
+    faulthandler.dump_traceback()
     sys.exit(signum)
 
 
