@@ -12,11 +12,9 @@ class PrintCallback(TrainingCallback):
         >>> from ray import train
         >>> from ray.train import Trainer
         >>> from ray.train.callbacks import PrintCallback
-
         >>> def train_func():
         ...    for i in range(2):
         ...        train.report(worker_idx=train.world_rank(), epoch=i)
-
         >>> trainer = Trainer(num_workers=2, backend="torch")
         >>> trainer.start()
         >>> trainer.run(train_func, callbacks=[PrintCallback()])
