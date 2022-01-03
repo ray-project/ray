@@ -809,7 +809,7 @@ obj = normal_task.remote(large, large)
 print(ray.get(obj))
 """
     driver_script = driver_template.format(
-        address=ray_start_regular["redis_address"])
+        address=ray_start_regular["address"])
     driver_proc = run_string_as_driver_nonblocking(driver_script)
     try:
         driver_proc.wait(10)
