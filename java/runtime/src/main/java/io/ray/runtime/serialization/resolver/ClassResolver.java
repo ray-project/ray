@@ -5,16 +5,13 @@ import com.google.common.collect.HashBiMap;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
-import io.ray.runtime.serialization.serializers.CollectionSerializers;
 import io.ray.runtime.serialization.serializers.DefaultSerializer;
 import io.ray.runtime.serialization.serializers.ExternalizableSerializer;
 import io.ray.runtime.serialization.serializers.JavaSerializers;
-import io.ray.runtime.serialization.serializers.MapSerializers;
 import io.ray.runtime.serialization.serializers.Serializer;
 import io.ray.runtime.serialization.serializers.SerializerFactory;
 import io.ray.runtime.serialization.serializers.Serializers;
 import io.ray.runtime.serialization.serializers.StringSerializer;
-import io.ray.runtime.serialization.serializers.UnmodifiableCollectionSerializer;
 import io.ray.runtime.serialization.util.LoggerFactory;
 import java.io.Externalizable;
 import java.io.Serializable;
@@ -28,14 +25,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -129,39 +123,12 @@ public class ClassResolver {
     addDefaultSerializer(String[].class, Serializers.StringArraySerializer.class);
     addDefaultSerializer(
         Object[].class, new Serializers.ObjectArraySerializer<>(raySerde, Object[].class));
-    addDefaultSerializer(ArrayList.class, CollectionSerializers.ArrayListSerializer.class);
-    addDefaultSerializer(LinkedList.class, CollectionSerializers.CollectionSerializer.class);
-    addDefaultSerializer(HashSet.class, CollectionSerializers.HashSetSerializer.class);
-    addDefaultSerializer(LinkedHashSet.class, CollectionSerializers.HashSetSerializer.class);
-    addDefaultSerializer(
-        TreeSet.class, new CollectionSerializers.SortedSetSerializer<>(raySerde, TreeSet.class));
-    addDefaultSerializer(HashMap.class, MapSerializers.HashMapSerializer.class);
-    addDefaultSerializer(LinkedHashMap.class, MapSerializers.HashMapSerializer.class);
-    addDefaultSerializer(
-        TreeMap.class, new MapSerializers.SortedMapSerializer<>(raySerde, TreeMap.class));
-
-    addDefaultSerializer(
-        Collections.EMPTY_LIST.getClass(), Serializers.CollectionsEmptyListSerializer.class);
-    addDefaultSerializer(
-        Collections.EMPTY_SET.getClass(), Serializers.CollectionsEmptySetSerializer.class);
-    addDefaultSerializer(
-        Collections.EMPTY_MAP.getClass(), Serializers.CollectionsEmptyMapSerializer.class);
-    addDefaultSerializer(
-        Collections.singletonList(null).getClass(),
-        Serializers.CollectionsSingletonListSerializer.class);
-    addDefaultSerializer(
-        Collections.singleton(null).getClass(),
-        Serializers.CollectionsSingletonSetSerializer.class);
-    addDefaultSerializer(
-        Collections.singletonMap(null, null).getClass(),
-        Serializers.CollectionsSingletonMapSerializer.class);
     addDefaultSerializer(
         JavaSerializers.LambdaSerializer.ReplaceStub.class, JavaSerializers.LambdaSerializer.class);
     addDefaultSerializer(
         JavaSerializers.JdkProxySerializer.ReplaceStub.class,
         JavaSerializers.JdkProxySerializer.class);
     addDefaultSerializer(Class.class, Serializers.ClassSerializer.class);
-    UnmodifiableCollectionSerializer.registerSerializers(raySerde);
   }
 
   @SuppressWarnings("rawtypes")
@@ -332,13 +299,6 @@ public class ClassResolver {
           throw new UnsupportedOperationException(
               String.format("Class %s doesn't support serialization.", cls));
         }
-      }
-      if (Collection.class.isAssignableFrom(cls)) {
-        // Serializer of common collection such as ArrayList/LinkedList should be registered already
-        return CollectionSerializers.CollectionDefaultJavaSerializer.class;
-      } else if (Map.class.isAssignableFrom(cls)) {
-        // Serializer of common map such as HashMap/LinkedHashMap should be registered already.
-        return MapSerializers.MapDefaultJavaSerializer.class;
       }
       return DefaultSerializer.class;
     }

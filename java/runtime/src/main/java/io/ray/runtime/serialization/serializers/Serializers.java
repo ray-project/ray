@@ -19,14 +19,9 @@ import java.nio.ByteBuffer;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Collections;
 import java.util.Date;
 import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 public class Serializers {
@@ -606,111 +601,6 @@ public class Serializers {
         value = (Object[]) Array.newInstance(innerType, stubDims);
       }
       return value;
-    }
-  }
-
-  // ------------------------------ collections serializers ------------------------------ //
-  // For cross-language serialization, if the data is passed from python, the data will be
-  // deserialized by `MapSerializers` and `CollectionSerializers`.
-  // But if the data is serialized by following collections serializers, we need to ensure the real
-  // type of `crossLanguageRead` is the same as the type when serialize.
-  public static final class CollectionsEmptyListSerializer extends Serializer<List<?>> {
-
-    public CollectionsEmptyListSerializer(RaySerde raySerDe, Class<List<?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, List<?> value) {}
-
-    @Override
-    public List<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_LIST;
-    }
-  }
-
-  public static final class CollectionsEmptySetSerializer extends Serializer<Set<?>> {
-
-    public CollectionsEmptySetSerializer(RaySerde raySerDe, Class<Set<?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Set<?> value) {}
-
-    @Override
-    public Set<?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_SET;
-    }
-  }
-
-  public static final class CollectionsEmptyMapSerializer extends Serializer<Map<?, ?>> {
-
-    public CollectionsEmptyMapSerializer(RaySerde raySerDe, Class<Map<?, ?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {}
-
-    @Override
-    public Map<?, ?> read(MemoryBuffer buffer) {
-      return Collections.EMPTY_MAP;
-    }
-  }
-
-  public static final class CollectionsSingletonListSerializer extends Serializer<List<?>> {
-
-    public CollectionsSingletonListSerializer(RaySerde raySerDe, Class<List<?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, List<?> value) {
-      raySerDe.serializeReferencableToJava(buffer, value.get(0));
-    }
-
-    @Override
-    public List<?> read(MemoryBuffer buffer) {
-      return Collections.singletonList(raySerDe.deserializeReferencableFromJava(buffer));
-    }
-  }
-
-  public static final class CollectionsSingletonSetSerializer extends Serializer<Set<?>> {
-
-    public CollectionsSingletonSetSerializer(RaySerde raySerDe, Class<Set<?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Set<?> value) {
-      raySerDe.serializeReferencableToJava(buffer, value.iterator().next());
-    }
-
-    @Override
-    public Set<?> read(MemoryBuffer buffer) {
-      return Collections.singleton(raySerDe.deserializeReferencableFromJava(buffer));
-    }
-  }
-
-  public static final class CollectionsSingletonMapSerializer extends Serializer<Map<?, ?>> {
-
-    public CollectionsSingletonMapSerializer(RaySerde raySerDe, Class<Map<?, ?>> cls) {
-      super(raySerDe, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {
-      Entry<?, ?> entry = value.entrySet().iterator().next();
-      raySerDe.serializeReferencableToJava(buffer, entry.getKey());
-      raySerDe.serializeReferencableToJava(buffer, entry.getValue());
-    }
-
-    @Override
-    public Map<?, ?> read(MemoryBuffer buffer) {
-      Object key = raySerDe.deserializeReferencableFromJava(buffer);
-      Object value = raySerDe.deserializeReferencableFromJava(buffer);
-      return Collections.singletonMap(key, value);
     }
   }
 

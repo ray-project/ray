@@ -1,24 +1,17 @@
 package io.ray.runtime.serialization.serializers;
 
 import com.google.common.primitives.Primitives;
-import com.google.common.reflect.TypeToken;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
-import io.ray.runtime.serialization.resolver.ClassResolver;
 import io.ray.runtime.serialization.resolver.ReferenceResolver;
-import io.ray.runtime.serialization.serializers.CollectionSerializers.CollectionSerializer;
 import io.ray.runtime.serialization.serializers.FieldAccessor.ObjectAccessor;
-import io.ray.runtime.serialization.serializers.MapSerializers.MapSerializer;
 import io.ray.runtime.serialization.util.Descriptor;
-import io.ray.runtime.serialization.util.Tuple2;
-import io.ray.runtime.serialization.util.TypeUtils;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +36,6 @@ import java.util.TreeSet;
 @SuppressWarnings({"UnstableApiUsage", "rawtypes", "unchecked"})
 public final class DefaultSerializer<T> extends Serializer<T> {
   private final ReferenceResolver referenceResolver;
-  private final ClassResolver classResolver;
   private Constructor<T> constructor;
   private final UnsafeFieldAccessor[] intFieldAccessors;
   private final UnsafeFieldAccessor[] longFieldAccessors;
@@ -54,8 +46,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   private final UnsafeFieldAccessor[] byteFieldAccessors;
   private final UnsafeFieldAccessor[] shortFieldAccessors;
   private final UnsafeFieldAccessor[] charFieldAccessors;
-  private final Tuple2<UnsafeFieldAccessor, Serializer>[] collectionFieldAccessors;
-  private final Tuple2<UnsafeFieldAccessor, Tuple2<Serializer, Serializer>>[] mapFieldAccessors;
   // Use ObjectAccessor instead of FieldAccessor to avoid virtual methods calls.
   private final ObjectAccessor[] finalFieldAccessors;
   private final Serializer<?>[] finalFieldSerializers;
@@ -65,7 +55,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   public DefaultSerializer(RaySerde raySerDe, Class<T> cls) {
     super(raySerDe, cls);
     this.referenceResolver = raySerDe.getReferenceResolver();
-    this.classResolver = raySerDe.getClassResolver();
     try {
       this.constructor = cls.getConstructor();
       if (!constructor.isAccessible()) {
@@ -85,8 +74,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     List<UnsafeFieldAccessor> byteFieldAccessorsList = new ArrayList<>();
     List<UnsafeFieldAccessor> shortFieldAccessorsList = new ArrayList<>();
     List<UnsafeFieldAccessor> charFieldAccessorsList = new ArrayList<>();
-    List<Tuple2<UnsafeFieldAccessor, Serializer>> collectionFieldAccessorsList = new ArrayList<>();
-    List<Tuple2<UnsafeFieldAccessor, Tuple2<Serializer, Serializer>>> mapFieldAccessorsList =
         new ArrayList<>();
     Comparator<ObjectAccessor> comparator =
         (a1, a2) -> {
@@ -124,32 +111,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
       } else if (Modifier.isFinal(fieldType.getModifiers()) && fieldType != cls) {
         // avoid recursive
         finalFieldAccessorsList.add(new ObjectAccessor(field));
-      } else if (Collection.class.isAssignableFrom(fieldType)) {
-        TypeToken<?> elementType =
-            TypeUtils.getElementType(descriptorEntry.getValue().getTypeToken());
-        if (Modifier.isFinal(elementType.getRawType().getModifiers())) {
-          Serializer<?> serializer = classResolver.getSerializer(elementType.getRawType());
-          collectionFieldAccessorsList.add(Tuple2.of(unsafeFieldAccessor, serializer));
-        } else {
-          otherFieldAccessorsList.add((ObjectAccessor) FieldAccessor.createAccessor(field));
-        }
-      } else if (Map.class.isAssignableFrom(fieldType)) {
-        Tuple2<TypeToken<?>, TypeToken<?>> kvType =
-            TypeUtils.getMapKeyValueType(descriptorEntry.getValue().getTypeToken());
-        Serializer<?> keySerializer = null;
-        Serializer<?> valueSerializer = null;
-        if (Modifier.isFinal(kvType.f0.getRawType().getModifiers())) {
-          keySerializer = classResolver.getSerializer(kvType.f0.getRawType());
-        }
-        if (Modifier.isFinal(kvType.f1.getRawType().getModifiers())) {
-          valueSerializer = classResolver.getSerializer(kvType.f1.getRawType());
-        }
-        if (keySerializer != null || valueSerializer != null) {
-          mapFieldAccessorsList.add(
-              Tuple2.of(unsafeFieldAccessor, Tuple2.of(keySerializer, valueSerializer)));
-        } else {
-          otherFieldAccessorsList.add((ObjectAccessor) FieldAccessor.createAccessor(field));
-        }
       } else {
         otherFieldAccessorsList.add((ObjectAccessor) FieldAccessor.createAccessor(field));
       }
@@ -166,8 +127,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         byteFieldAccessors.length > 0
             || shortFieldAccessors.length > 0
             || charFieldAccessors.length > 0;
-    this.collectionFieldAccessors = collectionFieldAccessorsList.toArray(new Tuple2[0]);
-    this.mapFieldAccessors = mapFieldAccessorsList.toArray(new Tuple2[0]);
     this.finalFieldAccessors = finalFieldAccessorsList.toArray(new ObjectAccessor[0]);
     this.finalFieldSerializers =
         finalFieldAccessorsList.stream()
@@ -207,33 +166,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
           Serializer serializer = finalFieldSerializers[i];
           serializer.write(buffer, fieldValue);
         }
-      }
-    }
-    for (Tuple2<UnsafeFieldAccessor, Serializer> tuple2 : collectionFieldAccessors) {
-      Collection fieldValue = (Collection) tuple2.f0.getObject(value);
-      if (!referenceResolver.writeReferenceOrNull(buffer, fieldValue)) {
-        Class<? extends Collection> fieldValueClass = fieldValue.getClass();
-        classResolver.writeClass(buffer, fieldValueClass);
-        CollectionSerializer collectionSerializer =
-            (CollectionSerializer) classResolver.getSerializer(fieldValueClass);
-        collectionSerializer.setElementSerializer(tuple2.f1);
-        collectionSerializer.write(buffer, fieldValue);
-        collectionSerializer.clearElementSerializer();
-      }
-    }
-    for (Tuple2<UnsafeFieldAccessor, Tuple2<Serializer, Serializer>> tuple2 : mapFieldAccessors) {
-      Map fieldValue = (Map) tuple2.f0.getObject(value);
-      if (!referenceResolver.writeReferenceOrNull(buffer, fieldValue)) {
-        Class<? extends Map> fieldValueClass = fieldValue.getClass();
-        classResolver.writeClass(buffer, fieldValueClass);
-        Tuple2<Serializer, Serializer> kvSerializers = tuple2.f1;
-        Serializer keySerializer = kvSerializers.f0;
-        Serializer valueSerializer = kvSerializers.f1;
-        MapSerializer mapSerializer = (MapSerializer) classResolver.getSerializer(fieldValueClass);
-        mapSerializer.setKeySerializer(keySerializer);
-        mapSerializer.setValueSerializer(valueSerializer);
-        mapSerializer.write(buffer, fieldValue);
-        mapSerializer.clearKeyValueSerializer();
       }
     }
     for (ObjectAccessor fieldAccessor : this.otherFieldAccessors) {
@@ -310,49 +242,6 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         fieldValue = referenceResolver.getReadObject();
         if (fieldValue != null) {
           fieldAccessor.set(bean, fieldValue);
-        }
-      }
-    }
-    for (Tuple2<UnsafeFieldAccessor, Serializer> tuple2 : collectionFieldAccessors) {
-      Object fieldValue;
-      // It's not a reference, we need read field data.
-      if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
-        int nextReadRefId = referenceResolver.preserveReferenceId();
-        Class<?> fieldValueClass = classResolver.readClass(buffer);
-        CollectionSerializer collectionSerializer =
-            (CollectionSerializer) classResolver.getSerializer(fieldValueClass);
-        collectionSerializer.setElementSerializer(tuple2.f1);
-        fieldValue = collectionSerializer.read(buffer);
-        collectionSerializer.clearElementSerializer();
-        raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
-        tuple2.f0.putObject(bean, fieldValue);
-      } else {
-        fieldValue = referenceResolver.getReadObject();
-        if (fieldValue != null) {
-          tuple2.f0.putObject(bean, fieldValue);
-        }
-      }
-    }
-    for (Tuple2<UnsafeFieldAccessor, Tuple2<Serializer, Serializer>> tuple2 : mapFieldAccessors) {
-      Object fieldValue;
-      // It's not a reference, we need read field data.
-      if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
-        int nextReadRefId = referenceResolver.preserveReferenceId();
-        Class<?> fieldValueClass = classResolver.readClass(buffer);
-        MapSerializer mapSerializer = (MapSerializer) classResolver.getSerializer(fieldValueClass);
-        Tuple2<Serializer, Serializer> kvSerializers = tuple2.f1;
-        Serializer keySerializer = kvSerializers.f0;
-        Serializer valueSerializer = kvSerializers.f1;
-        mapSerializer.setKeySerializer(keySerializer);
-        mapSerializer.setValueSerializer(valueSerializer);
-        fieldValue = mapSerializer.read(buffer);
-        mapSerializer.clearKeyValueSerializer();
-        raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
-        tuple2.f0.putObject(bean, fieldValue);
-      } else {
-        fieldValue = referenceResolver.getReadObject();
-        if (fieldValue != null) {
-          tuple2.f0.putObject(bean, fieldValue);
         }
       }
     }

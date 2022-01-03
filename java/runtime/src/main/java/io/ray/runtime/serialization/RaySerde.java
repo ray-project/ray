@@ -438,10 +438,5 @@ public final class RaySerde {
       finish();
       return new RaySerde(this);
     }
-
-    public ThreadSafeRaySerde buildThreadSafeSerde() {
-      finish();
-      return new ThreadSafeRaySerde(() -> new RaySerde(this));
-    }
   }
 }
