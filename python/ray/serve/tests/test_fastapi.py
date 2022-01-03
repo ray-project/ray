@@ -603,22 +603,22 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
     @serve.deployment
     @serve.ingress(app)
     class CounterDeployment1:
-        @app.get('/incr')
+        @app.get("/incr")
         def incr(self):
             return "incr"
 
-        @app.get('/decr')
+        @app.get("/decr")
         def decr(self):
             return "decr"
 
     @serve.deployment
     @serve.ingress(app)
     class CounterDeployment2:
-        @app.get('/incr2')
+        @app.get("/incr2")
         def incr2(self):
             return "incr2"
 
-        @app.get('/decr2')
+        @app.get("/decr2")
         def decr2(self):
             return "decr2"
 
