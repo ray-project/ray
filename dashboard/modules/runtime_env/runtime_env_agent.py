@@ -19,11 +19,14 @@ import ray.dashboard.modules.runtime_env.runtime_env_consts \
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _initialize_internal_kv
 from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
+from ray._private.runtime_env.plugin import decode_plugin_uri
+from ray._private.runtime_env.utils import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -149,6 +152,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
+        self._pip_manager = PipManager(self._runtime_env_dir)
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
@@ -178,8 +182,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                runtime_env: dict = ParsedRuntimeEnv.deserialize(
-                    serialized_runtime_env or "{}")
+                runtime_env = RuntimeEnv(
+                    serialized_runtime_env=serialized_runtime_env)
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
 
@@ -189,8 +193,15 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :"
                                      f"{allocated_resource}")
-                context = RuntimeEnvContext(
-                    env_vars=runtime_env.get("env_vars"))
+                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+                self._pip_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._conda_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._py_modules_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
                 self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
@@ -253,17 +264,32 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for plugin_uri in runtime_env.get_uris():
-                    self._uris_to_envs[plugin_uri].add(serialized_runtime_env)
+                if runtime_env.working_dir_uri():
+                    uri = runtime_env.working_dir_uri()
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.py_modules_uris():
+                    for uri in runtime_env.py_modules_uris():
+                        self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.conda_uri():
+                    uri = runtime_env.conda_uri()
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.pip_uri():
+                    uri = runtime_env.pip_uri()
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.plugin_uris():
+                    for uri in runtime_env.plugin_uris():
+                        self._uris_to_envs[uri].add(serialized_runtime_env)
 
                 # Run setup function from all the plugins
-                for plugin_class_path in runtime_env.get("plugins", {}).keys():
+                for plugin_class_path, config in runtime_env.plugins():
+                    logger.debug(
+                        f"Setting up runtime env plugin {plugin_class_path}")
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
-                    plugin_class.create("uri not implemented", runtime_env,
-                                        context)
+                    plugin_class.create("uri not implemented",
+                                        json.loads(config), context)
                     plugin_class.modify_context("uri not implemented",
-                                                runtime_env, context)
+                                                json.loads(config), context)
 
                 return context
 
@@ -343,31 +369,35 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         failed_uris = []  # URIs that we failed to delete.
 
         for plugin_uri in request.uris:
+            plugin, uri = decode_plugin_uri(plugin_uri)
             # Invalidate the env cache for any envs that contain this URI.
-            for env in self._uris_to_envs.get(plugin_uri, []):
+            for env in self._uris_to_envs.get(uri, []):
                 if env in self._env_cache:
                     del self._env_cache[env]
 
-            plugin, uri = _decode_plugin_uri(plugin_uri)
             if plugin == "working_dir":
                 self._working_dir_uri_cache.mark_unused(uri)
             elif plugin == "py_modules":
                 self._py_modules_uri_cache.mark_unused(uri)
             elif plugin == "conda":
                 self._conda_uri_cache.mark_unused(uri)
+            elif plugin == "pip":
+                # TODO(architkulkarni): Make and use pip URI cache
+                if not self._pip_manager.delete_uri(uri):
+                    failed_uris.append(uri)
             else:
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
                     f"for unsupported plugin {plugin}. URI: {uri}")
 
-            if failed_uris:
-                return runtime_env_agent_pb2.DeleteURIsReply(
-                    status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                    error_message="Local files for URI(s) "
-                    f"{failed_uris} not found.")
-            else:
-                return runtime_env_agent_pb2.DeleteURIsReply(
-                    status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+        if failed_uris:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="Local files for URI(s) "
+                f"{failed_uris} not found.")
+        else:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

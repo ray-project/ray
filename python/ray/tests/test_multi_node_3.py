@@ -7,7 +7,7 @@ import ray
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
+    kill_process_by_name, Semaphore)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -90,16 +90,43 @@ def test_calling_start_ray_head(call_ray_stop_only):
         ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
+    # Test starting Ray with RAY_REDIS_ADDRESS env.
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:6379"
+    check_call_ray(["start", "--head", "--port", "0"])
+    check_call_ray(["stop"])
+    del os.environ["RAY_REDIS_ADDRESS"]
+
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
 
-    wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
-
     blocked.poll()
     assert blocked.returncode is None
+    # Make sure ray cluster is up
+    run_string_as_driver("""
+import ray
+from time import sleep
+for i in range(0, 5):
+    try:
+        ray.init(address='auto')
+        break
+    except:
+        sleep(1)
+""")
 
-    kill_process_by_name("raylet")
+    # Make sure ray cluster is up
+    run_string_as_driver("""
+import ray
+from time import sleep
+for i in range(0, 5):
+    try:
+        ray.init(address='auto')
+        break
+    except:
+        sleep(1)
+""")
+
+    kill_process_by_name("raylet", SIGKILL=True)
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
@@ -140,7 +167,7 @@ def test_connecting_in_local_case(ray_start_regular):
 import ray
 ray.init(address="{}")
 print("success")
-""".format(address_info["redis_address"])
+""".format(address_info["address"])
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -184,7 +211,7 @@ tune.run_experiments({{
     }}
 }})
 print("success")
-""".format(address_info["redis_address"])
+""".format(address_info["address"])
 
     for i in range(2):
         out = run_string_as_driver(driver_script)
@@ -308,7 +335,7 @@ print("success")
 
 def test_multi_driver_logging(ray_start_regular):
     address_info = ray_start_regular
-    address = address_info["redis_address"]
+    address = address_info["address"]
 
     # ray.init(address=address)
     driver1_wait = Semaphore.options(name="driver1_wait").remote(value=0)

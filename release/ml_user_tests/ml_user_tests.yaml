@@ -14,7 +14,7 @@
 
 - name: horovod_user_test_master
   cluster:
-    app_config: horovod/app_config_master.yaml
+    app_config: ../horovod_tests/app_config_master.yaml
     compute_template: horovod/compute_tpl.yaml
 
   driver_setup: horovod/driver_setup_master.sh

@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
-from ray.train.torch import TorchConfig
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 
 
@@ -89,9 +88,7 @@ def train_func(config):
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(
-        backend=TorchConfig(backend="gloo"),
-        num_workers=num_workers,
-        use_gpu=use_gpu)
+        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(

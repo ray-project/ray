@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def train():
         os.environ["TEST_OUTPUT_JSON"] = output
         os.environ["TEST_STATE_JSON"] = state

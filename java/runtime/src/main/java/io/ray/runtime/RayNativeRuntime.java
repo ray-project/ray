@@ -1,7 +1,9 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.gson.Gson;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.util.JsonFormat;
+import com.google.protobuf.util.JsonFormat.Printer;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
@@ -12,10 +14,11 @@ import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
-import io.ray.runtime.generated.Common.RuntimeEnv;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
+import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnv;
+import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
@@ -23,7 +26,6 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,6 +42,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private boolean startRayHead = false;
 
+  private GcsClient gcsClient;
+
   /**
    * In Java, GC runs in a standalone thread, and we can't control the exact timing of garbage
    * collection. By using this lock, when {@link NativeObjectStore#nativeRemoveLocalReference} is
@@ -52,9 +56,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void updateSessionDir(GcsClient gcsClient) {
+  private void updateSessionDir() {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("@namespace_session:session_dir");
+    final String sessionDir = getGcsClient().getInternalKV("@namespace_session:session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -75,8 +79,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
         JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-        updateSessionDir(gcsClient);
+        updateSessionDir();
         Preconditions.checkNotNull(rayConfig.sessionDir);
       } else {
         // Expose ray ABI symbols which may be depended by other shared
@@ -84,18 +87,17 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // See BUILD.bazel:libcore_worker_library_java.so
         Preconditions.checkNotNull(rayConfig.sessionDir);
         JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
         rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
         rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
-      if (rayConfig.getJobId() == JobId.NIL) {
-        rayConfig.setJobId(gcsClient.nextJobId());
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
+        rayConfig.setJobId(getGcsClient().nextJobId());
       }
       int numWorkersPerProcess =
           rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
@@ -108,19 +110,22 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
-        RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+        RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
           // Set worker env to the serialized runtime env json.
-          Gson gson = new Gson();
-          Map<String, Map<String, String>> runtimeEnv = new HashMap<>();
-          runtimeEnv.put("env_vars", rayConfig.workerEnv);
-          String gsonString = gson.toJson(runtimeEnv);
-          runtimeEnvBuilder.setSerializedRuntimeEnv(gsonString);
+          RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+          runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
+          Printer printer = JsonFormat.printer();
+          try {
+            runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
+          } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException(e);
+          }
         } else {
-          runtimeEnvBuilder.setSerializedRuntimeEnv("{}");
+          runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
-        jobConfigBuilder.setRuntimeEnv(runtimeEnvBuilder.build());
+        jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 
@@ -226,6 +231,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     LOGGER.info("Actor {} is exiting.", runtimeContext.getCurrentActorId());
     throw new RayIntentionalSystemExitException(
         String.format("Actor %s is exiting.", runtimeContext.getCurrentActorId()));
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    if (gcsClient == null) {
+      synchronized (this) {
+        if (gcsClient == null) {
+          gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+        }
+      }
+    }
+    return gcsClient;
   }
 
   @Override

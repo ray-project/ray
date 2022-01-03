@@ -41,11 +41,11 @@ message Arg {
 // TODO(barakmich): In the longer term, if everything were a client,
 // this message could be the actual standard for which options are
 // allowed in the API. Today, however, it's a bit flexible and defined in the
-// Python code. So for now, it's a stand-in message with a json field, but
+// Python code. So for now, it's a stand-in message with a pickle field, but
 // this is forwards-compatible with deprecating that field and instituting
 // strongly defined and typed fields, without migrating the original ClientTask.
 message TaskOptions {
-  string json_options = 1;
+  bytes pickled_options = 1;
 }
 
 // Represents one unit of work to be executed by the server.

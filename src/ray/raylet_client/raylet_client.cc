@@ -185,14 +185,6 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
-}
-
 Status raylet::RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
@@ -381,10 +373,16 @@ void raylet::RayletClient::CancelWorkerLease(
 }
 
 void raylet::RayletClient::PrepareBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
   rpc::PrepareBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  std::set<std::string> nodes;
+  for (const auto &bundle_spec : bundle_specs) {
+    nodes.insert(bundle_spec->NodeId().Hex());
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
+  RAY_CHECK(nodes.size() == 1);
   grpc_client_->PrepareBundleResources(request, callback);
 }
 

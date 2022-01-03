@@ -38,6 +38,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 
 import ray
 import ray.autoscaler._private.aws.config as aws_config
+from ray.cluster_utils import Cluster, cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 
@@ -468,7 +469,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 def test_ray_status():
     import ray
-    address = ray.init(num_cpus=3).get("redis_address")
+    address = ray.init(num_cpus=3).get("address")
     runner = CliRunner()
 
     def output_ready():
@@ -494,8 +495,8 @@ def test_ray_status():
     ray.shutdown()
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_ray_status_multinode():
-    from ray.cluster_utils import Cluster
     cluster = Cluster()
     for _ in range(4):
         cluster.add_node(num_cpus=2)

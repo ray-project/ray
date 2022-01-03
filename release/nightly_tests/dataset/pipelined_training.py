@@ -159,7 +159,7 @@ def train_main(args, splits):
 
     print(f"Starting training on worker {rank}.")
     batch_wait_times = []
-    for epoch, split_ds in enumerate(splits[rank].iter_datasets()):
+    for epoch, split_ds in enumerate(splits[rank].iter_epochs()):
         train_dataset = create_torch_iterator(split_ds, args.batch_size, rank)
         new_batch_times = _train(epoch, train_dataset)
         new_batch_times.pop(0)
@@ -207,7 +207,7 @@ def create_torch_iterator(split, batch_size, rank=None):
         label_column=label_column,
         feature_columns=feature_columns,
         label_column_dtype=label_type,
-        feature_column_dtypes=feature_types,
+        feature_column_dtypes=feature_types[0],
         batch_size=batch_size,
         # prefetch_blocks: int = 0,
         # drop_last: bool = False

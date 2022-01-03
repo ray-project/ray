@@ -16,8 +16,8 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, AsyncGradients, \
     ConcatBatches, StandardizeFields
 from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
-    ReplayActor
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer, ReplayActor
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
@@ -106,8 +106,8 @@ def test_metrics(ray_start_regular_shared):
         a, workers, {
             "min_iter_time_s": 2.5,
             "timesteps_per_iteration": 0,
-            "metrics_smoothing_episodes": 10,
-            "collect_metrics_timeout": 10,
+            "metrics_num_episodes_for_smoothing": 10,
+            "metrics_episode_collection_timeout_s": 10,
         })
 
     start = time.time()
@@ -205,7 +205,7 @@ def test_avg_gradients(ray_start_regular_shared):
 
 
 def test_store_to_replay_local(ray_start_regular_shared):
-    buf = LocalReplayBuffer(
+    buf = MultiAgentReplayBuffer(
         num_shards=1,
         learning_starts=200,
         capacity=1000,

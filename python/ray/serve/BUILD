@@ -74,7 +74,7 @@ py_test(
 
 py_test(
     name = "test_metrics",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -157,7 +157,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -186,7 +186,7 @@ py_test(
     name = "test_router",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "flaky"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -208,7 +208,7 @@ py_test(
 
 py_test(
     name = "test_standalone",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -224,7 +224,7 @@ py_test(
 
 py_test(
     name = "test_cluster",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -239,7 +239,7 @@ py_test(
 )
 
 py_test(
-    name = "test_warnings",
+    name = "test_logs",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -265,7 +265,7 @@ py_test(
 
 py_test(
     name = "test_cli",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

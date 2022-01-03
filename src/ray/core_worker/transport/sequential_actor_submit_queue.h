@@ -25,35 +25,42 @@ namespace ray {
 namespace core {
 
 /**
- * SequentialActorSumitQueue extends IActorSubmitQueue and ensures actor are send in the
- * sequence_no.
- *
+ * SequentialActorSumitQueue extends IActorSubmitQueue and ensures tasks are send
+ * in the sequential order defined by the sequence no.
  */
 class SequentialActorSubmitQueue : public IActorSubmitQueue {
  public:
   explicit SequentialActorSubmitQueue(ActorID actor_id);
-
-  bool Emplace(uint64_t sequence_no, TaskSpecification spec) override;
-
+  /// Add a task into the queue. Returns false if a task with the same sequence_no has
+  /// already been inserted.
+  bool Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) override;
+  /// If a task exists.
   bool Contains(uint64_t sequence_no) const override;
-
+  /// Get a task; the bool indicates if the task's dependency was resolved.
   const std::pair<TaskSpecification, bool> &Get(uint64_t sequence_no) const override;
-
+  /// Mark a task's dependency resolution failed thus remove from the queue.
   void MarkDependencyFailed(uint64_t sequence_no) override;
-
+  /// Make a task's dependency is resolved thus ready to send.
   void MarkDependencyResolved(uint64_t sequence_no) override;
-
+  /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
-
+  /// Find next task to send.
+  /// \return
+  ///   - nullopt if no task ready to send
+  ///   - a pair of task and bool represents the task to be send and if the receiver
+  ///     should SKIP THE SCHEDULING QUEUE while executing it.
   absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-
+  /// On client connect/reconnect, find all the tasks which are known to be
+  /// executed out of order.
   std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;
-
+  /// Called on client connected/reconnected. This reset the offset for
+  /// sequence number.
   void OnClientConnected() override;
-
+  /// Get the task's sequence number according to the internal offset.
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
-
-  void MarkTaskCompleted(uint64_t sequence_no, TaskSpecification task_spec) override;
+  /// Mark a task has been executed on the receiver side.
+  void MarkTaskCompleted(uint64_t sequence_no,
+                         const TaskSpecification &task_spec) override;
 
  private:
   /// The ID of the actor.

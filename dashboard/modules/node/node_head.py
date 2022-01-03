@@ -241,39 +241,50 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception(f"Error updating node stats of {node_id}.")
 
     async def _update_log_info(self):
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        def process_log_batch(log_batch):
+            ip = log_batch["ip"]
+            pid = str(log_batch["pid"])
+            if pid != "autoscaler":
+                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
+                logs_for_pid = list(logs_for_ip.get(pid, []))
+                logs_for_pid.extend(log_batch["lines"])
 
-        channel = receiver.channel(gcs_utils.LOG_FILE_CHANNEL)
-        await aioredis_client.subscribe(channel)
-        logger.info("Subscribed to %s", channel)
+                # Only cache upto MAX_LOGS_TO_CACHE
+                logs_length = len(logs_for_pid)
+                if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                    offset = logs_length - MAX_LOGS_TO_CACHE
+                    del logs_for_pid[:offset]
 
-        async for sender, msg in receiver.iter():
-            try:
-                data = json.loads(ray._private.utils.decode(msg))
-                ip = data["ip"]
-                pid = str(data["pid"])
-                if pid != "autoscaler":
-                    logs_for_ip = dict(
-                        DataSource.ip_and_pid_to_logs.get(ip, {}))
-                    logs_for_pid = list(logs_for_ip.get(pid, []))
-                    logs_for_pid.extend(data["lines"])
+                logs_for_ip[pid] = logs_for_pid
+                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+            logger.info(f"Received a log for {ip} and {pid}")
 
-                    # Only cache upto MAX_LOGS_TO_CACHE
-                    logs_length = len(logs_for_pid)
-                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
-                        offset = logs_length - MAX_LOGS_TO_CACHE
-                        del logs_for_pid[:offset]
+        if self._dashboard_head.gcs_log_subscriber:
+            while True:
+                log_batch = await \
+                    self._dashboard_head.gcs_log_subscriber.poll()
+                try:
+                    process_log_batch(log_batch)
+                except Exception:
+                    logger.exception("Error receiving log from GCS.")
+        else:
+            aioredis_client = self._dashboard_head.aioredis_client
+            receiver = Receiver()
 
-                    logs_for_ip[pid] = logs_for_pid
-                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-                logger.info(f"Received a log for {ip} and {pid}")
-            except Exception:
-                logger.exception("Error receiving log info.")
+            channel = receiver.channel(gcs_utils.LOG_FILE_CHANNEL)
+            await aioredis_client.subscribe(channel)
+            logger.info("Subscribed to %s", channel)
+
+            async for sender, msg in receiver.iter():
+                try:
+                    data = json.loads(ray._private.utils.decode(msg))
+                    data["pid"] = str(data["pid"])
+                    process_log_batch(data)
+                except Exception:
+                    logger.exception("Error receiving log from Redis.")
 
     async def _update_error_info(self):
         def process_error(error_data):
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             message = error_data.error_message
             message = re.sub(r"\x1b\[\d+m", "", message)
             match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
@@ -291,10 +302,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")
 
-        if self._dashboard_head.gcs_subscriber:
+        if self._dashboard_head.gcs_error_subscriber:
             while True:
                 _, error_data = await \
-                    self._dashboard_head.gcs_subscriber.poll_error()
+                    self._dashboard_head.gcs_error_subscriber.poll()
                 try:
                     process_error(error_data)
                 except Exception:

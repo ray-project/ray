@@ -54,8 +54,7 @@ class EndpointState:
         """
         existing_route_endpoint = self._get_endpoint_for_route(
             endpoint_info.route)
-        if (endpoint_info.route is not None
-                and existing_route_endpoint is not None
+        if (existing_route_endpoint is not None
                 and existing_route_endpoint != endpoint):
             raise ValueError(
                 f"route_prefix '{endpoint_info.route}' is already registered.")

@@ -13,10 +13,9 @@ class PipelineNode(ABC):
     def deploy(self):
         pass
 
-    def call(self, input_arg: Tuple[Any]) -> Any:
-        pass
-
-    async def call_async(self, input_arg: Tuple[Any]) -> Any:
+    # NOTE(simon): used _call as name so user don't confuse deployed and
+    # un-deployed pipeline objects.
+    def _call(self, input_arg: Tuple[Any]) -> Any:
         pass
 
 
@@ -26,11 +25,8 @@ class Pipeline:
     def __init__(self, entry_node: PipelineNode):
         self._entry_node = entry_node
 
-    def deploy(self):
-        raise RuntimeError("A pipeline can only be deployed once.")
-
     def call(self, input_arg: Tuple[Any]) -> Any:
-        result = self._entry_node.call(input_arg)
+        result = self._entry_node._call(input_arg)
         if isinstance(result, ObjectRef):
             result = ray.get(result)
 
@@ -70,28 +66,19 @@ class ExecutorPipelineNode(PipelineNode):
 
         return Pipeline(self)
 
-    def call(self, input_arg: Tuple[Any]) -> Any:
+    def _call(self, input_arg: Tuple[Any]) -> Any:
         if self._executor is None:
             raise RuntimeError(
                 "Pipeline hasn't been deployed, call .deploy() first.")
-        args = tuple(node.call(input_arg) for node in self._incoming_edges)
+        args = tuple(node._call(input_arg) for node in self._incoming_edges)
         return self._executor.call(*args)
-
-    async def call_async(self):
-        if self._executor is None:
-            raise RuntimeError(
-                "Pipeline hasn't been deployed, call .deploy() first.")
-        raise NotImplementedError("No async support yet.")
 
 
 class InputPipelineNode(PipelineNode):
     def deploy(self) -> PipelineNode:
         pass
 
-    def call(self, input_arg: Tuple[Any]) -> Any:
-        return input_arg
-
-    async def call_async(self, input_arg: Tuple[Any]) -> Any:
+    def _call(self, input_arg: Tuple[Any]) -> Any:
         return input_arg
 
 

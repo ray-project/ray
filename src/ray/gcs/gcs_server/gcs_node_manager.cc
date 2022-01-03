@@ -270,13 +270,14 @@ void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) 
 
 std::string GcsNodeManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsNodeManager: {RegisterNode request count: "
+  stream << "GcsNodeManager: "
+         << "\n- RegisterNode request count: "
          << counts_[CountType::REGISTER_NODE_REQUEST]
-         << ", DrainNode request count: " << counts_[CountType::DRAIN_NODE_REQUEST]
-         << ", GetAllNodeInfo request count: "
+         << "\n- DrainNode request count: " << counts_[CountType::DRAIN_NODE_REQUEST]
+         << "\n- GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << ", GetInternalConfig request count: "
-         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST] << "}";
+         << "\n- GetInternalConfig request count: "
+         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
   return stream.str();
 }
 

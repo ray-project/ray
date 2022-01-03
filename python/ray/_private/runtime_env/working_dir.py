@@ -1,13 +1,16 @@
 import logging
 import os
 from typing import Any, Dict, Optional
+from pathlib import Path
 
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
-from ray._private.utils import get_directory_size
+from ray._private.utils import get_directory_size, try_to_create_directory
+
 default_logger = logging.getLogger(__name__)
 
 
@@ -23,10 +26,13 @@ def upload_working_dir_if_needed(
     if working_dir is None:
         return runtime_env
 
-    if not isinstance(working_dir, str):
+    if not isinstance(working_dir, str) and not isinstance(working_dir, Path):
         raise TypeError(
-            "working_dir must be a string (either a local path or remote "
-            f"URI), got {type(working_dir)}.")
+            "working_dir must be a string or Path (either a local path "
+            f"or remote URI), got {type(working_dir)}.")
+
+    if isinstance(working_dir, Path):
+        working_dir = str(working_dir)
 
     # working_dir is already a URI -- just pass it through.
     try:
@@ -56,8 +62,7 @@ def upload_working_dir_if_needed(
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
-        if not os.path.isdir(self._resources_dir):
-            os.makedirs(self._resources_dir)
+        try_to_create_directory(self._resources_dir)
         # TODO(architkulkarni): This dict is not necessary, we should use the
         # same URI parsing function used elsewhere to convert URIs to paths.
         self._uris_to_local_dirs = dict()
@@ -74,7 +79,7 @@ class WorkingDirManager:
         return deleted
 
     def get_uri(self, runtime_env: dict) -> Optional[str]:
-        return runtime_env.get("working_dir")
+        return runtime_env.working_dir()
 
     def create(self,
                uri: str,

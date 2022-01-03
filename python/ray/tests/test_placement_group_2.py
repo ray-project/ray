@@ -14,7 +14,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     get_other_nodes, generate_system_config_map,
     kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
-    get_error_message, placement_group_assert_no_leak)
+    get_error_message, placement_group_assert_no_leak, convert_actor_state)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -395,7 +395,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -418,7 +419,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -441,7 +443,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -547,7 +550,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -615,7 +618,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -696,7 +699,7 @@ ray.shutdown()
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -734,7 +737,7 @@ def test_create_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -758,7 +761,7 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(

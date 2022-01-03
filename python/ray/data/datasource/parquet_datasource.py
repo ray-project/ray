@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
@@ -228,7 +228,8 @@ def _build_block_metadata(
                     m.row_group(i).total_byte_size
                     for i in range(m.num_row_groups)) for m in metadata),
             schema=schema,
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=BlockExecStats.TODO)
     else:
         # Piece metadata was not available, construct an empty
         # BlockMetadata.

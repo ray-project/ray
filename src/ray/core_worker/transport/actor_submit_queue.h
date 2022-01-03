@@ -49,32 +49,33 @@ class IActorSubmitQueue {
   virtual ~IActorSubmitQueue() = default;
   /// Add a task into the queue. Returns false if a task with the same sequence_no has
   /// already been inserted.
-  virtual bool Emplace(uint64_t sequence_no, TaskSpecification task) = 0;
+  virtual bool Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) = 0;
   /// If a task exists.
   virtual bool Contains(uint64_t sequence_no) const = 0;
-  /// Get a task.
+  /// Get a task; the bool indicates if the task's dependency was resolved.
   virtual const std::pair<TaskSpecification, bool> &Get(uint64_t sequence_no) const = 0;
-  /// Make a task's dependency is resolved thus ready to send.
+  /// Mark a task's dependency resolution failed thus remove from the queue.
   virtual void MarkDependencyFailed(uint64_t sequence_no) = 0;
-  /// Make a task's dependency resolvation failed thus remove from the queue.
+  /// Mark a task's dependency is resolved thus ready to send.
   virtual void MarkDependencyResolved(uint64_t sequence_no) = 0;
-  /// Clear the queue.
+  /// Clear the queue and returns all tasks ids that haven't been sent yet.
   virtual std::vector<TaskID> ClearAllTasks() = 0;
   /// Find next task to send.
   /// \return
-  ///   - nullopt if no task read to send
+  ///   - nullopt if no task ready to send
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   virtual absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
-  /// On client connect/reconnect, find all the TASK that's known to be
+  /// On client connect/reconnect, find all the tasks that's known to be
   /// executed out of order. This is specific to SequentialActorSubmitQueue.
   virtual std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() = 0;
-  /// On client is connected.
+  /// On client connected.
   virtual void OnClientConnected() = 0;
-  /// Get the sequence number to send.
+  /// Get the sequence number of the task to send according to the protocol.
   virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
   /// Mark a task has been executed on the receiver side.
-  virtual void MarkTaskCompleted(uint64_t sequence_no, TaskSpecification task_spec) = 0;
+  virtual void MarkTaskCompleted(uint64_t sequence_no,
+                                 const TaskSpecification &task_spec) = 0;
 };
 }  // namespace core
 }  // namespace ray

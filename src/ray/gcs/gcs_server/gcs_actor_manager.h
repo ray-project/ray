@@ -88,7 +88,7 @@ class GcsActor {
     }
 
     actor_table_data_.set_serialized_runtime_env(
-        task_spec.runtime_env().serialized_runtime_env());
+        task_spec.runtime_env_info().serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -201,6 +201,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -350,10 +351,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
-  /// Collect stats from gcs actor manager in-memory data structures.
-  void CollectStats() const;
-
   std::string DebugString() const;
+
+  /// Collect stats from gcs actor manager in-memory data structures.
+  void RecordMetrics() const;
 
   bool GetSchedulePendingActorsPosted() const;
 
@@ -381,12 +382,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// scope or the owner has died.
   /// NOTE: This method can be called multiple times in out-of-order and should be
   /// idempotent.
-  void DestroyActor(const ActorID &actor_id,
-                    const rpc::ActorDeathCause *death_cause = nullptr);
+  ///
+  /// \param[in] actor_id The actor id to destroy.
+  /// \param[in] death_cause The reason why actor is destroyed.
+  /// \param[in] force_kill Whether destory the actor forcelly.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+                    bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
-  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
-      const NodeID &node_id) const;
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
+  GetUnresolvedActorsByOwnerNode(const NodeID &node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
@@ -401,10 +406,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                        const rpc::ActorDeathCause *death_cause = nullptr);
-
-  /// Reconstruct the specified actor and reschedule it.
-  void ReconstructActor(const ActorID &actor_id);
+                        const rpc::ActorDeathCause &death_cause);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -518,6 +520,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
+  /// A callback to get the number of java workers per process config item by the
+  /// given job id. It is necessary for deciding whether we should clear the Java actor.
+  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.

@@ -1,5 +1,3 @@
-from contextlib import contextmanager
-
 import os
 from pathlib import Path
 import sys
@@ -9,6 +7,7 @@ from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
+from unittest import mock
 from ray._private.test_utils import run_string_as_driver
 
 import ray
@@ -16,7 +15,8 @@ import ray.experimental.internal_kv as kv
 from ray.tests.test_runtime_env_working_dir \
     import tmp_working_dir  # noqa: F401
 from ray._private.utils import get_directory_size
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import (wait_for_condition, chdir,
+                                     check_local_files_gced)
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -26,14 +26,6 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-
-
-@contextmanager
-def chdir(d: str):
-    old_dir = os.getcwd()
-    os.chdir(d)
-    yield
-    os.chdir(old_dir)
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope
@@ -528,6 +520,39 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     ray.shutdown()
     time.sleep(5)
     assert not check_local_files_gced(cluster)
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def skip_local_gc():
+    with mock.patch.dict(os.environ, {
+            "RAY_runtime_env_skip_local_gc": "1",
+    }):
+        print("RAY_runtime_env_skip_local_gc enabled.")
+        yield
+
+
+class TestSkipLocalGC:
+    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, source):
+        cluster, address = start_cluster
+        ray.init(
+            address, namespace="test", runtime_env={"working_dir": source})
+
+        @ray.remote
+        class A:
+            def test_import(self):
+                import test_module
+                test_module.one()
+
+        a = A.remote()
+        ray.get(a.test_import.remote())  # Check working_dir was downloaded
+
+        ray.shutdown()
+
+        time.sleep(1)  # Give time for GC to potentially happen
+        assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":

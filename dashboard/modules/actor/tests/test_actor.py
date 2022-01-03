@@ -10,6 +10,7 @@ import redis
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
+import ray._private.gcs_pubsub as gcs_pubsub
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.actor import actor_consts
 from ray._private.test_utils import (
@@ -207,17 +208,23 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     address_info = ray_start_with_dashboard
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
 
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    if gcs_pubsub.gcs_pubsub_enabled():
+        sub = gcs_pubsub.GcsActorSubscriber(
+            address=address_info["gcs_address"])
+        sub.subscribe()
+    else:
+        address = address_info["redis_address"]
+        address = address.split(":")
+        assert len(address) == 2
 
-    p = client.pubsub(ignore_subscribe_messages=True)
-    p.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+
+        sub = client.pubsub(ignore_subscribe_messages=True)
+        sub.psubscribe(gcs_utils.RAY_ACTOR_PUBSUB_PATTERN)
 
     @ray.remote
     class DummyActor:
@@ -227,26 +234,32 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     # Create a dummy actor.
     a = DummyActor.remote()
 
-    def handle_pub_messages(client, msgs, timeout, expect_num):
+    def handle_pub_messages(msgs, timeout, expect_num):
         start_time = time.time()
         while time.time() - start_time < timeout and len(msgs) < expect_num:
-            msg = client.get_message()
-            if msg is None:
-                time.sleep(0.01)
+            if gcs_pubsub.gcs_pubsub_enabled():
+                _, actor_data = sub.poll(timeout=timeout)
+            else:
+                msg = sub.get_message()
+                if msg is None:
+                    time.sleep(0.01)
+                    continue
+                pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+                actor_data = gcs_utils.ActorTableData.FromString(
+                    pubsub_msg.data)
+            if actor_data is None:
                 continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            actor_data = gcs_utils.ActorTableData.FromString(pubsub_msg.data)
             msgs.append(actor_data)
 
     msgs = []
-    handle_pub_messages(p, msgs, timeout, 3)
+    handle_pub_messages(msgs, timeout, 3)
     # Assert we received published actor messages with state
     # DEPENDENCIES_UNREADY, PENDING_CREATION and ALIVE.
-    assert len(msgs) == 3
+    assert len(msgs) == 3, msgs
 
     # Kill actor.
     ray.kill(a)
-    handle_pub_messages(p, msgs, timeout, 4)
+    handle_pub_messages(msgs, timeout, 4)
 
     # Assert we received published actor messages with state DEAD.
     assert len(msgs) == 4

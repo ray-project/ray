@@ -5,10 +5,12 @@ import os
 import uuid
 from typing import Dict, List, Optional, Union
 import warnings
+import numpy as np
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.suggest.variant_generator import (
     count_variants, count_spec_samples, generate_variants, format_vars,
     flatten_resolved_vars, get_preset_variants)
@@ -72,6 +74,11 @@ class _TrialIterator:
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
         start (int): index at which to start counting trials.
+        random_state (int | np.random.Generator | np.random.RandomState):
+            Seed or numpy random generator to use for reproducible results.
+            If None (default), will use the global numpy random generator
+            (``np.random``). Please note that full reproducibility cannot
+            be guaranteed in a distributed enviroment.
     """
 
     def __init__(self,
@@ -82,7 +89,9 @@ class _TrialIterator:
                  output_path: str = "",
                  points_to_evaluate: Optional[List] = None,
                  lazy_eval: bool = False,
-                 start: int = 0):
+                 start: int = 0,
+                 random_state: Optional[Union[int, "np_random_generator",
+                                              np.random.RandomState]] = None):
         self.parser = make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
@@ -95,6 +104,7 @@ class _TrialIterator:
         self.counter = start
         self.lazy_eval = lazy_eval
         self.variants = None
+        self.random_state = random_state
 
     def create_trial(self, resolved_vars, spec):
         trial_id = self.uuid_prefix + ("%05d" % self.counter)
@@ -140,7 +150,8 @@ class _TrialIterator:
                 get_preset_variants(
                     self.unresolved_spec,
                     config,
-                    constant_grid_search=self.constant_grid_search),
+                    constant_grid_search=self.constant_grid_search,
+                    random_state=self.random_state),
                 lazy_eval=self.lazy_eval)
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
@@ -148,7 +159,8 @@ class _TrialIterator:
             self.variants = _VariantIterator(
                 generate_variants(
                     self.unresolved_spec,
-                    constant_grid_search=self.constant_grid_search),
+                    constant_grid_search=self.constant_grid_search,
+                    random_state=self.random_state),
                 lazy_eval=self.lazy_eval)
             self.num_samples_left -= 1
             resolved_vars, spec = next(self.variants)
@@ -180,6 +192,11 @@ class BasicVariantGenerator(SearchAlgorithm):
             grid search parameters. If this is set to ``False`` (default),
             Ray Tune will sample new random parameters in each grid search
             condition.
+        random_state (int | np.random.Generator | np.random.RandomState):
+            Seed or numpy random generator to use for reproducible results.
+            If None (default), will use the global numpy random generator
+            (``np.random``). Please note that full reproducibility cannot
+            be guaranteed in a distributed enviroment.
 
 
     Example:
@@ -247,11 +264,14 @@ class BasicVariantGenerator(SearchAlgorithm):
     def __init__(self,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  max_concurrent: int = 0,
-                 constant_grid_search: bool = False):
+                 constant_grid_search: bool = False,
+                 random_state: Optional[Union[int, "np_random_generator",
+                                              np.random.RandomState]] = None):
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None
         self._finished = False
+        self._random_state = _BackwardsCompatibleNumpyRng(random_state)
 
         self._points_to_evaluate = points_to_evaluate or []
 
@@ -304,7 +324,8 @@ class BasicVariantGenerator(SearchAlgorithm):
                 output_path=experiment.dir_name,
                 points_to_evaluate=points_to_evaluate,
                 lazy_eval=lazy_eval,
-                start=previous_samples)
+                start=previous_samples,
+                random_state=self._random_state)
             self._iterators.append(iterator)
             self._trial_generator = itertools.chain(self._trial_generator,
                                                     iterator)

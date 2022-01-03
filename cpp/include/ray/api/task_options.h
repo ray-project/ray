@@ -56,7 +56,6 @@ enum PlacementGroupState {
 };
 
 struct PlacementGroupCreationOptions {
-  bool global;
   std::string name;
   std::vector<std::unordered_map<std::string, double>> bundles;
   PlacementStrategy strategy;
@@ -98,7 +97,6 @@ struct CallOptions {
 };
 
 struct ActorCreationOptions {
-  bool global;
   std::string name;
   std::unordered_map<std::string, double> resources;
   int max_restarts = 0;

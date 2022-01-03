@@ -362,6 +362,8 @@ class Stats {
 
 }  // namespace ray
 
+#define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name
+
 // STATS_DEPAREN will remove () for it's parameter
 // For example
 //   STATS_DEPAREN((a, b, c))
@@ -374,7 +376,7 @@ class Stats {
 #define STATS_VANISH
 
 /*
-  Syntax suguar to define a metrics:
+  Syntax sugar to define a metrics:
       DEFINE_stats(name,
         desctiption,
         (tag1, tag2, ...),
@@ -395,5 +397,3 @@ class Stats {
   ray::stats::internal::Stats STATS_##name(                                \
       #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
       ray::stats::internal::RegisterViewWithTagList<__VA_ARGS__>)
-
-#define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name
