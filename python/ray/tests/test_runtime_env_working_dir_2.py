@@ -7,7 +7,6 @@ from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from unittest import mock
 from ray._private.test_utils import run_string_as_driver
 
 import ray
@@ -268,20 +267,6 @@ def test_ray_worker_dev_flow(start_cluster):
 
 def check_internal_kv_gced():
     return len(kv._internal_kv_list("gcs://")) == 0
-
-
-def check_local_files_gced(cluster):
-    for node in cluster.list_all_nodes():
-        for subdir in ["working_dir_files", "py_modules_files"]:
-            all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
-            # Check that there are no files remaining except for .lock files.
-            # TODO(edoakes): the lock files should get cleaned up too!
-            if len(list(filter(lambda f: not f.endswith(".lock"),
-                               all_files))) > 0:
-                return False
-
-    return True
 
 
 class TestGC:

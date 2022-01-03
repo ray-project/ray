@@ -6,8 +6,6 @@ import logging
 import os
 import time
 from typing import Dict, Set, Callable
-from ray._private.runtime_env.validation import (ParsedRuntimeEnv,
-                                                 _decode_plugin_uri)
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -282,7 +280,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Run setup function from all the plugins
                 for plugin_class_path, config in runtime_env.plugins():
-                    logger.debug(
+                    per_job_logger.debug(
                         f"Setting up runtime env plugin {plugin_class_path}")
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support

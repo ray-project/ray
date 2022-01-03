@@ -1121,6 +1121,8 @@ def test_get_directory_size():
         with open("subdir/subdir_file", "wb") as f:
             f.write(os.urandom(2))
         assert ray._private.utils.get_directory_size(tmp_dir) == 152
+
+
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in [

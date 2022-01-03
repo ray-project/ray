@@ -3,7 +3,6 @@ import os
 from typing import Any, Dict, Optional
 from pathlib import Path
 
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
