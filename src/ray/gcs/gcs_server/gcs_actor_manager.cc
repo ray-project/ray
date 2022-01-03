@@ -451,9 +451,6 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                                          request.task_spec().runtime_env_info());
   }
 
-  runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
-                                       request.task_spec().runtime_env());
-
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
@@ -689,9 +686,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   }
-
-  runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
-
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {

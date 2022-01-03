@@ -1896,7 +1896,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   RayTask task;
-  cluster_task_manager_->TaskFinished(worker_ptr, &task);
+  cluster_task_manager_->(worker_ptr, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
@@ -1939,9 +1939,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
   }
-
-  runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                       task.GetTaskSpecification().RuntimeEnv());
 }
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
