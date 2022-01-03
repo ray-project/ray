@@ -55,7 +55,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 "CPU": cf["num_cpus_for_driver"],
             }] + [
                 {
-                    # RolloutWorkers.
+                    # RolloutWorkers (no GPUs).
                     "CPU": cf["num_cpus_per_worker"],
                 } for _ in range(cf["num_workers"])
             ] + [
@@ -101,11 +101,19 @@ class AlphaStarTrainer(appo.APPOTrainer):
             if pid in self.workers.local_worker().policies_to_train:
                 self._policy_learners[pid] = [None, None]
 
+        # Examples:
         # 4 GPUs 2 Policies -> 2 shards.
         # 2 GPUs 4 Policies -> 2 shards.
-        num_learner_shards = max(self.config["num_gpus"] / len(self._policy_learners), self.config["num_gpus"]) if self.config["num_gpus"] else self.config.get("num_replay_buffer_shards", 1)
+        if self.config["num_gpus"]:
+            num_learner_shards = max(
+                self.config["num_gpus"] / len(self._policy_learners),
+                self.config["num_gpus"])
+            num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
+        else:
+            num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
+            num_gpus_per_shard = 0
+
         num_policies_per_shard = len(self._policy_learners) / num_learner_shards
-        num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards if self.config["num_gpus"] else
         num_gpus_per_policy = num_gpus_per_shard / num_policies_per_shard
 
         # Single CPU replay shard (co-located with GPUs so we can place the
@@ -124,10 +132,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
         ]
         self._replay_actors = []
         policy_remote_kwargs = {}
-        if
-            "num_gpus": ,
-            "num_cpus": 1,
-        }
+        #if
+        #    "num_gpus": ,
+        #    "num_cpus": 1,
+        #}
 
         for shard_idx in range(num_learner_shards):
             policies = list(self._policy_learners.keys())[
@@ -137,7 +145,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
             colocated = create_colocated_actors(actor_specs=[
                 (ReplayActor, replay_actor_args, {}, 1),
             ] + [(
-                ray.remote()(ma_cfg["policies"][pid].policy_class),
+                ray.remote(num_cpus=1, num_gpus=num_gpus_per_policy)(
+                    ma_cfg["policies"][pid].policy_class),
                 # Policy c'tor args.
                 (ma_cfg["policies"][pid].observation_space,
                  ma_cfg["policies"][pid].action_space,
