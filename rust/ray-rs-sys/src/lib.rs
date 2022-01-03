@@ -24,8 +24,12 @@ use core::pin::Pin;
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 pub mod remote_functions;
-pub use remote_functions::{add_two_vecs, add_three_vecs, add_two_vecs_nested, get};
-pub use remote_functions::{ray_rust_ffi_add_two_vecs, ray_rust_ffi_add_two_vecs_nested};
+pub use remote_functions::{add_two_vecs, add_three_vecs, add_two_vecs_nested, add_two_vecs_nested_remote_outer_get, get};
+pub use remote_functions::{
+    ray_rust_ffi_add_two_vecs,
+    ray_rust_ffi_add_two_vecs_nested,
+    ray_rust_ffi_add_two_vecs_nested_remote_outer_get,
+};
 
 pub struct RustTaskArg {
     buf: Vec<u8>,
@@ -124,6 +128,8 @@ pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) 
                 ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
             }
         }
+    } else {
+        ray_api_ffi::LogInfo(&format!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref));
     }
     let ret = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name))(args_buffer);
     ret.destroy_into_vec()
@@ -182,6 +188,39 @@ impl ArgsBuffer {
 //     vec.push((data, size as u64));
 // }
 
+#[no_mangle]
+fn initialize_core_worker(existing: SharedPtr<ray_api_ffi::CoreWorkerProcessImpl>) {
+    ray_api_ffi::InitializeFromExisting(existing);
+}
+
+fn initialize_library_core_workers() {
+    let libs = LIBRARIES.lock().unwrap();
+    for lib in libs.iter() {
+        let maybe_initializer = unsafe { lib.get::<fn(SharedPtr<ray_api_ffi::CoreWorkerProcessImpl>)->()>(b"initialize_core_worker") };
+        maybe_initializer.expect("Could not locate initialize_core_worker in shared library. Try including the right macros in your Ray Rust project")(
+            ray_api_ffi::GetCoreWorkerProcess()
+        );
+    }
+}
+
+fn initialize_library_core_workers_from_outer(outer: SharedPtr<ray_api_ffi::CoreWorkerProcessImpl>) {
+    let libs = LIBRARIES.lock().unwrap();
+    for lib in libs.iter() {
+        let maybe_initializer = unsafe { lib.get::<fn(SharedPtr<ray_api_ffi::CoreWorkerProcessImpl>)->()>(b"initialize_core_worker") };
+        maybe_initializer.expect("Could not locate initialize_core_worker in shared library. Try including the right macros in your Ray Rust project")(
+            outer.clone()
+        );
+    }
+}
+
+fn object_id_to_byte_vec(id: UniquePtr<ray_api_ffi::ObjectID>) -> Vec<u8> {
+    ray_api_ffi::ObjectIDString(id).as_bytes().to_vec()
+}
+
+pub fn byte_vec_to_object_id(vec: Vec<u8>) -> UniquePtr<ray_api_ffi::ObjectID> {
+    let_cxx_string!(string = &vec);
+    ray_api_ffi::StringObjectID(&string)
+}
 
 #[cxx::bridge(namespace = "ray")]
 pub mod ray_api_ffi {
@@ -195,6 +234,8 @@ pub mod ray_api_ffi {
     extern "Rust" {
         fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
         unsafe fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char);
+        fn initialize_library_core_workers();
+        fn initialize_library_core_workers_from_outer(outer: SharedPtr<CoreWorkerProcessImpl>);
     }
 
     // extern "Rust" {
@@ -205,8 +246,8 @@ pub mod ray_api_ffi {
         include!("rust/ray-rs-sys/cpp/tasks.h");
 
         type ObjectID;
-
-        // fn Binary(self: &ObjectID) -> &CxxString;
+        fn ObjectIDString(id: UniquePtr<ObjectID>) -> UniquePtr<CxxString>;
+        fn StringObjectID(string: &CxxString) -> UniquePtr<ObjectID>;
 
         fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
         fn InitRust(arg_str: &str);
@@ -239,5 +280,14 @@ pub mod ray_api_ffi {
 
         fn ID(self: &Uint64ObjectRef) -> &CxxString;
         fn ID(self: &StringObjectRef) -> &CxxString;
+    }
+
+    #[namespace = "ray::core"]
+    unsafe extern "C++" {
+        include!("ray/core_worker/core_worker_process.h");
+        type CoreWorkerProcessImpl;
+
+        pub fn InitializeFromExisting(existing_worker_process: SharedPtr<CoreWorkerProcessImpl>);
+        pub fn GetCoreWorkerProcess() -> SharedPtr<CoreWorkerProcessImpl>;
     }
 }

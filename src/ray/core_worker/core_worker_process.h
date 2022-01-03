@@ -18,6 +18,16 @@ namespace ray {
 namespace core {
 
 class CoreWorker;
+class CoreWorkerProcessImpl;
+
+/// Initialize CoreWorkerProcess from existing CoreWorkerProcess (e.g. in a dylib).
+///
+/// \param[in] existing_worker_process The CoreWorkerProcessImpl this CoreWorkerProcess
+/// is initializing (inheriting) from
+void InitializeFromExisting(std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process);
+
+/// TODO
+std::shared_ptr<CoreWorkerProcessImpl> GetCoreWorkerProcess();
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
 ///

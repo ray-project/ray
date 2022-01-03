@@ -7,6 +7,7 @@
 /python/ray/pyarrow_files/
 /python/ray/jars/
 /python/ray/cpp/
+/python/ray/rust/
 /python/build
 /python/dist
 /python/python-driver-*

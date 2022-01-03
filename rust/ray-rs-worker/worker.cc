@@ -24,6 +24,8 @@ int main(int argc, char **argv) {
 
   ray::RayConfig config;
   ray::Init(config, ray::internal::ExecuteTask, argc, argv);
+  RAY_CHECK(::ray::core::CoreWorkerProcess::IsInitialized());
+  ray::initialize_library_core_workers_from_outer(::ray::core::GetCoreWorkerProcess());
   ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
   return 0;
 }

@@ -11,16 +11,24 @@
 namespace ray {
 
 rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id) {
+  RAY_LOG(INFO) << "GETTING RAW" << (*id).Hex();
   core::CoreWorker &core_worker = core::CoreWorkerProcess::GetCoreWorker();
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   std::vector<ObjectID> ids;
+  std::vector<bool> res;
   ids.push_back(*id);
+  ::ray::Status status1 = core_worker.Wait(ids, 1, 6000, &res, false);
+  RAY_LOG(INFO) << "GOT IT!" << (*id).Hex();
   ::ray::Status status = core_worker.Get(ids, 6000, &results);
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Get object error: " << status.ToString();
+  }
 
   rust::Vec<uint8_t> buf;
   size_t size = results[0]->GetData()->Size();
 
-  RAY_LOG(DEBUG) << "Get Size" << size;
+  RAY_LOG(INFO) << "Get Size" << size;
   buf.reserve(size);
 
   // Unfortunately, we can't resize the vector and do a memcpy...
@@ -85,5 +93,13 @@ void LogDebug(rust::Str str) {
 
 void LogInfo(rust::Str str) {
   RAY_LOG(INFO) << static_cast<std::string>(str);
+}
+
+std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id) {
+  return std::make_unique<std::string>((*id).Binary());
+}
+
+std::unique_ptr<ObjectID> StringObjectID(const std::string& string) {
+  return std::make_unique<ObjectID>(ObjectID::FromBinary(string));
 }
 }

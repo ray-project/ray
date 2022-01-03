@@ -2,12 +2,19 @@
 mod test {
     use uniffi::RustBuffer;
     use rmp_serde;
-    use ray_rs_sys::{ray_api_ffi::*, RustTaskArg, remote, add_two_vecs, add_two_vecs_nested, add_three_vecs, get, get_execute_result, load_libraries_from_paths};
+    use ray_rs_sys::{ray_api_ffi::*,
+        RustTaskArg, remote,
+        add_two_vecs, add_two_vecs_nested_remote_outer_get,
+        add_two_vecs_nested,
+        add_three_vecs,
+        get, get_execute_result, load_libraries_from_paths,
+        byte_vec_to_object_id,
+    };
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
     use std::sync::Mutex;
     use lazy_static::lazy_static;
 
-    const NUM_CLUSTER_TESTS: usize = 3;
+    const NUM_CLUSTER_TESTS: usize = 2;
 
     lazy_static! {
         static ref CLUSTER_TEST_COUNTER: Mutex<(usize, usize)> = Mutex::new((0, 0));
@@ -37,18 +44,42 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_init_submit_execute_shutdown() {
+        try_init();
+        const VEC_SIZE: usize = 1 << 12;
+        let num_jobs = 1 << 0;
+
+        let (a, b): (Vec<_>, Vec<_>) =
+            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+
+        let now = std::time::Instant::now();
+        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+            add_two_vecs.remote(&a, &b)
+        }).collect();
+
+        ids.reverse();
+        println!("Submission: {:?}", now.elapsed().as_millis());
+
+        let results: Vec<_> = (0..num_jobs).map(|_| {
+            get::<Vec<u64>>(ids.pop().unwrap())
+        }).collect();
+
+        println!("Execute + Get: {:?}", now.elapsed().as_millis());
+        try_shutdown();
+    }
+
     // #[test]
-    // fn test_init_submit_execute_shutdown() {
+    // fn test_nested_remote() {
     //     try_init();
     //     const VEC_SIZE: usize = 1 << 12;
     //     let num_jobs = 1 << 0;
-    //
     //     let (a, b): (Vec<_>, Vec<_>) =
     //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
     //
     //     let now = std::time::Instant::now();
     //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-    //         add_two_vecs.remote(&a, &b)
+    //         add_two_vecs_nested.remote(&a, &b)
     //     }).collect();
     //
     //     ids.reverse();
@@ -62,29 +93,33 @@ mod test {
     //     try_shutdown();
     // }
 
-    #[test]
-    fn test_nested_remote() {
-        try_init();
-        const VEC_SIZE: usize = 1 << 12;
-        let num_jobs = 1 << 0;
-        let (a, b): (Vec<_>, Vec<_>) =
-            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-
-        let now = std::time::Instant::now();
-        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            add_two_vecs_nested.remote(&a, &b)
-        }).collect();
-
-        ids.reverse();
-        println!("Submission: {:?}", now.elapsed().as_millis());
-
-        let results: Vec<_> = (0..num_jobs).map(|_| {
-            get::<Vec<u64>>(ids.pop().unwrap())
-        }).collect();
-
-        println!("Execute + Get: {:?}", now.elapsed().as_millis());
-        try_shutdown();
-    }
+    // #[test]
+    // fn test_nested_remote_outer_get() {
+    //     try_init();
+    //     const VEC_SIZE: usize = 1 << 12;
+    //     let num_jobs = 1 << 0;
+    //     let (a, b): (Vec<_>, Vec<_>) =
+    //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+    //
+    //     let now = std::time::Instant::now();
+    //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+    //         add_two_vecs_nested_remote_outer_get.remote(&a, &b)
+    //     }).collect();
+    //
+    //     ids.reverse();
+    //     println!("Submission: {:?}", now.elapsed().as_millis());
+    //
+    //     let results: Vec<_> = (0..num_jobs).map(|_| {
+    //         get::<Vec<u64>>(
+    //             byte_vec_to_object_id(
+    //                 get::<Vec<u8>>(ids.pop().unwrap())
+    //             )
+    //         )
+    //     }).collect();
+    //
+    //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
+    //     try_shutdown();
+    // }
 
     #[test]
     fn test_get_execute_result() {

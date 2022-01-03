@@ -51,6 +51,7 @@ macro_rules! impl_ray_function {
                             object_id: String::new()
                         });
                     )*
+                    ray_api_ffi::LogInfo(&format!("SUBMITTING: {:?}", &self.ffi_lookup_name));
                     ray_api_ffi::Submit(&self.ffi_lookup_name, &task_args)
                 }
 
@@ -176,6 +177,7 @@ macro_rules! remote {
 }
 
 pub fn get<R: serde::de::DeserializeOwned>(id : UniquePtr<ray_api_ffi::ObjectID>) -> R {
+    ray_api_ffi::LogInfo("GETTING THE DAMN RAW TING");
     let buf = ray_api_ffi::GetRaw(id);
     rmp_serde::from_read_ref::<_, R>(&buf).unwrap()
 }
@@ -193,7 +195,16 @@ pub fn add_two_vecs(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
 
 remote! {
 pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
-    get(add_two_vecs.remote(a, b))
+    let objr = add_two_vecs.remote(&a, &b);
+    ray_api_ffi::LogInfo("SUBMITTED REMOTE FN");
+    get(objr)
+}
+}
+
+remote! {
+pub fn add_two_vecs_nested_remote_outer_get(a: Vec<u64>, b: Vec<u64>) -> Vec<u8> {
+    let objr = add_two_vecs.remote(&a, &b);
+    object_id_to_byte_vec(objr)
 }
 }
 

@@ -36,4 +36,8 @@ void LogDebug(rust::Str str);
 
 void LogInfo(rust::Str str);
 
+std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id);
+
+std::unique_ptr<ObjectID> StringObjectID(const std::string& string);
+
 }

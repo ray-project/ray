@@ -60,13 +60,16 @@ std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& a
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
+
   return_refs =
       core_worker.SubmitTask(RayFunction(ray::Language::RUST, function_descriptor), ray_args, options, 1,
                              false, scheduling_strategy, "");
+
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
+  CoreWorkerProcess::GetCoreWorker().AddLocalReference(return_ids[0]);
   return std::make_unique<ObjectID>(return_ids[0]);
 }
 
@@ -122,6 +125,9 @@ Status ExecuteTask(
 
   rust::Vec<uint8_t> ret = get_execute_result(arg_ptrs, arg_sizes, func_name);
 
+
+
+  RAY_LOG(INFO) << "Executed task: " << TaskType_Name(task_type);
   // if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
   //   std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
   //   current_actor_ = data;
@@ -193,6 +199,10 @@ void InitRust(rust::Str str) {
       result[index] = const_cast<char*>(args[index].c_str());
   }
   ray::Init(config, internal::ExecuteTask, 2, result);
+  // RAY_CHECK(CoreWorkerProcess::IsInitialized());
+
+  // TODO: remove this
+  ray::core::InitializeFromExisting(ray::core::GetCoreWorkerProcess());
   delete[] result;
 }
 
