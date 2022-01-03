@@ -36,6 +36,7 @@ install_ray() {
     pip install wheel
 
     pushd dashboard/client
+      choco install yarn -y
       yarn
       yarn build
     popd
