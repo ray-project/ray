@@ -87,7 +87,7 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
         return logdir_path.joinpath(Path(filename))
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir, config, **info)
+        super().start_training(logdir=logdir, config=config, **info)
 
         if not self._filename:
             filename = self._default_filename
@@ -120,7 +120,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir, config, **info)
+        super().start_training(logdir=logdir, config=config, **info)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
@@ -237,7 +237,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir, config, **info)
+        super().start_training(logdir=logdir, config=config, **info)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
@@ -282,7 +282,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir, config, **info)
+        super().start_training(logdir=logdir, config=config, **info)
 
         try:
             from tensorboardX import SummaryWriter
