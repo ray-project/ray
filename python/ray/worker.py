@@ -629,7 +629,7 @@ class RayContext:
         elif log_once("ray_context_getitem_address_info"):
             warnings.warn(
                 f'Accessing address info through ctx.get("{key}") is '
-                f'deprecated. Use ctx.address_info.get"{key}") instead.',
+                f'deprecated. Use ctx.address_info.get("{key}") instead.',
                 DeprecationWarning,
                 stacklevel=2)
         return self._dict.get(key)
