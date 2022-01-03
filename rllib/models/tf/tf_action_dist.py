@@ -533,7 +533,12 @@ class MultiActionDistribution(TFActionDistribution):
                         dist.action_space is not None:
                     split_indices.append(np.prod(dist.action_space.shape))
                 else:
-                    split_indices.append(tf.shape(dist.sample())[1])
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(tf.shape(sample)[1])
             split_x = tf.split(x, split_indices, axis=1)
         # Structured or flattened (by single action component) input.
         else:

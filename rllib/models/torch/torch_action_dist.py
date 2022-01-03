@@ -461,7 +461,12 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
                         dist.action_space is not None:
                     split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
-                    split_indices.append(dist.sample().size()[1])
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(sample.size()[1])
             split_x = list(torch.split(x, split_indices, dim=1))
         # Structured or flattened (by single action component) input.
         else:
