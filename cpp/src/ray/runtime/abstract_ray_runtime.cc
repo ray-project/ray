@@ -131,9 +131,9 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     } else {
       RAY_CHECK(arg.id);
       auto id = ObjectID::FromBinary(*arg.id);
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(id,
-                                                           core_worker.GetOwnerAddress(id),
-                                                           /*call_site=*/"");
+      ray_arg =
+          absl::make_unique<ray::TaskArgByReference>(id, core_worker.GetOwnerAddress(id),
+                                                     /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }

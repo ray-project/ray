@@ -1,16 +1,19 @@
 
 #pragma once
 
+#include <msgpack.hpp>
+
 #include "ray/api.h"
 #include "ray/core_worker/core_worker_options.h"
-#include <msgpack.hpp>
 #include "rust/cxx.h"
 
 namespace ray {
 
 void InitAsLocal();
 
-rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID>id);
+rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id);
+
+std::unique_ptr<ObjectID> PutRaw(rust::Vec<uint8_t> data);
 
 using Uint64ObjectRef = ray::ObjectRef<uint64_t>;
 
@@ -38,6 +41,6 @@ void LogInfo(rust::Str str);
 
 std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id);
 
-std::unique_ptr<ObjectID> StringObjectID(const std::string& string);
+std::unique_ptr<ObjectID> StringObjectID(const std::string &string);
 
-}
+}  // namespace ray

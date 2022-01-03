@@ -29,7 +29,8 @@ std::shared_ptr<CoreWorkerProcessImpl> GetCoreWorkerProcess() {
   return core_worker_process;
 }
 
-void InitializeFromExisting(std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process) {
+void InitializeFromExisting(
+    std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process) {
   // RAY_CHECK(!core_worker_process)
   //     << "The process is already initialized for core worker.";
   core_worker_process = existing_worker_process;

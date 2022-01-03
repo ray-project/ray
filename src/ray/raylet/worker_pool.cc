@@ -268,7 +268,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   // Append Ray-defined per-job options here
   std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP || language == Language::RUST) {
+  if (language == Language::JAVA || language == Language::CPP ||
+      language == Language::RUST) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {

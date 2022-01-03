@@ -24,7 +24,8 @@ class CoreWorkerProcessImpl;
 ///
 /// \param[in] existing_worker_process The CoreWorkerProcessImpl this CoreWorkerProcess
 /// is initializing (inheriting) from
-void InitializeFromExisting(std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process);
+void InitializeFromExisting(
+    std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process);
 
 /// TODO
 std::shared_ptr<CoreWorkerProcessImpl> GetCoreWorkerProcess();

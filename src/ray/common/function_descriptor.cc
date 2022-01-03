@@ -51,7 +51,8 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(const std::string &functi
   return ray::FunctionDescriptor(new CppFunctionDescriptor(std::move(descriptor)));
 }
 
-FunctionDescriptor FunctionDescriptorBuilder::BuildRust(const std::string &function_name) {
+FunctionDescriptor FunctionDescriptorBuilder::BuildRust(
+    const std::string &function_name) {
   rpc::FunctionDescriptor descriptor;
   auto typed_descriptor = descriptor.mutable_rust_function_descriptor();
   typed_descriptor->set_function_name(function_name);

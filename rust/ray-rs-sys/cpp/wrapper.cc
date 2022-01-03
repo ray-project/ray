@@ -1,11 +1,12 @@
 
+#include <msgpack.hpp>
+
 #include "ray/api.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
-#include <msgpack.hpp>
 #include "rust/cxx.h"
 
 namespace ray {
@@ -34,13 +35,31 @@ rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id) {
   // Unfortunately, we can't resize the vector and do a memcpy...
   // memcpy(buf.data(), results[0]->GetData()->Data(), size);
 
-  uint8_t* ray_buf = results[0]->GetData()->Data();
+  uint8_t *ray_buf = results[0]->GetData()->Data();
 
   size_t i;
   for (i = 0; i < size; i++) {
     buf.push_back(ray_buf[i]);
   }
   return buf;
+}
+
+std::unique_ptr<ObjectID> PutRaw(rust::Vec<uint8_t> data) {
+  RAY_LOG(INFO) << "Putting";
+  auto &core_worker = core::CoreWorkerProcess::GetCoreWorker();
+  ObjectID object_id = ObjectID::FromRandom();
+  RAY_LOG(INFO) << "Putting" << object_id.Hex();
+  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(data.data()), data.size(), true);
+  auto status = core_worker.Put(
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      &object_id);
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Put object error: " << status.ToString();
+  } else {
+    RAY_LOG(INFO) << "Put object success: " << status.ToString();
+  }
+  return std::make_unique<ObjectID>(object_id);
 }
 
 void InitAsLocal() {
@@ -82,24 +101,20 @@ struct Config {
 };
 
 void PutAndGetConfig() {
-  Config config = { "hello", 42ULL };
+  Config config = {"hello", 42ULL};
   auto ref = Put(config);
   Get(ref);
 }
 
-void LogDebug(rust::Str str) {
-  RAY_LOG(DEBUG) << static_cast<std::string>(str);
-}
+void LogDebug(rust::Str str) { RAY_LOG(DEBUG) << static_cast<std::string>(str); }
 
-void LogInfo(rust::Str str) {
-  RAY_LOG(INFO) << static_cast<std::string>(str);
-}
+void LogInfo(rust::Str str) { RAY_LOG(INFO) << static_cast<std::string>(str); }
 
 std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id) {
   return std::make_unique<std::string>((*id).Binary());
 }
 
-std::unique_ptr<ObjectID> StringObjectID(const std::string& string) {
+std::unique_ptr<ObjectID> StringObjectID(const std::string &string) {
   return std::make_unique<ObjectID>(ObjectID::FromBinary(string));
 }
-}
+}  // namespace ray

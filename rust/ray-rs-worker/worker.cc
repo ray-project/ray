@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <ray/api.h>
+
 #include "rust/ray-rs-sys/cpp/tasks.h"
 #include "rust/ray-rs-sys/src/lib.rs.h"
 

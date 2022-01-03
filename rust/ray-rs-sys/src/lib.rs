@@ -24,11 +24,13 @@ use core::pin::Pin;
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 pub mod remote_functions;
-pub use remote_functions::{add_two_vecs, add_three_vecs, add_two_vecs_nested, add_two_vecs_nested_remote_outer_get, get};
 pub use remote_functions::{
-    ray_rust_ffi_add_two_vecs,
-    ray_rust_ffi_add_two_vecs_nested,
-    ray_rust_ffi_add_two_vecs_nested_remote_outer_get,
+    add_two_vecs,
+    add_three_vecs,
+    add_two_vecs_nested,
+    add_two_vecs_nested_remote_outer_get,
+    get,
+    put_and_get_nested
 };
 
 pub struct RustTaskArg {
@@ -261,6 +263,7 @@ pub mod ray_api_ffi {
         fn LogInfo(str: &str);
 
         fn GetRaw(id: UniquePtr<ObjectID>) -> Vec<u8>;
+        fn PutRaw(data: Vec<u8>) -> UniquePtr<ObjectID>;
 
         type Uint64ObjectRef;
         type StringObjectRef;

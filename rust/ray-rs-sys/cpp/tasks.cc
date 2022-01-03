@@ -1,28 +1,25 @@
 
+#include <ray/api/common_types.h>
+
+#include "ray/api.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
-#include "ray/common/id.h"
-#include "ray/common/task/task_util.h"
-
 #include "rust/cxx.h"
 #include "rust/ray-rs-sys/src/lib.rs.h"
-
-#include "ray/api.h"
-#include <ray/api/common_types.h>
 
 namespace ray {
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    const rust::Vec<RustTaskArg>& args) {
+    const rust::Vec<RustTaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
-  for (auto& arg : args) {
+  for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
     if (arg.is_value()) {
       rust::Vec<uint8_t> buffer = arg.value();
-      auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          buffer.data(), buffer.size(), true);
+      auto memory_buffer =
+          std::make_shared<ray::LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
       ray_arg = std::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
           memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
@@ -33,7 +30,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
         owner_address = core_worker.GetOwnerAddress(id);
       }
       ray_arg = std::make_unique<ray::TaskArgByReference>(id, owner_address,
-                                                           /*call_site=*/"");
+                                                          /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -41,11 +38,13 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
 }
 
 /// The purpose of this interface is to
-std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& args) {
+std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg> &args) {
+  RAY_LOG(INFO) << "Submitting task: " << name;
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   TaskOptions options{};
   std::vector<rpc::ObjectReference> return_refs;
-  auto function_descriptor = FunctionDescriptorBuilder::BuildRust(static_cast<std::string>(name));
+  auto function_descriptor =
+      FunctionDescriptorBuilder::BuildRust(static_cast<std::string>(name));
   auto ray_args = TransformArgs(args);
 
   BundleID bundle_id = std::make_pair(PlacementGroupID::Nil(), -1);
@@ -54,25 +53,30 @@ std::unique_ptr<ObjectID> Submit(rust::Str name, const rust::Vec<RustTaskArg>& a
   if (!bundle_id.first.IsNil()) {
     auto placement_group_scheduling_strategy =
         scheduling_strategy.mutable_placement_group_scheduling_strategy();
-    placement_group_scheduling_strategy->set_placement_group_id(
-        bundle_id.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
     placement_group_scheduling_strategy->set_placement_group_bundle_index(
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
 
+  RAY_LOG(INFO) << "Submitting task2: " << name;
+
   return_refs =
-      core_worker.SubmitTask(RayFunction(ray::Language::RUST, function_descriptor), ray_args, options, 1,
-                             false, scheduling_strategy, "");
+      core_worker.SubmitTask(RayFunction(ray::Language::RUST, function_descriptor),
+                             ray_args, options, 1, false, scheduling_strategy, "");
+
+  RAY_LOG(INFO) << "Submitting task3: " << name;
 
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
   CoreWorkerProcess::GetCoreWorker().AddLocalReference(return_ids[0]);
+
+  RAY_LOG(INFO) << "Submitting task4: " << name;
+
   return std::make_unique<ObjectID>(return_ids[0]);
 }
-
 
 namespace internal {
 
@@ -125,8 +129,6 @@ Status ExecuteTask(
 
   rust::Vec<uint8_t> ret = get_execute_result(arg_ptrs, arg_sizes, func_name);
 
-
-
   RAY_LOG(INFO) << "Executed task: " << TaskType_Name(task_type);
   // if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
   //   std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
@@ -136,7 +138,7 @@ Status ExecuteTask(
   //   std::tie(status, data) =
   //       GetExecuteResult(func_name, ray_args_buffer, current_actor_.get());
   // } else {  // NORMAL_TASK
-    // std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
+  // std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
   // }
 
   std::shared_ptr<ray::LocalMemoryBuffer> meta_buffer = nullptr;
@@ -150,9 +152,10 @@ Status ExecuteTask(
   //         << "C++ task failed: " << status.ToString();
   //   }
   //
-  //   std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
-    // meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-    //     reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
+  //   std::string meta_str =
+  //   std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  // meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+  //     reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
   //
   //   msgpack::sbuffer buf;
   //   std::string msg = status.ToString();
@@ -188,22 +191,22 @@ Status ExecuteTask(
   // }
   return ray::Status::OK();
 }
-} // namespace internal
+}  // namespace internal
 void InitRust(rust::Str str) {
   ray::RayConfig config;
 
-  std::vector<std::string> args = { "nil", static_cast<std::string>(str) };
+  std::vector<std::string> args = {"nil", static_cast<std::string>(str)};
 
-  char** result = new char*[args.size()];
+  char **result = new char *[args.size()];
   for (size_t index = 0; index < args.size(); index++) {
-      result[index] = const_cast<char*>(args[index].c_str());
+    result[index] = const_cast<char *>(args[index].c_str());
   }
   ray::Init(config, internal::ExecuteTask, 2, result);
   // RAY_CHECK(CoreWorkerProcess::IsInitialized());
 
   // TODO: remove this
-  ray::core::InitializeFromExisting(ray::core::GetCoreWorkerProcess());
+  // ray::core::InitializeFromExisting(ray::core::GetCoreWorkerProcess());
   delete[] result;
 }
 
-}
+}  // namespace ray

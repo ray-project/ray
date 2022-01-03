@@ -369,7 +369,6 @@ class FunctionDescriptorBuilder {
   /// \return a ray::CppFunctionDescriptor
   static FunctionDescriptor BuildCpp(const std::string &function_name);
 
-
   /// Build a RustFunctionDescriptor.
   ///
   /// \return a ray::RustFunctionDescriptor

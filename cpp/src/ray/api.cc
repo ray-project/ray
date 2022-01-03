@@ -14,11 +14,11 @@
 
 #include <ray/api.h>
 
-#include "config_internal.h"
-#include "runtime/abstract_ray_runtime.h"
-#include "ray/core_worker/core_worker_process.h"
-#include "util/process_helper.h"
 #include "./config_internal.h"
+#include "config_internal.h"
+#include "ray/core_worker/core_worker_process.h"
+#include "runtime/abstract_ray_runtime.h"
+#include "util/process_helper.h"
 
 namespace ray {
 
@@ -29,11 +29,13 @@ void SetConfigToWorker() {
 }
 
 bool ShouldInitWithCallback() {
-  return !(internal::ConfigInternal::Instance().run_mode == internal::RunMode::SINGLE_PROCESS
-    || core::CoreWorkerProcess::IsInitialized());
+  return !(internal::ConfigInternal::Instance().run_mode ==
+               internal::RunMode::SINGLE_PROCESS ||
+           core::CoreWorkerProcess::IsInitialized());
 }
 
-void Init(ray::RayConfig &config, core::CoreWorkerOptions::TaskExecutionCallback callback, int argc, char **argv) {
+void Init(ray::RayConfig &config, core::CoreWorkerOptions::TaskExecutionCallback callback,
+          int argc, char **argv) {
   if (!IsInitialized()) {
     internal::ConfigInternal::Instance().Init(config, argc, argv);
     if (ShouldInitWithCallback()) {
@@ -45,7 +47,8 @@ void Init(ray::RayConfig &config, core::CoreWorkerOptions::TaskExecutionCallback
   }
 }
 
-void StartWorkerWithCallback(core::CoreWorkerOptions::TaskExecutionCallback callback, int argc, char **argv) {
+void StartWorkerWithCallback(core::CoreWorkerOptions::TaskExecutionCallback callback,
+                             int argc, char **argv) {
   RAY_LOG(INFO) << "RUST default worker started.";
   ray::internal::ConfigInternal::Instance().worker_type = core::WorkerType::WORKER;
   ray::RayConfig config;
@@ -57,7 +60,8 @@ void Init(ray::RayConfig &config, int argc, char **argv) {
   if (!IsInitialized()) {
     internal::ConfigInternal::Instance().Init(config, argc, argv);
     if (ShouldInitWithCallback()) {
-      internal::ProcessHelper::GetInstance().RayStart(internal::TaskExecutor::ExecuteTask);
+      internal::ProcessHelper::GetInstance().RayStart(
+          internal::TaskExecutor::ExecuteTask);
     }
     auto runtime = internal::AbstractRayRuntime::DoInit();
     is_init_ = true;

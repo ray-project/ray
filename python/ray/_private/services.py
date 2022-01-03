@@ -55,11 +55,11 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 
 # Location of the cpp default worker executables.
 DEFAULT_CPP_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
-                                         "cpp/default_worker" + EXE_SUFFIX)
+                                             "cpp/default_worker" + EXE_SUFFIX)
 
 # Location of the rust default worker executables.
 DEFAULT_RUST_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
-                                      "rust/rust_worker" + EXE_SUFFIX)
+                                              "rust/rust_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
@@ -1762,9 +1762,10 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     return command
 
+
 def build_rust_worker_command(rust_worker_options, redis_address,
-                             plasma_store_name, raylet_name, redis_password,
-                             session_dir, log_dir, node_ip_address):
+                              plasma_store_name, raylet_name, redis_password,
+                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a Rust worker.
 
     Args:
@@ -1795,6 +1796,7 @@ def build_rust_worker_command(rust_worker_options, redis_address,
     ]
 
     return command
+
 
 def determine_plasma_store_config(object_store_memory,
                                   plasma_directory=None,
