@@ -156,6 +156,7 @@ class DockerCluster:
     def setup(self):
         self._tempdir = tempfile.mkdtemp(
             dir=os.environ.get("RAY_TEMPDIR", None))
+        os.chmod(self._tempdir, 0o777)
         self._config_file = os.path.join(self._tempdir, "cluster.yaml")
         self._nodes_file = os.path.join(self._tempdir, "nodes.json")
         self.update_config()

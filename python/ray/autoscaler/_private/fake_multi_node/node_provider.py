@@ -366,7 +366,9 @@ class FakeMultiNodeProvider(NodeProvider):
             json.dump(self._nodes, f)
 
         # Make sure this is always writeable from inside the containers
-        os.chmod(self._node_state_path, 0o777)
+        if not self.uses_docker:
+            # Only chmod from the outer container
+            os.chmod(self._node_state_path, 0o777)
 
     def _update_docker_compose_config(self):
         config = copy.deepcopy(DOCKER_COMPOSE_SKELETON)
