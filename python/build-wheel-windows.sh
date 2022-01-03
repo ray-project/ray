@@ -72,11 +72,12 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        local pydirs=("${RUNNER_TOOL_CACHE}/Python/${pyversion}".*/x64)
-        local pydir="${pydirs[-1]}"
-        pydir="$(cygpath -u "${pydir}")"  # Translate Windows path
-        test -d "${pydir}"
-        export PATH="${pydir}:${pydir}/${PY_SCRIPT_SUBDIR}:${PATH}"
+        # local pydirs=("${RUNNER_TOOL_CACHE}/Python/${pyversion}".*/x64)
+        # local pydir="${pydirs[-1]}"
+        # pydir="$(cygpath -u "${pydir}")"  # Translate Windows path
+        # test -d "${pydir}"
+        # export PATH="${pydir}:${pydir}/${PY_SCRIPT_SUBDIR}:${PATH}"
+        conda install -y python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
