@@ -1,6 +1,6 @@
 """
-Multi-Agent, League-Based Asynch. PPO (MALB-APPO)
-================================================
+A multi-agent, distributed multi-GPU, league-capable asynch. PPO
+================================================================
 """
 import ray
 from ray.rllib.agents.trainer import Trainer
