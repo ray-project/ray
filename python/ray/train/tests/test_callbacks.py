@@ -59,10 +59,10 @@ class TestBackend(Backend):
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
 @pytest.mark.parametrize("detailed", [False, True])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
-def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
-              filename):
+def test_json(monkeypatch, ray_start_4_cpus, make_temp_dir, workers_to_log,
+              detailed, filename):
     if detailed:
-        os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
+        monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
 
     config = TestConfig()
 
@@ -118,9 +118,6 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         assert all(
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
-
-    os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
 
 def _validate_tbx_result(events_dir):
