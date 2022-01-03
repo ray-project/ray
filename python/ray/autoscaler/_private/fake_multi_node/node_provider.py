@@ -246,7 +246,7 @@ class FakeMultiNodeProvider(NodeProvider):
             self._mounted_cluster_dir = os.path.join(self._volume_dir,
                                                      "shared")
 
-            if not self.uses_docker:
+            if not self.in_docker_container:
                 # Only needed on host
                 os.makedirs(
                     self._mounted_cluster_dir, mode=0o755, exist_ok=True)
@@ -254,7 +254,7 @@ class FakeMultiNodeProvider(NodeProvider):
             self._boostrap_config_path = os.path.join(self._volume_dir,
                                                       "bootstrap_config.yaml")
 
-            if not self.uses_docker:
+            if not self.in_docker_container:
                 # Only needed on host
                 shutil.copy(
                     os.path.join(
@@ -366,7 +366,7 @@ class FakeMultiNodeProvider(NodeProvider):
             json.dump(self._nodes, f)
 
         # Make sure this is always writeable from inside the containers
-        if not self.uses_docker:
+        if not self.in_docker_container:
             # Only chmod from the outer container
             os.chmod(self._node_state_path, 0o777)
 
