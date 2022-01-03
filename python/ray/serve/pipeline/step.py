@@ -1,5 +1,6 @@
+import inspect
 from types import FunctionType
-from typing import Callable, Optional, Union
+from typing import Callable, Dict, Optional, OrderedDict, Union
 
 from ray.serve.pipeline.node import ExecutorPipelineNode, INPUT, PipelineNode
 from ray.serve.pipeline.common import (ExecutionMode, str_to_execution_mode,
@@ -44,6 +45,9 @@ class PipelineStep:
     def options(self, *args, **kwargs):
         raise NotImplementedError(".options() not supported yet.")
 
+    def instantiate(self, recursive=True):
+        pass
+
 
 class CallablePipelineStep(PipelineStep):
     """A step that is ready to be used in a pipeline.
@@ -54,11 +58,13 @@ class CallablePipelineStep(PipelineStep):
     as its arguments (or the INPUT step).
     """
 
-    def __init__(self, callable_factory: Callable[[], Callable],
-                 config: StepConfig):
+    def __init__(self, callable_factory: Callable[[], Callable], config: StepConfig):
         super().__init__(config)
         assert callable(callable_factory)
         self._callable_factory = callable_factory
+
+        self._nodes: Dict[str, CallablePipelineStep] = OrderedDict()
+
 
     def options(self, *args, **kwargs):
         raise NotImplementedError("No options yet!")
@@ -76,9 +82,17 @@ class UninstantiatedClassPipelineStep(PipelineStep):
     CallablePipelineStep before it can actually be used.
     """
 
-    def __init__(self, _class: Callable, config: StepConfig):
+    def __init__(
+        self,
+        _class: Callable,
+        config: StepConfig,
+        callable_init_args,
+    ):
         super().__init__(config)
         self._class = _class
+        self._config = config
+        self._step_instance = _class(*callable_init_args)
+        self._children_steps: Dict[str, PipelineStep] = OrderedDict()
 
     def options(self, *args, **kwargs):
         raise NotImplementedError("No options yet!")
@@ -86,6 +100,17 @@ class UninstantiatedClassPipelineStep(PipelineStep):
     def __call__(self, *args, **kwargs):
         return CallablePipelineStep(lambda: self._class(*args, **kwargs),
                                     self._config)
+
+    def __setattr__(self, name: str, value: PipelineStep) -> None:
+        """
+        Called when we try to execute constructor of a class decorated as
+        pipeline step. Register the step when self.model = Model() with
+        unique identifier and persisted its parent - child structure.
+        """
+        print(f"Calling __setattr__: name {name}, value: {value}")
+
+    def instantiate(self, recursive=True):
+        pass
 
 
 def step(_func_or_class: Optional[Callable] = None,
@@ -127,7 +152,9 @@ def step(_func_or_class: Optional[Callable] = None,
         if isinstance(_func_or_class, FunctionType):
             return CallablePipelineStep(lambda: _func_or_class, config)
         else:
-            return UninstantiatedClassPipelineStep(_func_or_class, config)
+            signature = inspect.signature(_func_or_class.__init__)
+            args = list(signature.parameters)[1:]
+            return UninstantiatedClassPipelineStep(_func_or_class, config, args)
 
     # This handles both parametrized and non-parametrized usage of the
     # decorator. See the @serve.batch code for more details.

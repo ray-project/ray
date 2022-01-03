@@ -8,7 +8,7 @@ from ray.serve.pipeline.node import INPUT, INJECTED, PipelineNode
 from typing import List
 
 # Pipeline nodes are written from leaf to root (entrypoint)
-@pipeline.step
+@pipeline.step(execution_mode=ExecutionMode.ACTORS)
 class Model:
     # For backwards compatibility
     _version: int = 1
@@ -18,6 +18,7 @@ class Model:
     # same class def & implementation.
     def __init__(self, weight):
         self.weight = weight
+        self.policy = 1
 
     def __call__(self, req):
         return req * self.weight
@@ -42,20 +43,34 @@ class Pipeline:
     def __init__(self):
         # Callable instantiated after forward()
         self.feature_processing = FeatureProcessing()
-        self.models = [Model(i) for i in range(3)]
+
+        # TODO: Add a pipeline container here so we can keep this implementation
+        # but also make nodes registered with unique name for each instance
+        # self.models = [Model(i) for i in range(3)]
+
+        self.model_1 = Model(1) # What if this is heavy .. use a stub ?
+        self.model_2 = Model(2)
+        self.model_3 = Model(3)
 
     def __call__(self, req):
         """
-        Build graph via symbolic execution of pipeline steps.
+        1) No ray API knowledge is required here, user just provides blocks of
+            code. There's even no ray API call made.
+        2) Underlying communication is handled by us, where we can decide how
+            to make ray actor calls, to which group, on which node.
+        3) For scaling and updates, user can opt-in serve deployment as an
+            executor type with more dynamic support. Since we know the DAG, we
+            can make right update in tandem calls while redirecting traffic
+            accordingly on the right path.
         """
         processed_feature = self.feature_processing(req)
 
         if processed_feature < 5:
-            x = self.models[0](processed_feature)
+            x = self.model_1(processed_feature)
         elif processed_feature >= 5 and processed_feature < 10:
-            x = self.models[1](processed_feature)
+            x = self.model_2(processed_feature)
         else:
-            x = self.models[2](processed_feature)
+            x = self.model_3(processed_feature)
 
         return x
 
@@ -91,6 +106,18 @@ class Pipeline:
 
 
 if __name__ == "__main__":
+    # Solve node init / instantiate
+        # maybe just dummy task ?
+    # Solve node DAG tracing
+        # See if we can avoid making symbolic calls with pipeline.INPUT
+    # Add pprint strings
+    # Can be called
     pipeline = Pipeline()
+    # Recursively do:
+    # add executor for self
+    # traces other nodes as instance variables of my class, annotated as "step"
+    # add to my node's dictionary
+    pipeline.instantiate(recursive=True)
+
     for i in range(10):
-        print(pipeline(i))
+        print(pipeline())
