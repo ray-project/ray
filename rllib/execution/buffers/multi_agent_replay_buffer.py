@@ -108,8 +108,11 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
-            return PrioritizedReplayBuffer(
-                self.capacity, alpha=prioritized_replay_alpha)
+            if prioritized_replay_alpha == 0.0:
+                return ReplayBuffer(...)
+            else:
+                return PrioritizedReplayBuffer(
+                    self.capacity, alpha=prioritized_replay_alpha)
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 

@@ -183,12 +183,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
         def _sample_to_buffer(worker):
             # Generate a sample.
             sample = worker.sample()
-            # Send the sample to our buffer, depending on which policies
-            # participated in the episode.
+            # Send the per-agent SampleBatches to the correct buffer(s),
+            # depending on which policies participated in the episode.
             assert isinstance(sample, MultiAgentBatch)
             for pid, batch in sample.policy_batches.items():
                 replay_actor = worker._policy_learners[pid][1]
-                replay_actor.insert
+                ma_batch = MultiAgentBatch({pid: batch}, batch.count)
+                replay_actor.add_batch.remote(ma_batch)
 
         evaluation_metrics = ray.get([
             worker.apply.remote(_sample_to_buffer)
