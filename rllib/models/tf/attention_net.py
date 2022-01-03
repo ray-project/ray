@@ -24,7 +24,7 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.tf_utils import merge_inputs_to_1d, one_hot
+from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 tf1, tf, tfv = try_import_tf()
@@ -459,7 +459,7 @@ class AttentionWrapper(TFModelV2):
             prev_n_actions = input_dict[SampleBatch.PREV_ACTIONS]
             if self.model_config["_disable_action_flattening"]:
                 # Merge prev n actions into flat tensor.
-                flat = merge_inputs_to_1d(
+                flat = flatten_inputs_to_1d_tensor(
                     prev_n_actions,
                     spaces_struct=self.action_space_struct,
                     time_axis=True,

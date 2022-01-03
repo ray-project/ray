@@ -25,7 +25,7 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.torch_utils import merge_inputs_to_1d, one_hot
+from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 torch, nn = try_import_torch()
@@ -357,7 +357,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
             prev_n_actions = input_dict[SampleBatch.PREV_ACTIONS]
             if self.model_config["_disable_action_flattening"]:
                 # Merge prev n actions into flat tensor.
-                flat = merge_inputs_to_1d(
+                flat = flatten_inputs_to_1d_tensor(
                     prev_n_actions,
                     spaces_struct=self.action_space_struct,
                     time_axis=True,
