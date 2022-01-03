@@ -229,7 +229,7 @@ void PullManager::DeactivateUntilMarginAvailable(
     if (num_active_bundles_ <= retain_min) {
       return;
     }
-    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
+    RAY_LOG(INFO) << "jjyao Deactivating " << debug_name << " " << *highest_id_for_bundle
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
@@ -330,7 +330,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
-  RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
+  RAY_LOG(INFO) << "jjyao Cancel pull request " << request_id;
 
   Queue *request_queue = nullptr;
   uint64_t *highest_req_id_being_pulled = nullptr;
