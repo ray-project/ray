@@ -667,15 +667,15 @@ class PlacementGroupInfoAccessor {
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  /// Create a placement group to GCS asynchronously.
+  /// Create a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS.
-  /// \return Status.
-  virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback);
+  /// \return Status. The status of the RPC. TimedOut if the RPC times out. Invalid if the
+  /// same name placement group is registered. NotFound if the placement group is removed.
+  virtual Status SyncCreatePlacementGroup(
+      const ray::PlacementGroupSpecification &placement_group_spec);
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -688,10 +688,14 @@ class PlacementGroupInfoAccessor {
   /// Get a placement group data from GCS asynchronously by name.
   ///
   /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \param ray_namespace The ray namespace.
+  /// \param callback The callback that's called when the RPC is replied.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
       const std::string &placement_group_name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get all placement group info from GCS asynchronously.
   ///
@@ -700,22 +704,22 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
-  /// Remove a placement group to GCS asynchronously.
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_id The id for the placement group to remove.
-  /// \param callback Callback that will be called after the placement group is
-  /// removed from GCS.
   /// \return Status
-  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                                           const StatusCallback &callback);
+  virtual Status SyncRemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Wait for a placement group until ready asynchronously.
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param placement_group_id The id for the placement group to wait for until ready.
-  /// \param callback Callback that will be called after the placement group is created.
-  /// \return Status
-  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
-                                     const StatusCallback &callback);
+  /// \return Status. TimedOut if the RPC times out. NotFound if the placement has already
+  /// removed.
+  virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id);
 
  private:
   GcsClient *client_impl_;

@@ -106,9 +106,9 @@ class RayCluster:
         """Runs the autoscaling monitor."""
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
         port = operator_utils.infer_head_port(self.config)
-        redis_address = services.address(ray_head_pod_ip, port)
+        address = services.address(ray_head_pod_ip, port)
         mtr = monitor.Monitor(
-            redis_address=redis_address,
+            address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
             prefix_cluster_info=True,

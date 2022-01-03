@@ -95,16 +95,16 @@ class TestBackend(Backend):
         pass
 
 
-def test_start(ray_start_2_cpus, tmp_path):
+def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1, run_dir=tmp_path)
+        e.start_training(lambda: 1)
     e.start()
     assert len(e.worker_group) == 2
 
 
-def test_initialization_hook(ray_start_2_cpus, tmp_path):
+def test_initialization_hook(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
 
@@ -118,30 +118,30 @@ def test_initialization_hook(ray_start_2_cpus, tmp_path):
         import os
         return os.getenv("TEST", "0")
 
-    e.start_training(check, run_dir=tmp_path)
+    e.start_training(check)
     assert e.finish_training() == ["1", "1"]
 
 
-def test_shutdown(ray_start_2_cpus, tmp_path):
+def test_shutdown(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
     assert len(e.worker_group) == 2
     e.shutdown()
     with pytest.raises(InactiveWorkerGroupError):
-        e.start_training(lambda: 1, run_dir=tmp_path)
+        e.start_training(lambda: 1)
 
 
-def test_train(ray_start_2_cpus, tmp_path):
+def test_train(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    e.start_training(lambda: 1, run_dir=tmp_path)
+    e.start_training(lambda: 1)
     assert e.finish_training() == [1, 1]
 
 
-def test_local_ranks(ray_start_2_cpus, tmp_path):
+def test_local_ranks(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -149,11 +149,11 @@ def test_local_ranks(ray_start_2_cpus, tmp_path):
     def train_func():
         return train.local_rank()
 
-    e.start_training(train_func, run_dir=tmp_path)
+    e.start_training(train_func)
     assert set(e.finish_training()) == {0, 1}
 
 
-def test_train_failure(ray_start_2_cpus, tmp_path):
+def test_train_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -167,15 +167,15 @@ def test_train_failure(ray_start_2_cpus, tmp_path):
     with pytest.raises(TrainBackendError):
         e.finish_training()
 
-    e.start_training(lambda: 1, run_dir=tmp_path)
+    e.start_training(lambda: 1)
 
     with pytest.raises(TrainBackendError):
-        e.start_training(lambda: 2, run_dir=tmp_path)
+        e.start_training(lambda: 2)
 
     assert e.finish_training() == [1, 1]
 
 
-def test_worker_failure(ray_start_2_cpus, tmp_path):
+def test_worker_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -186,11 +186,11 @@ def test_worker_failure(ray_start_2_cpus, tmp_path):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(TrainingWorkerError):
-            e.start_training(lambda: 1, run_dir=tmp_path)
+            e.start_training(lambda: 1)
             e.finish_training()
 
 
-def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
+def test_mismatch_checkpoint_report(ray_start_2_cpus):
     def train_func():
         if (train.world_rank()) == 0:
             train.save_checkpoint(epoch=0)
@@ -200,12 +200,12 @@ def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
-    e.start_training(train_func, run_dir=tmp_path)
+    e.start_training(train_func)
     with pytest.raises(RuntimeError):
         e.get_next_results()
 
 
-def test_tensorflow_start(ray_start_2_cpus, tmp_path):
+def test_tensorflow_start(ray_start_2_cpus):
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)
@@ -216,7 +216,7 @@ def test_tensorflow_start(ray_start_2_cpus, tmp_path):
         import os
         return json.loads(os.environ["TF_CONFIG"])
 
-    e.start_training(get_tf_config, run_dir=tmp_path)
+    e.start_training(get_tf_config)
     results = e.finish_training()
     assert len(results) == num_workers
 
@@ -228,7 +228,7 @@ def test_tensorflow_start(ray_start_2_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
-def test_torch_start_shutdown(ray_start_2_cpus, init_method, tmp_path):
+def test_torch_start_shutdown(ray_start_2_cpus, init_method):
     torch_config = TorchConfig(backend="gloo", init_method=init_method)
     e = BackendExecutor(torch_config, num_workers=2)
     e.start()
@@ -238,19 +238,19 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method, tmp_path):
         return torch.distributed.is_initialized(
         ) and torch.distributed.get_world_size() == 2
 
-    e.start_training(check_process_group, run_dir=tmp_path)
+    e.start_training(check_process_group)
     assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    e.start_training(check_process_group, run_dir=tmp_path)
+    e.start_training(check_process_group)
     assert not any(e.finish_training())
 
 
 @pytest.mark.parametrize("worker_results", [(1, ["0"]), (2, ["0,1", "0,1"]),
                                             (3, ["0", "0,1", "0,1"]),
                                             (4, ["0,1", "0,1", "0,1", "0,1"])])
-def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
+def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -265,7 +265,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
         num_cpus_per_worker=0,
         num_gpus_per_worker=1)
     e.start()
-    e.start_training(get_resources, tmp_path)
+    e.start_training(get_resources)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -278,8 +278,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results, tmp_path):
      (6, ["0", "0", "0,1", "0,1", "0,1", "0,1"]),
      (7, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"]),
      (8, ["0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1", "0,1"])])
-def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
-                                         tmp_path):
+def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -294,7 +293,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
         num_cpus_per_worker=0,
         num_gpus_per_worker=0.5)
     e.start()
-    e.start_training(get_resources, tmp_path)
+    e.start_training(get_resources)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -304,8 +303,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results,
                          [(1, ["0,1"]), (2, ["0,1,2,3", "0,1,2,3"]),
                           (3, ["0,1", "0,1,2,3", "0,1,2,3"]),
                           (4, ["0,1,2,3", "0,1,2,3", "0,1,2,3", "0,1,2,3"])])
-def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
-                                       tmp_path):
+def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -320,7 +318,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
         num_cpus_per_worker=0,
         num_gpus_per_worker=2)
     e.start()
-    e.start_training(get_resources, run_dir=tmp_path)
+    e.start_training(get_resources)
     results = e.finish_training()
     results.sort()
     assert results == expected_results
@@ -356,7 +354,7 @@ def test_placement_group_spread(ray_4_node_4_cpu, num_workers):
 
 
 @pytest.mark.parametrize("placement_group_capture_child_tasks", [True, False])
-def test_placement_group_parent(ray_4_node_4_cpu, tmp_path,
+def test_placement_group_parent(ray_4_node_4_cpu,
                                 placement_group_capture_child_tasks):
     """Tests that parent placement group will be used."""
     num_workers = 2
@@ -372,7 +370,7 @@ def test_placement_group_parent(ray_4_node_4_cpu, tmp_path,
         config = TestConfig()
         e = BackendExecutor(config, num_workers=2)
         e.start()
-        e.start_training(train_func, run_dir=tmp_path)
+        e.start_training(train_func)
         return e.finish_training()
 
     results_future = test.options(

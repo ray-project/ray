@@ -76,7 +76,7 @@ def upload_paths(paths, resp, destination):
     branch = os.environ["BUILDKITE_BRANCH"]
     bk_job_id = os.environ["BUILDKITE_JOB_ID"]
 
-    current_os = os.uname().sysname.lower()
+    current_os = sys.platform
 
     for path in paths:
         fn = os.path.split(path)[-1]
