@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "plus.h"
+
 #include <ray/api.h>
 
 int Return1() { return 1; };
