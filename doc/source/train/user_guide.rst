@@ -410,9 +410,10 @@ Built-in Callbacks
 
 The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
 
-1. :ref:`train-api-json-logger-callback`
-2. :ref:`train-api-tbx-logger-callback`
-3. :ref:`train-api-mlflow-logger-callback`
+1. :ref:`train-api-print-callback`
+2. :ref:`train-api-json-logger-callback`
+3. :ref:`train-api-tbx-logger-callback`
+4. :ref:`train-api-mlflow-logger-callback`
 
 Example: Logging to MLflow and Tensorboard
 ++++++++++++++++++++++++++++++++++++++++++
@@ -455,7 +456,7 @@ the callback is general enough, please feel welcome to `add it <https://docs
 .ray.io/en/master/getting-involved.html>`_ to the ``ray``
 `repository <https://github.com/ray-project/ray>`_.
 
-A simple example for creating a callback that will print out results:
+A simple example for creating a callback that will print out the average of all results:
 
 .. code-block:: python
 

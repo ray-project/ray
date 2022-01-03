@@ -8,16 +8,35 @@ class PrintCallback(TrainingCallback):
     """A callback that prints training results to STDOUT.
 
     Example:
-        >>> # Handle results from two workers.
-        >>> callback = PrintCallback()
-        >>> results = [{"loss": 2.290156}, {"loss": 2.275099}]
-        >>> callback.handle_result(results)
+
+        >>> from ray import train
+        >>> from ray.train import Trainer
+        >>> from ray.train.callbacks import PrintCallback
+
+        >>> def train_func():
+        ...    for i in range(2):
+        ...        train.report(worker_idx=train.world_rank(), epoch=i)
+
+        >>> trainer = Trainer(num_workers=2, backend="torch")
+        >>> trainer.run(train_func, callbacks=[PrintCallback()])
         [
             {
-                "loss": 2.290156
+                "worker_idx": 0,
+                "epoch": 0
             },
             {
-                "loss": 2.275099
+                "worker_idx": 1
+                "epoch": 0
+            }
+        ]
+        [
+            {
+                "worker_idx": 0,
+                "epoch": 1
+            },
+            {
+                "worker_idx": 1
+                "epoch": 1
             }
         ]
     """
