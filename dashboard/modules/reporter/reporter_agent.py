@@ -19,6 +19,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
@@ -146,8 +147,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                                 psutil.cpu_count(logical=False))
 
         self._ip = dashboard_agent.ip
-        self._redis_address, _ = dashboard_agent.redis_address
-        self._is_head_node = (self._ip == self._redis_address)
+        if not use_gcs_for_bootstrap():
+            self._redis_address, _ = dashboard_agent.redis_address
+            self._is_head_node = (self._ip == self._redis_address)
+        else:
+            self._is_head_node = (
+                self._ip == dashboard_agent.gcs_address.split(":")[0])
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -549,16 +554,22 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     async def run(self, server):
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
         if gcs_pubsub_enabled():
-            gcs_addr = await aioredis_client.get("GcsServerAddress")
-            publisher = GcsAioPublisher(address=gcs_addr.decode())
+            gcs_addr = self._dashboard_agent.gcs_address
+            if gcs_addr is None:
+                aioredis_client = await aioredis.create_redis_pool(
+                    address=self._dashboard_agent.redis_address,
+                    password=self._dashboard_agent.redis_password)
+                gcs_addr = await aioredis_client.get("GcsServerAddress")
+                gcs_addr = gcs_addr.decode()
+            publisher = GcsAioPublisher(address=gcs_addr)
 
             async def publish(key: str, data: str):
                 await publisher.publish_resource_usage(key, data)
         else:
+            aioredis_client = await aioredis.create_redis_pool(
+                address=self._dashboard_agent.redis_address,
+                password=self._dashboard_agent.redis_password)
 
             async def publish(key: str, data: str):
                 await aioredis_client.publish(key, data)

@@ -52,7 +52,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
-  void StealTasks(std::unique_ptr<rpc::StealTasksRequest> request,
+  void StealTasks(const rpc::StealTasksRequest &request,
                   const rpc::ClientCallback<rpc::StealTasksReply> &callback) override {
     steal_callbacks.push_back(callback);
   }

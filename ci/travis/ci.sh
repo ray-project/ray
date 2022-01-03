@@ -139,7 +139,6 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:test_standalone # timeout
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
@@ -159,23 +158,13 @@ test_python() {
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_metrics_agent # timeout
-      -python/ray/tests:test_multi_node
-      -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multiprocessing  # flaky, causes subsequent tests to fail
+      -python/ray/tests:test_multiprocessing_client_mode
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multinode_failures_2
-      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
-      -python/ray/tests:test_multiprocessing_client_mode  # timeout
-      -python/ray/tests:test_node_manager
-      -python/ray/tests:test_object_manager
-      -python/ray/tests:test_placement_group # timeout and OOM
-      -python/ray/tests:test_placement_group_2
-      -python/ray/tests:test_placement_group_3
-      -python/ray/tests:test_placement_group_mini_integration
+      -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
-      -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
-      -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
@@ -185,14 +174,22 @@ test_python() {
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
+
+    # Shard the args.
+    BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
+    BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
+    test_shard_selection=$(python ./scripts/bazel-sharding.py --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    # shellcheck disable=SC2046
-    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
-      "${args[@]}";
+    # shellcheck disable=SC2046,SC2086
+    bazel test --config=ci \
+      --build_tests_only $(./scripts/bazel_export_options) \
+      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      -- \
+      ${test_shard_selection};
   fi
 }
 
@@ -390,6 +387,7 @@ build_wheels() {
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_PULL_REQUEST=${BUILDKITE_PULL_REQUEST:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
         -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
@@ -408,7 +406,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+          quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
@@ -554,8 +552,13 @@ _check_job_triggers() {
   job_names="$1"
 
   local variable_definitions
-  # shellcheck disable=SC2031
-  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+  if command -v python3; then
+    # shellcheck disable=SC2031
+    variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+  else
+    # shellcheck disable=SC2031
+    variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  fi
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
@@ -590,6 +593,11 @@ configure_system() {
   git config --global core.askpass ""
   git config --global credential.helper ""
   git config --global credential.modalprompt false
+
+  # Requests library need root certificates.
+  if [ "${OSTYPE}" = msys ]; then
+    certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
+  fi
 }
 
 # Initializes the environment for the current job. Performs the following tasks:

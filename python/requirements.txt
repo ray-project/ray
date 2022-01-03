@@ -55,7 +55,7 @@ azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 msrestazure==0.6.4
 boto3
-cython >= 0.29.15
+cython >= 0.29.26
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
