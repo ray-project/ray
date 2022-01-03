@@ -90,6 +90,12 @@ def test_calling_start_ray_head(call_ray_stop_only):
         ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
+    # Test starting Ray with RAY_REDIS_ADDRESS env.
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:6379"
+    check_call_ray(["start", "--head", "--port", "0"])
+    check_call_ray(["stop"])
+    del os.environ["RAY_REDIS_ADDRESS"]
+
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
