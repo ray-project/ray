@@ -18,25 +18,38 @@ class PrintCallback(TrainingCallback):
         ...        train.report(worker_idx=train.world_rank(), epoch=i)
 
         >>> trainer = Trainer(num_workers=2, backend="torch")
+        >>> trainer.start()
         >>> trainer.run(train_func, callbacks=[PrintCallback()])
         [
             {
                 "worker_idx": 0,
-                "epoch": 0
+                "epoch": 0,
+                "_timestamp": 1641232964,
+                "_time_this_iter_s": 0.0021491050720214844,
+                "_training_iteration": 1
             },
             {
-                "worker_idx": 1
-                "epoch": 0
+                "worker_idx": 1,
+                "epoch": 0,
+                "_timestamp": 1641232964,
+                "_time_this_iter_s": 0.0013790130615234375,
+                "_training_iteration": 1
             }
         ]
         [
             {
                 "worker_idx": 0,
-                "epoch": 1
+                "epoch": 1,
+                "_timestamp": 1641232964,
+                "_time_this_iter_s": 0.0025370121002197266,
+                "_training_iteration": 2
             },
             {
-                "worker_idx": 1
-                "epoch": 1
+                "worker_idx": 1,
+                "epoch": 1,
+                "_timestamp": 1641232964,
+                "_time_this_iter_s": 0.002299070358276367,
+                "_training_iteration": 2
             }
         ]
     """
