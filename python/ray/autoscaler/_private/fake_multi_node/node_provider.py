@@ -246,17 +246,24 @@ class FakeMultiNodeProvider(NodeProvider):
             self._mounted_cluster_dir = os.path.join(self._volume_dir,
                                                      "shared")
 
-            os.makedirs(self._mounted_cluster_dir, mode=0o755, exist_ok=True)
+            if not self.uses_docker:
+                # Only needed on host
+                os.makedirs(
+                    self._mounted_cluster_dir, mode=0o755, exist_ok=True)
 
             self._boostrap_config_path = os.path.join(self._volume_dir,
                                                       "bootstrap_config.yaml")
 
-            shutil.copy(
-                os.path.join(os.path.dirname(__file__), "bootstrap_key.pem"),
-                self._volume_dir)
-            shutil.copy(
-                os.path.join(os.path.dirname(__file__), "bootstrap_key.pub"),
-                self._volume_dir)
+            if not self.uses_docker:
+                # Only needed on host
+                shutil.copy(
+                    os.path.join(
+                        os.path.dirname(__file__), "bootstrap_key.pem"),
+                    self._volume_dir)
+                shutil.copy(
+                    os.path.join(
+                        os.path.dirname(__file__), "bootstrap_key.pub"),
+                    self._volume_dir)
 
             self._private_key_path = os.path.join(self._volume_dir,
                                                   "bootstrap_key.pem")

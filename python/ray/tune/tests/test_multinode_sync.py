@@ -26,6 +26,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.cluster.teardown()
 
     def testClusterAutoscaling(self):
+        """Sanity check that multinode tests with autoscaling are working"""
         self.cluster.update_config({
             "provider": {
                 "head_resources": {
