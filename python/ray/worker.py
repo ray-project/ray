@@ -616,6 +616,24 @@ class RayContext:
                 stacklevel=2)
         return self._dict[key]
 
+    def __contains__(self, key):
+        return key in self._dict
+
+    def get(self, key):
+        if key == "node_id" and log_once("ray_context_getitem_node_id"):
+            warnings.warn(
+                f'Accessing node_id through ctx.get("{key}") is deprecated. Use '
+                "ctx.node_id instead.",
+                DeprecationWarning,
+                stacklevel=2)
+        elif log_once("ray_context_getitem_address_info"):
+            warnings.warn(
+                f'Accessing address info through ctx.get("{key}") is '
+                f'deprecated. Use ctx.address_info.get"{key}") instead.',
+                DeprecationWarning,
+                stacklevel=2)
+        return self._dict.get(key)
+
     def __enter__(self) -> "RayContext":
         return self
 
