@@ -1,5 +1,4 @@
 - name: train_small
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_small.yaml
@@ -12,7 +11,6 @@
     script: python workloads/train_small.py
 
 - name: train_moderate
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_moderate.yaml
@@ -23,7 +21,6 @@
     script: python workloads/train_moderate.py
 
 - name: train_gpu
-  team: ml
   cluster:
     app_config: app_config_gpu.yaml
     compute_template: tpl_gpu_small.yaml
@@ -34,7 +31,6 @@
     script: python workloads/train_gpu.py
 
 - name: distributed_api_test
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_small.yaml
@@ -47,7 +43,6 @@
     results: ""
 
 - name: ft_small_non_elastic
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_small.yaml
@@ -59,7 +54,6 @@
     results: ""
 
 - name: tune_small
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_small.yaml
@@ -70,7 +64,6 @@
     script: python workloads/tune_small.py
 
 - name: tune_32x4
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_moderate.yaml
@@ -81,7 +74,6 @@
     script: python workloads/tune_32x4.py
 
 - name: tune_4x32
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_moderate.yaml
