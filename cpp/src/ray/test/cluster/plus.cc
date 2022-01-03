@@ -13,10 +13,12 @@
 // limitations under the License.
 
 #include "plus.h"
+#include <ray/api.h>
 
 int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
+int Plus1Remote(int x) { return x + *(ray::Get(ray::Task(Return1).Remote())); };
 int Plus(int x, int y) { return x + y; };
 void ThrowTask() { throw std::logic_error("error"); }
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask);
+RAY_REMOTE(Return1, Plus1Remote, Plus1, Plus, ThrowTask);
