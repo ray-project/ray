@@ -84,7 +84,8 @@ DEFAULT_CONFIG = with_common_config({
     # this many seconds. This may need to be increased e.g. when training
     # with a slow environment.
     "learner_queue_timeout": 300,
-    # Level of queuing for sampling.
+    # Maximum number of still un-returned `sample()` requests per RolloutWorker.
+    # B/c we are calling `sample()` in an async manner via ray.wait()
     "max_sample_requests_in_flight_per_worker": 2,
     # Max number of workers to broadcast one set of weights to.
     "broadcast_interval": 1,
@@ -286,11 +287,10 @@ class ImpalaTrainer(Trainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        # Start the learner thread.
+        # Create and start the learner thread.
         self._learner_thread = make_learner_thread(
             self.workers.local_worker(), self.config)
         self._learner_thread.start()
-
 
     @staticmethod
     @override(Trainer)
@@ -304,18 +304,14 @@ class ImpalaTrainer(Trainer):
         else:
             train_batches = gather_experiences_directly(workers, config)
 
-        ## Start the learner thread.
-        #learner_thread = make_learner_thread(workers.local_worker(), config)
-        #learner_thread.start()
-
         # This sub-flow sends experiences to the learner.
         enqueue_op = train_batches \
-            .for_each(Enqueue(learner_thread.inqueue))
+            .for_each(Enqueue(self._learner_thread.inqueue))
         # Only need to update workers if there are remote workers.
         if workers.remote_workers():
             enqueue_op = enqueue_op.zip_with_source_actor() \
                 .for_each(BroadcastUpdateLearnerWeights(
-                    learner_thread, workers,
+                    self._learner_thread, workers,
                     broadcast_interval=config["broadcast_interval"]))
 
         def record_steps_trained(item):
@@ -330,7 +326,7 @@ class ImpalaTrainer(Trainer):
         # This sub-flow updates the steps trained counter based on learner
         # output.
         dequeue_op = Dequeue(
-            learner_thread.outqueue, check=learner_thread.is_alive) \
+            self._learner_thread.outqueue, check=self._learner_thread.is_alive) \
             .for_each(record_steps_trained)
 
         merged_op = Concurrently(
@@ -343,7 +339,7 @@ class ImpalaTrainer(Trainer):
                 config["after_train_step"](workers, config))
 
         return StandardMetricsReporting(merged_op, workers, config) \
-            .for_each(learner_thread.add_learner_metrics)
+            .for_each(self._learner_thread.add_learner_metrics)
 
     def training_iteration(self) -> ResultDict:
 
