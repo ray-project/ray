@@ -456,7 +456,7 @@ the callback is general enough, please feel welcome to `add it <https://docs
 .ray.io/en/master/getting-involved.html>`_ to the ``ray``
 `repository <https://github.com/ray-project/ray>`_.
 
-A simple example for creating a callback that will print out the average of all results:
+A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
