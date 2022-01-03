@@ -169,8 +169,6 @@ class ShuffleStatusTracker:
                 timeout=1,
                 num_returns=len(self.map_refs),
                 fetch_local=False)
-            if ready:
-                print("Still waiting on map refs", self.map_refs)
             self.num_map += len(ready)
         elif self.reduce_refs:
             ready, self.reduce_refs = ray.wait(
@@ -178,15 +176,15 @@ class ShuffleStatusTracker:
                 timeout=1,
                 num_returns=len(self.reduce_refs),
                 fetch_local=False)
-            if ready:
-                print("Still waiting on reduce refs", self.reduce_refs)
             self.num_reduce += len(ready)
         return self.num_map, self.num_reduce
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 60), (False, None), (False, 60)], indirect=True)
+    "set_kill_interval", [(True, None), (True, 60), (False, None),
+                          (False, 60)],
+    indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
