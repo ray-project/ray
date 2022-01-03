@@ -144,7 +144,7 @@ for i in range(0, 5):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
-def test_ray_start_non_head(call_ray_stop_only):
+def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
 
     # Test that we can call ray start to connect to an existing cluster.
 
@@ -176,12 +176,11 @@ assert ray.get(f.options(resources={"res_1": 1}).remote()) == 1
 assert ray.get(f.options(resources={"res_2": 1}).remote()) == 1
 print("success")
 """
-    os.environ["RAY_ADDRESS"] = "auto"
+    monkeypatch.setenv("RAY_ADDRESS", "auto")
     out = run_string_as_driver(driver_script)
     # Make sure the driver succeeded.
     assert "success" in out
 
-    del os.environ["RAY_ADDRESS"]
     check_call_ray(["stop"])
 
 

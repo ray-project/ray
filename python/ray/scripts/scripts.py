@@ -535,6 +535,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 port = s.getsockname()[1]
 
         # Set bootstrap port.
+        # TODO(mwtian): set bootstrap port as GCS server port.
         ray_params.redis_port = port
 
         if not use_gcs_for_bootstrap():
