@@ -30,12 +30,33 @@ is_python_version() {
   return "${result}"
 }
 
+refreshenv() {
+  # https://gist.github.com/jayvdb/1daf8c60e20d64024f51ec333f5ce806
+  powershell -NonInteractive - <<\EOF
+Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+Update-SessionEnvironment
+# Round brackets in variable names cause problems with bash
+Get-ChildItem env:* | %{
+  if (!($_.Name.Contains('('))) {
+    $value = $_.Value
+    if ($_.Name -eq 'PATH') {
+      $value = $value -replace ';',':'
+    }
+    Write-Output ("export " + $_.Name + "='" + $value + "'")
+  }
+} | Out-File -Encoding ascii $env:TEMP\refreshenv.sh
+EOF
+
+  source "$TEMP/refreshenv.sh"
+}
+
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
   (
     pip install wheel
 
     pushd dashboard/client
+      choco install nodejs -y
       choco install yarn -y
       refreshenv
       yarn
