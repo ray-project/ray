@@ -4,9 +4,11 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import platform
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Type, TYPE_CHECKING
 
+from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -451,6 +453,24 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
+    def learn_on_batch_from_buffer(self, replay_actor: ActorHandle) -> \
+            Dict[str, TensorType]:
+        """Samples a batch from given replay actor and performs an update.
+
+        Args:
+            replay_actor: The replay buffer actor to sample from.
+
+        Returns:
+            Dictionary of extra metadata from `compute_gradients()`.
+        """
+        # Sample a batch from the given replay actor.
+        # For better performance, make sure the replay actor is co-located
+        #  with this policy (on the same node).
+        batch = replay_actor.replay.remote(policy_id=self.policy_id)
+        # Send to own learn_on_batch method for updating.
+        return self.learn_on_batch(batch)
+
+    @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch,
                                buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
@@ -696,6 +716,15 @@ class Policy(metaclass=ABCMeta):
                 this policy or None.
         """
         return None
+
+    def get_host(self) -> str:
+        """Returns the computer's network name.
+
+        Returns:
+            The computer's networks name or an empty string, if the network
+            name could not be determined.
+        """
+        return platform.node()
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.

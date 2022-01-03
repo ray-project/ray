@@ -1985,6 +1985,22 @@ class Trainer(Trainable):
                               config2: PartialTrainerConfigDict,
                               _allow_unknown_configs: Optional[bool] = None
                               ) -> TrainerConfigDict:
+        """Merges a complete Trainer config with a partial override dict.
+
+        Respects nested structures within the config dicts. The values in the
+        partial override dict take priority.
+
+        Args:
+            config1: The complete Trainer's dict to be merged (overridden)
+                with `config2`.
+            config2: The partial override config dict to merge on top of
+                `config1`.
+            _allow_unknown_configs: If True, keys in `config2` that don't exist
+                in `config1` are allowed and will be added to the final config.
+
+        Returns:
+            The merged full trainer config dict.
+        """
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]

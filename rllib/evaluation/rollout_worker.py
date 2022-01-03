@@ -1436,19 +1436,22 @@ class RolloutWorker(ParallelIteratorWorker):
                 sess.close()
 
     @DeveloperAPI
-    def apply(self, func: Callable[["RolloutWorker", Optional[Any]], T],
-              *args) -> T:
+    def apply(self,
+              func: Callable[
+                  ["RolloutWorker", Optional[Any], Optional[Any]], T],
+              *args, **kwargs) -> T:
         """Calls the given function with this rollout worker instance.
 
         Args:
-            func: The function to call with this RolloutWorker as first
-                argument.
+            func: The function to call, with this RolloutWorker as first
+                argument, followed by *args, and **kwargs.
             args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
         """
-        return func(self, *args)
+        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(self, url: str, world_rank: int,
                                   world_size: int, backend: str) -> None:

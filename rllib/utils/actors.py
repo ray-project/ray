@@ -71,7 +71,7 @@ class TaskPool:
 
 def create_colocated_actors(
         actor_specs: Sequence[Tuple[Type, Any, Any, int]],
-        node: Optional[str] = None,
+        node: Optional[str] = "localhost",
         max_attempts: int = 10,
 ) -> Dict[Type, List[ActorHandle]]:
     """Create co-located actors of any type(s) on any node.
@@ -81,8 +81,10 @@ def create_colocated_actors(
             (already @ray.remote) class(es) to construct, 2) c'tor args,
             3) c'tor kwargs, and 4) the number of actors of that class with
             given args/kwargs to construct.
-        node: The node to co-locate the actors on. By default (None)
-            any (resource fulfilling) node in the clusted is used.
+        node: The node to co-locate the actors on. By default ("localhost"),
+            place the actors on the node the caller of this function is
+            located on. Use None for indicating that any (resource fulfilling)
+            node in the clusted may be used.
         max_attempts: The maximum number of co-location attempts to
             perform before throwing an error.
 
@@ -90,17 +92,26 @@ def create_colocated_actors(
         A dict mapping the created types to the list of n ActorHandles
         created (and co-located) for that type. 
     """
+    if node == "localhost":
+        node = platform.host()
+
     # Maps types to lists of already co-located actors.
-    ok = defaultdict(list)
+    ok = [[] for _ in range(len(actor_specs))]
     attempt = 1
     while attempt < max_attempts:
         all_good = True
         for i, (typ, args, kwargs, count) in enumerate(actor_specs):
+            args = args or []  # Allow None.
+            kwargs = kwargs or {}  # Allow None.
             if len(ok[i]) < count:
                 all_good = False
                 co_located = try_create_colocated(
                     cls=typ, args=args, kwargs=kwargs,
                     count=count * attempt, node=node)
+                # If node did not matter, from here on, use the host that the
+                # first actor(s) are already located on.
+                if node is None:
+                    node = ray.get(co_located[0].get_host.remote())
                 ok[i].extend(co_located)
             elif len(ok[i]) > count:
                 for a in ok[i][count:]:
@@ -134,16 +145,21 @@ def drop_colocated(actors):
 
 
 def split_colocated(actors, node=None):
-    # By default, locate on localhost.
-    node = node or platform.node()
     # Get nodes of all created actors.
     hosts = ray.get([a.get_host.remote() for a in actors])
     # Split into co-located (on `node) and non-co-located (not on `node`).
     co_located = []
     non_co_located = []
+
+    # If node not provided, use 1st actor's node as the desired one.
+    if node is None:
+        node = hosts[0]
+
     for host, a in zip(hosts, actors):
+        # This actor has been placed on the correct node.
         if host == node:
             co_located.append(a)
+        # This actor has been placed on a different node.
         else:
             non_co_located.append(a)
     return co_located, non_co_located
