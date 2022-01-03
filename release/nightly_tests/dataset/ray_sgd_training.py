@@ -19,8 +19,7 @@ from ray import train
 from ray.data.aggregate import Mean, Std
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train import Trainer
-from ray.train.callbacks.logging import MLflowLoggerCallback
-from ray.train.callbacks import TBXLoggerCallback
+from ray.train.callbacks import MLflowLoggerCallback, TBXLoggerCallback
 
 
 def read_dataset(path: str) -> ray.data.Dataset:
