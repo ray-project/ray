@@ -90,7 +90,7 @@ class AgentIOTest(unittest.TestCase):
 
     def test_agent_input_postprocessing_enabled(self):
         for fw in framework_iterator(frameworks=("tf", "torch")):
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
 
             # Rewrite the files to drop advantages and value_targets for
             # testing
@@ -100,7 +100,7 @@ class AgentIOTest(unittest.TestCase):
                     for line in f.readlines():
                         data = json.loads(line)
                         # Data won't contain rewards as these are not included
-                        # in the writeOutputs run (not needed in the
+                        # in the write_outputs run (not needed in the
                         # SampleBatch). Flip out "rewards" for "advantages"
                         # just for testing.
                         data["rewards"] = data["advantages"]
