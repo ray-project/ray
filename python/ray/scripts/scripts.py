@@ -553,12 +553,17 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        if address is not None:
+        address_env = os.environ.get("RAY_REDIS_ADDRESS")
+        underlying_address = \
+            address_env if address_env is not None else address
+        if underlying_address is not None:
             cli_logger.print(
-                "Will use value of `{}` as remote Redis server address(es). "
+                "Will use `{}` as external Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
-            external_addresses = address.split(",")
+                "with `{}` in local.", cf.bold(underlying_address),
+                cf.bold("--port"))
+            external_addresses = underlying_address.split(",")
+
             # We reuse primary redis as sharding when there's only one
             # instance provided.
             if len(external_addresses) == 1:
