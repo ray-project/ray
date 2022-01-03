@@ -1436,10 +1436,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 sess.close()
 
     @DeveloperAPI
-    def apply(self,
-              func: Callable[
-                  ["RolloutWorker", Optional[Any], Optional[Any]], T],
-              *args, **kwargs) -> T:
+    def apply(
+            self,
+            func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
+            *args, **kwargs) -> T:
         """Calls the given function with this rollout worker instance.
 
         Args:

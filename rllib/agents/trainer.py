@@ -775,8 +775,8 @@ class Trainer(Trainable):
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
-        update_global_seed_if_necessary(
-            self.config["framework"], self.config["seed"])
+        update_global_seed_if_necessary(self.config["framework"],
+                                        self.config["seed"])
 
         self.validate_config(self.config)
         if not callable(self.config["callbacks"]):

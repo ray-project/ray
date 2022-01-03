@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import deque
 import logging
 import platform
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
@@ -90,7 +90,7 @@ def create_colocated_actors(
 
     Returns:
         A dict mapping the created types to the list of n ActorHandles
-        created (and co-located) for that type. 
+        created (and co-located) for that type.
     """
     if node == "localhost":
         node = platform.host()
@@ -106,8 +106,11 @@ def create_colocated_actors(
             if len(ok[i]) < count:
                 all_good = False
                 co_located = try_create_colocated(
-                    cls=typ, args=args, kwargs=kwargs,
-                    count=count * attempt, node=node)
+                    cls=typ,
+                    args=args,
+                    kwargs=kwargs,
+                    count=count * attempt,
+                    node=node)
                 # If node did not matter, from here on, use the host that the
                 # first actor(s) are already located on.
                 if node is None:

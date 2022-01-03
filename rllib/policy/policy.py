@@ -8,6 +8,7 @@ import platform
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Type, TYPE_CHECKING
 
+import ray
 from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -23,7 +24,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+    PolicyID, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -453,12 +454,14 @@ class Policy(metaclass=ABCMeta):
         return grad_info
 
     @DeveloperAPI
-    def learn_on_batch_from_buffer(self, replay_actor: ActorHandle) -> \
-            Dict[str, TensorType]:
+    def learn_on_batch_from_replay_buffer(
+            self, replay_actor: ActorHandle,
+            policy_id: PolicyID) -> Dict[str, TensorType]:
         """Samples a batch from given replay actor and performs an update.
 
         Args:
             replay_actor: The replay buffer actor to sample from.
+            policy_id: The ID of this policy.
 
         Returns:
             Dictionary of extra metadata from `compute_gradients()`.
@@ -466,9 +469,16 @@ class Policy(metaclass=ABCMeta):
         # Sample a batch from the given replay actor.
         # For better performance, make sure the replay actor is co-located
         #  with this policy (on the same node).
-        batch = replay_actor.replay.remote(policy_id=self.policy_id)
+        batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
+        if batch is None:
+            return {}
+
         # Send to own learn_on_batch method for updating.
-        return self.learn_on_batch(batch)
+        if len(self.devices) > 1:
+            self.load_batch_into_buffer(batch, buffer_index=0)
+            return self.learn_on_loaded_batch(offset=0, buffer_index=0)
+        else:
+            return self.learn_on_batch(batch)
 
     @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch,

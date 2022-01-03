@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 import ray
 from ray.rllib import SampleBatch
-from ray.rllib.execution import PrioritizedReplayBuffer
+from ray.rllib.execution import PrioritizedReplayBuffer, ReplayBuffer
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
@@ -109,7 +109,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
         def new_buffer():
             if prioritized_replay_alpha == 0.0:
-                return ReplayBuffer(...)
+                return ReplayBuffer(self.capacity)
             else:
                 return PrioritizedReplayBuffer(
                     self.capacity, alpha=prioritized_replay_alpha)
@@ -218,8 +218,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                     self.replay_batch_size, beta=self.prioritized_replay_beta)
             elif policy_id is not None:
                 return self.replay_buffers[policy_id].sample(
-                    self.replay_batch_size,
-                    beta=self.prioritized_replay_beta)
+                    self.replay_batch_size, beta=self.prioritized_replay_beta)
             else:
                 samples = {}
                 for policy_id, replay_buffer in self.replay_buffers.items():

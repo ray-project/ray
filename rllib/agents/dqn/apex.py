@@ -154,12 +154,14 @@ class ApexTrainer(DQNTrainer):
                 actor_specs=[
                     # (class, args, kwargs={}, count)
                     (ReplayActor, args, {}, num_replay_buffer_shards)  # [0]
-                ], node=platform.node(),  # localhost
+                ],
+                node=platform.node(),  # localhost
             )[0]
         # Place replay buffer shards on any node(s).
         else:
-            replay_actors = [ReplayActor(*args)
-                             for _ in range(num_replay_buffer_shards)]
+            replay_actors = [
+                ReplayActor(*args) for _ in range(num_replay_buffer_shards)
+            ]
 
         # Start the learner thread.
         learner_thread = LearnerThread(workers.local_worker())

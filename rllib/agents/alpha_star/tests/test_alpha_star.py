@@ -8,10 +8,10 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
     check_train_results, framework_iterator
 
 
-class Testalpha_star(unittest.TestCase):
+class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -52,7 +52,7 @@ class Testalpha_star(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO
+        for _ in framework_iterator(config):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):

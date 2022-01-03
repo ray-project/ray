@@ -52,7 +52,7 @@ class ReplayBuffer:
     def __init__(self,
                  capacity: int = 10000,
                  size: Optional[int] = DEPRECATED_VALUE):
-        """Initializes a Replaybuffer instance.
+        """Initializes a ReplayBuffer instance.
 
         Args:
             capacity: Max number of timesteps to store in the FIFO
@@ -126,11 +126,13 @@ class ReplayBuffer:
         return out
 
     @DeveloperAPI
-    def sample(self, num_items: int) -> SampleBatchType:
+    def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
         """Sample a batch of experiences.
 
         Args:
             num_items: Number of items to sample from this buffer.
+            beta: The prioritized replay beta value. Only relevant if this
+                ReplayBuffer is a PrioritizedReplayBuffer.
 
         Returns:
             Concatenated batch of items.
@@ -139,7 +141,7 @@ class ReplayBuffer:
             random.randint(0,
                            len(self._storage) - 1) for _ in range(num_items)
         ]
-        self._num_sampled += num_items
+        self._num_timesteps_sampled += num_items
         return self._encode_sample(idxes)
 
     @DeveloperAPI
@@ -147,7 +149,7 @@ class ReplayBuffer:
         """Returns the stats of this buffer.
 
         Args:
-            debug: If true, adds sample eviction statistics to the returned
+            debug: If True, adds sample eviction statistics to the returned
                 stats dict.
 
         Returns:

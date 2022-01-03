@@ -93,10 +93,12 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     # This spawns |num_aggregation_workers| intermediate actors that aggregate
     # experiences in parallel. We force colocation on the same node (localhost)
     # to maximize data bandwidth between them and the driver.
-    all_co_located = create_colocated_actors(actor_specs=[
-        # (class, args, kwargs={}, count=1)
-        (Aggregator, [config, g], {}, 1) for g in rollout_groups
-    ], node=platform.node())
+    all_co_located = create_colocated_actors(
+        actor_specs=[
+            # (class, args, kwargs={}, count=1)
+            (Aggregator, [config, g], {}, 1) for g in rollout_groups
+        ],
+        node=platform.node())
 
     # Use the first ([0]) of each created group (each group only has one
     # actor: count=1).
