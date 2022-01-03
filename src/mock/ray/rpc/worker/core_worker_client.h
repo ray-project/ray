@@ -38,7 +38,7 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<PushTaskReply> &callback),
               (override));
   MOCK_METHOD(void, StealTasks,
-              (std::unique_ptr<StealTasksRequest> request,
+              (const StealTasksRequest &request,
                const ClientCallback<StealTasksReply> &callback),
               (override));
   MOCK_METHOD(void, DirectActorCallArgWaitComplete,

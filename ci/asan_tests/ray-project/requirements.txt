@@ -2,7 +2,7 @@ aiohttp
 aiosignal
 blist
 boto3
-cython==0.29.0
+cython==0.29.26
 dataclasses; python_version < '3.7'
 dm-tree==0.1.5
 feather-format
