@@ -11,7 +11,8 @@ kaggle_environments==1.7.11
 # Unity3D testing
 mlagents_envs==0.27.0
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo==1.14.0
+pettingzoo==1.14.0; python_version >= '3.7'
+pettingzoo==1.12.0; python_version < '3.7'
 pymunk==6.0.0
 supersuit==3.3.2
 # For testing in MuJoCo-like envs (in PyBullet).
