@@ -1896,7 +1896,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   RayTask task;
-  cluster_task_manager_->(worker_ptr, &task);
+  cluster_task_manager_->TaskFinished(worker_ptr, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
