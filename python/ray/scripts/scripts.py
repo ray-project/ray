@@ -717,9 +717,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         # TODO(mwtian): set ray_params.gcs_address in GCS bootstrap mode.
         ray_params.redis_address = bootstrap_address
 
-        address_ip, address_port = services.extract_ip_port(bootstrap_address)
-
         if not use_gcs_for_bootstrap():
+            address_ip, address_port = services.extract_ip_port(
+                bootstrap_address)
             # Wait for the Redis server to be started. And throw an exception
             # if we can't connect to it.
             services.wait_for_redis_to_start(
@@ -727,7 +727,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address(address_ip))
+            node_ip_address=services.get_node_ip_address(bootstrap_address))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
 
