@@ -36,7 +36,7 @@ class MLflowCallback(TrainingCallback):
 
     # TODO: fix type hint for logdir
     def start_training(self, logdir, **info):
-        mlflow.start_run(run_name=str(logdir.name))
+        mlflow.start_run(run_name=logdir)
         mlflow.log_params(config)
 
         # TODO: Update TrainCallback to provide logdir in finish_training.
