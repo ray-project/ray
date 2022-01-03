@@ -2,7 +2,7 @@ import abc
 from typing import List, Dict
 
 
-class TrainingCallback(metaclass=abc.ABCMeta):
+class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
     def handle_result(self, results: List[Dict], **info):
