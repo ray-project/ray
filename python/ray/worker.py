@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -601,8 +602,18 @@ class RayContext:
         self._dict = dict(address_info, node_id=node_id)
 
     def __getitem__(self, key):
-        if log_once("ray_context_getitem"):
-            logger.warning("Something something something")
+        if key == "node_id" and log_once("ray_context_getitem_node_id"):
+            warnings.warn(
+                f'Accessing node_id through ctx["{key}"] is deprecated. Use '
+                "ctx.node_id instead.",
+                DeprecationWarning,
+                stacklevel=2)
+        elif log_once("ray_context_getitem_address_info"):
+            warnings.warn(
+                f'Accessing address info through ctx["{key}"] is deprecated.'
+                f'Use ctx.address_info["{key}"] instead.',
+                DeprecationWarning,
+                stacklevel=2)
         return self._dict[key]
 
     def __enter__(self) -> "RayContext":

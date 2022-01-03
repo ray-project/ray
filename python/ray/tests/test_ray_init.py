@@ -167,6 +167,27 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert node_info.node_manager_port == node2.node_manager_port
 
 
+def test_with_ray_init(shutdown_only):
+    @ray.remote
+    def f():
+        return 42
+
+    with ray.init() as ctx:
+        assert 42 == ray.get(f.remote())
+        # Check old context fields can be accessed like a dict
+        assert ctx["session_dir"] is not None
+        assert ctx["node_id"] is not None
+    assert not ray.is_initialized()
+
+
+def test_ray_init_context(shutdown_only):
+    ctx = ray.init()
+    assert ctx["session_dir"] is not None
+    assert ctx["node_id"] is not None
+    ctx.disconnect()
+    assert not ray.is_initialized()
+
+
 def test_ray_init_invalid_keyword(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
         ray.init("localhost", logginglevel="<- missing underscore")
