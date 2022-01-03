@@ -75,7 +75,7 @@ pids = set([ray.get(obj) for obj in pid_objs])
 print("PID:" + str.join(",", [str(_) for _ in pids]))
 
 ray.shutdown()
-    """.format(info["redis_address"])
+    """.format(info["address"])
 
     driver_count = 3
     processes = [
@@ -226,7 +226,7 @@ def foo():
 [foo.remote() for _ in range(100)]
 
 ray.shutdown()
-    """.format(info["redis_address"])
+    """.format(info["address"])
 
     before = len(get_workers())
     assert before == 1
