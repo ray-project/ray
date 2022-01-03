@@ -169,7 +169,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
-        RAY_LOG(INFO) << "jjyao Activating pull for object " << obj_id;
+        RAY_LOG(INFO) << "jjyao Activating pull for object " << obj_id << " " << next_request_it->first;
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -218,6 +218,7 @@ void PullManager::DeactivatePullBundleRequest(
       *highest_req_id_being_pulled = std::prev(request_it)->first;
     }
   }
+  RAY_LOG(INFO) << "jjyao DeactivatePullBundleRequest " << bundles.size() << " " << *highest_req_id_being_pulled;
 
   num_active_bundles_ -= 1;
 }
