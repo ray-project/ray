@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import traceback
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
@@ -577,6 +578,44 @@ def get_dashboard_url():
     return _global_node.webui_url
 
 
+@dataclass
+class RayContext:
+    """
+    Context manager for attached drivers.
+    """
+    dashboard_url: Optional[str]
+    python_version: str
+    ray_version: str
+    ray_commit: str
+    node_id: str
+    address_info: Dict[str, Optional[str]]
+
+    def __init__(self, address_info: dict, node_id: str):
+        self.dashboard_url = get_dashboard_url()
+        self.python_version = "{}.{}.{}".format(
+            sys.version_info[0], sys.version_info[1], sys.version_info[2])
+        self.ray_version = ray.__version__
+        self.ray_commit = ray.__commit__
+        self.node_id = node_id
+        self.address_info = address_info
+        self._dict = dict(address_info, node_id=node_id)
+
+    def __getitem__(self, key):
+        if log_once("ray_context_getitem"):
+            logger.warning("Something something something")
+        return self._dict[key]
+
+    def __enter__(self) -> "RayContext":
+        return self
+
+    def __exit__(self, *exc):
+        ray.shutdown()
+
+    def disconnect(self):
+        # Include disconnect() to stay consistent with ClientContext
+        ray.shutdown()
+
+
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
 
@@ -857,11 +896,14 @@ def init(
     else:
         driver_mode = SCRIPT_MODE
 
+    global _global_node
+
     if global_worker.connected:
         if ignore_reinit_error:
             logger.info(
                 "Calling ray.init() again after it has already been called.")
-            return
+            node_id = global_worker.core_worker.get_current_node_id()
+            return RayContext(_global_node.address_info, node_id.hex())
         else:
             raise RuntimeError("Maybe you called ray.init twice by accident? "
                                "This error can be suppressed by passing in "
@@ -872,7 +914,6 @@ def init(
     if not isinstance(_system_config, dict):
         raise TypeError("The _system_config must be a dict.")
 
-    global _global_node
     if redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
@@ -984,7 +1025,7 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return dict(_global_node.address_info, node_id=node_id.hex())
+    return RayContext(_global_node.address_info, node_id.hex())
 
 
 # Functions to run as callback after a successful ray init.
