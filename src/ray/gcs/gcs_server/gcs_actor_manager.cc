@@ -685,6 +685,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
+  } else {
+    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
   }
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
