@@ -38,9 +38,9 @@ void DependencyManager::RemoveObjectIfNotNeeded(
         required_object_it) {
   const auto &object_id = required_object_it->first;
   if (required_object_it->second.Empty()) {
-    RAY_LOG(DEBUG) << "Object " << object_id << " no longer needed";
+    RAY_LOG(INFO) << "jjyao Object " << object_id << " no longer needed";
     if (required_object_it->second.wait_request_id > 0) {
-      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
+      RAY_LOG(INFO) << "jjyao Canceling pull for wait request of object " << object_id
                      << " request: " << required_object_it->second.wait_request_id;
       object_manager_.CancelPull(required_object_it->second.wait_request_id);
     }
@@ -134,7 +134,7 @@ void DependencyManager::StartOrUpdateGetRequest(
     // of the old dependencies are still being fetched.
     uint64_t new_request_id = object_manager_.Pull(refs, BundlePriority::GET_REQUEST);
     if (get_request.second != 0) {
-      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+      RAY_LOG(INFO) << "jjyao Canceling pull for get request from worker " << worker_id
                      << " request: " << get_request.second;
       object_manager_.CancelPull(get_request.second);
     }
@@ -151,7 +151,7 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
     return;
   }
 
-  RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+  RAY_LOG(INFO) << "jjyao Canceling pull for get request from worker " << worker_id
                  << " request: " << it->second.second;
   object_manager_.CancelPull(it->second.second);
 
@@ -209,7 +209,7 @@ void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
       << "Can't remove dependencies of tasks that are not queued.";
 
   if (task_entry->second.pull_request_id > 0) {
-    RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
+    RAY_LOG(INFO) << "jjyao Canceling pull for dependencies of task " << task_id
                    << " request: " << task_entry->second.pull_request_id;
     object_manager_.CancelPull(task_entry->second.pull_request_id);
   }
@@ -291,7 +291,7 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     // `ray.wait` calls can now return the object as ready.
     object_entry->second.dependent_wait_requests.clear();
     if (object_entry->second.wait_request_id > 0) {
-      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
+      RAY_LOG(INFO) << "jjyao Canceling pull for wait request of object " << object_id
                      << " request: " << object_entry->second.wait_request_id;
       object_manager_.CancelPull(object_entry->second.wait_request_id);
       object_entry->second.wait_request_id = 0;

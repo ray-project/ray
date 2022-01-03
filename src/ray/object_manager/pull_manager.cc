@@ -618,8 +618,6 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
     } else {
       RAY_LOG(INFO) << "jjyao Failed to pin newly created object " << object_id;
     }
-  } else {
-    RAY_LOG(INFO) << "jjyao not active pull " << object_id;
   }
 }
 
