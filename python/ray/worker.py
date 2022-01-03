@@ -601,7 +601,7 @@ class RayContext:
     def __getitem__(self, key):
         if log_once("ray_context_getitem"):
             warnings.warn(
-                f'Accessing address info through ctx["{key}"] is deprecated. '
+                f'Accessing values through ctx["{key}"] is deprecated. '
                 f'Use ctx.address_info["{key}"] instead.',
                 DeprecationWarning,
                 stacklevel=2)
@@ -619,7 +619,7 @@ class RayContext:
     def get(self, key):
         if log_once("ray_context_get"):
             warnings.warn(
-                f'Accessing address info through ctx.get("{key}") is '
+                f'Accessing values through ctx.get("{key}") is '
                 f'deprecated. Use ctx.address_info.get("{key}") instead.',
                 DeprecationWarning,
                 stacklevel=2)
