@@ -37,6 +37,7 @@ install_ray() {
 
     pushd dashboard/client
       choco install yarn -y
+      refreshenv
       yarn
       yarn build
     popd
