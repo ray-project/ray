@@ -47,10 +47,13 @@ rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id) {
 std::unique_ptr<ObjectID> PutRaw(rust::Vec<uint8_t> data) {
   RAY_LOG(INFO) << "Putting";
   auto &core_worker = core::CoreWorkerProcess::GetCoreWorker();
-  ObjectID object_id = ObjectID::FromRandom();
+  ObjectID object_id;
+  RAY_LOG(INFO) << "worker RPC" << core_worker.GetRpcAddress().DebugString();
   RAY_LOG(INFO) << "Putting" << object_id.Hex();
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data.data()), data.size(), true);
+
+  RAY_LOG(INFO) << "Putting2" << object_id.Hex();
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
       &object_id);

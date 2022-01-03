@@ -128,7 +128,7 @@ mod test {
     #[test]
     fn test_put_get_nested_remote() {
         try_init();
-        const VEC_SIZE: usize = 1 << 12;
+        const VEC_SIZE: usize = 1 << 3;
         let num_jobs = 1 << 0;
         let a: Vec<_> = (0u64..VEC_SIZE as u64).collect();
 

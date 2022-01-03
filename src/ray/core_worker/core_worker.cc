@@ -798,11 +798,15 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
+  RAY_LOG(INFO) << "Putting Object From CoreWorker1 " << object_id;
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
+  RAY_LOG(INFO) << "Putting Object From CoreWorker2 " << object_id;
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
       /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
+
+  RAY_LOG(INFO) << "Putting Object From CoreWorker3 " << object_id;
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
     reference_counter_->RemoveOwnedObject(*object_id);
@@ -813,12 +817,16 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
                                          const ObjectID &object_id, bool pin_object) {
   bool object_exists;
+      RAY_LOG(INFO) << "Putting Object From CoreWorker6 " << object_id;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
       object, object_id, /* owner_address = */ rpc_address_, &object_exists));
+          RAY_LOG(INFO) << "Putting Object From CoreWorker7 " << object_id;
   if (!object_exists) {
+      RAY_LOG(INFO) << "Putting Object From CoreWorker8 " << object_id;
     if (pin_object) {
+        RAY_LOG(INFO) << "Putting Object From CoreWorker9 " << object_id;
       // Tell the raylet to pin the object **after** it is created.
-      RAY_LOG(DEBUG) << "Pinning put object " << object_id;
+      RAY_LOG(INFO) << "Pinning put object " << object_id;
       local_raylet_client_->PinObjectIDs(
           rpc_address_, {object_id},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
@@ -830,24 +838,36 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
             }
           });
     } else {
+
+          RAY_LOG(INFO) << "Putting Object From CoreWorker10 " << object_id;
       RAY_RETURN_NOT_OK(plasma_store_provider_->Release(object_id));
     }
   }
+
+      RAY_LOG(INFO) << "Putting Object From CoreWorker11 " << object_id;
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+
+      RAY_LOG(INFO) << "Putting Object From CoreWorker12 " << object_id;
   return Status::OK();
 }
 
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
+
+  RAY_LOG(INFO) << "Putting Object From CoreWorker4 " << object_id;
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
+
+    RAY_LOG(INFO) << "Putting Object From CoreWorker5 " << object_id;
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
-    RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
+    RAY_LOG(INFO) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
   }
+
+    RAY_LOG(INFO) << "Putting Object From CoreWorker6" << object_id;
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
