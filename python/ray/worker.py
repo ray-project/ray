@@ -588,51 +588,42 @@ class RayContext:
     python_version: str
     ray_version: str
     ray_commit: str
-    node_id: str
     address_info: Dict[str, Optional[str]]
 
-    def __init__(self, address_info: dict, node_id: str):
+    def __init__(self, address_info: dict):
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(
             sys.version_info[0], sys.version_info[1], sys.version_info[2])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        self.node_id = node_id
-        self.address_info = address_info
-        self._dict = dict(address_info, node_id=node_id)
+        self.address_info = dict(address_info)
 
     def __getitem__(self, key):
-        if key == "node_id" and log_once("ray_context_getitem_node_id"):
+        if log_once("ray_context_getitem"):
             warnings.warn(
-                f'Accessing node_id through ctx["{key}"] is deprecated. Use '
-                "ctx.node_id instead.",
-                DeprecationWarning,
-                stacklevel=2)
-        elif log_once("ray_context_getitem_address_info"):
-            warnings.warn(
-                f'Accessing address info through ctx["{key}"] is deprecated.'
+                f'Accessing address info through ctx["{key}"] is deprecated. '
                 f'Use ctx.address_info["{key}"] instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return self._dict[key]
+        return self.address_info[key]
 
     def __contains__(self, key):
-        return key in self._dict
-
-    def get(self, key):
-        if key == "node_id" and log_once("ray_context_get_node_id"):
+        if log_once("ray_context_contains"):
             warnings.warn(
-                f'Accessing node_id through ctx.get("{key}") is deprecated. Use '
-                "ctx.node_id instead.",
+                f'Checking for a key using `"{key}" in ctx` is deprecated. '
+                f'Use `"{key}" in ctx.address_info` instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        elif log_once("ray_context_get_address_info"):
+        return key in self.address_info
+
+    def get(self, key):
+        if log_once("ray_context_get"):
             warnings.warn(
                 f'Accessing address info through ctx.get("{key}") is '
                 f'deprecated. Use ctx.address_info.get("{key}") instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return self._dict.get(key)
+        return self.address_info.get(key)
 
     def __enter__(self) -> "RayContext":
         return self
@@ -932,7 +923,8 @@ def init(
             logger.info(
                 "Calling ray.init() again after it has already been called.")
             node_id = global_worker.core_worker.get_current_node_id()
-            return RayContext(_global_node.address_info, node_id.hex())
+            return RayContext(
+                dict(_global_node.address_info, node_id=node_id.hex()))
         else:
             raise RuntimeError("Maybe you called ray.init twice by accident? "
                                "This error can be suppressed by passing in "
@@ -1054,7 +1046,7 @@ def init(
         hook()
 
     node_id = global_worker.core_worker.get_current_node_id()
-    return RayContext(_global_node.address_info, node_id.hex())
+    return RayContext(dict(_global_node.address_info, node_id=node_id.hex()))
 
 
 # Functions to run as callback after a successful ray init.

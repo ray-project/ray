@@ -167,24 +167,43 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert node_info.node_manager_port == node2.node_manager_port
 
 
+def test_ray_init_context(shutdown_only):
+    ctx = ray.init()
+    assert ray.is_initialized()
+    # Check old context fields can be accessed like a dict
+    assert ctx["session_dir"] is not None
+    assert ctx["node_id"] is not None
+    with pytest.raises(KeyError):
+        ctx["xyz"]
+    # Check that __contains__ works
+    assert "session_dir" in ctx
+    assert "abcdefg" not in ctx
+    # Check that get works
+    assert ctx.get("session_dir") is not None
+    assert ctx.get("gfedcba") is None
+    ctx.disconnect()
+    assert not ray.is_initialized()
+
+
 def test_with_ray_init(shutdown_only):
     @ray.remote
     def f():
         return 42
 
     with ray.init() as ctx:
+        assert ray.is_initialized()
         assert 42 == ray.get(f.remote())
         # Check old context fields can be accessed like a dict
         assert ctx["session_dir"] is not None
         assert ctx["node_id"] is not None
-    assert not ray.is_initialized()
-
-
-def test_ray_init_context(shutdown_only):
-    ctx = ray.init()
-    assert ctx["session_dir"] is not None
-    assert ctx["node_id"] is not None
-    ctx.disconnect()
+        with pytest.raises(KeyError):
+            ctx["xyz"]
+        # Check that __contains__ works
+        assert "session_dir" in ctx
+        assert "abcdefg" not in ctx
+        # Check that get works
+        assert ctx.get("session_dir") is not None
+        assert ctx.get("gfedcba") is None
     assert not ray.is_initialized()
 
 
