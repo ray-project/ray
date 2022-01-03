@@ -213,7 +213,6 @@ class CondaManager:
     def get_uri(self, runtime_env: Dict) -> Optional[str]:
         """Return `"conda://<hash_dependencies>"` or None if no GC required."""
         conda = runtime_env.get("conda")
-        pip = runtime_env.get("pip")
         if conda is not None:
             if isinstance(conda, str):
                 # User-preinstalled conda env.  We don't garbage collect these,
@@ -225,13 +224,6 @@ class CondaManager:
                 raise TypeError(
                     "conda field received by RuntimeEnvAgent must be "
                     f"str or dict, not {type(conda).__name__}.")
-        elif pip is not None:
-            if isinstance(pip, list):
-                uri = "conda://" + _get_pip_hash(pip_list=pip)
-            else:
-                raise TypeError(
-                    "pip field received by RuntimeEnvAgent must be "
-                    f"list, not {type(pip).__name__}.")
         else:
             uri = None
         return uri
