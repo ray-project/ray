@@ -61,9 +61,8 @@ install_ray() {
     pushd dashboard/client
       choco install nodejs  -y
       refreshenv
-      npm install -g yarn
-      yarn
-      yarn build
+      npm install
+      npm run build
     popd
 
     cd "${WORKSPACE_DIR}"/python
