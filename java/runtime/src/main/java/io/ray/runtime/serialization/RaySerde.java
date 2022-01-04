@@ -28,7 +28,7 @@ public final class RaySerde {
   private BufferCallback bufferCallback;
   private Iterator<ByteBuffer> outOfBandBuffers;
   private final boolean referenceTracking;
-  private final boolean basicTypesReferenceIgnored;
+  private final boolean primitiveWrapperTypesReferenceIgnored;
 
   private final ReferenceResolver referenceResolver;
   private final ClassResolver classResolver;
@@ -41,7 +41,7 @@ public final class RaySerde {
   private RaySerde(SerdeBuilder builder) {
     this.isLittleEndian = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
     this.referenceTracking = builder.referenceTracking;
-    this.basicTypesReferenceIgnored = builder.basicTypesReferenceIgnored;
+    this.primitiveWrapperTypesReferenceIgnored = builder.primitiveWrapperTypesReferenceIgnored;
     if (referenceTracking) {
       this.referenceResolver = new MapReferenceResolver();
     } else {
@@ -362,8 +362,8 @@ public final class RaySerde {
     return referenceTracking;
   }
 
-  public boolean isBasicTypesReferenceIgnored() {
-    return basicTypesReferenceIgnored;
+  public boolean isPrimitiveWrapperTypesReferenceIgnored() {
+    return primitiveWrapperTypesReferenceIgnored;
   }
 
   public ReferenceResolver getReferenceResolver() {
@@ -397,7 +397,7 @@ public final class RaySerde {
   public static final class SerdeBuilder {
     private boolean checkClassVersion = true;
     private boolean referenceTracking = true;
-    private boolean basicTypesReferenceIgnored = true;
+    private boolean primitiveWrapperTypesReferenceIgnored = true;
     private ClassLoader classLoader;
     private boolean jdkClassSerializableCheck = true;
 
@@ -408,8 +408,9 @@ public final class RaySerde {
       return this;
     }
 
-    public SerdeBuilder ignoreBasicTypesReference(boolean ignoreBasicTypesReference) {
-      this.basicTypesReferenceIgnored = ignoreBasicTypesReference;
+    public SerdeBuilder ignorePrimitiveWrapperTypesReference(
+        boolean primitiveWrapperTypesReferenceIgnored) {
+      this.primitiveWrapperTypesReferenceIgnored = primitiveWrapperTypesReferenceIgnored;
       return this;
     }
 

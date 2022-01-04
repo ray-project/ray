@@ -10,7 +10,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 
 @NotThreadSafe
 public abstract class Serializer<T> {
-  protected final RaySerde raySerDe;
+  protected final RaySerde raySerde;
   protected final Class<T> cls;
   protected final boolean needToWriteReference;
 
@@ -19,12 +19,12 @@ public abstract class Serializer<T> {
   public abstract T read(MemoryBuffer buffer);
 
   public Serializer(RaySerde raySerDe, Class<T> cls) {
-    this.raySerDe = raySerDe;
+    this.raySerde = raySerDe;
     this.cls = cls;
     if (raySerDe.isReferenceTracking()) {
       needToWriteReference =
           !Primitives.isWrapperType(Primitives.wrap(cls))
-              || !raySerDe.isBasicTypesReferenceIgnored();
+              || !raySerDe.isPrimitiveWrapperTypesReferenceIgnored();
     } else {
       needToWriteReference = false;
     }

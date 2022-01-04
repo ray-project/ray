@@ -359,12 +359,12 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, byte[] value) {
-      raySerDe.writeSerializedObject(buffer, new SerializedObject.ByteArraySerializedObject(value));
+      raySerde.writeSerializedObject(buffer, new SerializedObject.ByteArraySerializedObject(value));
     }
 
     @Override
     public byte[] read(MemoryBuffer buffer) {
-      ByteBuffer buf = raySerDe.readSerializedObject(buffer);
+      ByteBuffer buf = raySerde.readSerializedObject(buffer);
       int remaining = buf.remaining();
       if (buf.hasArray() && remaining == buf.array().length) {
         return buf.array();
@@ -517,7 +517,7 @@ public class Serializers {
       int len = value.length;
       buffer.writeInt(len);
       for (String elem : value) {
-        raySerDe.serializeReferencableToJava(buffer, elem, stringSerializer);
+        raySerde.serializeReferencableToJava(buffer, elem, stringSerializer);
       }
     }
 
@@ -527,7 +527,7 @@ public class Serializers {
       String[] value = new String[numElements];
       referenceResolver.reference(value);
       for (int i = 0; i < numElements; i++) {
-        String elem = raySerDe.deserializeReferencableFromJava(buffer, stringSerializer);
+        String elem = raySerde.deserializeReferencableFromJava(buffer, stringSerializer);
         value[i] = elem;
       }
       return value;
@@ -563,11 +563,11 @@ public class Serializers {
       final Serializer<T> componentTypeSerializer = this.componentTypeSerializer;
       if (componentTypeSerializer != null) {
         for (T t : arr) {
-          raySerDe.serializeReferencableToJava(buffer, t, componentTypeSerializer);
+          raySerde.serializeReferencableToJava(buffer, t, componentTypeSerializer);
         }
       } else {
         for (T t : arr) {
-          raySerDe.serializeReferencableToJava(buffer, t);
+          raySerde.serializeReferencableToJava(buffer, t);
         }
       }
     }
@@ -576,17 +576,17 @@ public class Serializers {
     public T[] read(MemoryBuffer buffer) {
       int numElements = buffer.readInt();
       Object[] value = newArray(numElements);
-      ReferenceResolver referenceResolver = raySerDe.getReferenceResolver();
+      ReferenceResolver referenceResolver = raySerde.getReferenceResolver();
       referenceResolver.reference(value);
       @SuppressWarnings("rawtypes")
       final Serializer componentTypeSerializer = this.componentTypeSerializer;
       if (componentTypeSerializer != null) {
         for (int i = 0; i < numElements; i++) {
-          value[i] = raySerDe.deserializeReferencableFromJava(buffer, componentTypeSerializer);
+          value[i] = raySerde.deserializeReferencableFromJava(buffer, componentTypeSerializer);
         }
       } else {
         for (int i = 0; i < numElements; i++) {
-          value[i] = raySerDe.deserializeReferencableFromJava(buffer);
+          value[i] = raySerde.deserializeReferencableFromJava(buffer);
         }
       }
       return (T[]) value;
@@ -624,7 +624,7 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, Class value) {
-      Short classId = raySerDe.getClassResolver().getRegisteredClassId(value);
+      Short classId = raySerde.getClassResolver().getRegisteredClassId(value);
       if (classId != null) {
         buffer.writeByte(USE_CLASS_ID);
         buffer.writeShort(classId);
@@ -634,7 +634,7 @@ public class Serializers {
           buffer.writeByte(primitivesMap.get(value));
         } else {
           buffer.writeByte(USE_CLASSNAME);
-          raySerDe.getClassResolver().writeClassNameBytes(buffer, value);
+          raySerde.getClassResolver().writeClassNameBytes(buffer, value);
         }
       }
     }
@@ -643,12 +643,12 @@ public class Serializers {
     public Class read(MemoryBuffer buffer) {
       byte tag = buffer.readByte();
       if (tag == USE_CLASS_ID) {
-        return raySerDe.getClassResolver().getRegisteredClass(buffer.readShort());
+        return raySerde.getClassResolver().getRegisteredClass(buffer.readShort());
       } else {
         if (tag == PRIMITIVE_FLAG) {
           return id2PrimitiveClasses[buffer.readByte()];
         } else {
-          return raySerDe.getClassResolver().readClassByClassNameBytes(buffer);
+          return raySerde.getClassResolver().readClassByClassNameBytes(buffer);
         }
       }
     }
@@ -669,13 +669,13 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, ByteBuffer value) {
-      raySerDe.writeSerializedObject(
+      raySerde.writeSerializedObject(
           buffer, new SerializedObject.ByteBufferSerializedObject(value));
     }
 
     @Override
     public ByteBuffer read(MemoryBuffer buffer) {
-      return raySerDe.readSerializedObject(buffer);
+      return raySerde.readSerializedObject(buffer);
     }
   }
 

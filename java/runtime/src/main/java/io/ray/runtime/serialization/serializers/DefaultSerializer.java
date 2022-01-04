@@ -74,7 +74,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     List<UnsafeFieldAccessor> byteFieldAccessorsList = new ArrayList<>();
     List<UnsafeFieldAccessor> shortFieldAccessorsList = new ArrayList<>();
     List<UnsafeFieldAccessor> charFieldAccessorsList = new ArrayList<>();
-        new ArrayList<>();
+    new ArrayList<>();
     Comparator<ObjectAccessor> comparator =
         (a1, a2) -> {
           // sort by type so that we can hit class info cache more possibly.
@@ -141,7 +141,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
 
   @Override
   public void write(MemoryBuffer buffer, T value) {
-    if (raySerDe.checkClassVersion()) {
+    if (raySerde.checkClassVersion()) {
       buffer.writeInt(classVersionHash);
     }
     writePrimitives(buffer, value);
@@ -171,7 +171,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     for (ObjectAccessor fieldAccessor : this.otherFieldAccessors) {
       Object fieldValue = fieldAccessor.get(value);
       if (!referenceResolver.writeReferenceOrNull(buffer, fieldValue)) {
-        raySerDe.serializeNonReferenceToJava(buffer, fieldValue);
+        raySerde.serializeNonReferenceToJava(buffer, fieldValue);
       }
     }
   }
@@ -209,9 +209,9 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   @SuppressWarnings("unchecked")
   @Override
   public T read(MemoryBuffer buffer) {
-    if (raySerDe.checkClassVersion()) {
+    if (raySerde.checkClassVersion()) {
       int hash = buffer.readInt();
-      Serializers.checkClassVersion(raySerDe, hash, classVersionHash);
+      Serializers.checkClassVersion(raySerde, hash, classVersionHash);
     }
     Object bean = newBean();
     referenceResolver.reference(bean);
@@ -236,7 +236,7 @@ public final class DefaultSerializer<T> extends Serializer<T> {
           Serializer serializer = finalFieldSerializers[i];
           fieldValue = serializer.read(buffer);
         }
-        raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
+        raySerde.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
         fieldAccessor.set(bean, fieldValue);
       } else {
         fieldValue = referenceResolver.getReadObject();
@@ -250,8 +250,8 @@ public final class DefaultSerializer<T> extends Serializer<T> {
       // It's not a reference, we need read field data.
       if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
         int nextReadRefId = referenceResolver.preserveReferenceId();
-        fieldValue = raySerDe.deserializeNonReferenceFromJava(buffer);
-        raySerDe.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
+        fieldValue = raySerde.deserializeNonReferenceFromJava(buffer);
+        raySerde.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
         fieldAccessor.set(bean, fieldValue);
       } else {
         fieldValue = referenceResolver.getReadObject();

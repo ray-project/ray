@@ -15,7 +15,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
@@ -24,7 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 
-@SuppressWarnings( {"unchecked", "rawtypes"})
+@SuppressWarnings({"unchecked", "rawtypes"})
 public class JavaSerializers {
   /**
    * Serializes objects using Java's built in serialization to be compatible with java
@@ -43,11 +42,11 @@ public class JavaSerializers {
       super(raySerDe, cls);
       Preconditions.checkArgument(requireJavaSerialization(cls));
       LOG.warn(
-        "{} use java built-in serialization, which is inefficient. "
-          + "Please replace it with a {} or implements {}",
-        cls,
-        Serializer.class.getCanonicalName(),
-        Externalizable.class.getCanonicalName());
+          "{} use java built-in serialization, which is inefficient. "
+              + "Please replace it with a {} or implements {}",
+          cls,
+          Serializer.class.getCanonicalName(),
+          Externalizable.class.getCanonicalName());
       objectInput = new SerdeObjectInput(raySerDe, null);
       objectOutput = new SerdeObjectOutput(raySerDe, null);
     }
@@ -58,7 +57,7 @@ public class JavaSerializers {
      * <li>is not an {@link Enum}
      * <li>is not an array
      * <li>has {@code readResolve}/{@code writePlace} method or class has {@code readObject}/{@code
-     * writeObject} method, but doesn't implements {@link Externalizable}
+     *     writeObject} method, but doesn't implements {@link Externalizable}
      * <li/>
      */
     public static boolean requireJavaSerialization(Class<?> clz) {
@@ -72,10 +71,12 @@ public class JavaSerializers {
       if (Externalizable.class.isAssignableFrom(clz)) {
         return false;
       }
-      if (getWriteReplaceMethod(clz) != null || getReadResolveMethod(clz) != null ||
-        getReadObjectMethod(clz) != null || getWriteObjectMethod(clz) != null) {
+      if (getWriteReplaceMethod(clz) != null
+          || getReadResolveMethod(clz) != null
+          || getReadObjectMethod(clz) != null
+          || getWriteObjectMethod(clz) != null) {
         Preconditions.checkArgument(
-          ReflectionUtils.getAllInterfaces(clz).contains(Serializable.class));
+            ReflectionUtils.getAllInterfaces(clz).contains(Serializable.class));
         return true;
       }
       return false;
@@ -90,10 +91,10 @@ public class JavaSerializers {
       try {
         objectOutput.setBuffer(buffer);
         ObjectOutputStream objectOutputStream =
-          (ObjectOutputStream) raySerDe.getSerializationContext().get(objectOutput);
+            (ObjectOutputStream) raySerde.getSerializationContext().get(objectOutput);
         if (objectOutputStream == null) {
           objectOutputStream = new ObjectOutputStream(objectOutput);
-          raySerDe.getSerializationContext().add(objectOutput, objectOutputStream);
+          raySerde.getSerializationContext().add(objectOutput, objectOutputStream);
         }
         objectOutputStream.writeObject(value);
         objectOutputStream.flush();
@@ -107,79 +108,17 @@ public class JavaSerializers {
       try {
         objectInput.setBuffer(buffer);
         ObjectInputStream objectInputStream =
-          (ObjectInputStream) raySerDe.getSerializationContext().get(objectInput);
+            (ObjectInputStream) raySerde.getSerializationContext().get(objectInput);
         if (objectInputStream == null) {
           objectInputStream =
-            new ClassLoaderObjectInputStream(raySerDe.getClassLoader(), objectInput);
-          raySerDe.getSerializationContext().add(objectInput, objectInputStream);
+              new ClassLoaderObjectInputStream(raySerde.getClassLoader(), objectInput);
+          raySerde.getSerializationContext().add(objectInput, objectInputStream);
         }
         return objectInputStream.readObject();
       } catch (IOException | ClassNotFoundException e) {
         Platform.throwException(e);
       }
       throw new IllegalStateException("unreachable code");
-    }
-  }
-
-  public static class JavaCompatibleSerializer extends Serializer {
-    private final Method writeObjectMethod;
-    private final Method readObjectMethod;
-
-    public JavaCompatibleSerializer(RaySerde raySerDe, Class cls) {
-      super(raySerDe, cls);
-      writeObjectMethod = getWriteObjectMethod(cls);
-      writeObjectMethod.setAccessible(true);
-      readObjectMethod = getReadObjectMethod(cls);
-      readObjectMethod.setAccessible(true);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Object value) {
-
-    }
-
-    @Override
-    public Object read(MemoryBuffer buffer) {
-
-      return null;
-    }
-  }
-
-  public static class ReplacementSerializer extends Serializer {
-    private final Method writeReplaceMethod;
-    private final Method readResolveMethod;
-
-    public ReplacementSerializer(RaySerde raySerDe, Class cls) {
-      super(raySerDe, cls);
-      writeReplaceMethod = Objects.requireNonNull(getWriteReplaceMethod(cls));
-      writeReplaceMethod.setAccessible(true);
-      readResolveMethod = Objects.requireNonNull(getReadResolveMethod(cls));
-      readResolveMethod.setAccessible(true);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      try {
-        Object replacement = writeReplaceMethod.invoke(value);
-        raySerDe.serializeReferencableToJava(buffer, replacement);
-      } catch (IllegalAccessException | InvocationTargetException e) {
-        Platform.throwException(e);
-      }
-    }
-
-    @Override
-    public Object read(MemoryBuffer buffer) {
-      Object replacement = raySerDe.deserializeNonReferenceFromJava(buffer);
-      if (readResolveMethod != null) {
-        try {
-          readResolveMethod.invoke(replacement);
-        } catch (IllegalAccessException | InvocationTargetException e) {
-          Platform.throwException(e);
-        }
-      } else {
-        return replacement;
-      }
-      throw new IllegalStateException("unreachable");
     }
   }
 
@@ -192,15 +131,13 @@ public class JavaSerializers {
       if (cls != ReplaceStub.class) {
         if (!Serializable.class.isAssignableFrom(cls)) {
           String msg =
-            String.format("Lambda needs to implement %s for serialization", Serializable.class);
+              String.format("Lambda needs to implement %s for serialization", Serializable.class);
           throw new UnsupportedOperationException(msg);
         }
       }
     }
 
-    /**
-     * Returns true if the specified class is a lambda.
-     */
+    /** Returns true if the specified class is a lambda. */
     public static boolean isLambda(Class clz) {
       Preconditions.checkNotNull(clz);
       return clz.getName().indexOf('/') >= 0;
@@ -214,7 +151,7 @@ public class JavaSerializers {
         writeReplaceMethod.setAccessible(true);
         Object replacement = writeReplaceMethod.invoke(value);
         Preconditions.checkArgument(SERIALIZED_LAMBDA.isInstance(replacement));
-        raySerDe.serializeReferencableToJava(buffer, replacement);
+        raySerde.serializeReferencableToJava(buffer, replacement);
       } catch (Exception e) {
         throw new RuntimeException("Can't serialize lambda " + value, e);
       }
@@ -224,7 +161,7 @@ public class JavaSerializers {
     public Object read(MemoryBuffer buffer) {
       Preconditions.checkArgument(cls == ReplaceStub.class);
       try {
-        return raySerDe.deserializeReferencableFromJava(buffer);
+        return raySerde.deserializeReferencableFromJava(buffer);
       } catch (Exception e) {
         throw new RuntimeException("Can't deserialize lambda", e);
       }
@@ -234,17 +171,16 @@ public class JavaSerializers {
      * Class name of dynamic generated class is not fixed, so we use a stub class to mock dynamic
      * class.
      */
-    public static class ReplaceStub {
-    }
+    public static class ReplaceStub {}
   }
 
   private static Method getWriteObjectMethod(Class<?> clz) {
     Method writeObject = getMethod(clz, "writeObject");
     if (writeObject != null) {
       if (writeObject.getParameterTypes().length == 1
-        && writeObject.getParameterTypes()[0] == ObjectOutputStream.class
-        && writeObject.getReturnType() == void.class
-        && Modifier.isPrivate(writeObject.getModifiers())) {
+          && writeObject.getParameterTypes()[0] == ObjectOutputStream.class
+          && writeObject.getReturnType() == void.class
+          && Modifier.isPrivate(writeObject.getModifiers())) {
         return writeObject;
       }
     }
@@ -255,9 +191,9 @@ public class JavaSerializers {
     Method readObject = getMethod(clz, "readObject");
     if (readObject != null) {
       if (readObject.getParameterTypes().length == 1
-        && readObject.getParameterTypes()[0] == ObjectInputStream.class
-        && readObject.getReturnType() == void.class
-        && Modifier.isPrivate(readObject.getModifiers())) {
+          && readObject.getParameterTypes()[0] == ObjectInputStream.class
+          && readObject.getReturnType() == void.class
+          && Modifier.isPrivate(readObject.getModifiers())) {
         return readObject;
       }
     }
@@ -268,7 +204,7 @@ public class JavaSerializers {
     Method readResolve = getMethod(clz, "readResolve");
     if (readResolve != null) {
       if (readResolve.getParameterTypes().length == 0
-        && readResolve.getReturnType() == Object.class) {
+          && readResolve.getReturnType() == Object.class) {
         return readResolve;
       }
     }
@@ -279,7 +215,7 @@ public class JavaSerializers {
     Method writeReplace = getMethod(clz, "writeReplace");
     if (writeReplace != null) {
       if (writeReplace.getParameterTypes().length == 0
-        && writeReplace.getReturnType() == Object.class) {
+          && writeReplace.getReturnType() == Object.class) {
         return writeReplace;
       }
     }
@@ -317,27 +253,26 @@ public class JavaSerializers {
 
     @Override
     public void write(MemoryBuffer buffer, Object value) {
-      raySerDe.serializeReferencableToJava(buffer, Proxy.getInvocationHandler(value));
-      raySerDe.serializeReferencableToJava(buffer, value.getClass().getInterfaces());
+      raySerde.serializeReferencableToJava(buffer, Proxy.getInvocationHandler(value));
+      raySerde.serializeReferencableToJava(buffer, value.getClass().getInterfaces());
     }
 
     @Override
     public Object read(MemoryBuffer buffer) {
       Preconditions.checkArgument(cls == ReplaceStub.class);
       InvocationHandler invocationHandler =
-        (InvocationHandler) raySerDe.deserializeReferencableFromJava(buffer);
+          (InvocationHandler) raySerde.deserializeReferencableFromJava(buffer);
       Preconditions.checkNotNull(invocationHandler);
-      final Class<?>[] interfaces = (Class<?>[]) raySerDe.deserializeReferencableFromJava(buffer);
+      final Class<?>[] interfaces = (Class<?>[]) raySerde.deserializeReferencableFromJava(buffer);
       Preconditions.checkNotNull(interfaces);
-      return Proxy.newProxyInstance(raySerDe.getClassLoader(), interfaces, invocationHandler);
+      return Proxy.newProxyInstance(raySerde.getClassLoader(), interfaces, invocationHandler);
     }
 
     public static boolean isJdkProxy(Class<?> clz) {
       return Proxy.isProxyClass(clz);
     }
 
-    public static class ReplaceStub {
-    }
+    public static class ReplaceStub {}
   }
 
   public static final class CollectionJavaSerializer<T extends Collection> extends Serializer<T> {

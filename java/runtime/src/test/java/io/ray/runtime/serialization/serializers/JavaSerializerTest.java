@@ -16,6 +16,7 @@ public class JavaSerializerTest {
 
   public static class A implements Serializable {
     int f1 = 1;
+
     Object writeReplace() {
       return new SerializedForm("A", f1);
     }
