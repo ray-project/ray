@@ -315,7 +315,7 @@ def get_ray_address_from_environment():
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
     addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if not addr or addr == "auto":
+    if addr is None or addr == "auto":
         # TODO(mwtian): support _find_gcs_address_or_die()
         addr = _find_redis_address_or_die()
     return addr
@@ -413,7 +413,7 @@ def canonicalize_bootstrap_address(addr: str):
     Returns:
         Ray cluster address string in <host:port> format.
     """
-    if not addr or addr == "auto":
+    if addr is None or addr == "auto":
         addr = get_ray_address_from_environment()
     try:
         bootstrap_address = address_to_ip(addr)

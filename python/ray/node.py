@@ -224,10 +224,10 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-            if ray_params.gcs_server_port is None:
+            if ray_params.gcs_server_port is None \
+                    or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port(
                     "gcs_server_port")
-            self._gcs_server_port = ray_params.gcs_server_port
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -883,7 +883,8 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        assert self._gcs_server_port is not None
+        gcs_server_port = self._ray_params.gcs_server_port
+        assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
         # TODO(mwtian): append date time so restarted GCS uses different files.
@@ -897,7 +898,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
-            gcs_server_port=self._gcs_server_port,
+            gcs_server_port=gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address)
         assert (
@@ -911,7 +912,7 @@ class Node:
         # when possible.
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
-                                 f"{self._gcs_server_port}")
+                                 f"{gcs_server_port}")
         # Initialize gcs client, which also waits for GCS to start running.
         self.get_gcs_client()
 
