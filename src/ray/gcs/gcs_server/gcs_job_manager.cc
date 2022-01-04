@@ -54,7 +54,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();
       cached_job_configs_[job_id] =
-          std::make_unique<rpc::JobConfig>(mutable_job_table_data.config());
+          std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
