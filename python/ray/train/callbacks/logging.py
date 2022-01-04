@@ -39,8 +39,8 @@ class TrainingLogdirMixin:
         return Path(self._logdir_path)
 
 
-class TrainingSingleFileLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
+                                        abc.ABC):
     """Abstract Train logging callback class.
 
     Args:
@@ -142,8 +142,8 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class TrainingSingleWorkerLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+class TrainingSingleWorkerLoggingCallback(TrainingLogdirMixin,
+                                          TrainingCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.

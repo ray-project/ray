@@ -881,7 +881,6 @@ def init(
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -1423,7 +1422,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e

@@ -1,5 +1,4 @@
 - name: aws_no_sync_down
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -10,7 +9,6 @@
     script: python workloads/run_cloud_test.py no_sync_down
 
 - name: aws_ssh_sync
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -21,7 +19,6 @@
     script: python workloads/run_cloud_test.py ssh_sync
 
 - name: aws_durable_upload
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -32,7 +29,6 @@
     script: python workloads/run_cloud_test.py durable_upload --bucket s3://data-test-ilr/durable_upload
 
 - name: aws_durable_upload_rllib_str
-  team: ml
   cluster:
     app_config: app_config_ml.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -43,7 +39,6 @@
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str --bucket s3://data-test-ilr/durable_upload_rllib_str
 
 - name: aws_durable_upload_rllib_trainer
-  team: ml
   cluster:
     app_config: app_config_ml.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -54,7 +49,6 @@
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer --bucket s3://data-test-ilr/durable_upload_rllib_trainer
 
 - name: aws_no_durable_upload
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_aws_4x2.yaml
@@ -65,7 +59,6 @@
     script: python workloads/run_cloud_test.py no_durable_upload --bucket s3://data-test-ilr/durable_upload
 
 - name: gcp_k8s_no_sync_down
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_gcp_k8s_4x8.yaml
@@ -78,7 +71,6 @@
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
 
 - name: gcp_k8s_ssh_sync
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_gcp_k8s_4x8.yaml
@@ -91,7 +83,6 @@
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
 
 - name: gcp_k8s_durable_upload
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_gcp_k8s_4x8.yaml
@@ -105,7 +96,6 @@
 
 
 - name: gcp_k8s_no_durable_upload
-  team: ml
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_gcp_k8s_4x8.yaml

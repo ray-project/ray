@@ -12,7 +12,7 @@ SPREAD_SCHEDULING_STRATEGY = "SPREAD"
 
 
 @PublicAPI(stability="beta")
-class PlacementGroupSchedulingStrategy:
+class PlacementGroupSchedulingStrategy(object):
     """Placement group based scheduling strategy.
 
     Attributes:
