@@ -120,9 +120,9 @@ class CheckpointManager:
     def on_checkpoint(self, checkpoint):
         self._cur_order += 1
         checkpoint.order = self._cur_order
-        self.on_checkpoint_internal(checkpoint)
+        self._on_checkpoint_internal(checkpoint)
 
-    def on_checkpoint_internal(self, checkpoint):
+    def _on_checkpoint_internal(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Sets the newest checkpoint. For PERSISTENT checkpoints: Deletes
