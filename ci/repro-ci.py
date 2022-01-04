@@ -103,7 +103,7 @@ class ReproSession:
 
     def __init__(self,
                  buildkite_token: str,
-                 instance_name: str = "repro-ci-dev",
+                 instance_name: Optional[str] = None,
                  logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
@@ -164,6 +164,12 @@ class ReproSession:
 
     def aws_start_instance(self):
         assert self.env
+
+        if not self.aws_instance_name:
+            self.aws_instance_name = (
+                f"repro_ci_{self.build_id}_{self.job_id[:8]}")
+            self.logger.info(
+                f"No instance name provided, using {self.aws_instance_name}")
 
         instance_type = self.env["BUILDKITE_AGENT_META_DATA_AWS_INSTANCE_TYPE"]
         instance_ami = self.env["BUILDKITE_AGENT_META_DATA_AWS_AMI_ID"]
@@ -546,11 +552,11 @@ class ReproSession:
 
 @click.command()
 @click.argument("session_url", required=False)
-@click.option("-n", "--instance-name", default="repro-ci-dev")
+@click.option("-n", "--instance-name", default=None)
 @click.option("-c", "--commands", is_flag=True, default=False)
 @click.option("-f", "--filters", multiple=True, default=[])
 def main(session_url: Optional[str],
-         instance_name: str = "repro-ci-dev",
+         instance_name: Optional[str] = None,
          commands: bool = False,
          filters: Optional[List[str]] = None):
     random.seed(1235)
