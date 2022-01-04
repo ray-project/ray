@@ -232,7 +232,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   bool ReconnectGcsServerAsync(const std::function<void()> callback);
 
   /// Get new Gcs server address and try to ping it.
-  void DoReconnect(absl::Time start);
+  void DoReconnect(absl::Time start) EXCLUSIVE_LOCKS_REQUIRED(reconnect_flag_mutex_);
 
   /// Called when the ping rpc call returns.
   void OnReconnectionFinished(const Status &status, absl::Time start,
