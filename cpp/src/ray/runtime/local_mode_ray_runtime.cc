@@ -23,21 +23,23 @@
 namespace ray {
 namespace internal {
 
-LocalModeRayRuntime::LocalModeRayRuntime() {
-  worker_ = std::make_unique<WorkerContext>(
-      ray::core::WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()), JobID::Nil());
+LocalModeRayRuntime::LocalModeRayRuntime()
+    : worker_(ray::core::WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()),
+              JobID::Nil()) {
   object_store_ = std::unique_ptr<ObjectStore>(new LocalModeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter(*this));
 }
 
 ActorID LocalModeRayRuntime::GetNextActorID() {
-  const auto next_task_index = worker_->GetNextTaskIndex();
-  const ActorID actor_id = ActorID::Of(worker_->GetCurrentJobID(),
-                                       worker_->GetCurrentTaskID(), next_task_index);
+  const auto next_task_index = worker_.GetNextTaskIndex();
+  const ActorID actor_id =
+      ActorID::Of(worker_.GetCurrentJobID(), worker_.GetCurrentTaskID(), next_task_index);
   return actor_id;
 }
 
-ActorID LocalModeRayRuntime::GetCurrentActorID() { return worker_->GetCurrentActorID(); }
+ActorID LocalModeRayRuntime::GetCurrentActorID() { return worker_.GetCurrentActorID(); }
+
+WorkerContext &LocalModeRayRuntime::GetWorkerContext() { return worker_; }
 
 }  // namespace internal
 }  // namespace ray
