@@ -70,7 +70,6 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 def setup_multi_deployment_replicas(min_replicas, max_replicas,
                                     num_deployments):
-    num_replica_per_deployment = max_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
     @serve.deployment(
