@@ -118,12 +118,10 @@ class CheckpointManager:
         self._newest_memory_checkpoint = new_checkpoint
 
     def on_checkpoint(self, checkpoint):
-        self._cur_order += 1
-        checkpoint.order = self._cur_order
-        self._on_checkpoint_internal(checkpoint)
-
-    def _on_checkpoint_internal(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
+
+        Checkpoints get assigned with an `order` as they come in.
+        The order is monotonically increasing.
 
         Sets the newest checkpoint. For PERSISTENT checkpoints: Deletes
         previous checkpoint as long as it isn't one of the best ones. Also
@@ -132,6 +130,9 @@ class CheckpointManager:
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
+        self._cur_order += 1
+        checkpoint.order = self._cur_order
+
         if checkpoint.storage == Checkpoint.MEMORY:
             self.replace_newest_memory_checkpoint(checkpoint)
             return
@@ -139,7 +140,7 @@ class CheckpointManager:
         old_checkpoint = self.newest_persistent_checkpoint
 
         if old_checkpoint.value == checkpoint.value:
-            # Override the order of the checkpoint.
+            # Overwrite the order of the checkpoint.
             old_checkpoint.order = checkpoint.order
             return
 
