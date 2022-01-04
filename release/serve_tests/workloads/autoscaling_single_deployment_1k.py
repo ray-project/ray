@@ -60,8 +60,18 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+def deploy_replicas(min_replicas, max_replicas, max_batch_size):
+    @serve.deployment(
+        name="echo",
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": min_replicas,
+            "max_replicas": max_replicas,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        },
+        version="v1")
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
         async def handle_batch(self, requests):
@@ -121,7 +131,7 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
 
     logger.info(f"Deploying with min {min_replicas} and max {max_replicas} "
                 f"target replicas ....\n")
-    deploy_replicas(max_replicas, max_batch_size)
+    deploy_replicas(min_replicas, max_replicas, max_batch_size)
 
     logger.info("Warming up cluster ....\n")
     warm_up_one_cluster.remote(10, http_host, http_port, "echo")
