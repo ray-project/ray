@@ -208,6 +208,7 @@ class SerializationContext:
                 return _actor_handle_deserializer(obj)
             elif metadata_fields[
                     0] == ray_constants.OBJECT_METADATA_TYPE_PROTOBUF:
+                data = self._deserialize_msgpack_data(data, metadata_fields)
                 proto_wrapper = ProtobufObject.FromString(data)
 
                 # First try finding the class in protobuf pool.
@@ -357,6 +358,22 @@ class SerializationContext:
             # Update ref counting for the actor handle
             metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
             value = serialized
+        elif isinstance(value, ProtobufMessage):
+            # TODO(simon): currently we perform double serialization for the
+            # protobuf message because it's wrapped by msgpack. We can
+            # implement ProtobufSerializer similar to Pickle5Serializer
+            # to perform single pass.
+            file_desc = type(value).DESCRIPTOR.file
+
+            proto_wrapper = ProtobufObject()
+            proto_wrapper.serialized_data = value.SerializeToString()
+            proto_wrapper.name = type(value).DESCRIPTOR.name
+            proto_wrapper.descriptor_name = file_desc.name
+            proto_wrapper.descriptor_package = file_desc.package
+            proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
+
+            value = proto_wrapper.SerializeToString()
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 
@@ -376,9 +393,11 @@ class SerializationContext:
         else:
             pickle5_serialized_object = None
 
-        return MessagePackSerializedObject(metadata, msgpack_data,
-                                           contained_object_refs,
-                                           pickle5_serialized_object)
+        return MessagePackSerializedObject(
+            metadata,
+            msgpack_data,
+            contained_object_refs,
+            nest_serialized_object=pickle5_serialized_object)
 
     def serialize(self, value):
         """Serialize an object.
@@ -391,18 +410,5 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        elif isinstance(value, ProtobufMessage):
-            file_desc = type(value).DESCRIPTOR.file
-
-            proto_wrapper = ProtobufObject()
-            proto_wrapper.serialized_data = value.SerializeToString()
-            proto_wrapper.name = type(value).DESCRIPTOR.name
-            proto_wrapper.descriptor_name = file_desc.name
-            proto_wrapper.descriptor_package = file_desc.package
-            proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
-
-            value = proto_wrapper.SerializeToString()
-            metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
-            return RawSerializedObject(value, metadata=metadata)
         else:
             return self._serialize_to_msgpack(value)

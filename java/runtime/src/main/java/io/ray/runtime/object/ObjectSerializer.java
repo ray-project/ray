@@ -13,6 +13,7 @@ import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.runtime.serializer.ProtobufSerializer;
 import io.ray.runtime.serializer.Serializer;
 import io.ray.runtime.util.IdUtil;
@@ -91,7 +92,8 @@ public class ObjectSerializer {
           || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0) {
         return Serializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PROTOBUF) == 0) {
-        return ProtobufSerializer.decode(data, objectType);
+        return ProtobufSerializer.decode(
+            MessagePackSerializer.decode(data, byte[].class), objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
@@ -171,7 +173,8 @@ public class ObjectSerializer {
       return nativeRayObject;
     } else if (object instanceof AbstractMessage) {
       byte[] serializedBytes = ProtobufSerializer.encode(object);
-      return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_PROTOBUF);
+      return new NativeRayObject(
+          MessagePackSerializer.encode(serializedBytes).getLeft(), OBJECT_METADATA_TYPE_PROTOBUF);
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
