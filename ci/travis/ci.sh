@@ -165,6 +165,8 @@ test_python() {
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
+      -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
+      -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
@@ -406,7 +408,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+          quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 

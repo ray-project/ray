@@ -191,7 +191,8 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
 
 def _find_address_from_flag(flag: str):
     """
-    Attempts to find all valid Ray addresses on this node, for the flag.
+    Attempts to find all valid Ray addresses on this node, specified by the
+    flag.
 
     Params:
         flag: `--redis-address` or `--gcs-address`
@@ -293,11 +294,12 @@ def find_bootstrap_address():
 
 
 def _find_redis_address_or_die():
-    """Find one Redis address unambiguously, or raise an error.
+    """Finds one Redis address unambiguously, or raise an error.
 
-    Callers outside of this module should use get_ray_address_to_use_or_die()
+    Callers outside of this module should use
+    get_ray_address_from_environment() or canonicalize_bootstrap_address()
     """
-    redis_addresses = _find_address_from_flag("--redis-address")
+    redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
             f"Found multiple active Ray instances: {redis_addresses}. "
@@ -330,28 +332,20 @@ def _find_gcs_address_or_die():
     return gcs_addresses.pop()
 
 
-def get_bootstrap_address_to_use_or_die():
+def get_ray_address_from_environment():
     """
-    Attempts to find an address for an existing Ray cluster.
-
-    Returns:
-        Address of ip:port format from a local running Ray process.
-    """
-    return _find_gcs_address_or_die() if use_gcs_for_bootstrap(
-    ) else _find_redis_address_or_die()
-
-
-def get_ray_address_to_use_or_die():
-    """
-    Attempts to find an address for an existing Ray cluster if it is not
-    already specified as an environment variable.
+    Attempts to find the address of Ray cluster to use, first from
+    RAY_ADDRESS environment variable, then from the local Raylet.
 
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
     addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if addr is None:
-        addr = get_bootstrap_address_to_use_or_die()
+    if addr is None or addr == "auto":
+        if use_gcs_for_bootstrap():
+            addr = _find_gcs_address_or_die()
+        else:
+            addr = _find_redis_address_or_die()
     return addr
 
 
@@ -437,28 +431,27 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
-def canonicalize_bootstrap_address(addr):
-    """Canonicalizes address to ip:port, and extract the host and IP.
-    This function should be called for converting `auto` to the local Ray
-    address for bootstrapping.
+def canonicalize_bootstrap_address(addr: str):
+    """Canonicalizes Ray cluster bootstrap address to ip:port.
+    Reads address from the environment if needed.
+
+    This function should be used to process user supplied Ray cluster address,
+    via ray.init() or `--address` flags, before using the address to connect.
 
     Returns:
-        bootstrap_address: string containing the full <host:port> address for
-            bootstrapping.
-        ip: string representing the host portion of the address.
-        port: integer representing the port portion of the address.
+        Ray cluster address string in <host:port> format.
     """
-
-    if addr == "auto":
-        # Cannot call get_ray_address_to_use_or_die(), which prefers the
-        # RAY_ADDRESS environment variable that can be "auto".
-        addr = get_bootstrap_address_to_use_or_die()
+    if addr is None or addr == "auto":
+        addr = get_ray_address_from_environment()
     try:
         bootstrap_address = address_to_ip(addr)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
+    return bootstrap_address
 
+
+def extract_ip_port(bootstrap_address: str):
     address_parts = bootstrap_address.split(":")
     if len(address_parts) != 2:
         raise ValueError(f"Malformed address {bootstrap_address}. "
@@ -471,11 +464,10 @@ def canonicalize_bootstrap_address(addr):
     if port < 1024 or port > 65535:
         raise ValueError(f"Invalid address port {port}. Must be between 1024 "
                          "and 65535 (inclusive).")
+    return ip, port
 
-    return bootstrap_address, ip, port
 
-
-def address_to_ip(address):
+def address_to_ip(address: str):
     """Convert a hostname to a numerical IP addresses in an address.
 
     This should be a no-op if address already contains an actual numerical IP
@@ -561,8 +553,8 @@ def create_redis_client(redis_address, password=None):
             except Exception:
                 create_redis_client.instances.pop(redis_address)
 
-    _, redis_ip_address, redis_port = canonicalize_bootstrap_address(
-        redis_address)
+    redis_ip_address, redis_port = extract_ip_port(
+        canonicalize_bootstrap_address(redis_address))
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
     create_redis_client.instances[redis_address] = redis.StrictRedis(
@@ -1423,26 +1415,22 @@ def start_gcs_server(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    if redis_address is not None:
-        redis_ip_address, redis_port = redis_address.split(":")
-    else:
-        redis_ip_address, redis_port = "", 0
-
-    redis_password = redis_password or ""
-    config_str = serialize_config(config)
-    if gcs_server_port is None:
-        gcs_server_port = 0
+    assert gcs_server_port > 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--redis_address={redis_ip_address}",
-        f"--redis_port={redis_port}",
         f"--log_dir={log_dir}",
-        f"--config_list={config_str}",
+        f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
     ]
+    if redis_address:
+        redis_ip_address, redis_port = redis_address.rsplit(":")
+        command += [
+            f"--redis_address={redis_ip_address}",
+            f"--redis_port={redis_port}",
+        ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
     process_info = start_ray_process(
@@ -2072,16 +2060,12 @@ def start_ray_client_server(
         setup_worker_path,
         "-m",
         "ray.util.client.server",
+        f"--address={address}",
         f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
     ]
-    if use_gcs_for_bootstrap():
-        command.append(f"--gcs-address={address}")
-    else:
-        command.append(f"--redis-address={address}")
-
     if redis_password:
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:

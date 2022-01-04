@@ -58,6 +58,13 @@ TrainingCallback
 .. autoclass:: ray.train.TrainingCallback
     :members:
 
+.. _train-api-print-callback:
+
+PrintCallback
+~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.PrintCallback
+
 .. _train-api-json-logger-callback:
 
 JsonLoggerCallback

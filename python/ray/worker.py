@@ -840,15 +840,16 @@ def init(
         node_ip_address = services.address_to_ip(_node_ip_address)
     raylet_ip_address = node_ip_address
 
+    bootstrap_address, redis_address, gcs_address = None, None, None
     if address:
-        bootstrap_address, _, _ = services.canonicalize_bootstrap_address(
-            address)
-    else:
-        bootstrap_address = None
-    redis_address = None if gcs_utils.use_gcs_for_bootstrap(
-    ) else bootstrap_address
-    gcs_address = bootstrap_address if gcs_utils.use_gcs_for_bootstrap(
-    ) else None
+        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        assert bootstrap_address is not None
+        logger.info("Connecting to existing Ray cluster at address: "
+                    f"{bootstrap_address}")
+        if gcs_utils.use_gcs_for_bootstrap():
+            gcs_address = bootstrap_address
+        else:
+            redis_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -880,6 +881,7 @@ def init(
     global _global_node
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+        # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
@@ -1373,14 +1375,10 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    if gcs_utils.use_gcs_for_bootstrap():
-        worker.redis_client = None
-        worker.gcs_channel = gcs_utils.GcsChannel(gcs_address=node.gcs_address)
-    else:
+    if not gcs_utils.use_gcs_for_bootstrap():
         worker.redis_client = node.create_redis_client()
-        worker.gcs_channel = gcs_utils.GcsChannel(
-            redis_client=worker.redis_client)
-    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    worker.gcs_client = node.get_gcs_client()
+    assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     if gcs_utils.use_gcs_for_bootstrap():
         ray.state.state._initialize_global_state(
@@ -1392,14 +1390,13 @@ def connect(node,
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(
-            channel=worker.gcs_channel.channel())
+        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
         worker.gcs_error_subscriber = GcsErrorSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_log_subscriber = GcsLogSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):

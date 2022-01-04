@@ -154,7 +154,7 @@ class ProxyManager():
     @property
     def address(self) -> str:
         """
-        Returns the provided Ray Redis address, or creates a new cluster.
+        Returns the provided Ray bootstrap address, or creates a new cluster.
         """
         if self._address:
             return self._address
@@ -167,7 +167,8 @@ class ProxyManager():
     @property
     def node(self) -> ray.node.Node:
         """Gets a 'ray.Node' object for this node (the head node).
-        If it does not already exist, one is created using the redis_address.
+        If it does not already exist, one is created using the bootstrap
+        address.
         """
         if self._node:
             return self._node
