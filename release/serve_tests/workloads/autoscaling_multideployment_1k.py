@@ -68,13 +68,13 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def setup_multi_deployment_replicas(min_replicas,
-                                    max_replicas,
+def setup_multi_deployment_replicas(min_replicas, max_replicas,
                                     num_deployments):
     num_replica_per_deployment = max_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
-    @serve.deployment(_autoscaling_config={
+    @serve.deployment(
+        _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": max_replicas,
@@ -161,8 +161,7 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     logger.info(f"Deploying with {max_replicas} target replicas ....\n")
-    setup_multi_deployment_replicas(min_replicas,
-                                    max_replicas,
+    setup_multi_deployment_replicas(min_replicas, max_replicas,
                                     num_deployments)
 
     logger.info("Warming up cluster ....\n")
