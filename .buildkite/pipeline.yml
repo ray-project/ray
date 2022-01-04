@@ -253,42 +253,12 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
-- label: ":python: (Large 1/3)"
+- label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_0
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-- label: ":python: (Large 2/3)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_1
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-- label: ":python: (Large 3/3)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_2
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
+    - . ./ci/travis/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -384,53 +354,12 @@
       --test_env=RAY_gcs_storage=memory
       -- python/ray/tests/...
       -//python/ray/tests:test_autoscaler_drain_node_api
-- label: ":redis: HA GCS (Large 1/3)"
+- label: ":redis: HA GCS (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_0
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_failure_2
-- label: ":redis: HA GCS (Large 2/3)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_1
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_failure_2
-- label: ":redis: HA GCS (Large 3/3)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=large_size_python_tests_shard_2
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
+    - . ./ci/travis/ci.sh test_large_gcs
 - label: ":redis: HA GCS (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:

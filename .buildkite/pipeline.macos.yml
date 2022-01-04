@@ -90,37 +90,12 @@ steps:
       -- python/ray/tests/...
     - *epilogue_commands
 
-- label: ":mac: :apple: Large 1/3"
+- label: ":mac: :apple: Large"
   <<: *common
+  parallelism: 3
   commands:
     - *prelude_commands
-    - bazel test $(./scripts/bazel_export_options) --config=ci
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=large_size_python_tests_shard_0
-      python/ray/tests/...
-    - *epilogue_commands
-
-- label: ":mac: :apple: Large 2/3"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - bazel test $(./scripts/bazel_export_options) --config=ci
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=large_size_python_tests_shard_1
-      python/ray/tests/...
-    - *epilogue_commands
-
-- label: ":mac: :apple: Large 3/3"
-  <<: *common
-  commands:
-    - *prelude_commands
-    - bazel test $(./scripts/bazel_export_options) --config=ci
-      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=large_size_python_tests_shard_2
-      python/ray/tests/...
+    - . ./ci/travis/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
