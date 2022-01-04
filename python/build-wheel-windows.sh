@@ -59,8 +59,9 @@ install_ray() {
     pip install wheel
 
     pushd dashboard/client
-      choco install nodejs yarn -y
+      choco install nodejs  -y
       refreshenv
+      npm install -g yarn
       yarn
       yarn build
     popd
