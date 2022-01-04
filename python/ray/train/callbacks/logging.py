@@ -1,19 +1,22 @@
-import os
-from typing import Iterable, List, Optional, Dict, Set, Tuple, Union
 import abc
-import warnings
-import logging
-import numpy as np
 import json
+import logging
+import os
+import warnings
 from pathlib import Path
+from typing import List, Optional, Dict, Set, Tuple, Union
 
-from ray.util.debug import log_once
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.json import SafeFallbackEncoder
+import numpy as np
+
 from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.results_prepocessors import WorkersResultsPreprocessor, \
+    SingleWorkerResultsPreprocessor, KeysResultsPreprocessor
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                  TIME_TOTAL_S, TIMESTAMP, PID,
                                  TRAIN_CHECKPOINT_SUBDIR)
+from ray.util.debug import log_once
+from ray.util.ml_utils.dict import flatten_dict
+from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
@@ -62,24 +65,10 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
                  workers_to_log: Optional[Union[int, List[int]]] = 0) -> None:
         self._logdir = logdir
         self._filename = filename
-        self._workers_to_log = self._validate_workers_to_log(workers_to_log)
         self._log_path = None
-
-    def _validate_workers_to_log(self, workers_to_log) -> List[int]:
-        if isinstance(workers_to_log, int):
-            workers_to_log = [workers_to_log]
-
-        if workers_to_log is not None:
-            if not isinstance(workers_to_log, Iterable):
-                raise TypeError("workers_to_log must be an Iterable, got "
-                                f"{type(workers_to_log)}.")
-            if not all(isinstance(worker, int) for worker in workers_to_log):
-                raise TypeError(
-                    "All elements of workers_to_log must be integers.")
-            if len(workers_to_log) < 1:
-                raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
-        return workers_to_log
+        self._results_preprocessors = [
+            WorkersResultsPreprocessor(workers_to_log=workers_to_log)
+        ]
 
     def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
         if not filename:
@@ -128,56 +117,13 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
             json.dump([], f, cls=SafeFallbackEncoder)
 
     def handle_result(self, results: List[Dict], **info):
-        if self._workers_to_log is None or results is None:
-            results_to_log = results
-        else:
-            results_to_log = [
-                result for i, result in enumerate(results)
-                if i in self._workers_to_log
-            ]
         with open(self._log_path, "r+") as f:
             loaded_results = json.load(f)
             f.seek(0)
-            json.dump(
-                loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
+            json.dump(loaded_results + [results], f, cls=SafeFallbackEncoder)
 
 
-class TrainingSingleWorkerLoggingCallback(TrainingLogdirMixin,
-                                          TrainingCallback, abc.ABC):
-    """Abstract Train logging callback class.
-
-    Allows only for single-worker logging.
-
-    Args:
-        logdir (Optional[str]): Path to directory where the results file
-            should be. If None, will be set by the Trainer.
-        worker_to_log (int): Worker index to log. By default, will log the
-            worker with index 0.
-    """
-
-    def __init__(self, logdir: Optional[str] = None,
-                 worker_to_log: int = 0) -> None:
-        self._logdir = logdir
-        self._workers_to_log = self._validate_worker_to_log(worker_to_log)
-        self._log_path = None
-
-    def _validate_worker_to_log(self, worker_to_log) -> int:
-        if isinstance(worker_to_log, Iterable):
-            worker_to_log = list(worker_to_log)
-            if len(worker_to_log) > 1:
-                raise ValueError(
-                    f"{self.__class__.__name__} only supports logging "
-                    "from a single worker.")
-            elif len(worker_to_log) < 1:
-                raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
-            worker_to_log = worker_to_log[0]
-        if not isinstance(worker_to_log, int):
-            raise TypeError("workers_to_log must be an integer.")
-        return worker_to_log
-
-
-class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
+class MLflowLoggerCallback(TrainingLogdirMixin, TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
     MLflow (https://mlflow.org) Tracking is an open source library for
@@ -225,7 +171,10 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
                  save_artifact: bool = False,
                  logdir: Optional[str] = None,
                  worker_to_log: int = 0):
-        super().__init__(logdir=logdir, worker_to_log=worker_to_log)
+        super().__init__(logdir=logdir)
+        self._results_preprocessors = [
+            SingleWorkerResultsPreprocessor(workers_to_log=worker_to_log)
+        ]
 
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
@@ -255,7 +204,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util.log_params(params_to_log=config)
 
     def handle_result(self, results: List[Dict], **info):
-        result = results[self._workers_to_log]
+        result = results[0]
 
         self.mlflow_util.log_metrics(
             metrics_to_log=result, step=result[TRAINING_ITERATION])
@@ -267,7 +216,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
 
-class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
+class TBXLoggerCallback(TrainingLogdirMixin, TrainingCallback):
     """Logs Train results in TensorboardX format.
 
     Args:
@@ -279,7 +228,17 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
 
     VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
                                         np.int32, np.int64)
-    IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
+    IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
+
+    def __init__(self, logdir: Optional[str] = None,
+                 worker_to_log: int = 0) -> None:
+        self._logdir = logdir
+        self._log_path = None
+
+        self._results_preprocessors = [
+            SingleWorkerResultsPreprocessor(workers_to_log=worker_to_log),
+            KeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
+        ]
 
     def start_training(self, logdir: str, **info):
         super().start_training(logdir)
@@ -295,9 +254,9 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
 
     def handle_result(self, results: List[Dict], **info):
-        result = results[self._workers_to_log]
-        step = result[TRAINING_ITERATION]
-        result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}
+        result = results[0]
+        # Use TRAINING_ITERATION for step but remove it so it is not logged.
+        step = result.pop(TRAINING_ITERATION)
         flat_result = flatten_dict(result, delimiter="/")
         path = ["ray", "train"]
 

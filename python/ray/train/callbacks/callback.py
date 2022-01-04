@@ -5,16 +5,8 @@ from typing import List, Dict
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
-    def handle_result(self, results: List[Dict], **info):
-        """Called every time train.report() is called.
-
-        Args:
-            results (List[Dict]): List of results from the training
-                function. Each value in the list corresponds to the output of
-                the training function from each worker.
-            **info: kwargs dict for forward compatibility.
-        """
-        pass
+    def __init__(self):
+        self._results_preprocessors = []
 
     def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
@@ -26,6 +18,22 @@ class TrainingCallback(abc.ABC):
             **info: kwargs dict for forward compatibility.
         """
         pass
+
+    def handle_result(self, results: List[Dict], **info):
+        """Called every time train.report() is called.
+
+        Args:
+            results (List[Dict]): List of results from the training
+                function. Each value in the list corresponds to the output of
+                the training function from each worker.
+            **info: kwargs dict for forward compatibility.
+        """
+        pass
+
+    def process_results(self, results: List[Dict], **info):
+        for preprocessor in self._results_preprocessors:
+            results = preprocessor.preprocess(results)
+        self.handle_result(results)
 
     def finish_training(self, error: bool = False, **info):
         """Called once after training is over.
