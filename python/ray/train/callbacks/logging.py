@@ -19,8 +19,10 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirMixin:
-    def start_training(self, logdir: str, **info):
+class TrainingLogdirCallback(TrainingCallback, abc.ABC):
+    """Abstract Train callback class with logging directory."""
+
+    def start_training(self, logdir: str, config: Dict, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
         else:
@@ -39,8 +41,7 @@ class TrainingLogdirMixin:
         return Path(self._logdir_path)
 
 
-class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
-                                        abc.ABC):
+class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Args:
@@ -87,7 +88,7 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
         return logdir_path.joinpath(Path(filename))
 
     def start_training(self, logdir: str, **info):
-        TrainingLogdirMixin.start_training(logdir=logdir)
+        super().start_training(logdir=logdir, **info)
 
         if not self._filename:
             filename = self._default_filename
@@ -142,8 +143,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class TrainingSingleWorkerLoggingCallback(TrainingLogdirMixin,
-                                          TrainingCallback, abc.ABC):
+class TrainingSingleWorkerLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
