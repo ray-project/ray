@@ -702,6 +702,8 @@ class Deployment:
                 "versioned deployments. Try @serve.deployment(version=...).")
 
         self._func_or_class = func_or_class
+        self._func_or_class.__is_deployment__ = True
+
         self._name = name
         self._version = version
         self._prev_version = prev_version
@@ -710,6 +712,7 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+
 
     @property
     def name(self) -> str:
@@ -784,9 +787,23 @@ class Deployment:
 
         return _get_global_client().root_url + self.route_prefix
 
-    def __call__(self):
-        raise RuntimeError("Deployments cannot be constructed directly. "
-                           "Use `deployment.deploy() instead.`")
+    # def __setattr__(self, __name: str, __value: Any) -> None:
+    #     print("AAAA")
+
+    def __call__(self, *args, **kwargs):
+        new_obj = self._func_or_class.__new__(self._func_or_class)
+        def setattr(self, name: str, value: Any) -> None:
+            if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
+                print(f"Setting deployment - {name} as {str(value)}")
+                object.__setattr__(self, name, value)
+            else:
+                print(f"Setting non-deployment - {name} as {str(value)}")
+                object.__setattr__(self, name, value)
+        self._func_or_class.__setattr__ = setattr
+        new_obj.__init__(*args, **kwargs)
+
+        return new_obj
+
 
     @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):

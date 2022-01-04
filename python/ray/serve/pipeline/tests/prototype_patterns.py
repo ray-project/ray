@@ -1,8 +1,9 @@
 from typing import Any, Callable, Dict
 import asyncio
 # import statistics
+import attr
 
-# from ray import serve
+from ray import serve
 # from ray.serve import pipeline
 # from ray.serve.pipeline.common import ExecutionMode
 # from ray.serve.pipeline.node import INPUT, INJECTED, PipelineNode
@@ -10,7 +11,7 @@ import asyncio
 
 
 # Pipeline nodes are written from leaf to root (entrypoint)
-# @serve.deployment
+@serve.deployment
 class Model:
     # For backwards compatibility
     _version: int = 1
@@ -25,7 +26,7 @@ class Model:
     async def __call__(self, req):
         return req * self.weight
 
-# @serve.deployment
+@serve.deployment
 class FeatureProcessing:
     # For backwards compatibility
     _version: int = 1
@@ -37,7 +38,7 @@ class FeatureProcessing:
     async def __call__(self, req):
         return max(req, 0)
 
-# @serve.deployment
+@serve.deployment
 class Pipeline:
     # For backwards compatibility
     _version: int = 1
@@ -53,6 +54,9 @@ class Pipeline:
         self.model_1 = Model(1) # What if this is heavy .. use a stub ?
         self.model_2 = Model(2)
         self.model_3 = Model(3)
+
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        print("BBBB")
 
     async def __call__(self, req):
         """
@@ -108,7 +112,7 @@ class Pipeline:
 
 async def main():
     # Solve node init / instantiate
-        # maybe just dummy task ?
+        # maybe just dummy task ?19
     # Solve node DAG tracing
         # See if we can avoid making symbolic calls with pipeline.INPUT
     # Add pprint strings
