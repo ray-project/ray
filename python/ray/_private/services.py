@@ -270,7 +270,10 @@ def _find_address_from_flag(flag: str):
                         # TODO(ekl): Find a robust solution for locating Redis.
                         if arg.startswith(flag):
                             proc_addr = arg.split("=")[1]
-                            addresses.add(proc_addr)
+                            # TODO(mwtian): remove this workaround after Ray
+                            # no longer sets --redis-address to None.
+                            if proc_addr != "" and proc_addr != "None":
+                                addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
@@ -452,13 +455,12 @@ def canonicalize_bootstrap_address(addr: str):
 
 
 def extract_ip_port(bootstrap_address: str):
-    address_parts = bootstrap_address.split(":")
-    if len(address_parts) != 2:
+    if ":" not in bootstrap_address:
         raise ValueError(f"Malformed address {bootstrap_address}. "
-                         "Expected '<host>:<port>'.")
-    ip = address_parts[0]
+                         f"Expected '<host>:<port>'.")
+    ip, _, port = bootstrap_address.rpartition(":")
     try:
-        port = int(address_parts[1])
+        port = int(port)
     except ValueError:
         raise ValueError(f"Malformed address port {port}. Must be an integer.")
     if port < 1024 or port > 65535:
@@ -481,6 +483,8 @@ def address_to_ip(address: str):
         The same address but with the hostname replaced by a numerical IP
             address.
     """
+    if not address:
+        raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip

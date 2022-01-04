@@ -20,6 +20,7 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 import glob
 import sys
 import tempfile
+import time
 import uuid
 import re
 import os
@@ -467,7 +468,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
             _check_output_via_pattern("test_ray_submit.txt", result)
 
 
-def test_ray_status():
+def test_ray_status(shutdown_only):
     import ray
     address = ray.init(num_cpus=3).get("address")
     runner = CliRunner()
@@ -475,7 +476,10 @@ def test_ray_status():
     def output_ready():
         result = runner.invoke(scripts.status)
         result.stdout
-        return not result.exception and "memory" in result.output
+        if not result.exception and "memory" in result.output:
+            return True
+        raise RuntimeError(f"result.exception={result.exception} "
+                           f"result.output={result.output}")
 
     wait_for_condition(output_ready)
 
@@ -492,11 +496,14 @@ def test_ray_status():
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
     _check_output_via_pattern("test_ray_status.txt", result_env_arg)
-    ray.shutdown()
 
 
-@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-def test_ray_status_multinode():
+@pytest.mark.xfail(
+    cluster_not_supported, reason="cluster not supported on Windows")
+def test_ray_status_multinode(shutdown_only):
+    # TODO(mwtian): fix Ray cluster start / shutdown, and remove the sleep.
+    time.sleep(2)
+
     cluster = Cluster()
     for _ in range(4):
         cluster.add_node(num_cpus=2)
@@ -510,12 +517,11 @@ def test_ray_status_multinode():
         raise RuntimeError(f"result.exception={result.exception} "
                            f"result.output={result.output}")
 
+    time.sleep(2)
     wait_for_condition(output_ready)
 
     result = runner.invoke(scripts.status, [])
     _check_output_via_pattern("test_ray_status_multinode.txt", result)
-    ray.shutdown()
-    cluster.shutdown()
 
 
 @pytest.mark.skipif(

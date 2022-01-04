@@ -1744,18 +1744,15 @@ def healthcheck(address, redis_password, component):
     if use_gcs_for_bootstrap():
         gcs_address = address
     else:
+        # If client creation or ping fails, this will exit with a non-zero
+        # exit code.
         redis_client = ray._private.services.create_redis_client(
             address, redis_password)
+        redis_client.ping()
+        gcs_address = redis_client.get("GcsServerAddress").decode()
 
     if not component:
-        # If no component is specified, we are health checking the core. If
-        # client creation or ping fails, we will still exit with a non-zero
-        # exit code.
-        if not use_gcs_for_bootstrap():
-            redis_client.ping()
         try:
-            if not use_gcs_for_bootstrap():
-                gcs_address = redis_client.get("GcsServerAddress").decode()
             options = (("grpc.enable_http_proxy", 0), )
             channel = ray._private.utils.init_grpc_channel(
                 gcs_address, options)
@@ -1768,6 +1765,7 @@ def healthcheck(address, redis_password, component):
         except Exception:
             pass
         sys.exit(1)
+
     gcs_client = ray._private.gcs_utils.GcsClient(address=gcs_address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
