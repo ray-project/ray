@@ -34,7 +34,9 @@ refreshenv() {
   # https://gist.github.com/jayvdb/1daf8c60e20d64024f51ec333f5ce806
   powershell -NonInteractive - <<\EOF
 Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+
 Update-SessionEnvironment
+
 # Round brackets in variable names cause problems with bash
 Get-ChildItem env:* | %{
   if (!($_.Name.Contains('('))) {
@@ -45,9 +47,7 @@ Get-ChildItem env:* | %{
     Write-Output ("export " + $_.Name + "='" + $value + "'")
   }
 } | Out-File -Encoding ascii $env:TEMP\refreshenv.sh
-Write-Output $env:TEMP
-Get-ChildItem $env:TEMP
-Get-Content -Path $env:TEMP\refreshenv.sh | Write-Output
+
 EOF
 
   source "$TEMP/refreshenv.sh"
@@ -59,9 +59,8 @@ install_ray() {
     pip install wheel
 
     pushd dashboard/client
-      choco install nodejs -y
-      choco install yarn -y
-      # refreshenv
+      choco install nodejs yarn -y
+      refreshenv
       yarn
       yarn build
     popd
