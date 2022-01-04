@@ -1334,7 +1334,7 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
-            if self.is_local_mode or inline_small_object:
+            if self.is_local_mode:
                 contained_object_refs = (
                         CCoreWorkerProcess.GetCoreWorker().
                         GetObjectRefs(contained_object_ids))
