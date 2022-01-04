@@ -205,7 +205,7 @@ automatically if their types are the following:
   - Ray builtin types
       - ActorHandle
   
-  - Any protobuf type
+  - Any Protobuf type
 
 .. note::
 
