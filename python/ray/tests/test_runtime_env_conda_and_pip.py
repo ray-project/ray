@@ -27,6 +27,8 @@ def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
     # into the conda dict.
     if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") is not None:
         monkeypatch.delenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE")
+    if os.environ.get("RAY_CI_POST_WHEEL_TESTS") is not None:
+        monkeypatch.delenv("RAY_CI_POST_WHEEL_TESTS")
     monkeypatch.setattr(ray, "__version__", "1.9.0")
     monkeypatch.setattr(ray, "__commit__",
                         "92599d9127e228fe8d0a2d94ca75754ec21c4ae4")
