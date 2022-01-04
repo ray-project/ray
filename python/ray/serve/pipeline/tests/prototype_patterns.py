@@ -1,14 +1,16 @@
 from typing import Any, Callable, Dict
-import statistics
+import asyncio
+# import statistics
 
-from ray import serve
-from ray.serve import pipeline
-from ray.serve.pipeline.common import ExecutionMode
-from ray.serve.pipeline.node import INPUT, INJECTED, PipelineNode
-from typing import List
+# from ray import serve
+# from ray.serve import pipeline
+# from ray.serve.pipeline.common import ExecutionMode
+# from ray.serve.pipeline.node import INPUT, INJECTED, PipelineNode
+# from typing import List
+
 
 # Pipeline nodes are written from leaf to root (entrypoint)
-@pipeline.step(execution_mode=ExecutionMode.ACTORS)
+# @serve.deployment
 class Model:
     # For backwards compatibility
     _version: int = 1
@@ -20,10 +22,10 @@ class Model:
         self.weight = weight
         self.policy = 1
 
-    def __call__(self, req):
+    async def __call__(self, req):
         return req * self.weight
 
-@pipeline.step
+# @serve.deployment
 class FeatureProcessing:
     # For backwards compatibility
     _version: int = 1
@@ -32,10 +34,10 @@ class FeatureProcessing:
         # self.dynamic_dispatch = DynamicDispatch()
         pass
 
-    def __call__(self, req):
+    async def __call__(self, req):
         return max(req, 0)
 
-@pipeline.step
+# @serve.deployment
 class Pipeline:
     # For backwards compatibility
     _version: int = 1
@@ -52,7 +54,7 @@ class Pipeline:
         self.model_2 = Model(2)
         self.model_3 = Model(3)
 
-    def __call__(self, req):
+    async def __call__(self, req):
         """
         1) No ray API knowledge is required here, user just provides blocks of
             code. There's even no ray API call made.
@@ -63,14 +65,14 @@ class Pipeline:
             can make right update in tandem calls while redirecting traffic
             accordingly on the right path.
         """
-        processed_feature = self.feature_processing(req)
+        processed_feature = await self.feature_processing(req)
 
         if processed_feature < 5:
-            x = self.model_1(processed_feature)
+            x = await self.model_1(processed_feature)
         elif processed_feature >= 5 and processed_feature < 10:
-            x = self.model_2(processed_feature)
+            x = await self.model_2(processed_feature)
         else:
-            x = self.model_3(processed_feature)
+            x = await self.model_3(processed_feature)
 
         return x
 
@@ -104,8 +106,7 @@ class Pipeline:
     def update(self, node_name: str, serialized_class_callable: bytes):
         pass
 
-
-if __name__ == "__main__":
+async def main():
     # Solve node init / instantiate
         # maybe just dummy task ?
     # Solve node DAG tracing
@@ -117,7 +118,10 @@ if __name__ == "__main__":
     # add executor for self
     # traces other nodes as instance variables of my class, annotated as "step"
     # add to my node's dictionary
-    pipeline.instantiate(recursive=True)
+    # pipeline.instantiate(recursive=True)
 
     for i in range(10):
-        print(pipeline())
+        print(await pipeline(i))
+
+if __name__ == "__main__":
+    asyncio.run(main())
