@@ -528,26 +528,24 @@ def test_e2e_intermediate_downscaling(serve_instance):
     start_time = get_deployment_start_time(controller, A)
 
     handle = A.get_handle()
-    [handle.remote() for _ in range(400)]
+    [handle.remote() for _ in range(50)]
 
-    import time
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        print(f"Num running replicas: "
-              f"{get_num_running_replicas(controller, A)}\n")
-        time.sleep(1)
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A) >= 20, timeout=30)
     signal.send.remote()
 
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 1)
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A) <= 1, timeout=30)
     signal.send.remote(clear=True)
 
-    [handle.remote() for _ in range(400)]
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
+    [handle.remote() for _ in range(50)]
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A) >= 20, timeout=30)
 
     signal.send.remote()
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 1)
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A) <= 1, timeout=30)
 
     # Make sure start time did not change for the deployment
     assert get_deployment_start_time(controller, A) == start_time
