@@ -200,8 +200,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::string(const JobID &)> get_ray_namespace,
-      std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
+      std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -519,7 +518,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
   /// A callback to get the job config of an actor belongs to based on its job id. This is
   /// necessary for actor creation.
-  std::function<std::string(const JobID &)> get_job_config_;
+std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
 
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be

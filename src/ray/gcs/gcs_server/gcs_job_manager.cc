@@ -170,7 +170,7 @@ void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-std::string GcsJobManager::GetJobConfig(const JobID &job_id) const {
+std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
   auto it = cached_job_configs_.find(job_id);
   RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
