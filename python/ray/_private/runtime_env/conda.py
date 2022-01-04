@@ -210,25 +210,12 @@ class CondaManager:
         """
         return os.path.join(self._resources_dir, hash)
 
-    def get_uri(self, runtime_env: Dict) -> Optional[str]:
+    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
         """Return `"conda://<hash_dependencies>"` or None if no GC required."""
-        conda = runtime_env.get("conda")
-        # TODO(architkulkarni): Seems like we added this in this PR, is it
-        # logic still needed or was it moved somewhere else upstream?
-        if conda is not None:
-            if isinstance(conda, str):
-                # User-preinstalled conda env.  We don't garbage collect these,
-                # so we don't track them with URIs.
-                uri = None
-            elif isinstance(conda, dict):
-                uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
-            else:
-                raise TypeError(
-                    "conda field received by RuntimeEnvAgent must be "
-                    f"str or dict, not {type(conda).__name__}.")
-        else:
-            uri = None
-        return uri
+        conda_uri = runtime_env.conda_uri()
+        if conda_uri != "":
+            return conda_uri
+        return None
 
     def delete_uri(self,
                    uri: str,
