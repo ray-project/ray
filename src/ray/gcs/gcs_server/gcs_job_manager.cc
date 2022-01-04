@@ -170,17 +170,10 @@ void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-std::string GcsJobManager::GetRayNamespace(const JobID &job_id) const {
+std::string GcsJobManager::GetJobConfig(const JobID &job_id) const {
   auto it = cached_job_configs_.find(job_id);
   RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
-}
-
-int32_t GcsJobManager::GetNumJavaWorkersPerProcess(const JobID &job_id) const {
-  auto it = cache_num_java_worker_per_processes_.find(job_id);
-  RAY_CHECK(it != cache_num_java_worker_per_processes_.end())
-      << "Couldn't find job with id: " << job_id;
-  return it->second->ray_namespace();
 }
 
 }  // namespace gcs

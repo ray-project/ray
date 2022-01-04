@@ -517,12 +517,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the namespace an actor belongs to based on its job id. This is
+  /// A callback to get the job config of an actor belongs to based on its job id. This is
   /// necessary for actor creation.
-  std::function<std::string(const JobID &)> get_ray_namespace_;
-  /// A callback to get the number of java workers per process config item by the
-  /// given job id. It is necessary for deciding whether we should clear the Java actor.
-  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
+  std::function<std::string(const JobID &)> get_job_config_;
+
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
