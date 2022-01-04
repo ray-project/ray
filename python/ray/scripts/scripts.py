@@ -527,12 +527,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         if port is None:
             port = ray_constants.DEFAULT_PORT
-        # TODO(mwtian): use a more robust mechanism to avoid collision,
-        # e.g. node._get_cached_port()
-        if port == 0:
-            with socket() as s:
-                s.bind(("", 0))
-                port = s.getsockname()[1]
 
         # Set bootstrap port.
         assert ray_params.redis_port is None
@@ -540,6 +534,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         if use_gcs_for_bootstrap():
             ray_params.gcs_server_port = port
         else:
+            if port == 0:
+                with socket() as s:
+                    s.bind(("", 0))
+                    port = s.getsockname()[1]
             ray_params.redis_port = port
             ray_params.gcs_server_port = gcs_server_port
 
