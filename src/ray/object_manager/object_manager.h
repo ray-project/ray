@@ -286,8 +286,6 @@ class ObjectManager : public ObjectManagerInterface,
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found.
     std::unordered_set<ObjectID> found;
-    /// Objects that have been requested either by Lookup or Subscribe.
-    std::unordered_set<ObjectID> requested_objects;
     /// The number of required objects.
     uint64_t num_required_objects;
   };
@@ -298,13 +296,6 @@ class ObjectManager : public ObjectManagerInterface,
       const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
       int64_t timeout_ms, uint64_t num_required_objects, const WaitCallback &callback);
 
-  /// Lookup any remaining objects that are not local. This is invoked after
-  /// the wait request is created and local objects are identified.
-  ray::Status LookupRemainingWaitObjects(const UniqueID &wait_id);
-
-  /// Invoked when lookup for remaining objects has been invoked. This method subscribes
-  /// to any remaining objects if wait conditions have not yet been satisfied.
-  void SubscribeRemainingWaitObjects(const UniqueID &wait_id);
   /// Completion handler for Wait.
   void WaitComplete(const UniqueID &wait_id);
 
@@ -461,6 +452,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// A set of active wait requests.
   std::unordered_map<UniqueID, WaitState> active_wait_requests_;
+
+  /// Map from object to active wait requests that are waiting for this object.
+  std::unordered_map<ObjectID, std::unordered_set<UniqueID>>
+      object_to_active_wait_requests_;
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.

@@ -188,6 +188,22 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
     }
     unfulfilled_push_requests_.erase(iter);
   }
+
+  // Handle the active_wait_requests_ which may contain wait requests that can now
+  // be completed due to the add of this object.
+  if (object_to_active_wait_requests_.find(object_id) !=
+      object_to_active_wait_requests_.end()) {
+    for (const auto &wait_id : object_to_active_wait_requests_.at(object_id)) {
+      auto wait_state_iter = active_wait_requests_.find(wait_id);
+      RAY_CHECK(wait_state_iter != active_wait_requests_.end());
+      auto &wait_state = wait_state_iter->second;
+      wait_state.remaining.erase(object_id);
+      wait_state.found.emplace(object_id);
+      if (wait_state.found.size() >= wait_state.num_required_objects) {
+        WaitComplete(wait_id);
+      }
+    }
+  }
 }
 
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
@@ -511,12 +527,8 @@ ray::Status ObjectManager::Wait(
     uint64_t num_required_objects, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
-  RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
-                                   num_required_objects, callback));
-  RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
-  // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
-  // been performed on all remaining objects.
-  return ray::Status::OK();
+  return AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
+                        num_required_objects, callback);
 }
 
 ray::Status ObjectManager::AddWaitRequest(
@@ -546,139 +558,56 @@ ray::Status ObjectManager::AddWaitRequest(
     }
   }
 
-  return ray::Status::OK();
-}
-
-ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
-
-  if (wait_state.remaining.empty()) {
-    WaitComplete(wait_id);
-  } else {
-    // We invoke lookup calls immediately after checking which objects are local to
-    // obtain current information about the location of remote objects. Thus,
-    // we obtain information about all given objects, regardless of their location.
-    // This is required to ensure we do not bias returning locally available objects
-    // as ready whenever Wait is invoked with a mixture of local and remote objects.
-    for (const auto &object_id : wait_state.remaining) {
-      // Lookup remaining objects.
-      wait_state.requested_objects.insert(object_id);
-      RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
-          object_id, wait_state.owner_addresses[object_id],
-          [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, const NodeID &spilled_node_id,
-                          bool pending_creation, size_t object_size) {
-            auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            // Note that the object is guaranteed to be added to local_objects_ before
-            // the notification is triggered.
-            if (local_objects_.count(lookup_object_id) > 0) {
-              wait_state.remaining.erase(lookup_object_id);
-              wait_state.found.insert(lookup_object_id);
-            }
-            RAY_LOG(DEBUG) << "Wait request " << wait_id << ": " << node_ids.size()
-                           << " locations found for object " << lookup_object_id;
-            wait_state.requested_objects.erase(lookup_object_id);
-            if (wait_state.requested_objects.empty()) {
-              SubscribeRemainingWaitObjects(wait_id);
-            }
-          }));
-    }
+  for (const auto &object_id : wait_state.object_id_order) {
+    object_to_active_wait_requests_[object_id].emplace(wait_id);
   }
-  return ray::Status::OK();
-}
 
-void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
   if (wait_state.found.size() >= wait_state.num_required_objects ||
       wait_state.timeout_ms == 0) {
     // Requirements already satisfied.
     WaitComplete(wait_id);
-    return;
-  }
-
-  // There are objects remaining whose locations we don't know. Request their
-  // locations from the object directory.
-  for (const auto &object_id : wait_state.object_id_order) {
-    if (wait_state.remaining.count(object_id) > 0) {
-      RAY_LOG(DEBUG) << "Wait request " << wait_id << ": subscribing to object "
-                     << object_id;
-      wait_state.requested_objects.insert(object_id);
-      // Subscribe to object notifications.
-      RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-          wait_id, object_id, wait_state.owner_addresses[object_id],
-          [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<NodeID> &node_ids,
-                          const std::string &spilled_url, const NodeID &spilled_node_id,
-                          bool pending_creation, size_t object_size) {
-            auto object_id_wait_state = active_wait_requests_.find(wait_id);
-            if (object_id_wait_state == active_wait_requests_.end()) {
-              // Depending on the timing of calls to the object directory, we
-              // may get a subscription notification after the wait call has
-              // already completed. If so, then don't process the
-              // notification.
-              return;
-            }
-            auto &wait_state = object_id_wait_state->second;
-            // Note that the object is guaranteed to be added to local_objects_ before
-            // the notification is triggered.
-            if (local_objects_.count(subscribe_object_id) > 0) {
-              RAY_LOG(DEBUG) << "Wait request " << wait_id
-                             << ": subscription notification received for object "
-                             << subscribe_object_id;
-              wait_state.remaining.erase(subscribe_object_id);
-              wait_state.found.insert(subscribe_object_id);
-              wait_state.requested_objects.erase(subscribe_object_id);
-              RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-                  wait_id, subscribe_object_id));
-              if (wait_state.found.size() >= wait_state.num_required_objects) {
-                WaitComplete(wait_id);
-              }
-            }
-          }));
-    }
-
+  } else if (wait_state.timeout_ms != -1) {
     // If a timeout was provided, then set a timer. If we don't find locations
     // for enough objects by the time the timer expires, then we will return
     // from the Wait.
-    if (wait_state.timeout_ms != -1) {
-      auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
-      wait_state.timeout_timer->expires_from_now(timeout);
-      wait_state.timeout_timer->async_wait(
-          [this, wait_id](const boost::system::error_code &error_code) {
-            if (error_code.value() != 0) {
-              return;
-            }
-            if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
-              // When a subscription callback is triggered first, WaitComplete will be
-              // called. The timer may at the same time goes off and may be an
-              // interruption will post WaitComplete to main_service_ the second time.
-              // This check will avoid the duplicated call of this function.
-              return;
-            }
-            WaitComplete(wait_id);
-          });
-    }
+    auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
+    wait_state.timeout_timer->expires_from_now(timeout);
+    wait_state.timeout_timer->async_wait(
+        [this, wait_id](const boost::system::error_code &error_code) {
+          if (error_code.value() != 0) {
+            return;
+          }
+          if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
+            // When HandleObjectAdded is called first, WaitComplete might be
+            // called. The timer may at the same time goes off and may be an
+            // interruption will post WaitComplete to main_service_ the second time.
+            // This check will avoid the duplicated call of this function.
+            return;
+          }
+          WaitComplete(wait_id);
+        });
   }
+
+  return ray::Status::OK();
 }
 
 void ObjectManager::WaitComplete(const UniqueID &wait_id) {
   auto iter = active_wait_requests_.find(wait_id);
   RAY_CHECK(iter != active_wait_requests_.end());
   auto &wait_state = iter->second;
-  // If we complete with outstanding requests, then timeout_ms should be non-zero or -1
-  // (infinite wait time).
-  if (!wait_state.requested_objects.empty()) {
-    RAY_CHECK(wait_state.timeout_ms > 0 || wait_state.timeout_ms == -1);
-  }
-  // Unsubscribe to any objects that weren't found in the time allotted.
-  for (const auto &object_id : wait_state.requested_objects) {
-    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(wait_id, object_id));
-  }
   // Cancel the timer. This is okay even if the timer hasn't been started.
   // The timer handler will be given a non-zero error code. The handler
   // will do nothing on non-zero error codes.
   wait_state.timeout_timer->cancel();
+
+  for (const auto &object_id : wait_state.object_id_order) {
+    auto &requests = object_to_active_wait_requests_[object_id];
+    requests.erase(wait_id);
+    if (requests.empty()) {
+      object_to_active_wait_requests_.erase(object_id);
+    }
+  }
+
   // Order objects according to input order.
   std::vector<ObjectID> found;
   std::vector<ObjectID> remaining;
