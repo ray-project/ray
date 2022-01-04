@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class DockerMonitor:
+    """Wrapper around docker_monitor.py script"""
+
     def __init__(self, config_file: str):
         self._monitor_script = os.path.join(
             os.path.dirname(__file__), "docker_monitor.py")
@@ -37,6 +39,14 @@ class DockerMonitor:
 
 
 class DockerCluster:
+    """Docker cluster wrapper.
+
+    Creates a directory for starting a fake multinode docker cluster.
+
+    Includes APIs to update the cluster config as needed in tests,
+    and to start and connect to the cluster.
+    """
+
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self._base_config_file = os.path.join(
             os.path.dirname(__file__), "example_docker.yaml")

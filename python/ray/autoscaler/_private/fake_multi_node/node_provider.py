@@ -155,11 +155,13 @@ def create_node_spec(head: bool,
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
+        # Expose ports so we can connect to the cluster from outside
         node_spec["ports"] = [
             f"{host_gcs_port}:{DEFAULT_PORT}",
             f"{host_object_manager_port}:8076",
             f"{host_client_port}:10001",
         ]
+        # Mount status and config files for the head node
         node_spec["volumes"] += [
             f"{host_dir(node_state_path)}:{node_state_path}",
             f"{host_dir(docker_status_path)}:{docker_status_path}",
@@ -180,6 +182,7 @@ def create_node_spec(head: bool,
         node_spec["command"] = DOCKER_WORKER_CMD.format(**cmd_kwargs)
         node_spec["depends_on"] = [FAKE_HEAD_NODE_ID]
 
+    # Mount shared directories and ssh access keys
     node_spec["volumes"] += [
         f"{host_dir(mounted_cluster_dir)}:/cluster/shared",
         f"{host_dir(mounted_node_dir)}:/cluster/node",
@@ -188,6 +191,7 @@ def create_node_spec(head: bool,
 
     env_vars = env_vars or {}
 
+    # Pass these environment variables (to the head node)
     env_vars.setdefault("RAY_TEMPDIR", os.environ.get("RAY_TEMPDIR", ""))
     env_vars.setdefault("RAY_HOSTDIR", os.environ.get("RAY_HOSTDIR", ""))
 

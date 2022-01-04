@@ -1,3 +1,26 @@
+"""Fake multinode docker monitoring script.
+
+This script is the "docker compose server" for the fake_multinode
+provider using Docker compose. It should be started before running
+`RAY_FAKE_CLUSTER=1 ray up <cluster_config>`.
+
+This script reads the volume directory from a supplied fake multinode
+docker cluster config file.
+It then waits until a docker-compose.yaml file is created in the same
+directory, which is done by the `ray up` command.
+
+It then watches for changes in the docker-compose.yaml file and runs
+`docker compose up` whenever changes are detected. This will start docker
+containers as requested by the autoscaler.
+
+Generally, the docker-compose.yaml will be mounted in the head node of the
+cluster, which will then continue to change it according to the autoscaler
+requirements.
+
+Additionally, this script monitors the docker container status using
+`docker status` and writes it into a `status.json`. This information is
+again used by the autoscaler to determine if any nodes have died.
+"""
 import argparse
 import json
 import os
@@ -121,6 +144,10 @@ def monitor_docker(docker_compose_path: str,
     next_update = time.monotonic() - 1.
     shutdown = False
     status = None
+
+    # Loop:
+    # If the config changed, update cluster.
+    # Every `update_interval` seconds, update docker status.
     while not shutdown:
         new_docker_config = _read_yaml(docker_compose_path)
         if new_docker_config != docker_config:
@@ -159,16 +186,19 @@ def start_monitor(config_file: str):
     volume_dir = provider_config["shared_volume_dir"]
     os.makedirs(volume_dir, mode=0o755, exist_ok=True)
 
+    # Create bootstrap config
     bootstrap_config_path = os.path.join(volume_dir, "bootstrap_config.yaml")
     shutil.copy(config_file, bootstrap_config_path)
 
+    # These two files usually don't exist, yet
     docker_compose_config_path = os.path.join(volume_dir,
                                               "docker-compose.yaml")
 
-    # node_state_path = os.path.join(volume_dir, "nodes.json")
     docker_status_path = os.path.join(volume_dir, "status.json")
 
     if os.path.exists(docker_compose_config_path):
+        # We wait until this file exists, so remove it if it exists
+        # from a previous run.
         os.remove(docker_compose_config_path)
 
     if os.path.exists(docker_status_path):
