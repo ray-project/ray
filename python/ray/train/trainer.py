@@ -281,7 +281,8 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.latest_run_dir)
+            callback.start_training(
+                logdir=str(self.latest_run_dir), config=config or {})
 
         train_func = self._get_train_func(train_func, config)
 
@@ -627,7 +628,6 @@ class TrainingIterator:
         self._run_with_error_handling(
             lambda: ray.get(self._backend_executor_actor.start_training.remote(
                 train_func=train_func,
-                run_dir=run_dir,
                 dataset=dataset,
                 checkpoint=checkpoint_dict
             ))

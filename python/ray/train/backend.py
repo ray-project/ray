@@ -1,7 +1,6 @@
 import logging
 import os
 from collections import defaultdict
-from pathlib import Path
 from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 
 import ray
@@ -337,7 +336,6 @@ class BackendExecutor:
     def start_training(
             self,
             train_func: Callable[[], T],
-            run_dir: Path,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Dict] = None) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -346,7 +344,6 @@ class BackendExecutor:
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            run_dir (Path): The directory to use for this run.
             dataset (Optional[Union[Dataset, DatasetPipeline]])
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker, which can be accessed from the training function via

@@ -145,7 +145,6 @@ def test_connect(detached, ray_shutdown):
     assert "deployment-ception" in serve.list_deployments()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("controller_cpu", [True, False])
 @pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
 def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
@@ -360,7 +359,6 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
@@ -482,7 +480,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     driver_template = """
 import ray

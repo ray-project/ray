@@ -54,7 +54,7 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
-REDIS_KEY_DASHBOARD = "dashboard"
+DASHBOARD_ADDRESS = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
@@ -286,6 +286,7 @@ KV_NAMESPACE_TRACING = "tracing"
 KV_NAMESPACE_PDB = "ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = "healthcheck"
 KV_NAMESPACE_JOB = "job"
+KV_NAMESPACE_CLUSTER = "cluster"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
