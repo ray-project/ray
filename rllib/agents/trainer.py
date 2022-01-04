@@ -32,7 +32,7 @@ from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
     synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
-    train_one_step
+    train_one_step, multi_gpu_train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -1293,9 +1293,7 @@ class Trainer(Trainable):
         if self.config.get("simple_optimizer") is True:
             train_results = train_one_step(self, train_batch)
         else:
-            raise NotImplementedError(
-                "`_disable_execution_plan_api=True` only supported for "
-                "SimpleOptimizer so far!")
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
         return train_results
 
@@ -1324,9 +1322,7 @@ class Trainer(Trainable):
                                                   config["train_batch_size"]),
                     num_sgd_iter=config.get("num_sgd_iter", 1),
                     num_gpus=config["num_gpus"],
-                    shuffle_sequences=config.get("shuffle_sequences", False),
-                    _fake_gpus=config["_fake_gpus"],
-                    framework=config["framework"]))
+                    _fake_gpus=config["_fake_gpus"]))
 
         # Add on the standard episode reward, etc. metrics reporting. This
         # returns a LocalIterator[metrics_dict] representing metrics for each
@@ -2185,6 +2181,11 @@ class Trainer(Trainable):
         # (so model will know, whether inputs are preprocessed or not).
         if config["_disable_preprocessor_api"] is True:
             model_config["_disable_preprocessor_api"] = True
+        # If no action flattening, propagate into model's config as well
+        # (so model will know, whether action inputs are lready flattened or
+        # not).
+        if config["_disable_action_flattening"] is True:
+            model_config["_disable_action_flattening"] = True
 
         # Prev_a/r settings.
         prev_a_r = model_config.get("lstm_use_prev_action_reward",
