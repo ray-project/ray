@@ -268,7 +268,7 @@ Process WorkerPool::StartWorkerProcess(
     // Append startup-token for JAVA here
     options.push_back("-Dray.raylet.startup-token=" +
                       std::to_string(worker_startup_token_counter_));
-                      
+
     options.push_back("-Dray.logging-level=" + job_config->logging_level());
   }
 
