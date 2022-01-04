@@ -184,8 +184,6 @@ def add_time_dimension(padded_inputs: TensorType,
                     tf.shape(padded_inputs)[1:]
                 ],
                 axis=0))
-        #    (
-        #    [new_batch_size, max_seq_len] + list(tf.shape(padded_inputs)[1:]))
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"

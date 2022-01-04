@@ -177,62 +177,6 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return torch.max(min_, 1 - (diff_var / y_var))[0]
 
 
-def global_norm(tensors: List[TensorType]) -> TensorType:
-    """Returns the global L2 norm over a list of tensors.
-
-    output = sqrt(SUM(t ** 2 for t in tensors)),
-        where SUM reduces over all tensors and over all elements in tensors.
-
-    Args:
-        tensors: The list of tensors to calculate the global norm over.
-
-    Returns:
-        The global L2 norm over the given tensor list.
-    """
-    # List of single tensors' L2 norms: SQRT(SUM(xi^2)) over all xi in tensor.
-    single_l2s = [
-        torch.pow(torch.sum(torch.pow(t, 2.0)), 0.5) for t in tensors
-    ]
-    # Compute global norm from all single tensors' L2 norms.
-    return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
-
-
-def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
-    """Computes the huber loss for a given term and delta parameter.
-
-    Reference: https://en.wikipedia.org/wiki/Huber_loss
-    Note that the factor of 0.5 is implicitly included in the calculation.
-
-    Formula:
-        L = 0.5 * x^2  for small abs x (delta threshold)
-        L = delta * (abs(x) - 0.5*delta)  for larger abs x (delta threshold)
-
-    Args:
-        x: The input term, e.g. a TD error.
-        delta: The delta parmameter in the above formula.
-
-    Returns:
-        The Huber loss resulting from `x` and `delta`.
-    """
-    return torch.where(
-        torch.abs(x) < delta,
-        torch.pow(x, 2.0) * 0.5, delta * (torch.abs(x) - 0.5 * delta))
-
-
-def l2_loss(x: TensorType) -> TensorType:
-    """Computes half the L2 norm over a tensor's values without the sqrt.
-
-    output = 0.5 * sum(x ** 2)
-
-    Args:
-        x: The input tensor.
-
-    Returns:
-        0.5 times the L2 norm over the given tensor's values (w/o sqrt).
-    """
-    return 0.5 * torch.sum(torch.pow(x, 2.0))
-
-
 def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
                                 spaces_struct: Optional[SpaceStruct] = None,
                                 time_axis: bool = False) -> TensorType:
@@ -299,11 +243,16 @@ def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
                 T = input_.shape[1]
 
         # One-hot encoding.
-        if isinstance(space, (Discrete, MultiDiscrete)):
+        if isinstance(space, Discrete):
             if time_axis:
                 input_ = torch.reshape(input_, [B * T])
             out.append(one_hot(input_, space).float())
-        # Flatten.
+        # Multi one-hot encoding.
+        elif isinstance(space, MultiDiscrete):
+            if time_axis:
+                input_ = torch.reshape(input_, [B * T, -1])
+            out.append(one_hot(input_, space).float())
+        # Box: Flatten.
         else:
             if time_axis:
                 input_ = torch.reshape(input_, [B * T, -1])
@@ -317,6 +266,62 @@ def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
         merged = torch.reshape(merged, [B, T, -1])
 
     return merged
+
+
+def global_norm(tensors: List[TensorType]) -> TensorType:
+    """Returns the global L2 norm over a list of tensors.
+
+    output = sqrt(SUM(t ** 2 for t in tensors)),
+        where SUM reduces over all tensors and over all elements in tensors.
+
+    Args:
+        tensors: The list of tensors to calculate the global norm over.
+
+    Returns:
+        The global L2 norm over the given tensor list.
+    """
+    # List of single tensors' L2 norms: SQRT(SUM(xi^2)) over all xi in tensor.
+    single_l2s = [
+        torch.pow(torch.sum(torch.pow(t, 2.0)), 0.5) for t in tensors
+    ]
+    # Compute global norm from all single tensors' L2 norms.
+    return torch.pow(sum(torch.pow(l2, 2.0) for l2 in single_l2s), 0.5)
+
+
+def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
+    """Computes the huber loss for a given term and delta parameter.
+
+    Reference: https://en.wikipedia.org/wiki/Huber_loss
+    Note that the factor of 0.5 is implicitly included in the calculation.
+
+    Formula:
+        L = 0.5 * x^2  for small abs x (delta threshold)
+        L = delta * (abs(x) - 0.5*delta)  for larger abs x (delta threshold)
+
+    Args:
+        x: The input term, e.g. a TD error.
+        delta: The delta parmameter in the above formula.
+
+    Returns:
+        The Huber loss resulting from `x` and `delta`.
+    """
+    return torch.where(
+        torch.abs(x) < delta,
+        torch.pow(x, 2.0) * 0.5, delta * (torch.abs(x) - 0.5 * delta))
+
+
+def l2_loss(x: TensorType) -> TensorType:
+    """Computes half the L2 norm over a tensor's values without the sqrt.
+
+    output = 0.5 * sum(x ** 2)
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        0.5 times the L2 norm over the given tensor's values (w/o sqrt).
+    """
+    return 0.5 * torch.sum(torch.pow(x, 2.0))
 
 
 def minimize_and_clip(optimizer: "torch.optim.Optimizer",

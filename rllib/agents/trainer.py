@@ -2186,7 +2186,7 @@ class Trainer(Trainable):
         if config["_disable_preprocessor_api"] is True:
             model_config["_disable_preprocessor_api"] = True
         # If no action flattening, propagate into model's config as well
-        # (so model will know, whether action inputs are lready flattened or
+        # (so model will know, whether action inputs are already flattened or
         # not).
         if config["_disable_action_flattening"] is True:
             model_config["_disable_action_flattening"] = True
