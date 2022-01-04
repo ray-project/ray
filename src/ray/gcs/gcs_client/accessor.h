@@ -261,104 +261,6 @@ class JobInfoAccessor {
   GcsClient *client_impl_;
 };
 
-/// \class TaskInfoAccessor
-/// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
-/// This class includes all the methods that are related to accessing
-/// task information in the GCS.
-class TaskInfoAccessor {
- public:
-  TaskInfoAccessor() = default;
-  explicit TaskInfoAccessor(GcsClient *client_impl);
-  virtual ~TaskInfoAccessor() = default;
-  /// Add a task to GCS asynchronously.
-  ///
-  /// \param data_ptr The task that will be added to GCS.
-  /// \param callback Callback that will be called after task has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-                          const StatusCallback &callback);
-
-  /// Get task information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGet(const TaskID &task_id,
-                          const OptionalItemCallback<rpc::TaskTableData> &callback);
-
-  /// Add a task lease to GCS asynchronously.
-  ///
-  /// \param data_ptr The task lease that will be added to GCS.
-  /// \param callback Callback that will be called after task lease has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-                                   const StatusCallback &callback);
-
-  /// Get task lease information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGetTaskLease(
-      const TaskID &task_id, const OptionalItemCallback<rpc::TaskLeaseData> &callback);
-
-  /// Subscribe asynchronously to the event that the given task lease is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task lease is
-  /// updated or the task lease is empty currently.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-      const StatusCallback &done);
-
-  /// Cancel subscription to a task lease asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id);
-
-  /// Attempt task reconstruction to GCS asynchronously.
-  ///
-  /// \param data_ptr The task reconstruction that will be added to GCS.
-  /// \param callback Callback that will be called after task reconstruction
-  /// has been added to GCS.
-  /// \return Status
-  virtual Status AttemptTaskReconstruction(
-      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-      const StatusCallback &callback);
-
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
-
-  /// Check if the specified task lease is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task lease is unsubscribed.
-  virtual bool IsTaskLeaseUnsubscribed(const TaskID &task_id);
-
- private:
-  /// Save the subscribe operations, so we can call them again when PubSub
-  /// server restarts from a failure.
-  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
-
-  GcsClient *client_impl_;
-};
-
 /// \class NodeInfoAccessor
 /// `NodeInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
@@ -765,15 +667,15 @@ class PlacementGroupInfoAccessor {
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  /// Create a placement group to GCS asynchronously.
+  /// Create a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS.
-  /// \return Status.
-  virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback);
+  /// \return Status. The status of the RPC. TimedOut if the RPC times out. Invalid if the
+  /// same name placement group is registered. NotFound if the placement group is removed.
+  virtual Status SyncCreatePlacementGroup(
+      const ray::PlacementGroupSpecification &placement_group_spec);
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -786,10 +688,14 @@ class PlacementGroupInfoAccessor {
   /// Get a placement group data from GCS asynchronously by name.
   ///
   /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \param ray_namespace The ray namespace.
+  /// \param callback The callback that's called when the RPC is replied.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
       const std::string &placement_group_name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get all placement group info from GCS asynchronously.
   ///
@@ -798,22 +704,22 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
-  /// Remove a placement group to GCS asynchronously.
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_id The id for the placement group to remove.
-  /// \param callback Callback that will be called after the placement group is
-  /// removed from GCS.
   /// \return Status
-  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                                           const StatusCallback &callback);
+  virtual Status SyncRemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Wait for a placement group until ready asynchronously.
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param placement_group_id The id for the placement group to wait for until ready.
-  /// \param callback Callback that will be called after the placement group is created.
-  /// \return Status
-  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
-                                     const StatusCallback &callback);
+  /// \return Status. TimedOut if the RPC times out. NotFound if the placement has already
+  /// removed.
+  virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id);
 
  private:
   GcsClient *client_impl_;

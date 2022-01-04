@@ -841,18 +841,16 @@ def init(
     raylet_ip_address = node_ip_address
 
     if address:
-        bootstrap_address, _, _ = services.validate_bootstrap_address(address)
+        redis_address, _, _ = services.validate_redis_address(address)
     else:
-        bootstrap_address = None
-    redis_address = None if services.bootstrap_with_gcs(
-    ) else bootstrap_address
+        redis_address = None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
-    if bootstrap_address is not None:
-        logger.info("Connecting to existing Ray cluster at address: "
-                    f"{bootstrap_address}")
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -875,16 +873,14 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if bootstrap_address is None:
+    if redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray._private.parameter.RayParams(
-            bootstrap_address=bootstrap_address,
             redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -1376,9 +1372,13 @@ def connect(node,
     worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
     worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_redis_address(
-            node.redis_address, redis_password=node.redis_password))
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
@@ -1422,7 +1422,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1453,15 +1453,19 @@ def connect(node,
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     redis_address, redis_port = node.redis_address.split(":")
-    # As the synchronous and the asynchronous context of redis client is not
-    # used in this gcs client. We would not open connection for it by setting
-    # `enable_sync_conn` and `enable_async_conn` as false.
-    gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
-        node.redis_address,
-        node.redis_password,
-        enable_sync_conn=False,
-        enable_async_conn=False,
-        enable_subscribe_conn=True)
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
+        # As the synchronous and the asynchronous context of redis client is
+        # not used in this gcs client. We would not open connection for it
+        # by setting `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 

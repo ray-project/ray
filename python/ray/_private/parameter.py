@@ -12,9 +12,6 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        bootstrap_address (str): The address of Redis / GCS server to connect
-            to for bootstrapping. If this address is not provided, then this
-            command will start the Ray cluster.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -57,8 +54,6 @@ class RayParams:
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
         external_addresses (str): The address of external Redis server to
@@ -125,8 +120,8 @@ class RayParams:
     """
 
     def __init__(self,
-                 bootstrap_address=None,
                  redis_address=None,
+                 gcs_address=None,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -146,7 +141,6 @@ class RayParams:
                  ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
-                 redirect_worker_output=None,
                  redirect_output=None,
                  external_addresses=None,
                  num_redis_shards=None,
@@ -177,8 +171,8 @@ class RayParams:
                  tracing_startup_hook=None,
                  no_monitor=False,
                  env_vars=None):
-        self.bootstrap_address = bootstrap_address
         self.redis_address = redis_address
+        self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -197,7 +191,6 @@ class RayParams:
         self.worker_port_list = worker_port_list
         self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
-        self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
@@ -383,12 +376,6 @@ class RayParams:
             assert "GPU" not in self.resources, (
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
-
-        if self.redirect_worker_output is not None:
-            raise DeprecationWarning(
-                "The redirect_worker_output argument is deprecated. To "
-                "control logging to the driver, use the 'log_to_driver' "
-                "argument to 'ray.init()'")
 
         if self.redirect_output is not None:
             raise DeprecationWarning(

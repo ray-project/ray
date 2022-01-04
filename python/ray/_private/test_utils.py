@@ -26,6 +26,7 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -48,6 +49,19 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 class RayTestTimeoutException(Exception):
     """Exception used to identify timeouts from test utilities."""
     pass
+
+
+def make_global_state_accessor(address_info):
+    if not gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = GcsClientOptions.from_redis_address(
+            address_info["redis_address"],
+            ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    else:
+        gcs_options = GcsClientOptions.from_gcs_address(
+            address_info["gcs_address"])
+    global_state_accessor = GlobalStateAccessor(gcs_options)
+    global_state_accessor.connect()
+    return global_state_accessor
 
 
 def _pid_alive(pid):
@@ -196,6 +210,14 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    if env is not None and gcs_utils.use_gcs_for_bootstrap():
+        env.update({
+            "RAY_bootstrap_with_gcs": "1",
+            "RAY_gcs_grpc_based_pubsub": "1",
+            "RAY_gcs_storage": "memory",
+            "RAY_bootstrap_with_gcs": "1",
+        })
+
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -234,7 +256,8 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=env)
+        env=env,
+    )
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -319,11 +342,18 @@ def wait_for_condition(condition_predictor,
         RuntimeError: If the condition is not met before the timeout expires.
     """
     start = time.time()
+    last_ex = None
     while time.time() - start <= timeout:
-        if condition_predictor(**kwargs):
-            return
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
 
 
 def wait_until_succeeded_without_exception(func,

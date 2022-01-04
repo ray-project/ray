@@ -82,6 +82,7 @@ A notable one is the `RAY_WHEELS` variable which points to the wheels that
 should be tested (e.g. latest master wheels). You might want to include
 something like this in your `post_build_cmds`:
 
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
 
 If you want to force rebuilds, consider using something like
