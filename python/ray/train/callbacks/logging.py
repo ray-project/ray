@@ -87,7 +87,7 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
         return logdir_path.joinpath(Path(filename))
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        TrainingLogdirMixin.start_training(logdir=logdir)
 
         if not self._filename:
             filename = self._default_filename
@@ -237,7 +237,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir, **info)
+        super().start_training(logdir=logdir, config=config, **info)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
