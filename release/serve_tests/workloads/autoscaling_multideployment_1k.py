@@ -4,7 +4,7 @@ Benchmark test for multi deployment with autoscaling at up to 1k no-op replica
 scale.
 
 1) Start with a single head node.
-2) Start 1000 deployments each with 10 no-op replicas
+2) Start 1000 deployments each with up to 10 no-op replicas
 3) Launch wrk in each running node to simulate load balanced request
 4) Recursively send queries to random deployments, up to depth=5
 5) Run a 10-minute wrk trial on each node, aggregate results.
@@ -159,7 +159,8 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
     http_port = str(serve_client._http_config.port)
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
-    logger.info(f"Deploying with {max_replicas} target replicas ....\n")
+    logger.info(f"Deploying with min {min_replicas} and max {max_replicas}"
+                f"target replicas ....\n")
     setup_multi_deployment_replicas(min_replicas, max_replicas,
                                     num_deployments)
 
