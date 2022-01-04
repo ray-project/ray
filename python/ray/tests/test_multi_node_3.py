@@ -13,8 +13,7 @@ from ray._private.test_utils import (
 def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test that we can call ray start with various command line
-    # parameters. TODO(rkn): This test only tests the --head code path. We
-    # should also test the non-head node code path.
+    # parameters.
 
     # Test starting Ray with a redis port specified.
     check_call_ray(["start", "--head", "--port", "0"])
@@ -90,6 +89,12 @@ def test_calling_start_ray_head(call_ray_stop_only):
         ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
+    # Test starting Ray with RAY_REDIS_ADDRESS env.
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:6379"
+    check_call_ray(["start", "--head", "--port", "0"])
+    check_call_ray(["stop"])
+    del os.environ["RAY_REDIS_ADDRESS"]
+
     # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
@@ -137,6 +142,46 @@ for i in range(0, 5):
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
+
+
+def test_ray_start_non_head(call_ray_stop_only, monkeypatch):
+
+    # Test that we can call ray start to connect to an existing cluster.
+
+    # Test starting Ray with a port specified.
+    check_call_ray(
+        ["start", "--head", "--port", "7298", "--resources", "{\"res_0\": 1}"])
+
+    # Test starting node connecting to the above cluster.
+    check_call_ray([
+        "start", "--address", "127.0.0.1:7298", "--resources", "{\"res_1\": 1}"
+    ])
+
+    # Test starting Ray with address `auto`.
+    check_call_ray(
+        ["start", "--address", "auto", "--resources", "{\"res_2\": 1}"])
+
+    # Run tasks to verify nodes with custom resources are available.
+    driver_script = """
+import ray
+ray.init()
+
+@ray.remote
+def f():
+    return 1
+
+assert ray.get(f.remote()) == 1
+assert ray.get(f.options(resources={"res_0": 1}).remote()) == 1
+assert ray.get(f.options(resources={"res_1": 1}).remote()) == 1
+assert ray.get(f.options(resources={"res_2": 1}).remote()) == 1
+print("success")
+"""
+    monkeypatch.setenv("RAY_ADDRESS", "auto")
+    out = run_string_as_driver(driver_script)
+    # Make sure the driver succeeded.
+    assert "success" in out
+
+    check_call_ray(["stop"])
 
 
 @pytest.mark.parametrize(

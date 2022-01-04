@@ -596,6 +596,57 @@ def test_fastapi_method_redefinition(serve_instance):
     assert requests.post("http://localhost:8000/a/").json() == "hi post"
 
 
+def test_fastapi_same_app_multiple_deployments(serve_instance):
+    # https://github.com/ray-project/ray/issues/21264
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class CounterDeployment1:
+        @app.get("/incr")
+        def incr(self):
+            return "incr"
+
+        @app.get("/decr")
+        def decr(self):
+            return "decr"
+
+    @serve.deployment
+    @serve.ingress(app)
+    class CounterDeployment2:
+        @app.get("/incr2")
+        def incr2(self):
+            return "incr2"
+
+        @app.get("/decr2")
+        def decr2(self):
+            return "decr2"
+
+    CounterDeployment1.deploy()
+
+    CounterDeployment2.deploy()
+
+    should_work = [
+        ("/CounterDeployment1/incr", "incr"),
+        ("/CounterDeployment1/decr", "decr"),
+        ("/CounterDeployment2/incr2", "incr2"),
+        ("/CounterDeployment2/decr2", "decr2"),
+    ]
+    for path, resp in should_work:
+        assert requests.get("http://localhost:8000" + path).json() == resp, (
+            path, resp)
+
+    should_404 = [
+        "/CounterDeployment2/incr",
+        "/CounterDeployment2/decr",
+        "/CounterDeployment1/incr2",
+        "/CounterDeployment1/decr2",
+    ]
+    for path in should_404:
+        assert requests.get("http://localhost:8000" +
+                            path).status_code == 404, path
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

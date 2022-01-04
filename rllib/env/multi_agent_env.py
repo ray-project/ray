@@ -132,14 +132,17 @@ class MultiAgentEnv(gym.Env):
         from ray.rllib.env.wrappers.group_agents_wrapper import \
             GroupAgentsWrapper
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
+# __grouping_doc_end__
+# yapf: enable
 
     @PublicAPI
-    def to_base_env(self,
-                    make_env: Callable[[int], EnvType] = None,
-                    num_envs: int = 1,
-                    remote_envs: bool = False,
-                    remote_env_batch_wait_ms: int = 0,
-                    ) -> "BaseEnv":
+    def to_base_env(
+            self,
+            make_env: Callable[[int], EnvType] = None,
+            num_envs: int = 1,
+            remote_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+    ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
             The resulting BaseEnv is always vectorized (contains n
@@ -178,9 +181,6 @@ class MultiAgentEnv(gym.Env):
                 make_env=make_env, existing_envs=[self], num_envs=num_envs)
 
         return env
-
-# __grouping_doc_end__
-# yapf: enable
 
 
 def make_multi_agent(
