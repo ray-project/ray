@@ -1,3 +1,4 @@
+import time
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
     Optional, TYPE_CHECKING
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
     from ray.data.grouped_dataset import GroupKeyT
 
+import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
@@ -39,6 +41,54 @@ MaybeBlockPartition = Union[Block, BlockPartition]
 
 
 @DeveloperAPI
+class BlockExecStats:
+    """Execution stats for this block.
+
+    Attributes:
+        wall_time_s: The wall-clock time it took to compute this block.
+        cpu_time_s: The CPU time it took to compute this block.
+        node_id: A unique id for the node that computed this block.
+    """
+
+    # Placeholder for block ops not yet instrumented.
+    TODO = None
+
+    def __init__(self):
+        self.wall_time_s: Optional[float] = None
+        self.cpu_time_s: Optional[float] = None
+        self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+
+    @staticmethod
+    def builder() -> "_BlockExecStatsBuilder":
+        return _BlockExecStatsBuilder()
+
+    def __repr__(self):
+        return repr({
+            "wall_time_s": self.wall_time_s,
+            "cpu_time_s": self.cpu_time_s,
+            "node_id": self.node_id
+        })
+
+
+class _BlockExecStatsBuilder:
+    """Helper class for building block stats.
+
+    When this class is created, we record the start time. When build() is
+    called, the time delta is saved as part of the stats.
+    """
+
+    def __init__(self):
+        self.start_time = time.perf_counter()
+        self.start_cpu = time.process_time()
+
+    def build(self) -> "BlockExecStats":
+        stats = BlockExecStats()
+        stats.wall_time_s = time.perf_counter() - self.start_time
+        stats.cpu_time_s = time.process_time() - self.start_cpu
+        return stats
+
+
+@DeveloperAPI
 class BlockMetadata:
     """Metadata about the block.
 
@@ -48,17 +98,19 @@ class BlockMetadata:
         schema: The pyarrow schema or types of the block elements, or None.
         input_files: The list of file paths used to generate this block, or
             the empty list if indeterminate.
+        exec_stats: Execution stats for this block.
     """
 
     def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
                  schema: Union[type, "pyarrow.lib.Schema"],
-                 input_files: List[str]):
+                 input_files: List[str], exec_stats: Optional[BlockExecStats]):
         if input_files is None:
             input_files = []
         self.num_rows: Optional[int] = num_rows
         self.size_bytes: Optional[int] = size_bytes
         self.schema: Optional[Any] = schema
         self.input_files: List[str] = input_files
+        self.exec_stats: Optional[BlockExecStats] = exec_stats
 
 
 @DeveloperAPI
@@ -123,13 +175,15 @@ class BlockAccessor(Generic[T]):
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def get_metadata(self, input_files: List[str]) -> BlockMetadata:
+    def get_metadata(self, input_files: List[str],
+                     exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
             schema=self.schema(),
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=exec_stats)
 
     def zip(self, other: "Block[T]") -> "Block[T]":
         """Zip this block with another block of the same type and size."""

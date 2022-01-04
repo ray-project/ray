@@ -13,7 +13,7 @@ from ray.exceptions import (
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError, RaySystemError,
-    RuntimeEnvSetupError)
+    RuntimeEnvSetupError, LocalRayletDiedError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -224,6 +224,8 @@ class SerializationContext:
                     if pb_bytes:
                         return RayError.from_bytes(pb_bytes)
                 return RayActorError()
+            elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
+                return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_LOST"):

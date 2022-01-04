@@ -19,10 +19,27 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def mock_sdk_client():
+    class AsyncIterator:
+        def __init__(self, seq):
+            self.iter = iter(seq)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self.iter)
+            except StopIteration:
+                raise StopAsyncIteration
+
     if "RAY_ADDRESS" in os.environ:
         del os.environ["RAY_ADDRESS"]
     with mock.patch("ray.dashboard.modules.job.cli.JobSubmissionClient"
                     ) as mock_client:
+        # In python 3.6 it will fail with error
+        # 'async for' requires an object with __aiter__ method, got MagicMock"
+        mock_client().tail_job_logs.return_value = AsyncIterator(range(10))
+
         yield mock_client
 
 
@@ -64,6 +81,7 @@ def set_env_var(key: str, val: Optional[str] = None):
 
 
 class TestSubmit:
+    @pytest.mark.asyncio
     def test_address(self, mock_sdk_client):
         runner = CliRunner()
 

@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.stats import DatasetStats
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -230,10 +231,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list, 0)
+    ds = Dataset(block_list, 0, DatasetStats(stages={}, parent=None))
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -457,7 +459,7 @@ def test_tensor_array_reductions(ray_start_regular_shared):
 
 
 def test_tensor_array_block_slice():
-    # Test that ArrowBlock slicing workers with tensor column extension type.
+    # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
         expected_slice = table1.slice(a, b - a)
         assert table2.equals(expected_slice)
@@ -477,20 +479,22 @@ def test_tensor_array_block_slice():
                     assert bufs2[1].address == bufs1[1].address
 
     n = 20
-    df = pd.DataFrame({
-        "one": TensorArray(np.array(list(range(n)))),
-        "two": ["a"] * n
-    })
+    one_arr = np.arange(4 * n).reshape(n, 2, 2)
+    df = pd.DataFrame({"one": TensorArray(one_arr), "two": ["a"] * n})
     table = pa.Table.from_pandas(df)
     a, b = 5, 10
     block_accessor = BlockAccessor.for_block(table)
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=True)
 
     # Test without copy.
     table2 = block_accessor.slice(a, b, False)
+    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(),
+                                  one_arr[a:b, :, :])
     check_for_copy(table, table2, a, b, is_copy=False)
 
 
@@ -520,6 +524,29 @@ def test_arrow_tensor_array_getitem(ray_start_regular_shared):
 
     for idx in range(1, outer_dim):
         np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+
+
+@pytest.mark.parametrize("test_arr,dtype", [
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], None),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int32),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int16),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.longlong),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], None),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
+    ([[False, True], [True, False], [True, True], [False, False]], None),
+])
+def test_arrow_tensor_array_slice(test_arr, dtype):
+    # Test that ArrowTensorArray slicing works as expected.
+    arr = np.array(test_arr, dtype=dtype)
+    ata = ArrowTensorArray.from_numpy(arr)
+    np.testing.assert_array_equal(ata.to_numpy(), arr)
+    slice1 = ata.slice(0, 2)
+    np.testing.assert_array_equal(slice1.to_numpy(), arr[0:2])
+    np.testing.assert_array_equal(slice1[1], arr[1])
+    slice2 = ata.slice(2, 2)
+    np.testing.assert_array_equal(slice2.to_numpy(), arr[2:4])
+    np.testing.assert_array_equal(slice2[1], arr[3])
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -1234,7 +1261,12 @@ def test_to_pandas_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-def test_to_numpy(ray_start_regular_shared):
+def test_to_numpy_refs(ray_start_regular_shared):
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
+
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
@@ -1245,10 +1277,9 @@ def test_to_numpy(ray_start_regular_shared):
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
-    # Simple Dataset
-    ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
+    # Table Dataset requires column
+    with pytest.raises(ValueError):
+        ray.get(ds.to_numpy_refs())
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -2369,28 +2400,102 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_to_torch_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("input", ["single", "list", "dict"])
+@pytest.mark.parametrize("force_dtype", [False, True])
+@pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
+def test_to_torch_feature_columns(ray_start_regular_shared, input, force_dtype,
+                                  label_type):
     import torch
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
+        "three": [4.0, 5.0, 6.0],
         "label": [1.0, 2.0, 3.0]
     })
     df2 = pd.DataFrame({
         "one": [4, 5, 6],
         "two": [4.0, 5.0, 6.0],
+        "three": [7.0, 8.0, 9.0],
         "label": [4.0, 5.0, 6.0]
     })
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    df3 = pd.DataFrame({
+        "one": [7, 8],
+        "two": [7.0, 8.0],
+        "three": [10.0, 11.0],
+        "label": [7.0, 8.0]
+    })
+    df = pd.concat([df1, df2, df3]).drop("three", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
+
+    feature_column_dtypes = None
+    label_column_dtype = None
+    if force_dtype:
+        label_column_dtype = torch.long
+    if input == "single":
+        feature_columns = ["one", "two"]
+        if force_dtype:
+            feature_column_dtypes = torch.long
+    elif input == "list":
+        feature_columns = [["one"], ["two"]]
+        if force_dtype:
+            feature_column_dtypes = [torch.long, torch.long]
+    elif input == "dict":
+        feature_columns = {"X1": ["one"], "X2": ["two"]}
+        if force_dtype:
+            feature_column_dtypes = {"X1": torch.long, "X2": torch.long}
+
+    label_column = None if label_type is None else "label"
+    unsqueeze_label_tensor = label_type == "unsqueezed"
+
     torchd = ds.to_torch(
-        label_column="label", feature_columns=["one"], batch_size=3)
+        label_column=label_column,
+        feature_columns=feature_columns,
+        feature_column_dtypes=feature_column_dtypes,
+        label_column_dtype=label_column_dtype,
+        unsqueeze_label_tensor=unsqueeze_label_tensor,
+        batch_size=3)
     iterations = []
 
     for batch in iter(torchd):
-        iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
+        features, label = batch
+
+        if input == "single":
+            assert isinstance(features, torch.Tensor)
+            if force_dtype:
+                assert features.dtype == torch.long
+            data = features
+        elif input == "list":
+            assert isinstance(features, list)
+            assert all(isinstance(item, torch.Tensor) for item in features)
+            if force_dtype:
+                assert all(item.dtype == torch.long for item in features)
+            data = torch.cat(tuple(features), dim=1)
+        elif input == "dict":
+            assert isinstance(features, dict)
+            assert all(
+                isinstance(item, torch.Tensor) for item in features.values())
+            if force_dtype:
+                assert all(
+                    item.dtype == torch.long for item in features.values())
+            data = torch.cat(tuple(features.values()), dim=1)
+
+        if not label_type:
+            assert label is None
+        else:
+            assert isinstance(label, torch.Tensor)
+            if force_dtype:
+                assert label.dtype == torch.long
+            if unsqueeze_label_tensor:
+                assert label.dim() == 2
+            else:
+                assert label.dim() == 1
+                label = label.view(-1, 1)
+            data = torch.cat((data, label), dim=1)
+        iterations.append(data.numpy())
+
     combined_iterations = np.concatenate(iterations)
+    if not label_type:
+        df.drop("label", axis=1, inplace=True)
     assert np.array_equal(df.values, combined_iterations)
 
 
@@ -2931,7 +3036,7 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
     xs = list(range(100))
@@ -2959,7 +3064,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
          {"A": 2, "foo": 50.0, "foo_2": 50.0}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -2977,7 +3082,7 @@ def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
          {"A": 2, "count()": 33}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3001,7 +3106,7 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         "value") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3025,7 +3130,7 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3049,7 +3154,7 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3074,7 +3179,7 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
             "value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3111,7 +3216,7 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation on multiple columns
     seed = int(time.time())
@@ -3192,7 +3297,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_items(xs).mean("A")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
@@ -3288,7 +3393,7 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3303,7 +3408,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
                                                                           33)]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3321,7 +3426,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3339,7 +3444,7 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3358,7 +3463,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3377,7 +3482,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3420,7 +3525,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([3]).std() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3446,7 +3551,7 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
             .mean([lambda x: x[0], lambda x: x[1]])
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_multi_agg with: {seed}")

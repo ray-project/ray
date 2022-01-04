@@ -19,7 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace {
 const ray::rpc::ActorDeathCause GenRuntimeEnvFailedCause(const std::string &error_msg) {
@@ -159,6 +159,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::string(const JobID &)> get_ray_namespace,
+    std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
@@ -169,6 +170,7 @@ GcsActorManager::GcsActorManager(
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       get_ray_namespace_(get_ray_namespace),
+      get_num_java_workers_per_process_(std::move(get_num_java_workers_per_process)),
       runtime_env_manager_(runtime_env_manager),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
@@ -537,8 +539,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Remove the actor from the unresolved actor map.
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor =
-      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+  const auto &actor_namespace = iter->second->GetRayNamespace();
+  auto actor = std::make_shared<GcsActor>(
+      request.task_spec(),
+      actor_namespace.empty() ? get_ray_namespace_(job_id) : actor_namespace);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
@@ -642,13 +646,19 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
         if (node_it != owners_.end() && node_it->second.count(owner_id)) {
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
-          DestroyActor(actor_id, GenActorOutOfScopeCause());
+
+          // For multiple actors in one process, if one actor is out of scope,
+          // We shouldn't force kill the actor because other actors in the process
+          // are still alive.
+          auto force_kill = get_num_java_workers_per_process_(actor_id.JobId()) <= 1;
+          DestroyActor(actor_id, GenActorOutOfScopeCause(), force_kill);
         }
       });
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
-                                   const rpc::ActorDeathCause &death_cause) {
+                                   const rpc::ActorDeathCause &death_cause,
+                                   bool force_kill) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -698,7 +708,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
       // The actor has already been created. Destroy the process by force-killing
       // it.
-      NotifyCoreWorkerToKillActor(actor);
+      NotifyCoreWorkerToKillActor(actor, force_kill);
       RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);
@@ -757,10 +767,6 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
     }
   }
   return actor_ids;
-}
-
-void GcsActorManager::CollectStats() const {
-  stats::PendingActors.Record(pending_actors_.size());
 }
 
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
@@ -1309,6 +1315,7 @@ std::string GcsActorManager::DebugString() const {
   for (const auto &pair : named_actors_) {
     num_named_actors += pair.second.size();
   }
+
   std::ostringstream stream;
   stream << "GcsActorManager: "
          << "\n- RegisterActor request count: "
@@ -1334,6 +1341,14 @@ std::string GcsActorManager::DebugString() const {
          << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
          << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
   return stream.str();
+}
+
+void GcsActorManager::RecordMetrics() const {
+  ray::stats::STATS_gcs_actors_count.Record(registered_actors_.size(), "Registered");
+  ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
+  ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
+  ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
+  ray::stats::STATS_gcs_actors_count.Record(pending_actors_.size(), "Pending");
 }
 
 }  // namespace gcs

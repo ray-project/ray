@@ -550,7 +550,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -618,7 +618,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -699,7 +699,7 @@ ray.shutdown()
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -737,7 +737,7 @@ def test_create_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -761,7 +761,7 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(

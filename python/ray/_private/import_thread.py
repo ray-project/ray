@@ -33,8 +33,15 @@ class ImportThread:
     def __init__(self, worker, mode, threads_stopped):
         self.worker = worker
         self.mode = mode
-        self.redis_client = worker.redis_client
         self.gcs_client = worker.gcs_client
+        if worker.gcs_pubsub_enabled:
+            self.subscriber = worker.gcs_function_key_subscriber
+            self.subscriber.subscribe()
+        else:
+            self.subscriber = worker.redis_client.pubsub()
+            self.subscriber.subscribe(
+                b"__keyspace@0__:" + ray._private.function_manager.
+                make_exports_prefix(self.worker.current_job_id.binary()))
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         # Keep track of the number of imports that we've imported.
@@ -53,12 +60,6 @@ class ImportThread:
         self.t.join()
 
     def _run(self):
-        import_pubsub_client = self.redis_client.pubsub()
-        # Exports that are published after the call to
-        # import_pubsub_client.subscribe and before the call to
-        # import_pubsub_client.listen will still be processed in the loop.
-        import_pubsub_client.subscribe("__keyspace@0__:Exports")
-
         try:
             self._do_importing()
             while True:
@@ -66,23 +67,31 @@ class ImportThread:
                 if self.threads_stopped.is_set():
                     return
 
-                msg = import_pubsub_client.get_message()
-                if msg is None:
-                    self.threads_stopped.wait(timeout=0.01)
-                    continue
-                if msg["type"] == "subscribe":
-                    continue
+                if self.worker.gcs_pubsub_enabled:
+                    key = self.subscriber.poll()
+                    if key is None:
+                        # subscriber has closed.
+                        break
+                else:
+                    msg = self.subscriber.get_message()
+                    if msg is None:
+                        self.threads_stopped.wait(timeout=0.01)
+                        continue
+                    if msg["type"] == "subscribe":
+                        continue
+
                 self._do_importing()
         except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
             logger.error(f"ImportThread: {e}")
         finally:
-            # Close the pubsub client to avoid leaking file descriptors.
-            import_pubsub_client.close()
+            # Close the Redis / GCS subscriber to avoid leaking file
+            # descriptors.
+            self.subscriber.close()
 
     def _do_importing(self):
         while True:
             export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1)
+                self.num_imported + 1, self.worker.current_job_id.binary())
             key = self.gcs_client.internal_kv_get(
                 export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if key is not None:
@@ -165,10 +174,6 @@ class ImportThread:
             key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
-            return
-
-        if ray_constants.ISOLATE_EXPORTS and \
-                job_id != self.worker.current_job_id.binary():
             return
 
         try:

@@ -134,6 +134,8 @@ def pad_batch_to_sequences_of_same_size(
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
     batch[SampleBatch.SEQ_LENS] = np.array(seq_lens)
+    if dynamic_max:
+        batch.max_seq_len = max(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
         logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(

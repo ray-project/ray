@@ -43,6 +43,9 @@ BOOST_DLL_ALIAS(internal::GetFunctionManager, GetFunctionManager);
 std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
 GetRemoteFunctions();
 BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
+
+void InitRayRuntime(std::shared_ptr<RayRuntime> runtime);
+BOOST_DLL_ALIAS(internal::InitRayRuntime, InitRayRuntime);
 }  // namespace internal
 
 namespace internal {
