@@ -236,7 +236,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.save_artifact = save_artifact
         self.mlflow_util = MLflowLoggerUtil()
 
-    def start_training(self, logdir: str, **info):
+    def start_training(self, logdir: str, config: Dict, **info):
         super().start_training(logdir=logdir, **info)
 
         tracking_uri = self.tracking_uri or os.path.join(
