@@ -518,7 +518,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
   /// A callback to get the job config of an actor belongs to based on its job id. This is
   /// necessary for actor creation.
-std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
+  std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
 
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be

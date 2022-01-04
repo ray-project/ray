@@ -360,7 +360,9 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
-      [this](const JobID &job_id) { return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace(); });
+      [this](const JobID &job_id) {
+        return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
