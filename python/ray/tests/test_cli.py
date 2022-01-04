@@ -505,7 +505,10 @@ def test_ray_status_multinode():
     def output_ready():
         result = runner.invoke(scripts.status)
         result.stdout
-        return not result.exception and "memory" in result.output
+        if not result.exception and "memory" in result.output:
+            return True
+        raise RuntimeError(f"result.exception={result.exception} "
+                           f"result.output={result.output}")
 
     wait_for_condition(output_ready)
 
