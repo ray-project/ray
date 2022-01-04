@@ -24,6 +24,32 @@
   smoke_test:
     timeout: 600
 
+- name: autoscaling_single_deployment_1k
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/autoscaling_single_deployment_1k.py
+
+  smoke_test:
+    timeout: 600
+
+- name: autoscaling_multi_deployment_1k
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/autoscaling_multi_deployment_1k.py
+
+  smoke_test:
+    timeout: 600
+
 - name: autoscaling_1k_bounds
   cluster:
     app_config: app_config.yaml
