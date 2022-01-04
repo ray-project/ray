@@ -126,11 +126,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
 
-    def resume_trial(self, trial: Trial) -> None:
-        """Resumes PAUSED trials. This is a blocking call."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial)
-
     @abstractmethod
     def reset_trial(self, trial: Trial, new_config: Dict,
                     new_experiment_tag: str) -> bool:

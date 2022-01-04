@@ -65,13 +65,15 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    address = address_info["redis_address"]
-    redis_client = ray._private.services.create_redis_client(
-        address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    redis_client = None
     gcs_publisher = None
     if gcs_pubsub_enabled():
-        gcs_publisher = GcsPublisher(
-            address=gcs_utils.get_gcs_address_from_redis(redis_client))
+        gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
+    else:
+        redis_client = ray._private.services.create_redis_client(
+            address_info["redis_address"],
+            password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,

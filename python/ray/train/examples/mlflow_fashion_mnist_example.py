@@ -1,30 +1,26 @@
 import argparse
 
-import mlflow
-
 from ray.train import Trainer
 from ray.train.examples.train_fashion_mnist_example import train_func
+from ray.train.callbacks.logging import MLflowLoggerCallback
 
 
 def main(num_workers=2, use_gpu=False):
-    mlflow.set_experiment("train_torch_fashion_mnist")
-
     trainer = Trainer(
         backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
-    iterator = trainer.run_iterator(
+    final_results = trainer.run(
         train_func=train_func,
         config={
             "lr": 1e-3,
             "batch_size": 64,
             "epochs": 4
-        })
+        },
+        callbacks=[
+            MLflowLoggerCallback(experiment_name="train_fashion_mnist")
+        ])
 
-    for intermediate_result in iterator:
-        first_worker_result = intermediate_result[0]
-        mlflow.log_metric("loss", first_worker_result["loss"])
-
-    print("Full losses for rank 0 worker: ", iterator.get_final_results())
+    print("Full losses for rank 0 worker: ", final_results)
 
 
 if __name__ == "__main__":

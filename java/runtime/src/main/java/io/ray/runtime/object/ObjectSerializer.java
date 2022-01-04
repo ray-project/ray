@@ -1,5 +1,6 @@
 package io.ray.runtime.object;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Bytes;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -164,7 +165,10 @@ public class ObjectSerializer {
       // serializedBytes is MessagePack serialized bytes
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
       // any other type should be the MessagePack serialized bytes.
-      return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+      NativeRayObject nativeRayObject =
+          new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+      nativeRayObject.setContainedObjectIds(ImmutableList.of(actorHandle.getActorHandleId()));
+      return nativeRayObject;
     } else if (object instanceof AbstractMessage) {
       byte[] serializedBytes = ProtobufSerializer.encode(object);
       return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_PROTOBUF);

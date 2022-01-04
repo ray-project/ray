@@ -93,16 +93,24 @@ class LogMonitor:
             false otherwise.
     """
 
-    def __init__(self, logs_dir, redis_address, redis_password=None):
+    def __init__(self,
+                 logs_dir,
+                 redis_address,
+                 gcs_address,
+                 redis_password=None):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        self.redis_client = ray._private.services.create_redis_client(
-            redis_address, password=redis_password)
+        if gcs_utils.use_gcs_for_bootstrap():
+            self.redis_client = None
+        else:
+            self.redis_client = ray._private.services.create_redis_client(
+                redis_address, password=redis_password)
+            gcs_address = gcs_utils.get_gcs_address_from_redis(
+                self.redis_client)
         self.publisher = None
         if gcs_pubsub.gcs_pubsub_enabled():
-            gcs_addr = gcs_utils.get_gcs_address_from_redis(self.redis_client)
-            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_addr)
+            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -443,7 +451,10 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count)
 
     log_monitor = LogMonitor(
-        args.logs_dir, args.redis_address, redis_password=args.redis_password)
+        args.logs_dir,
+        args.redis_address,
+        args.gcs_address,
+        redis_password=args.redis_password)
 
     try:
         log_monitor.run()
@@ -452,11 +463,12 @@ if __name__ == "__main__":
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         gcs_publisher = None
-        if args.gcs_address:
-            gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif gcs_pubsub_enabled():
-            gcs_publisher = GcsPublisher(
-                address=gcs_utils.get_gcs_address_from_redis(redis_client))
+        if gcs_pubsub_enabled():
+            if gcs_utils.use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "

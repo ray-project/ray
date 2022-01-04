@@ -34,8 +34,9 @@ DEFAULT_CONFIG = with_common_config({
         "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        "final_epsilon": 0.01,
+        # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 40000,
 
         # For soft_q, use:
         # "exploration_config" = {
