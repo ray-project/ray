@@ -120,7 +120,7 @@ class URICache:
         return uri in self._used_uris or uri in self._unused_uris
 
     def __repr__(self):
-        return str(str(self.__dict__))
+        return str(self.__dict__)
 
 
 class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
