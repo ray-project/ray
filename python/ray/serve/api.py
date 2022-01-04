@@ -8,7 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union, overload
+from typing import Any, Callable, Dict, Optional, OrderedDict, Tuple, Type, Union, overload
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -704,6 +704,9 @@ class Deployment:
         self._func_or_class = func_or_class
         self._func_or_class.__is_deployment__ = True
 
+        self._func_or_class.__deployment_class__ = self
+        self._child_deployments = OrderedDict()
+
         self._name = name
         self._version = version
         self._prev_version = prev_version
@@ -792,13 +795,14 @@ class Deployment:
 
     def __call__(self, *args, **kwargs):
         new_obj = self._func_or_class.__new__(self._func_or_class)
-        def setattr(self, name: str, value: Any) -> None:
+        def setattr(instance, name: str, value: Any) -> None:
             if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
-                print(f"Setting deployment - {name} as {str(value)}")
-                object.__setattr__(self, name, value)
+                print(f"Setting deployment {instance} - {name} as {str(value)}")
+                object.__setattr__(instance, name, value)
+                instance.__deployment_class__._child_deployments[name] = value.__deployment_class__
             else:
-                print(f"Setting non-deployment - {name} as {str(value)}")
-                object.__setattr__(self, name, value)
+                print(f"Setting non-deployment {instance} - {name} as {str(value)}")
+                object.__setattr__(instance, name, value)
         self._func_or_class.__setattr__ = setattr
         new_obj.__init__(*args, **kwargs)
 

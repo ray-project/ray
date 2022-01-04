@@ -55,8 +55,8 @@ class Pipeline:
         self.model_2 = Model(2)
         self.model_3 = Model(3)
 
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        print("BBBB")
+    # def __setattr__(self, __name: str, __value: Any) -> None:
+    #     print("BBBB")
 
     async def __call__(self, req):
         """
@@ -95,11 +95,11 @@ class Pipeline:
 
         # can we automatically merge selection & aggregate in one node ?
 
-    def __repr__(self):
-        """
-        Return pretty printted nested nodes.
-        """
-        pass
+    # def __repr__(self):
+    #     """
+    #     Return pretty printted nested nodes.
+    #     """
+    #     pass
 
     def resize(self, node_name: str):
         pass
