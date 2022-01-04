@@ -7,7 +7,7 @@ from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
 from ray.core.generated.serialization_pb2 import ProtobufObject
-from google.protobuf.message import Message
+from google.protobuf.message import Message as ProtobufMessage
 from google.protobuf.descriptor import FileDescriptor
 from google.protobuf.descriptor_pool import Default
 from google.protobuf.reflection import MakeClass
@@ -391,7 +391,7 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
-        elif isinstance(value, Message):
+        elif isinstance(value, ProtobufMessage):
             file_desc = type(value).DESCRIPTOR.file
 
             proto_wrapper = ProtobufObject()

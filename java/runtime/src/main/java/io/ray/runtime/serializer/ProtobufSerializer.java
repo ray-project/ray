@@ -1,5 +1,6 @@
 package io.ray.runtime.serializer;
 
+import com.google.common.base.Preconditions;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.Descriptors;
 import io.ray.runtime.generated.Serialization;
@@ -12,9 +13,7 @@ public class ProtobufSerializer {
   private static final Logger LOGGER = LoggerFactory.getLogger(ProtobufSerializer.class);
 
   public static byte[] encode(Object obj) {
-    if (!(obj instanceof AbstractMessage)) {
-      throw new RuntimeException("Please make sure to check object is protobuf ahead of time");
-    }
+    Preconditions.checkState(obj instanceof AbstractMessage);
 
     AbstractMessage protoMessage = (AbstractMessage) obj;
     Descriptors.Descriptor descriptor = protoMessage.getDescriptorForType();
