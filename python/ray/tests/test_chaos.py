@@ -208,7 +208,8 @@ def test_nonstreaming_shuffle(set_kill_interval):
     if kill_interval is not None:
         stats = memory_summary("auto", stats_only=True)
         print(stats)
-        assert "objects lost from plasma store" in stats
+    else:
+        assert "objects lost from plasma store" not in stats
 
 
 @pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")
