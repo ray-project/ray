@@ -31,8 +31,6 @@ constexpr int kRayletStoreErrorExitCode = 100;
 
 /// Prefix for the object table keys in redis.
 constexpr char kObjectTablePrefix[] = "ObjectTable";
-/// Prefix for the task table keys in redis.
-constexpr char kTaskTablePrefix[] = "TaskTable";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";

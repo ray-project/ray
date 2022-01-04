@@ -469,7 +469,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 def test_ray_status():
     import ray
-    address = ray.init(num_cpus=3).get("redis_address")
+    address = ray.init(num_cpus=3).get("address")
     runner = CliRunner()
 
     def output_ready():
@@ -505,7 +505,10 @@ def test_ray_status_multinode():
     def output_ready():
         result = runner.invoke(scripts.status)
         result.stdout
-        return not result.exception and "memory" in result.output
+        if not result.exception and "memory" in result.output:
+            return True
+        raise RuntimeError(f"result.exception={result.exception} "
+                           f"result.output={result.output}")
 
     wait_for_condition(output_ready)
 

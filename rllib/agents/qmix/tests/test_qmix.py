@@ -24,9 +24,10 @@ class AvailActionsTestEnv(MultiAgentEnv):
 
     def __init__(self, env_config):
         self.state = None
-        self.avail = env_config["avail_action"]
+        self.avail = env_config.get("avail_actions", [3])
         self.action_mask = np.array([0] * 10)
-        self.action_mask[env_config["avail_action"]] = 1
+        for a in self.avail:
+            self.action_mask[a] = 1
 
     def reset(self):
         self.state = 0
@@ -34,22 +35,31 @@ class AvailActionsTestEnv(MultiAgentEnv):
             "agent_1": {
                 "obs": self.observation_space["obs"].sample(),
                 "action_mask": self.action_mask
-            }
+            },
+            "agent_2": {
+                "obs": self.observation_space["obs"].sample(),
+                "action_mask": self.action_mask
+            },
         }
 
     def step(self, action_dict):
         if self.state > 0:
-            assert action_dict["agent_1"] == self.avail, \
+            assert (action_dict["agent_1"] in self.avail and
+                    action_dict["agent_2"] in self.avail), \
                 "Failed to obey available actions mask!"
         self.state += 1
-        rewards = {"agent_1": 1}
+        rewards = {"agent_1": 1, "agent_2": 0.5}
         obs = {
             "agent_1": {
                 "obs": self.observation_space["obs"].sample(),
                 "action_mask": self.action_mask
+            },
+            "agent_2": {
+                "obs": self.observation_space["obs"].sample(),
+                "action_mask": self.action_mask
             }
         }
-        dones = {"__all__": self.state > 20}
+        dones = {"__all__": self.state >= 20}
         return obs, rewards, dones, {}
 
 
@@ -64,28 +74,33 @@ class TestQMix(unittest.TestCase):
 
     def test_avail_actions_qmix(self):
         grouping = {
-            "group_1": ["agent_1"],  # trivial grouping for testing
+            "group_1": ["agent_1", "agent_2"],
         }
-        obs_space = Tuple([AvailActionsTestEnv.observation_space])
-        act_space = Tuple([AvailActionsTestEnv.action_space])
+        obs_space = Tuple([
+            AvailActionsTestEnv.observation_space,
+            AvailActionsTestEnv.observation_space
+        ])
+        act_space = Tuple([
+            AvailActionsTestEnv.action_space, AvailActionsTestEnv.action_space
+        ])
         register_env(
             "action_mask_test",
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space))
 
-        agent = QMixTrainer(
+        trainer = QMixTrainer(
             env="action_mask_test",
             config={
                 "num_envs_per_worker": 5,  # test with vectorization on
                 "env_config": {
-                    "avail_action": 3,
+                    "avail_actions": [3, 4, 8],
                 },
                 "framework": "torch",
             })
         for _ in range(4):
-            agent.train()  # OK if it doesn't trip the action assertion error
-        assert agent.train()["episode_reward_mean"] == 21.0
-        agent.stop()
+            trainer.train()  # OK if it doesn't trip the action assertion error
+        assert trainer.train()["episode_reward_mean"] == 30.0
+        trainer.stop()
         ray.shutdown()
 
 

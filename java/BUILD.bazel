@@ -2,6 +2,10 @@ load("//bazel:ray.bzl", "define_java_module")
 load("//bazel:ray.bzl", "native_java_binary")
 load("//bazel:ray.bzl", "native_java_library")
 load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+load(
+    "@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl",
+    "jar_jar",
+)
 
 exports_files([
     "testng.xml",
@@ -311,10 +315,23 @@ java_binary(
     ],
 )
 
+jar_jar(
+    name = "ray_dist_shaded",
+    input_jar = "//java:ray_dist_deploy.jar",
+    rules = "//java:shade_rule",
+)
+
+# Shade dependencies in tests fat jar.
+jar_jar(
+    name = "all_tests_shaded",
+    input_jar = "//java:all_tests_deploy.jar",
+    rules = "//java:shade_rule",
+)
+
 genrule(
     name = "ray_java_pkg",
     srcs = [
-        "//java:ray_dist_deploy.jar",
+        "//java:ray_dist_shaded.jar",
         "//java:gen_maven_deps",
         "//streaming/java:gen_maven_deps",
     ],
@@ -322,7 +339,7 @@ genrule(
     cmd = """
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
-        cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        cp -f $(location //java:ray_dist_shaded.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
         date > $@
     """,
     local = 1,
