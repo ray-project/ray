@@ -82,15 +82,8 @@ build_wheel_windows() {
   local ray_uninstall_status=0
   uninstall_ray || ray_uninstall_status=1
 
-  local pyversion pyversions=()
-  for pyversion in "${PY_VERSIONS[@]}"; do
-    if [ "${pyversion}" = "${PYTHON-}" ]; then continue; fi  # we'll build ${PYTHON} last
-    pyversions+=("${pyversion}")
-  done
-  pyversions+=("${PYTHON-}")  # build this last so any subsequent steps use the right version
-
   local local_dir="python/dist"
-  for pyversion in "${pyversions[@]}"; do
+  for pyversion in "${PY_VERSIONS[@]}"; do
     if [ -z "${pyversion}" ]; then continue; fi
     bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
