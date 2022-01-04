@@ -854,10 +854,6 @@ def init(
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
-    if bootstrap_address is not None:
-        logger.info("Connecting to existing Ray cluster at address: "
-                    f"{bootstrap_address}")
-
     if local_mode:
         driver_mode = LOCAL_MODE
     else:

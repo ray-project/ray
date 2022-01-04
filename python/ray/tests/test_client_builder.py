@@ -8,8 +8,6 @@ from unittest.mock import patch, Mock
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
-import time
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import run_string_as_driver_nonblocking,\
     wait_for_condition, run_string_as_driver
 
@@ -149,23 +147,14 @@ while True:
     # This should start a cluster.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
     # sleep is necessary to avoid port conflict
-    # TODO(iycheng): Get rid of this sleep
-    if use_gcs_for_bootstrap():
-        time.sleep(1)
     # ray.client("local").connect() should start a second cluster.
     p2 = run_string_as_driver_nonblocking(blocking_local_script)
-    if use_gcs_for_bootstrap():
-        time.sleep(1)
     # ray.client().connect() shouldn't connect to a cluster started by
     # ray.client("local").connect() so it should create a third one.
     p3 = run_string_as_driver_nonblocking(blocking_noaddr_script)
-    if use_gcs_for_bootstrap():
-        time.sleep(1)
     # ray.client().connect() shouldn't connect to a cluster started by
     # ray.client().connect() so it should create a fourth one.
     p4 = run_string_as_driver_nonblocking(blocking_noaddr_script)
-    if use_gcs_for_bootstrap():
-        time.sleep(1)
 
     wait_for_condition(
         lambda: len(ray._private.services.find_bootstrap_address()) == 4,
