@@ -256,18 +256,10 @@ public class MessagePackSerializer {
           obj,
           packer,
           ((object, packer1) -> {
-            byte[] payload;
-            if (ProtobufSerializer.isProtobufObject(object)) {
-              payload = ProtobufSerializer.encode(object);
-              packer1.packBinaryHeader(payload.length);
-              packer1.writePayload(payload);
-              // xlang flag doesn't matter for protobuf because it is its own type.
-            } else {
-              payload = FstSerializer.encode(object);
-              packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
-              packer1.addPayload(payload);
-              isCrossLanguage.setFalse();
-            }
+            byte[] payload = FstSerializer.encode(object);
+            packer1.packExtensionTypeHeader(LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID, payload.length);
+            packer1.addPayload(payload);
+            isCrossLanguage.setFalse();
           }));
       byte[] msgpackBytes = packer.toByteArray();
       // Serialize MessagePack bytes length.

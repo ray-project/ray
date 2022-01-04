@@ -1,6 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.common.primitives.Bytes;
+import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
@@ -90,7 +91,7 @@ public class ObjectSerializer {
       ) {
         return Serializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PROTOBUF) == 0) {
-        return ProtobufSerializer.decode(data, objectType);
+        return ProtobufSerializer.decode(Serializer.decode(data, byte[].class), objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
@@ -165,22 +166,18 @@ public class ObjectSerializer {
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
       // any other type should be the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+    } else if (object instanceof AbstractMessage) {
+      byte[] serializedBytes = ProtobufSerializer.encode(object);
+      return new NativeRayObject(Serializer.encode(serializedBytes).getLeft(), OBJECT_METADATA_TYPE_PROTOBUF);
     } else {
       try {
-        boolean isProtobuf = ProtobufSerializer.isProtobufObject(object);
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
-        byte[] metadata;
-        if (isProtobuf) {
-          metadata = OBJECT_METADATA_TYPE_PROTOBUF;
-        } else if (serialized.getRight()) {
-          metadata = OBJECT_METADATA_TYPE_CROSS_LANGUAGE;
-        } else {
-          metadata = OBJECT_METADATA_TYPE_JAVA;
-        }
         NativeRayObject nativeRayObject =
             new NativeRayObject(
                 serialized.getLeft(),
-                metadata);
+                serialized.getRight()
+                    ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+                    : OBJECT_METADATA_TYPE_JAVA);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;
       } catch (Exception e) {
