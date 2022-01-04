@@ -125,7 +125,11 @@ void GcsJobManager::ClearJobInfos(const JobID &job_id) {
     listener(std::make_shared<JobID>(job_id));
   }
   // Clear cache.
-  RAY_UNUSED(cached_job_configs_.erase(job_id));
+  // TODO(qwang): This line will cause `test_actor_advanced.py::test_detached_actor`
+  // case fail under GCS HA mode. Because detached actor is still alive after
+  // job is finished. After `DRIVER_EXITED` state being introduced in issue
+  // https://github.com/ray-project/ray/issues/21128, this line should work.
+  // RAY_UNUSED(cached_job_configs_.erase(job_id));
 }
 
 /// Add listener to monitor the add action of nodes.
