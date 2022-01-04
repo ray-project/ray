@@ -84,8 +84,8 @@ rust_shared_library(
         ":ray_rs_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
 
-    # or rustc_flags = ["-C", "link-args=-rdynamic"]?
-    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
+    rustc_flags = ["-C", "link-args=-rdynamic"],
+    # rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
     visibility = ["//visibility:public"],
 )
 

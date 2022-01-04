@@ -707,6 +707,8 @@ std::string PlasmaClient::Impl::DebugString() {
   if (!ReadGetDebugStringReply(buffer.data(), buffer.size(), &debug_string).ok()) {
     return "error parsing reply";
   }
+
+  RAY_LOG(INFO) << "STORE CLIENT DEBUG STRING " << buffer.size() << " LENGTH_OF ";
   return debug_string;
 }
 

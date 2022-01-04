@@ -82,24 +82,36 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id,
                                           const rpc::Address &owner_address,
                                           bool *object_exists) {
+
+  RAY_LOG(INFO) << "Putting Object From Plasma Store 1 " << object_id;
   RAY_CHECK(!object.IsInPlasmaError()) << object_id;
+  RAY_LOG(INFO) << "Putting Object From Plasma Store 2 " << object_id;
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
                            owner_address, &data, /*created_by_worker=*/true));
+
+  RAY_LOG(INFO) << "Putting Object From Plasma Store 3 " << object_id;
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
+    RAY_LOG(INFO) << "Putting Object From Plasma Store 4 " << object_id;
     if (object.HasData()) {
       memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
     }
+
+    RAY_LOG(INFO) << "Putting Object From Plasma Store 5 " << object_id;
     RAY_RETURN_NOT_OK(Seal(object_id));
+
+    RAY_LOG(INFO) << "Putting Object From Plasma Store 6 " << object_id;
     if (object_exists) {
       *object_exists = false;
     }
   } else if (object_exists) {
     *object_exists = true;
   }
+
+    RAY_LOG(INFO) << "Putting Object From Plasma Store 7 " << object_id;
   return Status::OK();
 }
 
@@ -109,16 +121,24 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker) {
+  
+  RAY_LOG(INFO) << "I am a plasma store " << store_client_.DebugString();
+                                                 RAY_LOG(INFO) << "Creating Object in PS 1 " << object_id;
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
   }
+
+                                                   RAY_LOG(INFO) << "Creating Object in PS 2 " << object_id;
   Status status = store_client_.CreateAndSpillIfNeeded(
       object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
       metadata ? metadata->Size() : 0, data, source,
       /*device_num=*/0);
 
+                                                       RAY_LOG(INFO) << "Creating Object in PS 3 " << object_id;
   if (status.IsObjectStoreFull()) {
+
+                                                     RAY_LOG(INFO) << "Creating Object in PS 4 " << object_id;
     RAY_LOG(ERROR) << "Failed to put object " << object_id
                    << " in object store because it "
                    << "is full. Object size is " << data_size << " bytes.\n"
@@ -134,10 +154,14 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
             << "is full. Object size is " << data_size << " bytes.";
     status = Status::ObjectStoreFull(message.str());
   } else if (status.IsObjectExists()) {
+
+                                                     RAY_LOG(INFO) << "Creating Object in PS 5 " << object_id;
     RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                      << object_id << ".";
     status = Status::OK();
   } else {
+
+                                                     RAY_LOG(INFO) << "Creating Object in PS 6 " << object_id;
     RAY_RETURN_NOT_OK(status);
   }
   return status;
