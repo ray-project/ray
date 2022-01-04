@@ -3,7 +3,6 @@ import heapq
 import gc
 import logging
 
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.utils.util import flatten_dict
 
 logger = logging.getLogger(__name__)
@@ -28,6 +27,10 @@ class Checkpoint:
         self.storage = storage
         self.value = value
         self.result = result or {}
+        # The logical order of checkpoints (both in memory and persistent)
+        # The more recent checkpoints have larger order.
+        # The most recent checkpoint is used to restore the trial.
+        self.order = 0
 
     @staticmethod
     def from_object(value=None):
@@ -93,13 +96,14 @@ class CheckpointManager:
         self._newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
+        self._cur_order = 0
 
     @property
     def newest_checkpoint(self):
         """Returns the newest checkpoint (based on training iteration)."""
         newest_checkpoint = max(
             [self.newest_persistent_checkpoint, self.newest_memory_checkpoint],
-            key=lambda c: c.result.get(TRAINING_ITERATION, -1))
+            key=lambda c: c.order)
         return newest_checkpoint
 
     @property
@@ -114,6 +118,11 @@ class CheckpointManager:
         self._newest_memory_checkpoint = new_checkpoint
 
     def on_checkpoint(self, checkpoint):
+        self._cur_order += 1
+        checkpoint.order = self._cur_order
+        self.on_checkpoint_internal(checkpoint)
+
+    def on_checkpoint_internal(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Sets the newest checkpoint. For PERSISTENT checkpoints: Deletes
@@ -130,6 +139,8 @@ class CheckpointManager:
         old_checkpoint = self.newest_persistent_checkpoint
 
         if old_checkpoint.value == checkpoint.value:
+            # Override the order of the checkpoint.
+            old_checkpoint.order = checkpoint.order
             return
 
         self.newest_persistent_checkpoint = checkpoint
