@@ -9,13 +9,14 @@ exclude =
   python/.eggs/
   python/ray/_private/thirdparty/*
   python/ray/workflow/tests/mock_server.py
-max-line-length = 79
+max-line-length = 88
 inline-quotes = "
 ignore =
   C408
   E121
   E123
   E126
+  E203
   E226
   E24
   E704
@@ -41,3 +42,8 @@ ignore =
   B016
   B017
 avoid-escape = no
+# Error E731 is ignored because of the migration from YAPF to Black.
+# See https://github.com/ray-project/ray/issues/21315 for more information.
+per-file-ignores =
+    rllib/evaluation/worker_set.py:E731
+    rllib/evaluation/sampler.py:E731

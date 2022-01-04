@@ -399,8 +399,7 @@ def validate_redis_address(address):
 
     redis_address_parts = redis_address.split(":")
     if len(redis_address_parts) != 2:
-        raise ValueError(f"Malformed address. Expected '<host>:<port>',"
-                         f" but got {redis_address} from {address}.")
+        raise ValueError("Malformed address. Expected '<host>:<port>'.")
     redis_ip = redis_address_parts[0]
     try:
         redis_port = int(redis_address_parts[1])
