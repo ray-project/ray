@@ -5,6 +5,7 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 import ray
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
+from ray.rllib.execution.rollout_ops import asynchronous_parallel_sample
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -22,7 +23,7 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     appo.DEFAULT_CONFIG,  # See keys in appo.py, which are also supported.
     {
-        "num_gpus_per_policy_learner": 0.1,
+        #"num_gpus_per_policy_learner": 0.1,
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
@@ -44,6 +45,15 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
+        num_policies = len(ma_cfg["policies"])
+        if cf["num_gpus"]:
+            num_learner_shards = max(
+                cf["num_gpus"] / num_policies, cf["num_gpus"])
+            num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
+        else:
+            num_learner_shards = cf.get("num_replay_buffer_shards", 1)
+            num_gpus_per_shard = 0
+
         eval_config = cf["evaluation_config"]
 
         # Return PlacementGroupFactory containing all needed resources
@@ -61,8 +71,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 {
                     # Policy learners (and Replay buffer shards).
                     "CPU": 1,
-                    "GPU": cf["num_gpus_per_policy_learner"],
-                } for _ in range(cf["num_policy_learners"])
+                    "GPU": num_gpus_per_shard,
+                } for _ in range(num_learner_shards)
             ] + ([
                 {
                     # Evaluation (remote) workers.
@@ -118,7 +128,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
         ReplayActor = ray.remote(
-            num_cpus=1, num_gpus=0.01)(MultiAgentReplayBuffer)
+            num_cpus=1,
+            num_gpus=0.01 if (self.config["num_gpus"] and
+                              not self.config["_fake_gpus"]) else 0)(
+            MultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
         # (located on any GPU machine in the cluster):
@@ -145,7 +158,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     (ReplayActor, replay_actor_args, {}, 1),
                 ] + [
                     (
-                        ray.remote(num_cpus=1, num_gpus=num_gpus_per_policy)(
+                        ray.remote(
+                            num_cpus=1,
+                            num_gpus=num_gpus_per_policy if
+                            not self.config["_fake_gpus"] else 0)(
                             ma_cfg["policies"][pid].policy_class),
                         # Policy c'tor args.
                         (ma_cfg["policies"][pid].observation_space,
@@ -180,7 +196,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         self._policy_learners = _policy_learners
 
     def training_iteration(self) -> ResultDict:
-        # - Trigger rollouts on all workers (w/ timeout for asynch).
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the local worker).
 
@@ -195,12 +210,16 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
                 replay_actor.add_batch.remote(ma_batch)
 
-        ray.get([
-            worker.apply.remote(_sample_to_buffer)
-            for worker in self.workers.remote_workers()
-        ])
+        # Trigger rollouts on all RolloutWorkers (w/ timeout for asynch).
+        eval_results = asynchronous_parallel_sample(
+            trainer=self,
+            worker_set=self.workers,
+            timeout_s=0.1,
+            max_remote_requests_in_flight_per_worker=2,
+            remote_fn=_sample_to_buffer,
+        )
 
-        # - trigger one update on each policy.
+        # Trigger one update on each learning policy.
         ray.get([
             pol_actor.learn_on_batch_from_replay_buffer.remote(
                 replay_actor=replay_actor, policy_id=pid)

@@ -1,10 +1,9 @@
+from collections import defaultdict
 import logging
-from typing import List, Tuple
 import time
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
-from ray.util.iter import from_actors, LocalIterator
-from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
@@ -12,25 +11,193 @@ from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
     _check_sample_batch_type, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
     LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
+from ray.util.iter import from_actors, LocalIterator
+from ray.util.iter_metrics import SharedMetrics
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.trainer import Trainer
 
 logger = logging.getLogger(__name__)
 
 
-def synchronous_parallel_sample(workers: WorkerSet) -> List[SampleBatch]:
+@ExperimentalAPI
+def synchronous_parallel_sample(
+        worker_set: WorkerSet,
+        remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+) -> List[SampleBatch]:
+    """Runs parallel and synchronous rollouts on all remote workers.
+
+    Waits for all workers to return from the remote calls.
+
+    If no remote workers exist (num_workers == 0), use the local worker
+    for sampling.
+
+    Alternatively to calling `worker.sample.remote()`, the user can provide a
+    `remote_fn()`, which will be applied to the worker(s) instead.
+
+    Args:
+        worker_set: The WorkerSet to use for sampling.
+        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead of
+            `worker.sample.remote()` to generate the requests. 
+
+    Returns:
+        The list of collected sample batch types (one for each parallel
+        rollout worker in the given `worker_set`).
+
+    Examples:
+        >>> # 2 remote workers (num_workers=2):
+        >>> batches = synchronous_parallel_sample(trainer.workers)
+        >>> print(len(batches))
+        ... 2
+        >>> print(batches[0])
+        ... SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
+
+        >>> # 0 remote workers (num_workers=0): Using the local worker.
+        >>> batches = synchronous_parallel_sample(trainer.workers)
+        >>> print(len(batches))
+        ... 1
+    """
     # No remote workers in the set -> Use local worker for collecting
     # samples.
-    if not workers.remote_workers():
-        return [workers.local_worker().sample()]
+    if not worker_set.remote_workers():
+        return [worker_set.local_worker().sample()]
 
     # Loop over remote workers' `sample()` method in parallel.
     sample_batches = ray.get(
-        [r.sample.remote() for r in workers.remote_workers()])
+        [r.sample.remote() for r in worker_set.remote_workers()])
 
+    # Return all collected batches.
     return sample_batches
+
+
+@ExperimentalAPI
+def asynchronous_parallel_sample(
+        trainer: "Trainer",
+        worker_set: WorkerSet,
+        timeout_s: Optional[float] = None,
+        max_remote_requests_in_flight_per_worker: int = 2,
+        remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+) -> Optional[List[SampleBatch]]:
+    """Runs parallel and asynchronous rollouts on all remote workers.
+
+    May use a timeout (if provided) on `ray.wait()` and returns only those
+    samples that could be gathered in the timeout window. Allows a maximum
+    of `max_remote_requests_in_flight_per_worker` remote calls to be in-flight
+    per remote worker.
+
+    Alternatively to calling `worker.sample.remote()`, the user can provide a
+    `remote_fn()`, which will be applied to the worker(s) instead.
+
+    If no remote workers exist (num_workers == 0), use the local worker
+    for sampling/remote_fn.
+
+    Args:
+        trainer: The Trainer object that we run the sampling for.
+        worker_set: The WorkerSet to use for sampling.
+        timeout_s: Timeout (in sec) to be used for the underlying `ray.wait()`
+            calls. If None (default), never time out (block until at least one
+            worker returns a sample).
+        max_remote_requests_in_flight_per_worker: Maximum number of remote
+            requests sent to each remote worker. 2 (default) is probably
+            sufficient to avoid idle times between two requests.
+        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead of
+            `worker.sample.remote()` to generate the requests. 
+
+    Returns:
+        The list of asynchronously collected sample batch types. None, if no
+        samples are ready.
+
+    Examples:
+        >>> # 2 remote workers (num_workers=2):
+        >>> batches = asynchronous_parallel_sample(
+        ...     trainer,
+        ...     trainer.workers,
+        ...     0.1,  # timeout after 0.1sec
+        ...     remote_fn=lambda w: time.sleep(1)  # sleep 1sec
+        ... )
+        >>> print(len(batches))
+        ... 2
+        >>> # Expect a timeout to have happened.
+        >>> batches[0] is None and batches[1] is None
+        ... True
+    """
+
+    # No remote workers in the set -> Use local worker for collecting
+    # samples.
+    if not worker_set.remote_workers():
+        if remote_fn is not None:
+            return [worker_set.local_worker().apply(remote_fn)]
+        else:
+            return [worker_set.local_worker().sample()]
+
+    # Create a map inside Trainer instance that maps workers to sets of open
+    # requests (object refs). This way, we keep track, of which workers have already
+    # been sent how many requests (`max_remote_requests_in_flight_per_worker` arg).
+    if not hasattr(trainer, "_remote_requests_in_flight"):
+        trainer._remote_requests_in_flight = defaultdict(set)
+
+    # Collect all currently pending remote requests into a single set of
+    # object refs.
+    pending_remotes = set()
+    # Also build a map to get the associated worker for each remote request.
+    remote_to_actor = {}
+    for worker, set_ in trainer._remote_requests_in_flight.items():
+        pending_remotes |= set_
+        for r in set_:
+            remote_to_actor[r] = worker
+
+    # Add new requests, if possible (if
+    # `max_remote_requests_in_flight_per_worker` setting allows it).
+    for worker in worker_set.remote_workers():
+        # Still room for another request to this worker.
+        if len(trainer._remote_requests_in_flight[worker]) < \
+                max_remote_requests_in_flight_per_worker:
+            if remote_fn is None:
+                req = worker.sample.remote()
+            else:
+                req = worker.apply.remote(remote_fn)
+            # Add to our set to send to ray.wait().
+            pending_remotes.add(req)
+            # Keep our mappings properly updated.
+            trainer._remote_requests_in_flight[worker].add(req)
+            remote_to_actor[req] = worker
+
+    # There must always be pending remote requests.
+    assert len(pending_remotes) > 0
+    pending_remote_list = list(pending_remotes)
+
+    # No timeout: Block until at least one result is returned.
+    if timeout_s is None:
+        # First try to do a `ray.wait` w/o timeout for efficiency.
+        ready, _ = ray.wait(
+            pending_remote_list, num_returns=len(pending_remotes), timeout=0)
+        # Nothing returned and `timeout` is None -> Fall back to a
+        # blocking wait to make sure we can return something.
+        if not ready:
+            ready, _ = ray.wait(pending_remote_list, num_returns=1)
+    # Timeout: Do a `ray.wait() call` w/ timeout.
+    else:
+        ready, _ = ray.wait(
+            pending_remote_list, num_returns=len(pending_remotes),
+            timeout=timeout_s)
+
+        # Return None if nothing ready after the timeout.
+        if not ready:
+            return
+    
+    for obj_ref in ready:
+        # Remove in-flight record for this ref.
+        trainer._remote_requests_in_flight[remote_to_actor[obj_ref]].remove(obj_ref)
+        remote_to_actor.pop(obj_ref)
+
+    results = ray.get(ready)
+
+    return results
 
 
 def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",

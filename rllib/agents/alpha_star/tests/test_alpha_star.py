@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -52,7 +52,7 @@ class TestAlphaStar(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):
