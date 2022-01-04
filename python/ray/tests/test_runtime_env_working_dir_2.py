@@ -11,8 +11,6 @@ from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.tests.test_runtime_env_working_dir \
-    import tmp_working_dir  # noqa: F401
 from ray._private.utils import get_directory_size
 from ray._private.test_utils import (wait_for_condition, chdir,
                                      check_local_files_gced)
