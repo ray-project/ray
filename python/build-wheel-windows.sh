@@ -61,7 +61,7 @@ install_ray() {
     pushd dashboard/client
       choco install nodejs -y
       choco install yarn -y
-      refreshenv
+      # refreshenv
       yarn
       yarn build
     popd
