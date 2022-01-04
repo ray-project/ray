@@ -213,6 +213,8 @@ class CondaManager:
     def get_uri(self, runtime_env: Dict) -> Optional[str]:
         """Return `"conda://<hash_dependencies>"` or None if no GC required."""
         conda = runtime_env.get("conda")
+        # TODO(architkulkarni): Seems like we added this in this PR, is it
+        # logic still needed or was it moved somewhere else upstream?
         if conda is not None:
             if isinstance(conda, str):
                 # User-preinstalled conda env.  We don't garbage collect these,
