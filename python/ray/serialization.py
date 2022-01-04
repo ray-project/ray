@@ -208,7 +208,6 @@ class SerializationContext:
                 return _actor_handle_deserializer(obj)
             elif metadata_fields[
                     0] == ray_constants.OBJECT_METADATA_TYPE_PROTOBUF:
-                data = self._deserialize_msgpack_data(data, metadata_fields)
                 proto_wrapper = ProtobufObject.FromString(data)
 
                 # First try finding the class in protobuf pool.
@@ -358,19 +357,6 @@ class SerializationContext:
             # Update ref counting for the actor handle
             metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
             value = serialized
-        # Protobuf message
-        elif isinstance(value, Message):
-            file_desc = type(value).DESCRIPTOR.file
-
-            proto_wrapper = ProtobufObject()
-            proto_wrapper.serialized_data = value.SerializeToString()
-            proto_wrapper.name = type(value).DESCRIPTOR.name
-            proto_wrapper.descriptor_name = file_desc.name
-            proto_wrapper.descriptor_package = file_desc.package
-            proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
-
-            value = proto_wrapper.SerializeToString()
-            metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 
@@ -405,5 +391,18 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
+        elif isinstance(value, Message):
+            file_desc = type(value).DESCRIPTOR.file
+
+            proto_wrapper = ProtobufObject()
+            proto_wrapper.serialized_data = value.SerializeToString()
+            proto_wrapper.name = type(value).DESCRIPTOR.name
+            proto_wrapper.descriptor_name = file_desc.name
+            proto_wrapper.descriptor_package = file_desc.package
+            proto_wrapper.descriptor_serialize_pb = file_desc.serialized_pb
+
+            value = proto_wrapper.SerializeToString()
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PROTOBUF
+            return RawSerializedObject(value, metadata=metadata)
         else:
             return self._serialize_to_msgpack(value)

@@ -12,6 +12,7 @@ import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.exception.CrossLanguageException;
 import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.generated.RuntimeEnvCommon;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,8 +20,6 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
-
-import io.ray.runtime.generated.RuntimeEnvCommon;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -325,13 +324,11 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
   @Test
   public void testJavaToPythonProtobuf() {
-    ObjectRef<RuntimeEnvCommon.RuntimeEnv> ref = Ray.task(
-      PyFunction.of(PYTHON_MODULE, "echo_protobuf", RuntimeEnvCommon.RuntimeEnv.class),
-      RuntimeEnvCommon.RuntimeEnv
-        .newBuilder()
-        .setWorkingDir("ray_working_dir")
-        .build()
-    ).remote();
+    ObjectRef<RuntimeEnvCommon.RuntimeEnv> ref =
+        Ray.task(
+                PyFunction.of(PYTHON_MODULE, "echo_protobuf", RuntimeEnvCommon.RuntimeEnv.class),
+                RuntimeEnvCommon.RuntimeEnv.newBuilder().setWorkingDir("ray_working_dir").build())
+            .remote();
     Assert.assertEquals(ref.get().getWorkingDir(), "ray_working_dir");
   }
 

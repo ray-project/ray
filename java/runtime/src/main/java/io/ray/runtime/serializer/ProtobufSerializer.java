@@ -3,9 +3,7 @@ package io.ray.runtime.serializer;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.Descriptors;
 import io.ray.runtime.generated.Serialization;
-
 import java.lang.reflect.Method;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,14 +19,14 @@ public class ProtobufSerializer {
     AbstractMessage protoMessage = (AbstractMessage) obj;
     Descriptors.Descriptor descriptor = protoMessage.getDescriptorForType();
     Descriptors.FileDescriptor fileDescriptor = descriptor.getFile();
-    Serialization.ProtobufObject protoWrapper = (
-      Serialization.ProtobufObject.newBuilder()
-        .setSerializedData(protoMessage.toByteString())
-        .setName(descriptor.getName())
-        .setDescriptorName(fileDescriptor.getName())
-        .setDescriptorPackage(fileDescriptor.getPackage())
-        .setDescriptorSerializePb(fileDescriptor.toProto().toByteString())
-    ).build();
+    Serialization.ProtobufObject protoWrapper =
+        (Serialization.ProtobufObject.newBuilder()
+                .setSerializedData(protoMessage.toByteString())
+                .setName(descriptor.getName())
+                .setDescriptorName(fileDescriptor.getName())
+                .setDescriptorPackage(fileDescriptor.getPackage())
+                .setDescriptorSerializePb(fileDescriptor.toProto().toByteString()))
+            .build();
 
     return protoWrapper.toByteArray();
   }

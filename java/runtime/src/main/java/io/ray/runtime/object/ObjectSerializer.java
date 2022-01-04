@@ -87,11 +87,10 @@ public class ObjectSerializer {
         }
         return data;
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0
-          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0
-      ) {
+          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0) {
         return Serializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PROTOBUF) == 0) {
-        return ProtobufSerializer.decode(Serializer.decode(data, byte[].class), objectType);
+        return ProtobufSerializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
@@ -168,7 +167,7 @@ public class ObjectSerializer {
       return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
     } else if (object instanceof AbstractMessage) {
       byte[] serializedBytes = ProtobufSerializer.encode(object);
-      return new NativeRayObject(Serializer.encode(serializedBytes).getLeft(), OBJECT_METADATA_TYPE_PROTOBUF);
+      return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_PROTOBUF);
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);

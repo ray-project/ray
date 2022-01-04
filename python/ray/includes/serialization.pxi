@@ -502,9 +502,8 @@ cdef class RawSerializedObject(SerializedObject):
         const uint8_t *value_ptr
         int64_t _total_bytes
 
-    def __init__(self, value):
-        super(RawSerializedObject,
-              self).__init__(ray_constants.OBJECT_METADATA_TYPE_RAW)
+    def __init__(self, value, metadata=ray_constants.OBJECT_METADATA_TYPE_RAW):
+        super(RawSerializedObject, self).__init__(metadata)
         self.value = value
         self.value_ptr = <const uint8_t*> value
         self._total_bytes = len(value)

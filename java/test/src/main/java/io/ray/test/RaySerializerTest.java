@@ -26,11 +26,10 @@ public class RaySerializerTest extends BaseTest {
 
   @Test
   public void testSerializeProtobuf() {
-    RuntimeEnvCommon.RuntimeEnv env = RuntimeEnvCommon.RuntimeEnv.newBuilder().setWorkingDir("working_dir").build();
+    RuntimeEnvCommon.RuntimeEnv env =
+        RuntimeEnvCommon.RuntimeEnv.newBuilder().setWorkingDir("working_dir").build();
     ObjectRef<RuntimeEnvCommon.RuntimeEnv> ref = Ray.put(env);
     RuntimeEnvCommon.RuntimeEnv newEnv = ref.get();
     Assert.assertEquals(env.getWorkingDir(), newEnv.getWorkingDir());
   }
-
-
 }
