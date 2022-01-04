@@ -1896,8 +1896,13 @@ def log(ip_address: str, node_id: str, actor_id: str, log_file: str):
     default=None,
     help="The unique id of the node.")
 def nodes(ip_address, node_id):
-    from pprint import pprint
-    pprint(ray_nodes(node_id, ip_address))
+    nodes = ray_nodes(node_id, ip_address)
+    for node in nodes:
+        id = node.pop("id")
+        print(f"Node ID: {id}")
+        for key, val in node.items():
+            print(f"{key}: {val}")
+        print()
 
 
 @cli.command(hidden=True)

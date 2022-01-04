@@ -260,12 +260,12 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
             gcs_addr, ray_constants.REDIS_DEFAULT_PASSWORD))
     resources = state._available_resources_per_node()
     for node in nodes:
-        print(node)
         info = {
             "id": node["raylet"]["nodeId"],
             "ip": node["ip"],
             "state": node["raylet"]["state"],
-            "available_resources": resources[node["raylet"]["nodeId"]]
+            "available_resources": resources[node["raylet"]["nodeId"]],
+            "top_10_process_mem_usage": node["top10ProcMemUsage"]
         }
         if debug:
             info["logUrl"] = node["logUrl"]
