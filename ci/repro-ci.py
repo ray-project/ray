@@ -606,7 +606,10 @@ def main(session_url: Optional[str],
         },
         script_command=("sed -E 's/"
                         "docker run/"
-                        "docker run --name ray_container -d/g' | "
+                        "docker run "
+                        "--cap-add=SYS_PTRACE "
+                        "--name ray_container "
+                        "-d/g' | "
                         "bash -l"))
 
     repro.create_new_ssh_client()
@@ -619,6 +622,14 @@ def main(session_url: Optional[str],
         repro.print_buildkite_command(skipped=True)
 
     repro.transfer_env_to_container()
+
+    # Print once more before attaching
+    click.secho("Instance ID: ", nl=False)
+    click.secho(repro.aws_instance_id, bold=True)
+    click.secho("Instance IP: ", nl=False)
+    click.secho(repro.aws_instance_ip, bold=True)
+    print("-" * 80)
+
     repro.attach_to_container()
 
     logger.info("You are now detached from the AWS instance.")
