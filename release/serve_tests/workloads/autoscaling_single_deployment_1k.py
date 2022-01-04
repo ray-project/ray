@@ -110,9 +110,8 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
         min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_NUM_REPLICA
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_NUM_REPLICA
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
-        logger.info(
-            f"Running full test with min {min_replicas} and max "
-            f"{max_replicas} replicas ..\n")
+        logger.info(f"Running full test with min {min_replicas} and max "
+                    f"{max_replicas} replicas ..\n")
         logger.info("Setting up anyscale ray cluster .. \n")
         serve_client = setup_anyscale_cluster()
 
