@@ -70,7 +70,7 @@ public class LoggingUtil {
           ConfigurationBuilderFactory.newConfigurationBuilder();
 
       // TODO(qwang): We can use rayConfig.logLevel instead.
-      Level level = Level.toLevel(config.getString("ray.logging.level"));
+      Level level = Level.toLevel(config.getString("ray.logging-level"));
 
       globalConfigBuilder.setStatusLevel(Level.INFO);
       globalConfigBuilder.setConfigurationName("DefaultLogger");

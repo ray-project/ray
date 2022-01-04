@@ -22,7 +22,7 @@ public class RayJavaLoggingTest extends BaseTest {
 
   @BeforeClass
   public void setup() {
-    System.setProperty("ray.job.logging-level", "DEBUG");
+    System.setProperty("ray.logging-level", "DEBUG");
   }
 
   private static class HeavyLoggingActor {
