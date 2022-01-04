@@ -98,13 +98,17 @@ message PythonObject {
 
 // The message for protobuf message object.
 message ProtobufObject {
-  // The serialized protobuf data
+  // The serialized protobuf data.
   bytes serialized_data = 1;
-  // protobuf type name
+  // Protobuf type name.
   string name = 2;
 
-  // file descriptor
+  // Following fields contains information needed to construct protobuf
+  // stub from scratch.
+  // Protobuf file descriptor name.
   string descriptor_name = 4;
+  // Full package name for the protobuf descriptor.
   string descriptor_package = 5;
+  // The full descriptor containing protobuf message definition.
   bytes descriptor_serialize_pb = 6;
 }
