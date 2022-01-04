@@ -3,6 +3,7 @@ package io.ray.runtime.serialization.serializers;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
+import io.ray.runtime.serialization.Serializer;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 

@@ -7,6 +7,8 @@ import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
 import io.ray.runtime.serialization.SerdeException;
+import io.ray.runtime.serialization.SerializedObject;
+import io.ray.runtime.serialization.Serializer;
 import io.ray.runtime.serialization.resolver.ReferenceResolver;
 import io.ray.runtime.serialization.util.Descriptor;
 import io.ray.runtime.serialization.util.Tuple2;

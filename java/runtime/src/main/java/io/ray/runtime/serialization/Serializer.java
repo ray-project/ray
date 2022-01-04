@@ -1,9 +1,8 @@
-package io.ray.runtime.serialization.serializers;
+package io.ray.runtime.serialization;
 
 import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
-import io.ray.runtime.serialization.RaySerde;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import javax.annotation.concurrent.NotThreadSafe;

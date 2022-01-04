@@ -1,4 +1,4 @@
-package io.ray.runtime.serialization.serializers;
+package io.ray.runtime.serialization;
 
 import io.ray.runtime.io.MemoryBuffer;
 import java.nio.ByteBuffer;

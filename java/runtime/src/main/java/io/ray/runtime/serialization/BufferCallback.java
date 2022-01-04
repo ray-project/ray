@@ -1,4 +1,4 @@
-package io.ray.runtime.serialization.serializers;
+package io.ray.runtime.serialization;
 
 /**
  * If the callback returns false, the given buffer is out-of-band; otherwise the buffer is

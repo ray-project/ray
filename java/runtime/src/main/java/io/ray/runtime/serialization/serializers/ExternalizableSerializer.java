@@ -5,6 +5,7 @@ import io.ray.runtime.io.Platform;
 import io.ray.runtime.io.SerdeObjectInput;
 import io.ray.runtime.io.SerdeObjectOutput;
 import io.ray.runtime.serialization.RaySerde;
+import io.ray.runtime.serialization.Serializer;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.lang.reflect.Constructor;

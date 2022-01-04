@@ -4,6 +4,7 @@ import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
+import io.ray.runtime.serialization.Serializer;
 import io.ray.runtime.serialization.resolver.ReferenceResolver;
 import io.ray.runtime.serialization.serializers.FieldAccessor.ObjectAccessor;
 import io.ray.runtime.serialization.util.Descriptor;
