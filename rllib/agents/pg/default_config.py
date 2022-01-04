@@ -13,6 +13,11 @@ DEFAULT_CONFIG = with_common_config({
 
     # Experimental: By default, switch off preprocessors for PG.
     "_disable_preprocessor_api": True,
+
+    # PG is the first algo (experimental) to not use the distr. exec API
+    # anymore. Only supported for simple_optimizer=True so far.
+    "simple_optimizer": True,
+    "_disable_execution_plan_api": True,
 })
 
 # __sphinx_doc_end__

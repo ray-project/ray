@@ -44,7 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -364,10 +364,11 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
+        stats = self._stats.child_builder("repartition")
         if shuffle:
-            new_blocks = simple_shuffle(self._blocks, num_blocks)
+            new_blocks, stage_info = simple_shuffle(self._blocks, num_blocks)
             return Dataset(new_blocks, self._epoch,
-                           self._stats.child_TODO("repartition"))
+                           stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
@@ -402,8 +403,11 @@ class Dataset(Generic[T]):
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
-            builder = (ArrowBlockBuilder()
-                       if self._is_arrow_dataset() else SimpleBlockBuilder())
+            dataset_format = self._dataset_format()
+            if dataset_format == "arrow":
+                builder = ArrowBlockBuilder()
+            else:
+                builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
                 input_files=None, exec_stats=BlockExecStats.TODO)
@@ -449,17 +453,18 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        stats = self._stats.child_builder("random_shuffle")
 
         if num_blocks is None:
             num_blocks = self._blocks.executed_num_blocks()  # Blocking.
-        new_blocks = simple_shuffle(
+        new_blocks, stage_info = simple_shuffle(
             self._move_blocks() if _move else self._blocks,
             num_blocks,
             random_shuffle=True,
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks, self._epoch,
-                       self._stats.child_TODO("random_shuffle"))
+                       stats.build_multistage(stage_info))
 
     def split(self,
               n: int,
@@ -922,13 +927,13 @@ class Dataset(Generic[T]):
                 "When giving a list for `on`, it must be nonempty.")
 
         try:
-            is_arrow = self._is_arrow_dataset()
+            dataset_format = self._dataset_format()
         except ValueError:
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if is_arrow:
-            # This should be cached from the ._is_arrow_dataset() check, so we
+        if dataset_format == "arrow":
+            # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
             assert schema is not None
@@ -938,7 +943,7 @@ class Dataset(Generic[T]):
                 return on
 
             if on is None:
-                # If a null `on` is given for an Arrow Dataset, coerce it to
+                # If a null `on` is given for a table Dataset, coerce it to
                 # all columns sans any that we want to skip.
                 if skip_cols is None:
                     skip_cols = []
@@ -964,8 +969,9 @@ class Dataset(Generic[T]):
                     "instead of a simple Dataset.")
         return on
 
-    def _is_arrow_dataset(self) -> bool:
-        """Determine if Dataset is an Arrow dataset.
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -973,16 +979,18 @@ class Dataset(Generic[T]):
         try:
             import pyarrow as pa
         except ModuleNotFoundError:
-            return False
+            return "simple"
         else:
             # We need schema to properly validate, so synchronously
             # fetch it if necessary.
             schema = self.schema(fetch_if_missing=True)
             if schema is None:
                 raise ValueError(
-                    "Dataset is empty or cleared, can't determine whether "
-                    "it's an Arrow dataset")
-            return isinstance(schema, pa.Schema)
+                    "Dataset is empty or cleared, can't determine the format"
+                    " of the dataset")
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+            return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -1897,13 +1905,18 @@ class Dataset(Generic[T]):
 
     def to_torch(self,
                  *,
-                 label_column: str,
-                 feature_columns: Optional[List[str]] = None,
+                 label_column: Optional[str] = None,
+                 feature_columns: Union[None, List[str],
+                                        List[List[str]],
+                                        Dict[str, List[str]]] = None,
                  label_column_dtype: Optional["torch.dtype"] = None,
-                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 feature_column_dtypes: Union[None, "torch.dtype",
+                                              List["torch.dtype"],
+                                              Dict[str, "torch.dtype"]] = None,
                  batch_size: int = 1,
                  prefetch_blocks: int = 0,
-                 drop_last: bool = False) -> \
+                 drop_last: bool = False,
+                 unsqueeze_label_tensor: bool = True) -> \
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -1913,10 +1926,32 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item is the features tensor, and the second item
-        is the label tensor. The features tensor will be of shape (N, n),
-        and the label tensor will be of shape (N, 1), where N is the
-        ``batch_size`` used by the DataLoader, and n is the number of features.
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -1924,18 +1959,24 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            label_column (str): The name of the column used as the label
-                (second element of the output list).
-            feature_columns (Optional[List[str]]): The names of the columns
-                to use as the features. If None, then use all columns
-                except the label columns as the features.
+            label_column (Optional[str]): The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns (Union[None, List[str], List[List[str]], \
+Dict[str, List[str]]]): The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label columns as
+                the features.
             label_column_dtype (Optional[torch.dtype]): The torch dtype to
                 use for the label column. If None, then automatically infer
                 the dtype.
-            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
-                to use for the feature columns. The len of this list must
-                be equal to the len of ``feature_columns``. If None,
-                then automatically infer the dtype.
+            feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],\
+ Dict[str, torch.dtype]]): The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
             batch_size (int): How many samples per batch to yield at a time.
                 Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
@@ -1944,6 +1985,11 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            unsqueeze_label_tensor (bool): If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
 
         Returns:
             A torch IterableDataset.
@@ -1953,13 +1999,36 @@ class Dataset(Generic[T]):
         from ray.data.impl.torch_iterable_dataset import \
             TorchIterableDataset
 
-        if feature_columns and feature_column_dtypes:
-            if len(feature_columns) != len(feature_column_dtypes):
-                raise ValueError("The lengths of `feature_columns` "
-                                 f"({len(feature_columns)}) and "
-                                 f"`feature_column_dtypes` ("
-                                 f"{len(feature_column_dtypes)}) do not "
-                                 "match!")
+        multi_input = feature_columns and (isinstance(feature_columns, dict) or
+                                           isinstance(feature_columns[0],
+                                                      (list, tuple)))
+
+        # If an empty collection is passed in, treat it the same as None
+        if not feature_columns:
+            feature_columns = None
+
+        if (feature_column_dtypes
+                and not isinstance(feature_column_dtypes, torch.dtype)):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}.")
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys.")
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a list of lists, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}.")
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length.")
 
         def make_generator():
             for batch in self.iter_batches(
@@ -1967,27 +2036,63 @@ class Dataset(Generic[T]):
                     batch_format="pandas",
                     prefetch_blocks=prefetch_blocks,
                     drop_last=drop_last):
-                label_vals = batch.pop(label_column).values
-                label_tensor = torch.as_tensor(
-                    label_vals, dtype=label_column_dtype)
-                label_tensor = label_tensor.view(-1, 1)
-
-                feature_tensors = []
-                if feature_columns:
-                    batch = batch[feature_columns]
-
-                if feature_column_dtypes:
-                    dtypes = feature_column_dtypes
+                if label_column:
+                    label_vals = batch.pop(label_column).values
+                    label_tensor = torch.as_tensor(
+                        label_vals, dtype=label_column_dtype)
+                    if unsqueeze_label_tensor:
+                        label_tensor = label_tensor.view(-1, 1)
                 else:
-                    dtypes = [None] * len(batch.columns)
+                    label_tensor = None
 
-                for col, dtype in zip(batch.columns, dtypes):
-                    col_vals = batch[col].values
-                    t = torch.as_tensor(col_vals, dtype=dtype)
-                    t = t.view(-1, 1)
-                    feature_tensors.append(t)
+                def get_feature_tensors(
+                        batch,
+                        feature_columns: List[str],
+                        feature_column_dtype: "torch.dtype",
+                        assert_feature_columns_not_empty: bool = False
+                ) -> torch.Tensor:
+                    feature_tensors = []
+                    if (assert_feature_columns_not_empty
+                            and not feature_columns):
+                        raise ValueError("`feature_columns` may not be empty")
+                    if feature_columns:
+                        batch = batch[feature_columns]
 
-                features_tensor = torch.cat(feature_tensors, dim=1)
+                    for col in batch.columns:
+                        col_vals = batch[col].values
+                        t = torch.as_tensor(
+                            col_vals, dtype=feature_column_dtype)
+                        t = t.view(-1, 1)
+                        feature_tensors.append(t)
+
+                    return torch.cat(feature_tensors, dim=1)
+
+                if not multi_input:
+                    features_tensor = get_feature_tensors(
+                        batch, feature_columns, feature_column_dtypes)
+                else:
+                    if isinstance(feature_columns, dict):
+                        features_tensor = {
+                            key: get_feature_tensors(
+                                batch,
+                                feature_columns[key],
+                                feature_column_dtypes[key]
+                                if isinstance(feature_column_dtypes, dict) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
+                            for key in feature_columns
+                        }
+                    else:
+                        features_tensor = [
+                            get_feature_tensors(
+                                batch,
+                                feature_columns[idx],
+                                feature_column_dtypes[idx] if isinstance(
+                                    feature_column_dtypes, (list, tuple)) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
+                            for idx in range(len(feature_columns))
+                        ]
                 yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
@@ -2171,10 +2276,10 @@ class Dataset(Generic[T]):
                 "The dataset has more than the given limit of {} records. "
                 "Use ds.limit(N).to_pandas().".format(limit))
         blocks = self.get_internal_block_refs()
-        output = DelegatingArrowBlockBuilder()
+        output = DelegatingBlockBuilder()
         for block in blocks:
             output.add_block(ray.get(block))
-        return output.build().to_pandas()
+        return BlockAccessor.for_block(output.build()).to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
@@ -2233,7 +2338,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = self._blocks.get_blocks()
 
-        if self._is_arrow_dataset():
+        if self._dataset_format() == "arrow":
             # Zero-copy path.
             return blocks
 

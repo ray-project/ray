@@ -41,7 +41,7 @@ def get_ray_status_output(address):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -66,7 +66,7 @@ def test_create_placement_group_during_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
@@ -131,7 +131,7 @@ def test_detached_placement_group(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
@@ -245,7 +245,7 @@ def test_named_placement_group(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],

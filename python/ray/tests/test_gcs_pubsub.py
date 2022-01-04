@@ -1,8 +1,6 @@
 import sys
 import threading
 
-import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
     GcsLogSubscriber, GcsFunctionKeySubscriber, GcsAioPublisher, \
     GcsAioErrorSubscriber, GcsAioLogSubscriber, GcsAioResourceUsageSubscriber
@@ -19,11 +17,7 @@ import pytest
     indirect=True)
 def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -50,11 +44,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -80,11 +70,7 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
     indirect=True)
 def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -118,11 +104,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioLogSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -153,11 +135,7 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     indirect=True)
 def test_publish_and_subscribe_function_keys(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
     subscriber.subscribe()
@@ -182,11 +160,7 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
     indirect=True)
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     subscriber = GcsAioResourceUsageSubscriber(address=gcs_server_addr)
     await subscriber.subscribe()
@@ -212,11 +186,7 @@ def test_two_subscribers(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
     address_info = ray_start_regular
-    redis = ray._private.services.create_redis_client(
-        address_info["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+    gcs_server_addr = address_info["gcs_address"]
 
     num_messages = 100
 

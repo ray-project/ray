@@ -103,14 +103,14 @@ def train_func(config):
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
+            feature_column_dtypes=torch.float,
             batch_size=batch_size,
         )
         validation_torch_dataset = validation_dataset.to_torch(
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
-            feature_column_dtypes=[torch.float],
+            feature_column_dtypes=torch.float,
             batch_size=batch_size)
 
         device = train.torch.get_device()
