@@ -35,7 +35,7 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
         prefix = with_docker_exec(
             [cmd],
             container_name=self.container_name,
-            with_interactive=True,
+            with_interactive=False,
             docker_cmd=self.docker_cmd)[0]
         return self._run_shell(prefix)
 
