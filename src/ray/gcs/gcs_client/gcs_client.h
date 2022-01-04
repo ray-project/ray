@@ -279,7 +279,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
       GUARDED_BY(reconnect_callbacks_mutex_);
 
   friend struct GcsClientReconnectionTest;
-  FRIEND_TEST(GcsClientReconnectionTest, Test1);
+  FRIEND_TEST(GcsClientReconnectionTest, TestReconnectionNormally);
+  FRIEND_TEST(GcsClientReconnectionTest, TestReconnectionInProgress);
+  FRIEND_TEST(GcsClientReconnectionTest, TestReconnectionWhenDisconnected);
 };
 
 }  // namespace gcs

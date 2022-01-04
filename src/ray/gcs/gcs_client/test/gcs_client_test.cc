@@ -1039,7 +1039,7 @@ struct GcsClientReconnectionTest : public GcsClientTest {
   GcsClientReconnectionTest() {}
 
  protected:
-  void SetUp() { GcsClientTest::SetUp(); }
+  void SetUp() override { GcsClientTest::SetUp(); }
 
   virtual void SetUpClient() override {
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
