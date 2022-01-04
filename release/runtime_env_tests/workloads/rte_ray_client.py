@@ -53,6 +53,9 @@ def test_pip_requirements_files(tmpdir: str):
     # actor_18 = VersionActor.remote()
     # assert ray.get(actor_18.get_version.remote()) == "2.18.0"
 
+    actor_16 = VersionActor.options(runtime_env=env_16).remote()
+    assert ray.get(actor_16.get_version.remote()) == "2.16.0"
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
