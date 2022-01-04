@@ -193,6 +193,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // be completed due to the add of this object.
   if (object_to_active_wait_requests_.find(object_id) !=
       object_to_active_wait_requests_.end()) {
+    std::vector<UniqueID> complete_waits;
     for (const auto &wait_id : object_to_active_wait_requests_.at(object_id)) {
       auto wait_state_iter = active_wait_requests_.find(wait_id);
       RAY_CHECK(wait_state_iter != active_wait_requests_.end());
@@ -200,8 +201,11 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
       wait_state.remaining.erase(object_id);
       wait_state.found.emplace(object_id);
       if (wait_state.found.size() >= wait_state.num_required_objects) {
-        WaitComplete(wait_id);
+        complete_waits.emplace_back(wait_id);
       }
+    }
+    for (const auto &wait_id : complete_waits) {
+      WaitComplete(wait_id);
     }
   }
 }
