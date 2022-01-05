@@ -200,7 +200,7 @@ requests to it. Here's a client script that requests a summary from the same
 article as the original Python script:
 
 .. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_client.py
+  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_router_client.py
     :language: python
     :start-after: __client_function_start__
     :end-before: __client_function_end__
@@ -244,7 +244,7 @@ client script is that the URL uses the ``Summarizer`` path instead of
 ``router``.
 
 .. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_client.py
+  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_summarizer_client.py
     :language: python
     :start-after: __client_class_start__
     :end-before: __client_class_end__
@@ -299,7 +299,7 @@ localhost IP. This means each of our three routes comes after the
 requests to the ``max10`` route using this client script:
 
 .. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_client.py
+  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_client.py
     :language: python
     :start-after: __client_fastapi_start__
     :end-before: __client_fastapi_end__
