@@ -2,7 +2,7 @@ import copy
 import json
 import logging
 import os
-import shutil
+import subprocess
 from threading import RLock
 import time
 from types import ModuleType
@@ -258,21 +258,26 @@ class FakeMultiNodeProvider(NodeProvider):
             self._boostrap_config_path = os.path.join(self._volume_dir,
                                                       "bootstrap_config.yaml")
 
-            if not self.in_docker_container:
-                # Only needed on host
-                shutil.copy(
-                    os.path.join(
-                        os.path.dirname(__file__), "bootstrap_key.pem"),
-                    self._volume_dir)
-                shutil.copy(
-                    os.path.join(
-                        os.path.dirname(__file__), "bootstrap_key.pub"),
-                    self._volume_dir)
-
             self._private_key_path = os.path.join(self._volume_dir,
                                                   "bootstrap_key.pem")
             self._public_key_path = os.path.join(self._volume_dir,
-                                                 "bootstrap_key.pub")
+                                                 "bootstrap_key.pem.pub")
+
+            if not self.in_docker_container:
+                # Create private key
+                if not os.path.exists(self._private_key_path):
+                    subprocess.check_output(
+                        f"ssh-keygen -b 2048 -t rsa -q -N \"\" "
+                        f"-f {self._private_key_path}",
+                        shell=True)
+
+                # Create public key
+                if not os.path.exists(self._public_key_path):
+                    subprocess.check_output(
+                        f"ssh-keygen -y "
+                        f"-f {self._private_key_path} "
+                        f"> {self._public_key_path}",
+                        shell=True)
 
             self._docker_compose_config_path = os.path.join(
                 self._volume_dir, "docker-compose.yaml")

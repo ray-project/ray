@@ -16,28 +16,6 @@ from ray.util.ml_utils.dict import deep_update
 logger = logging.getLogger(__name__)
 
 
-class _DockerMonitor:
-    """Wrapper around docker_monitor.py script"""
-
-    def __init__(self, config_file: str):
-        self._monitor_script = os.path.join(
-            os.path.dirname(__file__), "docker_monitor.py")
-        self._config_file = config_file
-        self._process = None
-
-    def start(self):
-        self._process = subprocess.Popen(
-            ["python", self._monitor_script, self._config_file])
-        time.sleep(2)
-
-    def stop(self):
-        if self._process:
-            self._process.wait(timeout=30)
-            if self._process.poll() is None:
-                self._process.terminate()
-        self._process = None
-
-
 class DockerCluster:
     """Docker cluster wrapper.
 
@@ -57,7 +35,9 @@ class DockerCluster:
         self._cluster_config = None
         self._docker_image = None
 
-        self._monitor = None
+        self._monitor_script = os.path.join(
+            os.path.dirname(__file__), "docker_monitor.py")
+        self._monitor_process = None
 
     @property
     def config_file(self):
@@ -174,15 +154,25 @@ class DockerCluster:
         self.update_config()
         self.maybe_pull_image()
 
-        self._monitor = _DockerMonitor(self.config_file)
-
     def teardown(self):
         shutil.rmtree(self._tempdir)
         self._tempdir = None
         self._config_file = None
 
+    def _start_monitor(self):
+        self._monitor_process = subprocess.Popen(
+            ["python", self._monitor_script, self.config_file])
+        time.sleep(2)
+
+    def _stop_monitor(self):
+        if self._monitor_process:
+            self._monitor_process.wait(timeout=30)
+            if self._monitor_process.poll() is None:
+                self._monitor_process.terminate()
+        self._monitor_process = None
+
     def start(self):
-        self._monitor.start()
+        self._start_monitor()
 
         subprocess.check_output(
             f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True)
@@ -194,4 +184,4 @@ class DockerCluster:
         subprocess.check_output(
             f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True)
 
-        self._monitor.stop()
+        self._stop_monitor()
