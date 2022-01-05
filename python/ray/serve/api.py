@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import collections
+import copy
 import inspect
 import logging
 import random
@@ -199,7 +200,9 @@ class Client:
             prev_version: Optional[str] = None,
             route_prefix: Optional[str] = None,
             url: Optional[str] = None,
-            _blocking: Optional[bool] = True) -> Optional[GoalId]:
+            _blocking: Optional[bool] = True,
+            recursive: Optional[bool] = False
+        ) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -797,11 +800,15 @@ class Deployment:
         new_obj = self._func_or_class.__new__(self._func_or_class)
         def setattr(instance, name: str, value: Any) -> None:
             if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
-                print(f"Setting deployment {instance} - {name} as {str(value)}")
+                print(f"Assigning deployment attribute for {instance} - {name} as {str(value)}")
                 object.__setattr__(instance, name, value)
-                instance.__deployment_class__._child_deployments[name] = value.__deployment_class__
+                if name == "model_1":
+                    print(1)
+                deployment_copy = copy.deepcopy(value.__deployment_class__)
+                deployment_copy._name = f"{value.__deployment_class__._name}#{name}"
+                instance.__deployment_class__._child_deployments[name] = deployment_copy
             else:
-                print(f"Setting non-deployment {instance} - {name} as {str(value)}")
+                print(f"Assigning non-deployment attribute for {instance} - {name} as {str(value)}")
                 object.__setattr__(instance, name, value)
         self._func_or_class.__setattr__ = setattr
         new_obj.__init__(*args, **kwargs)
@@ -810,7 +817,7 @@ class Deployment:
 
 
     @PublicAPI
-    def deploy(self, *init_args, _blocking=True, **init_kwargs):
+    def deploy(self, *init_args, _blocking=True, recursive=False, **init_kwargs):
         """Deploy or update this deployment.
 
         Args:
@@ -824,18 +831,65 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
-        return _get_global_client().deploy(
-            self._name,
-            self._func_or_class,
-            init_args,
-            init_kwargs,
-            ray_actor_options=self._ray_actor_options,
-            config=self._config,
-            version=self._version,
-            prev_version=self._prev_version,
-            route_prefix=self.route_prefix,
-            url=self.url,
-            _blocking=_blocking)
+        # Make replica constructor's  __setattr__ take deployment handle ?
+        def setattr(instance, name: str, value: Any) -> None:
+            if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
+                handle_name = f"{value.__deployment_class__._name}"
+                deployment_handle = get_deployment(handle_name)
+                print(f"Swapping {instance} - variable {name} as {str(deployment_handle)}")
+                object.__setattr__(instance, name, deployment_handle)
+            else:
+                print(f"Assigning non-deployment attribute for {instance} - {name} as {str(value)}")
+                object.__setattr__(instance, name, value)
+        self._func_or_class.__setattr__ = setattr
+
+        if recursive and len(self._child_deployments) > 0:
+            for child_name, child_deployment in self._child_deployments.items():
+                _get_global_client().deploy(
+                    child_deployment._name,
+                    child_deployment._func_or_class,
+                    init_args,
+                    init_kwargs,
+                    ray_actor_options=child_deployment._ray_actor_options,
+                    config=child_deployment._config,
+                    version=child_deployment._version,
+                    prev_version=child_deployment._prev_version,
+                    route_prefix=child_deployment.route_prefix,
+                    url=child_deployment.url,
+                    _blocking=_blocking,
+                    recursive=recursive,
+                )
+            my_handle = _get_global_client().deploy(
+                self._name,
+                self._func_or_class,
+                init_args,
+                init_kwargs,
+                ray_actor_options=self._ray_actor_options,
+                config=self._config,
+                version=self._version,
+                prev_version=self._prev_version,
+                route_prefix=self.route_prefix,
+                url=self.url,
+                _blocking=_blocking,
+                recursive=recursive,
+            )
+
+            return my_handle
+        else:
+            return _get_global_client().deploy(
+                self._name,
+                self._func_or_class,
+                init_args,
+                init_kwargs,
+                ray_actor_options=self._ray_actor_options,
+                config=self._config,
+                version=self._version,
+                prev_version=self._prev_version,
+                route_prefix=self.route_prefix,
+                url=self.url,
+                _blocking=_blocking,
+                recursive=recursive,
+            )
 
     @PublicAPI
     def delete(self):

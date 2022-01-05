@@ -177,6 +177,11 @@ class RayServeHandle:
         return await self._remote(self.deployment_name, self.handle_options,
                                   args, kwargs)
 
+    async def __call__(self, *args, **kwargs):
+        self.request_counter.inc()
+        return await(await self._remote(self.deployment_name, self.handle_options,
+                                  args, kwargs))
+
     def __repr__(self):
         return (f"{self.__class__.__name__}"
                 f"(deployment='{self.deployment_name}')")

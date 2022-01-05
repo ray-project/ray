@@ -1,7 +1,6 @@
 from typing import Any, Callable, Dict
 import asyncio
 # import statistics
-import attr
 
 from ray import serve
 # from ray.serve import pipeline
@@ -55,9 +54,6 @@ class Pipeline:
         self.model_2 = Model(2)
         self.model_3 = Model(3)
 
-    # def __setattr__(self, __name: str, __value: Any) -> None:
-    #     print("BBBB")
-
     async def __call__(self, req):
         """
         1) No ray API knowledge is required here, user just provides blocks of
@@ -79,6 +75,11 @@ class Pipeline:
             x = await self.model_3(processed_feature)
 
         return x
+
+        # await c(
+        #     b(req),
+        #     a(req)
+        # )
 
         # Whole graph is           model_1
         #                        /          \
@@ -124,8 +125,12 @@ async def main():
     # add to my node's dictionary
     # pipeline.instantiate(recursive=True)
 
-    for i in range(10):
-        print(await pipeline(i))
+    serve.start()
+    # for i in range(10):
+    #     print(await pipeline(i))
 
+
+    handle = Pipeline.deploy(recursive=True)
+    print("AA")
 if __name__ == "__main__":
     asyncio.run(main())

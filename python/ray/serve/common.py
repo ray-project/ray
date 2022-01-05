@@ -63,8 +63,9 @@ class DeploymentInfo:
             assert self.actor_name is not None
             assert self.serialized_deployment_def is not None
             self._cached_actor_def = ray.remote(
-                create_replica_wrapper(self.actor_name,
-                                       self.serialized_deployment_def))
+                create_replica_wrapper(
+                    self.actor_name,
+                    self.serialized_deployment_def))
         return self._cached_actor_def
 
 
