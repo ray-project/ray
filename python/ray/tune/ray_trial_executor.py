@@ -264,21 +264,6 @@ class RayTrialExecutor(TrialExecutor):
 
         self._pg_manager.update_status()
 
-    def get_staged_trial(self):
-        """Get a trial whose placement group was successfully staged.
-
-        Can also return None if no trial is available.
-
-        Returns:
-            Trial object or None.
-
-        """
-        for trial in self._staged_trials:
-            if self._pg_manager.has_ready(trial):
-                return trial
-
-        return None
-
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
