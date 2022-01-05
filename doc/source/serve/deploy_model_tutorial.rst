@@ -16,12 +16,10 @@ For this tutorial, we'll use `HuggingFace's SummarizationPipeline <https://huggi
 to access a model that summarizes text. Let's take a look at how it works.
 This is the code for the model:
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_local.py
-    :language: python
-    :start-after: __local_model_start__
-    :end-before: __local_model_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_local.py
+  :language: python
+  :start-after: __local_model_start__
+  :end-before: __local_model_end__
 
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
 generate summaries of text. The ``summarizer`` variable inside ``summarize``
@@ -34,6 +32,7 @@ locally by executing the Python script, which uses the model to summarize an
 article about the Apollo 11 moon landing.
 
 .. code-block:: bash
+
   $ python local_model.py
 
   "two astronauts steered their fragile lunar module safely and smoothly to the
@@ -49,32 +48,27 @@ We start by opening a new Python file. First, we need to import ``ray`` and
 ``ray serve``, to use features in Ray Serve such as ``deployments``, which
 provide HTTP access to our model.
 
-.. code-block:: python
-
-  import ray
-  from ray import serve
-  import requests
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+    :language: python
+    :start-after: __import_start__
+    :end-before: __import_end__
 
 After these imports, we can include our model code from above. 
 We won't call our ``summarize`` function just yet though! 
 We will soon add logic to handle HTTP requests, so the ``summarize`` function 
 can operate on article text sent via HTTP request.
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
-    :language: python
-    :start-after: __local_model_start__
-    :end-before: __local_model_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :language: python
+  :start-after: __local_model_start__
+  :end-before: __local_model_end__
 
 Ray Serve needs to run on top of a Ray Cluster, so we connect to a local one:
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
-    :language: python
-    :start-after: __start_ray_cluster_start__
-    :end-before: __start_ray_cluster_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :language: python
+  :start-after: __start_ray_cluster_start__
+  :end-before: __start_ray_cluster_end__
 
 The ``address`` parameter in ``ray.init()`` connects your Serve script to a
 running local Ray cluster. Later, we'll discuss how to start a local ray
@@ -91,12 +85,10 @@ create are accessible by default.
 
 Next, we start the Ray Serve runtime:
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
-    :language: python
-    :start-after: __start_serve_start__
-    :end-before: __start_serve_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :language: python
+  :start-after: __start_serve_start__
+  :end-before: __start_serve_end__
 
 .. note::
 
@@ -110,12 +102,10 @@ accepts HTTP requests and routes them to the ``summarize`` function. We
 define a function called ``router`` that takes in a Starlette ``request``
 object [#f1]:
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
-    :language: python
-    :start-after: __router_start__
-    :end-before: __router_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :language: python
+  :start-after: __router_start__
+  :end-before: __router_end__
 
 ``router`` uses the ``txt`` parameter in the ``request`` to find the article
 text to summarize. It then passes the article text into the ``summarize``
@@ -140,26 +130,24 @@ object.
 Since ``@serve.deployment`` makes ``router`` a ``Deployment`` object, it can be
 deployed using ``router.deploy()``:
 
-.. code-block:: python
-
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
-    :language: python
-    :start-after: __router_deploy_start__
-    :end-before: __router_deploy_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :language: python
+  :start-after: __router_deploy_start__
+  :end-before: __router_deploy_end__
 
 Once we deploy ``router``, we can query the model over HTTP. 
 With that, we can run our model on Ray Serve! 
 Here's the full Ray Serve deployment script that we built for our model:
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment_full.py
-    :language: python
-    :start-after: __deployment_full_start__
-    :end-before: __deployment_full_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment_full.py
+  :language: python
+  :start-after: __deployment_full_start__
+  :end-before: __deployment_full_end__
 
 To deploy ``router``, we first start a local Ray cluster:
 
 .. code-block:: bash
+
   $ ray start --head
 
 The Ray cluster that this command launches is the same Ray cluster that the
@@ -175,6 +163,7 @@ After starting the Ray cluster, we can run the Python file to deploy ``router``
 and begin accepting HTTP requests:
 
 .. code-block:: bash
+
   $ python model_on_ray_serve.py
 
 We can now test our model over HTTP. The structure of our HTTP query is:
@@ -199,15 +188,14 @@ Now that the ``summarize`` function is deployed on Ray Serve, we can make HTTP
 requests to it. Here's a client script that requests a summary from the same 
 article as the original Python script:
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_router_client.py
-    :language: python
-    :start-after: __client_function_start__
-    :end-before: __client_function_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_router_client.py
+  :language: python
+  :start-after: __client_function_start__
+  :end-before: __client_function_end__
 
 We can run this script while the model is deployed to get a response over HTTP:
 
-..code-block:: bash
+.. code-block:: bash
   $ python router_client.py
 
   "two astronauts steered their fragile lunar module safely and smoothly to the
@@ -223,11 +211,10 @@ instead of reloading it for each HTTP query.
 
 We can achieve this by converting our ``summarize`` function into a class:
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_class_deployment.py
-    :language: python
-    :start-after: __deployment_class_start__
-    :end-before: __deployment_class_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_class_deployment.py
+  :language: python
+  :start-after: __deployment_class_start__
+  :end-before: __deployment_class_end__
 
 In this configuration, we can query the ``Summarizer`` class directly. 
 The ``Summarizer`` is initialized once (after calling ``Summarizer.deploy()``).
@@ -251,17 +238,17 @@ Serve function deployments. Here's an example client script for the
 client script is that the URL uses the ``Summarizer`` path instead of
 ``router``.
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_summarizer_client.py
-    :language: python
-    :start-after: __client_class_start__
-    :end-before: __client_class_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_summarizer_client.py
+  :language: python
+  :start-after: __client_class_start__
+  :end-before: __client_class_end__
 
 We can deploy the class-based model on Serve without stopping the Ray cluster.
 However, for the purposes of this tutorial, let's restart the cluster, deploy
 the model, and query it over HTTP:
 
 .. code-block:: bash
+
   $ ray stop
   $ ray start --head
   $ python summarizer_on_ray_serve.py
@@ -282,19 +269,18 @@ As an example of FastAPI, here's a modified version of our ``Summarizer`` class
 with route options to request a minimum or maximum length of ten words in the
 summaries:
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_deployment.py
-    :language: python
-    :start-after: __fastapi_start__
-    :end-before: __fastapi_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_deployment.py
+  :language: python
+  :start-after: __fastapi_start__
+  :end-before: __fastapi_end__
 
 The class now exposes three routes:
-  * ``/Summarizer``: As before, this route takes in article text and returns
-                     a summary.
-  * ``/Summarizer/min10``: This route takes in article text and returns a
-                           summary with at least 10 words.
-  * ``/Summarizer/max10``: This route takes in article text and returns a
-                           summary with at most 10 words.
+- ``/Summarizer``: As before, this route takes in article text and returns
+  a summary.
+- ``/Summarizer/min10``: This route takes in article text and returns a
+  summary with at least 10 words.
+- ``/Summarizer/max10``: This route takes in article text and returns a
+  summary with at most 10 words.
 
 Notice that ``Summarizer``'s methods no longer take in a Starlette ``request``
 object. Instead, they take in the URL's `txt` parameter directly with FastAPI's
@@ -306,13 +292,13 @@ localhost IP. This means each of our three routes comes after the
 ``http://127.0.0.1:8000`` IP and port address. As an example, we can make
 requests to the ``max10`` route using this client script:
 
-.. code-block:: python
-  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_client.py
-    :language: python
-    :start-after: __client_fastapi_start__
-    :end-before: __client_fastapi_end__
+.. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_client.py
+  :language: python
+  :start-after: __client_fastapi_start__
+  :end-before: __client_fastapi_end__
 
-..code-block:: bash
+.. code-block:: bash
+
   $ ray stop
   $ ray start --head
   $ python serve_with_fastapi.py
@@ -332,5 +318,5 @@ and Python web servers, be sure to check out :doc:`tutorials/index`.
 .. rubric:: Footnotes
 
 .. [#f1] `Starlette <https://www.starlette.io/>`_ is a web server framework
-used by Ray Serve. Its `Request <https://www.starlette.io/requests/>`_ class
-provides a nice interface for incoming HTTP requests.
+   used by Ray Serve. Its `Request <https://www.starlette.io/requests/>`_ class
+   provides a nice interface for incoming HTTP requests.
