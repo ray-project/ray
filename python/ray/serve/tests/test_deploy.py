@@ -424,8 +424,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         # Returns dict[val, set(pid)].
         blocking = []
         responses = defaultdict(set)
+        timeout_value = 100 if sys.platform == "win32" else 30
         start = time.time()
-        while time.time() - start < 100:
+        while time.time() - start < timeout_value:
             refs = [call.remote(block=False) for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
@@ -523,8 +524,9 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         # Returns dict[val, set(pid)].
         blocking = []
         responses = defaultdict(set)
+        timeout_value = 200 if sys.platform == "win32" else 30
         start = time.time()
-        while time.time() - start < 200:
+        while time.time() - start < timeout_value:
             refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
@@ -619,8 +621,9 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     def make_calls(expected):
         # Returns dict[val, set(pid)].
         responses = defaultdict(set)
+        timeout_value = 100 if sys.platform == "win32" else 30
         start = time.time()
-        while time.time() - start < 100:
+        while time.time() - start < timeout_value:
             refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
@@ -672,8 +675,9 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     def make_calls(expected):
         # Returns dict[val, set(pid)].
         responses = defaultdict(set)
+        timeout_value = 200 if sys.platform == "win32" else 30
         start = time.time()
-        while time.time() - start < 200:
+        while time.time() - start < timeout_value:
             refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
