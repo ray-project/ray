@@ -237,6 +237,14 @@ method by default, which takes in the Starlette ``request`` object. The
 ``Summarizer`` class can then take the request's ``txt`` data and call the
 ``self.summarize`` function on it without loading the model on each query.
 
+.. tip::
+  Instance variables can also store state. For example, to
+  count the number of requests served, a ``@serve.deployment`` class can define
+  a ``self.counter`` instance variable in its ``__init__`` function and set it
+  to 0. When the class is queried, it can increment the ``self.counter``
+  variable inside of the function responding to the query. The ``self.counter``
+  will keep track of the number of requests served across requests.
+
 HTTP queries for the Ray Serve class deployments follow a similar format to Ray 
 Serve function deployments. Here's an example client script for the
 ``Summarizer`` class. Notice that the only difference from the ``router``'s
