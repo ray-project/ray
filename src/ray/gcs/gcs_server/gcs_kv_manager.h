@@ -50,8 +50,12 @@ class InternalKVInterface {
   /// Delete the key from the store.
   ///
   /// \param key The key to be deleted.
+  /// \param del_by_prefix Whether to treat the key as prefix. If true, it'll
+  ///     delete all keys with `key` as the prefix.
   /// \param callback Callback function.
-  virtual void Del(const std::string &key, std::function<void(bool)> callback) = 0;
+  virtual void Del(const std::string &key,
+                   bool del_by_prefix,
+                   std::function<void(int64_t)> callback) = 0;
 
   /// Check whether the key exists in the store.
   ///
@@ -90,7 +94,9 @@ class RedisInternalKV : public InternalKVInterface {
   void Put(const std::string &key, const std::string &value, bool overwrite,
            std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> callback) override;
+  void Del(const std::string &key,
+           bool del_by_prefix,
+           std::function<void(int64_t)> callback) override;
 
   void Exists(const std::string &key, std::function<void(bool)> callback) override;
 
@@ -117,7 +123,7 @@ class MemoryInternalKV : public InternalKVInterface {
   void Put(const std::string &key, const std::string &value, bool overwrite,
            std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> callback) override;
+  void Del(const std::string &key, bool del_by_prefix, std::function<void(int64_t)> callback) override;
 
   void Exists(const std::string &key, std::function<void(bool)> callback) override;
 
