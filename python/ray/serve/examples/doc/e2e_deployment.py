@@ -12,6 +12,8 @@ def summarize(text):
     summary_list = summarizer(text)
     summary = summary_list[0]["summary_text"]
     return summary
+
+
 # __local_model_end__
 
 # __start_ray_cluster_start__
@@ -28,6 +30,8 @@ serve.start(detached=True)
 def router(request):
     txt = request.query_params["txt"]
     return summarize(txt)
+
+
 # __router_end__
 
 # __router_deploy_start__
