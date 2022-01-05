@@ -610,10 +610,15 @@ class PlacementGroupManager:
         return True
 
     def return_pg(self, trial: "Trial"):
-        """Return pg back to Core scheduling.
+        """Disassociates the trial and its pg from the management of PGManager.
+
+        Remove the trial and its pg from PGManager's internal bookkeeping.
 
         Args:
             trial (Trial): Return placement group of this trial.
+
+        Returns:
+            pg: The placement group associated with the trial.
         """
 
         pg = self._in_use_trials.pop(trial)

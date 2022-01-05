@@ -2,13 +2,15 @@
 import copy
 import inspect
 from collections import deque
+from contextlib import contextmanager
 from functools import partial
 import logging
 import os
+from queue import Queue
 import random
 import time
 import traceback
-from contextlib import contextmanager
+from threading import Thread
 from typing import (
     Callable,
     Dict,
@@ -18,7 +20,6 @@ from typing import (
 )
 
 import ray
-from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
@@ -34,6 +35,7 @@ from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.placement_group import remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,6 @@ TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
-TRIAL_CLEANUP_THRESHOLD = 100
 
 
 class _ActorClassCache:
@@ -87,99 +88,38 @@ class _LocalWrapper:
         return self._result
 
 
-from threading import Thread
-from queue import Queue
-from ray.util.placement_group import remove_placement_group
-
-
 class TrialCleanupThread(Thread):
 
     def __init__(self, queue: Queue):
+        super().__init__()
         self._futures = {}
         self._queue = queue
+        self._should_finish = False
+
+    def _process(self, item):
+        if not item:
+            self._should_finish = True
+            self._queue.task_done()
+            return
+        actor, pg = item
+        self._futures[actor.stop.remote()] = pg
+        del actor
 
     def run(self):
         while True:
+            if self._should_finish:
+                return
+            item = self._queue.get(block=len(self._futures) == 0)
+            self._process(item)
             while not self._queue.empty():
-                item = self._queue.get(block=False)
-                if item:
-                    actor, pg = item
-                    self._futures[actor.stop.remote()] = pg
-                    del actor
-            ready_futures, _ = ray.wait(list(self._futures.keys()))
+                item = self._queue.get()
+                self._process(item)
+
+            ready_futures, _ = ray.wait(list(self._futures.keys()), timeout=0.5)
             for ready_future in ready_futures:
                 pg = self._futures.pop(ready_future)
                 remove_placement_group(pg)
                 self._queue.task_done()
-
-#
-# class _TrialCleanup:
-#     """Mechanism for ensuring trial stop futures are cleaned up.
-#
-#     Args:
-#         threshold (int): Number of futures to hold at once. If the threshold
-#             is passed, cleanup will kick in and remove futures.
-#         force_cleanup (int): Grace periods for forceful actor termination.
-#             If 0, actors will not be forcefully terminated.
-#     """
-#
-#     def __init__(self,
-#                  threshold: int = TRIAL_CLEANUP_THRESHOLD,
-#                  force_cleanup: int = 0):
-#         self.threshold = threshold
-#         self._cleanup_map = {}
-#         if force_cleanup < 0:
-#             force_cleanup = 0
-#         self._force_cleanup = force_cleanup
-#
-#     def add(self, trial: Trial, actor: ActorHandle):
-#         """Adds a trial actor to be stopped.
-#
-#         If the number of futures exceeds the threshold, the cleanup mechanism
-#         will kick in.
-#
-#         Args:
-#             trial (Trial): The trial corresponding to the future.
-#             actor (ActorHandle): Handle to the trainable to be stopped.
-#         """
-#         future = actor.stop.remote()
-#
-#         del actor
-#
-#         self._cleanup_map[future] = trial
-#         if len(self._cleanup_map) > self.threshold:
-#             self.cleanup(partial=True)
-#
-#     def cleanup(self, partial: bool = True):
-#         """Waits for cleanup to finish.
-#
-#         If partial=False, all futures are expected to return. If a future
-#         does not return within the timeout period, the cleanup terminates.
-#         """
-#         # At this point, self._cleanup_map holds the last references
-#         # to actors. Removing those references either one-by-one
-#         # (graceful termination case) or all at once, by reinstantiating
-#         # self._cleanup_map (forceful termination case) will cause Ray
-#         # to kill the actors during garbage collection.
-#         logger.debug("Cleaning up futures")
-#         num_to_keep = int(self.threshold) / 2 if partial else 0
-#         while len(self._cleanup_map) > num_to_keep:
-#             dones, _ = ray.wait(
-#                 list(self._cleanup_map),
-#                 timeout=DEFAULT_GET_TIMEOUT
-#                 if not self._force_cleanup else self._force_cleanup)
-#             if not dones:
-#                 logger.warning(
-#                     "Skipping cleanup - trainable.stop did not return in "
-#                     "time. Consider making `stop` a faster operation.")
-#                 if not partial and self._force_cleanup:
-#                     logger.warning(
-#                         "Forcing trainable cleanup by terminating actors.")
-#                     self._cleanup_map = {}
-#                     return
-#             else:
-#                 done = dones[0]
-#                 del self._cleanup_map[done]
 
 
 def noop_logger_creator(config, logdir):
@@ -944,12 +884,13 @@ class RayTrialExecutor(TrialExecutor):
             return self._avail_resources.gpu > 0
 
     def cleanup(self, trials: List[Trial]) -> None:
+        # Closing the channel between main thread and clean up thread.
+        self._cleanup_queue.put(None)
+        self._cleanup_queue.join()
+        self._cleanup_thread.join()
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
-        # Waiting for all tasks are done.
-        self._cleanup_queue.join()
-        self._cleanup_thread.join()
 
     @contextmanager
     def _change_working_directory(self, trial):
