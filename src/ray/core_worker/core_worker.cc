@@ -810,7 +810,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
-  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
+  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskUniqueBytes(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
@@ -874,7 +874,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   if (!status.ok()) {
     return status;
   }
-  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
+  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskUniqueBytes(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
@@ -1525,7 +1525,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
-                            worker_context_.GetCurrentTaskID(), next_task_index);
+                            worker_context_.GetCurrentTaskUniqueBytes(), next_task_index);
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
@@ -1788,7 +1788,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const TaskID actor_task_id = TaskID::ForActorTask(
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
+      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskUniqueBytes(),
       next_task_index, actor_handle->GetActorID());
   const std::unordered_map<std::string, double> required_resources;
   const auto task_name = task_options.name.empty()
