@@ -195,17 +195,21 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
         # Concat. prev-action/reward if required.
         prev_a_r = []
-        # Prev actions: Try flattening into 1D array (one-hot discrete
-        # components). This only properly works with complex action spaces
-        # iff action flattening has been disabled.
+
+        # Prev actions.
         if self.model_config["lstm_use_prev_action"]:
             prev_a = input_dict[SampleBatch.PREV_ACTIONS]
+            # If actions are not processed yet (in their original form as
+            # have been sent to environment):
+            # Flatten/one-hot into 1D array.
             if self.model_config["_disable_action_flattening"]:
                 prev_a_r.append(
                     flatten_inputs_to_1d_tensor(
                         prev_a,
                         spaces_struct=self.action_space_struct,
                         time_axis=False))
+            # If actions are already flattened (but not one-hot'd yet!),
+            # one-hot discrete/multi-discrete actions here.
             else:
                 if isinstance(self.action_space, (Discrete, MultiDiscrete)):
                     prev_a = one_hot(prev_a.float(), self.action_space)
@@ -217,6 +221,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             prev_a_r.append(
                 torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
                               [-1, 1]))
+
         # Concat prev. actions + rewards to the "main" input.
         if prev_a_r:
             wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)

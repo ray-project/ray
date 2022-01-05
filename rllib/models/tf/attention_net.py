@@ -452,11 +452,13 @@ class AttentionWrapper(TFModelV2):
 
         # Concat. prev-action/reward if required.
         prev_a_r = []
-        # Prev actions: Try flattening into 1D array (one-hot discrete
-        # components). This only properly works with complex action spaces
-        # iff action flattening has been disabled.
+
+        # Prev actions.
         if self.use_n_prev_actions:
             prev_n_actions = input_dict[SampleBatch.PREV_ACTIONS]
+            # If actions are not processed yet (in their original form as
+            # have been sent to environment):
+            # Flatten/one-hot into 1D array.
             if self.model_config["_disable_action_flattening"]:
                 # Merge prev n actions into flat tensor.
                 flat = flatten_inputs_to_1d_tensor(
@@ -467,6 +469,9 @@ class AttentionWrapper(TFModelV2):
                 # Fold time-axis into flattened data.
                 flat = tf.reshape(flat, [tf.shape(flat)[0], -1])
                 prev_a_r.append(flat)
+            # If actions are already flattened (but not one-hot'd yet!),
+            # one-hot discrete/multi-discrete actions here and concatenate the
+            # n most recent actions together.
             else:
                 if isinstance(self.action_space, Discrete):
                     for i in range(self.use_n_prev_actions):
@@ -493,6 +498,7 @@ class AttentionWrapper(TFModelV2):
                 tf.reshape(
                     tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
                     [-1, self.use_n_prev_rewards]))
+
         # Concat prev. actions + rewards to the "main" input.
         if prev_a_r:
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
