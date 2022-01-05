@@ -17,4 +17,4 @@ class Counter(object):
 
     def increase(self, delta):
         self.value += int(delta)
-        return str(self.value).encode("utf-8")
+        return str(self.value)

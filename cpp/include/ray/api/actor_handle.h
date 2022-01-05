@@ -37,6 +37,15 @@ class ActorHandle {
   template <typename F>
   ray::internal::ActorTaskCaller<F> Task(F actor_func);
 
+  template <typename R, typename... Args>
+  ray::internal::ActorTaskCaller<PyActorFunction<R, Args...>> Task(
+      PyActorFunction<R, Args...> func) {
+    ray::internal::RemoteFunctionHolder remote_func_holder(
+        func.module_name, func.function_name, func.class_name,
+        ray::internal::LangType::PYTHON);
+    return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
+  }
+
   void Kill();
   void Kill(bool no_restart);
 

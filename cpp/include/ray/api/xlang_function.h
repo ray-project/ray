@@ -36,6 +36,16 @@ struct PyClass {
   std::string function_name = "__init__";
 };
 
+template <typename R, typename... Args>
+struct PyActorFunction {
+  static constexpr bool is_python_actor_function = true;
+  R operator()(Args... args) { return {}; }
+
+  std::string module_name;
+  std::string class_name;
+  std::string function_name;
+};
+
 namespace internal {
 
 enum class LangType {
