@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class MultiAgentEnv(abc.ABC):
+class MultiAgentEnv(gym.Env, abc.ABC):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
