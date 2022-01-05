@@ -71,7 +71,7 @@ Ray Serve needs to run on top of a Ray Cluster, so we connect to a local one:
   :end-before: __start_ray_cluster_end__
 
 The ``address`` parameter in ``ray.init()`` connects your Serve script to a
-running local Ray cluster. Later, we'll discuss how to start a local ray
+running local Ray cluster. Later, we'll discuss how to start a local Ray
 cluster. The ``namespace`` parameter determines what Ray objects are accessible
 in this script. Setting it to ``serve`` ensures that the Ray Serve objects we
 create are accessible by default.
@@ -107,7 +107,7 @@ object [#f1]_:
   :start-after: __router_start__
   :end-before: __router_end__
 
-``router`` uses the ``txt`` parameter in the ``request`` to find the article
+``router`` uses the ``"txt"`` parameter in the ``request`` to find the article
 text to summarize. It then passes the article text into the ``summarize``
 function and returns the value. We also add the decorator ``@serve.deployment``
 to the ``router`` function to turn the function into a Serve ``Deployment``
@@ -196,6 +196,7 @@ article as the original Python script:
 We can run this script while the model is deployed to get a response over HTTP:
 
 .. code-block:: bash
+
   $ python router_client.py
 
   "two astronauts steered their fragile lunar module safely and smoothly to the
@@ -254,6 +255,11 @@ the model, and query it over HTTP:
   $ python summarizer_on_ray_serve.py
   $ python summarizer_client.py
 
+  "two astronauts steered their fragile lunar module safely and smoothly to the
+  historic landing . the first men to reach the moon -- Armstrong and his 
+  co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to 
+  rest on a level, rock-strewn plain ."
+
 Now suppose we want to expose additional functionality in our model. In
 particular, the ``summarize`` function also has ``min_length`` and
 ``max_length`` parameters. Although we could expose these options as additional
@@ -275,6 +281,7 @@ summaries:
   :end-before: __fastapi_end__
 
 The class now exposes three routes:
+
 - ``/Summarizer``: As before, this route takes in article text and returns
   a summary.
 - ``/Summarizer/min10``: This route takes in article text and returns a
