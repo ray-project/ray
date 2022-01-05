@@ -11,7 +11,7 @@ from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv
-from ray._private.utils import try_to_create_directory
+from ray._private.utils import get_directory_size, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ def _install_pip_list_to_dir(
         raise RuntimeError(f"Failed to install pip requirements:\n{output}")
 
 
+# TODO(architkulkarni): Delete or move? Duplicated below
 def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"pip://<hashed_dependencies>"`, or None if no GC required."""
     pip = runtime_env.get("pip")
@@ -64,6 +65,13 @@ class PipManager:
         """
         return os.path.join(self._resources_dir, hash)
 
+    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+        """Return `"conda://<hash_dependencies>"` or None if no GC required."""
+        pip_uri = runtime_env.pip_uri()
+        if pip_uri != "":
+            return pip_uri
+        return None
+
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
@@ -82,16 +90,21 @@ class PipManager:
             logger.warning(f"Error when deleting pip env {pip_env_path}.")
         return successful
 
-    def setup(self,
-              runtime_env: RuntimeEnv,
-              context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.has_pip():
-            return
+    def create(self,
+               uri: Optional[str],
+               runtime_env: RuntimeEnv,
+               context: RuntimeEnvContext,
+               logger: Optional[logging.Logger] = default_logger) -> int:
+        logger.debug("Setting up pip for runtime_env: "
+                     f"{runtime_env.serialize()}")
+        protocol, hash = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash)
+        # TODO(architkulkarni): Decide what to do about this
+        # if not runtime_env.has_pip():
+        #     return
 
-        logger.debug(f"Setting up pip for runtime_env: {runtime_env}")
         pip_packages: List[str] = runtime_env.pip_packages()
-        target_dir = self._get_path_from_hash(_get_pip_hash(pip_packages))
+        # target_dir = self._get_path_from_hash(_get_pip_hash(pip_packages))
 
         _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
 
@@ -110,8 +123,18 @@ class PipManager:
             ray_path = Path(target_dir) / "ray"
             if ray_path.exists() and ray_path.is_dir():
                 shutil.rmtree(ray_path)
+        return get_directory_size(target_dir)
 
+    def modify_context(self,
+                       uri: str,
+                       runtime_env: RuntimeEnv,
+                       context: RuntimeEnvContext,
+                       logger: Optional[logging.Logger] = default_logger):
+        if not runtime_env.has_pip():
+            return
         # Insert the target directory into the PYTHONPATH.
+        protocol, hash = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash)
         python_path = target_dir
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]

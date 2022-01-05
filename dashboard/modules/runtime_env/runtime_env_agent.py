@@ -40,6 +40,8 @@ PY_MODULES_CACHE_SIZE_BYTES = int((1024**3) * float(
     os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10)))
 CONDA_CACHE_SIZE_BYTES = int((1024**3) * float(
     os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10)))
+PIP_CACHE_SIZE_BYTES = int(
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10)))
 
 
 @dataclass
@@ -163,7 +165,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES)
         self._conda_uri_cache = URICache(self._conda_manager.delete_uri,
                                          CONDA_CACHE_SIZE_BYTES)
-
+        self._pip_uri_cache = URICache(self._pip_manager.delete_uri,
+                                       PIP_CACHE_SIZE_BYTES)
         self._logger = default_logger
 
     def get_or_create_logger(self, job_id: bytes):
@@ -193,8 +196,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 per_job_logger.debug(f"Worker has resource :"
                                      f"{allocated_resource}")
                 context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-                self._pip_manager.setup(
-                    runtime_env, context, logger=per_job_logger)
                 self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
@@ -243,6 +244,29 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     # to prepend `conda activate <env_name>` to the entrypoint.
                     self._conda_manager.modify_context(
                         conda_uri, runtime_env, context, logger=per_job_logger)
+
+                # Set up pip
+                pip_resources_dir = os.path.join(self._runtime_env_dir, "pip")
+                try_to_create_directory(pip_resources_dir)
+                pip_file_lock = os.path.join(self._runtime_env_dir,
+                                             "ray-pip-install.lock")
+                # TODO(architkulkarni): add comment
+                with FileLock(pip_file_lock):
+                    pip_uri = self._pip_manager.get_uri(runtime_env)
+                    if pip_uri is not None:
+                        if pip_uri not in self._pip_uri_cache:
+                            size_bytes = self._pip_manager.create(
+                                pip_uri,
+                                runtime_env,
+                                context,
+                                logger=per_job_logger)
+                            self._pip_uri_cache.add(
+                                pip_uri, size_bytes, logger=per_job_logger)
+                        else:
+                            self._pip_uri_cache.mark_used(
+                                pip_uri, logger=per_job_logger)
+                    self._pip_manager.modify_context(
+                        pip_uri, runtime_env, context, logger=per_job_logger)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(

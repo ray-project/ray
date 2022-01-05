@@ -175,6 +175,7 @@ def _get_conda_env_hash(conda_dict: Dict) -> str:
     return hash
 
 
+# TODO(architkulkarni): Delete?
 def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"conda://<hashed_dependencies>"`, or None if no GC required."""
     conda = runtime_env.get("conda")
@@ -242,7 +243,7 @@ class CondaManager:
                runtime_env: RuntimeEnv,
                context: RuntimeEnvContext,
                logger: Optional[logging.Logger] = default_logger) -> int:
-        logger.debug("Setting up conda or pip for runtime_env: "
+        logger.debug("Setting up conda for runtime_env: "
                      f"{runtime_env.serialize()}")
         protocol, hash = parse_uri(uri)
         conda_env_name = self._get_path_from_hash(hash)
@@ -267,18 +268,6 @@ class CondaManager:
                                            "environment.yml")
             with open(conda_yaml_file, "w") as file:
                 yaml.dump(conda_dict, file)
-            # TODO(architkulkarni): This fails and throws an exception
-            # if the conda environment with this name already exists.
-            # Should we be more lenient and only create if necessary?
-            # Need to be careful, could be a race condition.  If create()
-            # gets called while a conda environment is still being installed
-            # from an installation that already started in another thread,
-            # then create() would return successfully before the conda env
-            # was finished installing, and a task might start with an
-            # unfinished conda env.  Wait, but shouldn't the lock
-            # take care of this? Ah, they both go into create() still.  We
-            # need to expand the range of the lock.  Could lock the entire
-            # create() function but that may be too much.
             create_conda_env(
                 conda_yaml_file, prefix=conda_env_name, logger=logger)
         finally:
@@ -300,6 +289,7 @@ class CondaManager:
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
+            # TODO(architkulkarni): uri instead of conda_uri?
             protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
         context.py_executable = "python"
