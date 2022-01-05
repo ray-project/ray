@@ -1,5 +1,5 @@
 # __deployment_full_start__
-# model_on_ray_serve.py
+# File name: model_on_ray_serve.py
 import ray
 from ray import serve
 from transformers import pipeline

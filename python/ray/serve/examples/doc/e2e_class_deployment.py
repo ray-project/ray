@@ -1,5 +1,5 @@
 # __deployment_class_start__
-# class_based_model_on_ray_serve.py
+# File name: class_based_model_on_ray_serve.py
 import ray
 from ray import serve
 from transformers import pipeline

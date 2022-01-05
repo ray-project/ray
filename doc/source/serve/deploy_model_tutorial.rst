@@ -26,7 +26,7 @@ This is the code for the model:
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
 generate summaries of text. The ``summarizer`` variable inside ``summarize``
 points to a function that uses the
-`t5-small <https://huggingface.co/t5-small>_` model to summarize text.
+`t5-small <https://huggingface.co/t5-small>`_ model to summarize text.
 When ``summarizer`` is called on a Python String, it returns summarized text
 encapsulated within a dictionary and a list. ``summarize`` then removes the
 dictionary and list, and it returns only the summary. The file can be run
@@ -36,10 +36,10 @@ article about the Apollo 11 moon landing.
 .. code-block:: bash
   $ python local_model.py
 
-  two astronauts steered their fragile lunar module safely and smoothly to the
-  historic landing . the first men to reach the moon -- Armstrong and his 
-  co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to 
-  rest on a level, rock-strewn plain .
+  "two astronauts steered their fragile lunar module safely and smoothly to the
+  historic landing . the first men to reach the moon -- Armstrong and his
+  co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to
+  rest on a level, rock-strewn plain ."
 
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
 queried over HTTP. We'll start by converting the above Python function into a
@@ -84,8 +84,8 @@ create are accessible by default.
 
 .. note::
 
-  ``ray.init()`` will connect to or start a single-node Ray cluster on your
-  local machine,  which will allow you to use all your CPU cores to serve
+  ``ray.init()`` connects to or starts a single-node Ray cluster on your
+  local machine,  which allows you to use all your CPU cores to serve
   requests in parallel. To start a multi-node cluster, see
   :doc:`../cluster/index`.
 
@@ -177,7 +177,7 @@ and begin accepting HTTP requests:
 .. code-block:: bash
   $ python model_on_ray_serve.py
 
-We can now test our model over HTTP. The structure of our query will be:
+We can now test our model over HTTP. The structure of our HTTP query is:
 
 ``http://127.0.0.1:8000/[Deployment Name]?[Parameter Name-1]=[Parameter Value-1]&[Parameter Name-2]=[Parameter Value-2]&...&[Parameter Name-n]=[Parameter Value-n]``
 
@@ -191,7 +191,7 @@ request's ``query_params`` dictionary for our deployed function. In our
 example, the only parameter we need to pass in is ``txt``. This parameter is
 referenced in the ``txt = request.query_params["txt"]`` line in the ``router``
 function. Each [Parameter Name] object has a corresponding [Parameter Value]
-object. The ``txt``'s [Parameter Value] will be a string containing the article
+object. The ``txt``'s [Parameter Value] is a string containing the article
 text to summarize. We can chain together any number of the name-value pairs
 using the ``&`` symbol in the request URL.
 
@@ -210,10 +210,10 @@ We can run this script while the model is deployed to get a response over HTTP:
 ..code-block:: bash
   $ python router_client.py
 
-  two astronauts steered their fragile lunar module safely and smoothly to the
+  "two astronauts steered their fragile lunar module safely and smoothly to the
   historic landing . the first men to reach the moon -- Armstrong and his 
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to 
-  rest on a level, rock-strewn plain .
+  rest on a level, rock-strewn plain ."
 
 Our application still a bit inefficient though. In particular, the 
 ``summarize`` function loads the model on each call when it sets the
@@ -232,8 +232,8 @@ We can achieve this by converting our ``summarize`` function into a class:
 In this configuration, we can query the ``Summarizer`` class directly. 
 The ``Summarizer`` is initialized once (after calling ``Summarizer.deploy()``).
 Its ``__init__`` function loads and stores the model in ``self.summarize``.
-HTTP queries for the ``Summarizer`` class will by default get routed to its
-``__call__`` method, which takes in the Starlette ``request`` object. The
+HTTP queries for the ``Summarizer`` class are routed to its ``__call__``
+method by default, which takes in the Starlette ``request`` object. The
 ``Summarizer`` class can then take the request's ``txt`` data and call the
 ``self.summarize`` function on it without loading the model on each query.
 
@@ -259,6 +259,59 @@ the model, and query it over HTTP:
   $ python summarizer_on_ray_serve.py
   $ python summarizer_client.py
 
+Now suppose we want to expose additional functionality in our model. In
+particular, the ``summarize`` function also has ``min_length`` and
+``max_length`` parameters. Although we could expose these options as additional
+parameters in URL, Ray Serve also allows us to add more route options to the
+URL itself and handle each route separately.
+
+Because this logic can get complex, Serve integrates with
+`FastAPI <https://fastapi.tiangolo.com/>`_. This allows us to define a Serve
+deployment by adding the ``@serve.ingress`` decorator to a FastAPI app. For 
+more info about FastAPI with Serve, please see :ref:`serve-fastapi-http`.
+
+As an example of FastAPI, here's a modified version of our ``Summarizer`` class
+with route options to request a minimum or maximum length of ten words in the
+summaries:
+
+.. code-block:: python
+  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_deployment.py
+    :language: python
+    :start-after: __fastapi_start__
+    :end-before: __fastapi_end__
+
+The class now exposes three routes:
+  * ``/Summarizer``: As before, this route takes in article text and returns
+                     a summary.
+  * ``/Summarizer/min10``: This route takes in article text and returns a
+                           summary with at least 10 words.
+  * ``/Summarizer/max10``: This route takes in article text and returns a
+                           summary with at most 10 words.
+
+Notice that ``Summarizer``'s methods no longer take in a Starlette ``request``
+object. Instead, they take in the URL's `txt` parameter directly with FastAPI's
+`query parameter <https://fastapi.tiangolo.com/tutorial/query-params/>`_
+feature.
+
+Since we still deploy our model locally, the full URL still uses the
+localhost IP. This means each of our three routes comes after the
+``http://127.0.0.1:8000`` IP and port address. As an example, we can make
+requests to the ``max10`` route using this client script:
+
+.. code-block:: python
+  .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_client.py
+    :language: python
+    :start-after: __client_fastapi_start__
+    :end-before: __client_fastapi_end__
+
+..code-block:: bash
+  $ ray stop
+  $ ray start --head
+  $ python serve_with_fastapi.py
+  $ python fastapi_client.py
+
+  "two astronauts steered their fragile lunar"
+
 Congratulations! You just built and deployed a machine learning model on Ray
 Serve! You should now have enough context to dive into the :doc:`core-apis` to
 get a deeper understanding of Ray Serve.
@@ -270,6 +323,6 @@ and Python web servers, be sure to check out :doc:`tutorials/index`.
 
 .. rubric:: Footnotes
 
-.. [#f1] `Starlette <https://www.starlette.io/>_` is a web server framework
-used by Ray Serve. Its `Request <https://www.starlette.io/requests/>_` class
+.. [#f1] `Starlette <https://www.starlette.io/>`_ is a web server framework
+used by Ray Serve. Its `Request <https://www.starlette.io/requests/>`_ class
 provides a nice interface for incoming HTTP requests.
