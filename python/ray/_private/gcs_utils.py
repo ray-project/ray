@@ -211,7 +211,7 @@ class GcsClient:
         return self._channel._gcs_address
 
     @_auto_reconnect
-    def internal_kv_get(self, key: bytes, namespace: Optional[str]) -> bytes:
+    def internal_kv_get(self, key: bytes, namespace: Optional[bytes]) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
         req = gcs_service_pb2.InternalKVGetRequest(ns=namespace, key=key)
         reply = self._kv_stub.InternalKVGet(req)
@@ -225,7 +225,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool,
-                        namespace: Optional[str]) -> int:
+                        namespace: Optional[bytes]) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         req = gcs_service_pb2.InternalKVPutRequest(
             ns=namespace, key=key, value=value, overwrite=overwrite)
@@ -238,7 +238,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_del(self, key: bytes, del_by_prefix: bool,
-                        namespace: Optional[str]) -> int:
+                        namespace: Optional[bytes]) -> int:
         logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
         req = gcs_service_pb2.InternalKVDelRequest(
             ns=namespace, key=key, del_by_prefix=del_by_prefix)
@@ -250,7 +250,8 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_exists(self, key: bytes, namespace: Optional[str]) -> bool:
+    def internal_kv_exists(self, key: bytes,
+                           namespace: Optional[bytes]) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
         req = gcs_service_pb2.InternalKVExistsRequest(ns=namespace, key=key)
         reply = self._kv_stub.InternalKVExists(req)
@@ -262,7 +263,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_keys(self, prefix: bytes,
-                         namespace: Optional[str]) -> List[bytes]:
+                         namespace: Optional[bytes]) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
         req = gcs_service_pb2.InternalKVKeysRequest(
             ns=namespace, prefix=prefix)
