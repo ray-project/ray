@@ -100,7 +100,7 @@ Now that we have defined our ``summarize`` function, connected to a Ray
 Cluster, and started the Ray Serve runtime, we can define a function that
 accepts HTTP requests and routes them to the ``summarize`` function. We
 define a function called ``router`` that takes in a Starlette ``request``
-object [#f1]:
+object [#f1]_:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
   :language: python
