@@ -596,7 +596,6 @@ def test_reconfigure_with_queries(serve_instance):
     assert ray.get(handle.remote()) == 2
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_scale_down(serve_instance, use_handle):
     # Tests redeploying with a new version and lower num_replicas.
@@ -614,13 +613,19 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
-        return ret.split("|")[0], ret.split("|")[1]
+        rets = ret.split("|")
+        if len(rets) == 2:
+            return rets[0], rets[1]
+        elif len(rets) == 1:
+            return rets[0], "<NULL>"
+        else:
+            return "<NULL>", "<NULL>"
 
     def make_calls(expected):
         # Returns dict[val, set(pid)].
         responses = defaultdict(set)
         start = time.time()
-        while time.time() - start < 30:
+        while time.time() - start < 100:
             refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
