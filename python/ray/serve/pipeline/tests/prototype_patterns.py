@@ -130,7 +130,9 @@ async def main():
     #     print(await pipeline(i))
 
 
-    handle = Pipeline.deploy(recursive=True)
+    pipeline = Pipeline.deploy(recursive=True)
+    # for i in range(10):
+    #     print(await pipeline(i))
     print("AA")
 if __name__ == "__main__":
     asyncio.run(main())

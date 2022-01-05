@@ -90,6 +90,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args,
                                                             **init_kwargs)
+                    logger.info(f">>>>>> Created {_callable} with {init_args}")
                 # Setting the context again to update the servable_object.
                 ray.serve.api._set_internal_replica_context(
                     deployment_name,

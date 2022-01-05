@@ -801,11 +801,20 @@ class Deployment:
         def setattr(instance, name: str, value: Any) -> None:
             if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
                 print(f"Assigning deployment attribute for {instance} - {name} as {str(value)}")
+
+                parameters = list(inspect.signature(value.__init__).parameters)
+                init_args = []
+                for parameter in parameters:
+                    init_args.append(value.__dict__.get(parameter))
+                init_args = tuple(arg for arg in init_args)
+                # ignore kwargs for prototype simplicity
+
                 object.__setattr__(instance, name, value)
                 if name == "model_1":
                     print(1)
                 deployment_copy = copy.deepcopy(value.__deployment_class__)
                 deployment_copy._name = f"{value.__deployment_class__._name}#{name}"
+                deployment_copy._init_args = init_args
                 instance.__deployment_class__._child_deployments[name] = deployment_copy
             else:
                 print(f"Assigning non-deployment attribute for {instance} - {name} as {str(value)}")
@@ -834,7 +843,11 @@ class Deployment:
         # Make replica constructor's  __setattr__ take deployment handle ?
         def setattr(instance, name: str, value: Any) -> None:
             if hasattr(value, "__is_deployment__") and getattr(value, "__is_deployment__"):
-                handle_name = f"{value.__deployment_class__._name}"
+                # For root node
+                if name in self._child_deployments:
+                    handle_name = self._child_deployments[name]._name
+                else:
+                    handle_name = f"{value.__deployment_class__._name}"
                 deployment_handle = get_deployment(handle_name)
                 print(f"Swapping {instance} - variable {name} as {str(deployment_handle)}")
                 object.__setattr__(instance, name, deployment_handle)
@@ -848,8 +861,8 @@ class Deployment:
                 _get_global_client().deploy(
                     child_deployment._name,
                     child_deployment._func_or_class,
-                    init_args,
-                    init_kwargs,
+                    child_deployment._init_args,
+                    child_deployment._init_kwargs,
                     ray_actor_options=child_deployment._ray_actor_options,
                     config=child_deployment._config,
                     version=child_deployment._version,
@@ -859,6 +872,7 @@ class Deployment:
                     _blocking=_blocking,
                     recursive=recursive,
                 )
+            print("deploying outer pipeline node")
             my_handle = _get_global_client().deploy(
                 self._name,
                 self._func_or_class,
