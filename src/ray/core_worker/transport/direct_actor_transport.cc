@@ -102,7 +102,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
-        // The object is nullptr if it already existed in the object store.
+        if (!return_objects[i]) {
+          // This should only happen if the local raylet died. Caller should
+          // retry the task.
+          RAY_LOG(WARNING) << "Failed to create task return object " << id
+                           << " in the object store, exiting.";
+          QuickExit();
+        }
         const auto &result = return_objects[i];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
@@ -126,8 +132,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         /// be 0 if this is an asyncio actor.
         const int default_max_concurrency =
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        pool_manager_ = std::make_shared<PoolManager>(task_spec.ConcurrencyGroups(),
-                                                      default_max_concurrency);
+        pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+            task_spec.ConcurrencyGroups(), default_max_concurrency);
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()

@@ -95,6 +95,36 @@ class TestSampleBatch(unittest.TestCase):
         concatd_2 = s1.concat(s2)
         check(concatd, concatd_2)
 
+    def test_concat_max_seq_len(self):
+        """Tests, SampleBatches.concat_samples() max_seq_len."""
+        s1 = SampleBatch({
+            "a": np.array([1, 2, 3]),
+            "b": {
+                "c": np.array([4, 5, 6])
+            },
+            SampleBatch.SEQ_LENS: [1, 2]
+        })
+        s2 = SampleBatch({
+            "a": np.array([2, 3, 4]),
+            "b": {
+                "c": np.array([5, 6, 7])
+            },
+            SampleBatch.SEQ_LENS: [3]
+        })
+
+        s3 = SampleBatch({
+            "a": np.array([2, 3, 4]),
+            "b": {
+                "c": np.array([5, 6, 7])
+            },
+        })
+
+        concatd = SampleBatch.concat_samples([s1, s2])
+        check(concatd.max_seq_len, s2.max_seq_len)
+
+        with self.assertRaises(ValueError):
+            SampleBatch.concat_samples([s1, s2, s3])
+
     def test_rows(self):
         s1 = SampleBatch({
             "a": np.array([[1, 1], [2, 2], [3, 3]]),

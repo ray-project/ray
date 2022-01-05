@@ -79,6 +79,8 @@ class GcsActorSchedulerInterface {
   /// \param actor The actor to be destoryed.
   virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
 
+  virtual std::string DebugString() const = 0;
+
   virtual ~GcsActorSchedulerInterface() {}
 };
 
@@ -154,6 +156,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   ///
   /// \param actor The actor to be destoryed.
   void OnActorDestruction(std::shared_ptr<GcsActor> actor) override {}
+
+  std::string DebugString() const override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It

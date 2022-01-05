@@ -96,48 +96,6 @@ class PlacementGroup:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
-    def to_dict(self) -> dict:
-        """Convert this placement group into a dict for purposes of json
-        serialization.
-
-        Used when passing a placement group as an option to a Ray client remote
-        function. See set_task_options in util/client/common.py.
-
-        Return:
-            Dictionary with json-serializable keys representing the placemnent
-            group.
-        """
-        # Placement group id is converted to a hex /string/ to make it
-        # serializable.
-        return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
-
-    @staticmethod
-    def from_dict(pg_dict: dict) -> "PlacementGroup":
-        """Instantiate and return a PlacementGroup from its json-serializable
-        dict representation.
-
-        Used by Ray Client on server-side to deserialize placement group
-        option. See decode_options in util/client/server/server.py.
-
-        Args:
-            serializable_form(dict): Dictionary representing a placement group.
-        Return:
-            A placement group made from the data in the input dict.
-        """
-        # Validate serialized dict
-        assert isinstance(pg_dict, dict)
-        assert pg_dict.keys() == {"id", "bundle_cache"}
-        # The value associated to key "id" is a hex string.
-        assert isinstance(pg_dict["id"], str)
-        if pg_dict["bundle_cache"] is not None:
-            assert isinstance(pg_dict["bundle_cache"], list)
-
-        # Deserialize and return a Placement Group.
-        id_bytes = bytes.fromhex(pg_dict["id"])
-        pg_id = PlacementGroupID(id_bytes)
-        bundle_cache = pg_dict["bundle_cache"]
-        return PlacementGroup(pg_id, bundle_cache)
-
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)

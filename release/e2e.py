@@ -82,6 +82,7 @@ A notable one is the `RAY_WHEELS` variable which points to the wheels that
 should be tested (e.g. latest master wheels). You might want to include
 something like this in your `post_build_cmds`:
 
+  - pip3 uninstall ray -y || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
 
 If you want to force rebuilds, consider using something like
@@ -211,7 +212,7 @@ import yaml
 
 import anyscale
 import anyscale.conf
-from anyscale.api import instantiate_api_client
+from anyscale.authenticate import get_auth_api_client
 from anyscale.controllers.session_controller import SessionController
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
@@ -242,7 +243,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
     "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
-                                    "https://beta.anyscale.com"),
+                                    "https://console.anyscale.com"),
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
@@ -285,6 +286,8 @@ RETRY_MULTIPLIER = 2
 
 
 class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
     RUNTIME_ERROR = 4
@@ -542,15 +545,6 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
 
     content = jinja2.Template(content).render(env=env)
     return yaml.safe_load(content)
-
-
-def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
-    """Wrap pip package install in quotation marks"""
-    if app_config.get("python", {}).get("pip_packages"):
-        new_pip_packages = []
-        for pip_package in app_config["python"]["pip_packages"]:
-            new_pip_packages.append(f"\"{pip_package}\"")
-        app_config["python"]["pip_packages"] = new_pip_packages
 
 
 def has_errored(result: Dict[Any, Any]) -> bool:
@@ -1313,13 +1307,10 @@ def run_test_config(
     # So we use the session controller instead.
     sdk = AnyscaleSDK(auth_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"])
 
-    session_controller = SessionController(
-        api_client=instantiate_api_client(
-            cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
-            host=GLOBAL_CONFIG["ANYSCALE_HOST"],
-        ),
-        anyscale_api_client=sdk.api_client,
-    )
+    get_auth_api_client(
+        cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
+        host=GLOBAL_CONFIG["ANYSCALE_HOST"])
+    session_controller = SessionController()
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1345,6 +1336,15 @@ def run_test_config(
 
     app_config_rel_path = test_config["cluster"].get("app_config", None)
     app_config = _load_config(local_dir, app_config_rel_path)
+    # A lot of staging tests share the same app config yaml, except the flags.
+    # `app_env_vars` in test config will help this one.
+    # Here we extend the env_vars to use the one specified in the test config.
+    if test_config.get("app_env_vars") is not None:
+        if app_config["env_vars"] is None:
+            app_config["env_vars"] = test_config["app_env_vars"]
+        else:
+            app_config["env_vars"].update(test_config["app_env_vars"])
+        logger.info(f"Using app config:\n{app_config}")
 
     compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
     compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
@@ -1378,9 +1378,6 @@ def run_test_config(
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
-
-    # Only wrap pip packages after we installed the app config packages
-    _wrap_app_config_pip_installs(app_config)
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1977,9 +1974,14 @@ def run_test_config(
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
 
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.copytree(temp_dir, out_dir)
-        logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -2124,6 +2126,7 @@ def run_test(test_config_file: str,
             # catch these cases.
             exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
             logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
             sys.exit(exit_code)
 
         return report_kwargs

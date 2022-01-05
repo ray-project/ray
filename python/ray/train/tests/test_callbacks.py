@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 import pytest
 import os
 import shutil
@@ -12,9 +14,11 @@ from ray.train import Trainer
 from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
+                                 TBXLoggerCallback)
 from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
+from ray.train.callbacks.logging import MLflowLoggerCallback
 
 try:
     from tensorflow.python.summary.summary_iterator \
@@ -55,21 +59,35 @@ class TestBackend(Backend):
         pass
 
 
-# The ordering of these parametrize decorators matters.
-# `detailed` has to be the last one, and False has to come before True.
-# This is because of the bug with runtime envs:
-# https://github.com/ray-project/ray/issues/20587.
-# TODO(amogkam): Remove the above comment once the above issue is closed.
+def test_print(ray_start_4_cpus):
+    num_workers = 4
+
+    def train_func():
+        train.report(rank=train.world_rank())
+
+    stream = io.StringIO()
+    with redirect_stdout(stream):
+        trainer = Trainer(TestConfig(), num_workers=num_workers)
+        trainer.start()
+        trainer.run(train_func, callbacks=[PrintCallback()])
+        trainer.shutdown()
+
+    output = stream.getvalue()
+    results = json.loads(output)
+
+    assert len(results) == num_workers
+    for i, result in enumerate(results):
+        assert set(result.keys()) == (BASIC_AUTOFILLED_KEYS | {"rank"})
+        assert result["rank"] == i
+
+
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
-@pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
 @pytest.mark.parametrize("detailed", [False, True])
-def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
-              filename):
+@pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
+def test_json(monkeypatch, ray_start_4_cpus, make_temp_dir, workers_to_log,
+              detailed, filename):
     if detailed:
-        os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
-    else:
-        os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
-        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
+        monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
 
     config = TestConfig()
 
@@ -141,8 +159,6 @@ def _validate_tbx_result(events_dir):
     assert len(results["hello/world"]) == 1
 
 
-@pytest.mark.skipif(
-    summary_iterator is None, reason="tensorboard is not installed")
 def test_TBX(ray_start_4_cpus, make_temp_dir):
     config = TestConfig()
 
@@ -162,6 +178,54 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
     trainer.run(train_func, callbacks=[callback])
 
     _validate_tbx_result(temp_dir)
+
+
+def test_mlflow(ray_start_4_cpus, make_temp_dir):
+    config = TestConfig()
+
+    params = {"p1": "p1"}
+
+    temp_dir = make_temp_dir
+    num_workers = 4
+
+    def train_func(config):
+        train.report(episode_reward_mean=4)
+        train.report(episode_reward_mean=5)
+        train.report(episode_reward_mean=6)
+        return 1
+
+    callback = MLflowLoggerCallback(
+        experiment_name="test_exp", logdir=temp_dir)
+    trainer = Trainer(config, num_workers=num_workers)
+    trainer.start()
+    trainer.run(train_func, config=params, callbacks=[callback])
+
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient(
+        tracking_uri=callback.mlflow_util._mlflow.get_tracking_uri())
+
+    all_runs = callback.mlflow_util._mlflow.search_runs(experiment_ids=["0"])
+    assert len(all_runs) == 1
+    # all_runs is a pandas dataframe.
+    all_runs = all_runs.to_dict(orient="records")
+    run_id = all_runs[0]["run_id"]
+    run = client.get_run(run_id)
+
+    assert run.data.params == params
+    assert "episode_reward_mean" in run.data.metrics and \
+           run.data.metrics["episode_reward_mean"] == 6.0
+    assert TRAINING_ITERATION in run.data.metrics and \
+           run.data.metrics[TRAINING_ITERATION] == 3.0
+
+    metric_history = client.get_metric_history(
+        run_id=run_id, key="episode_reward_mean")
+
+    assert len(metric_history) == 3
+    iterations = [metric.step for metric in metric_history]
+    assert iterations == [1, 2, 3]
+    rewards = [metric.value for metric in metric_history]
+    assert rewards == [4, 5, 6]
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _ray-k8s-deploy:
 
 Deploying on Kubernetes

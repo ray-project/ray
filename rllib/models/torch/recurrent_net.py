@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from gym.spaces import Discrete, MultiDiscrete
+import tree  # pip install dm_tree
 from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -11,7 +12,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import one_hot
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
@@ -131,14 +133,19 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         self.use_prev_action = model_config["lstm_use_prev_action"]
         self.use_prev_reward = model_config["lstm_use_prev_reward"]
 
-        if isinstance(action_space, Discrete):
-            self.action_dim = action_space.n
-        elif isinstance(action_space, MultiDiscrete):
-            self.action_dim = np.sum(action_space.nvec)
-        elif action_space.shape is not None:
-            self.action_dim = int(np.product(action_space.shape))
-        else:
-            self.action_dim = int(len(action_space))
+        self.action_space_struct = get_base_struct_from_space(
+            self.action_space)
+        self.action_dim = 0
+
+        for space in tree.flatten(self.action_space_struct):
+            if isinstance(space, Discrete):
+                self.action_dim += space.n
+            elif isinstance(space, MultiDiscrete):
+                self.action_dim += np.sum(space.nvec)
+            elif space.shape is not None:
+                self.action_dim += int(np.product(space.shape))
+            else:
+                self.action_dim += int(len(space))
 
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action:
@@ -188,22 +195,38 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
         # Concat. prev-action/reward if required.
         prev_a_r = []
+
+        # Prev actions.
         if self.model_config["lstm_use_prev_action"]:
-            if isinstance(self.action_space, (Discrete, MultiDiscrete)):
-                prev_a = one_hot(input_dict[SampleBatch.PREV_ACTIONS].float(),
-                                 self.action_space)
+            prev_a = input_dict[SampleBatch.PREV_ACTIONS]
+            # If actions are not processed yet (in their original form as
+            # have been sent to environment):
+            # Flatten/one-hot into 1D array.
+            if self.model_config["_disable_action_flattening"]:
+                prev_a_r.append(
+                    flatten_inputs_to_1d_tensor(
+                        prev_a,
+                        spaces_struct=self.action_space_struct,
+                        time_axis=False))
+            # If actions are already flattened (but not one-hot'd yet!),
+            # one-hot discrete/multi-discrete actions here.
             else:
-                prev_a = input_dict[SampleBatch.PREV_ACTIONS].float()
-            prev_a_r.append(torch.reshape(prev_a, [-1, self.action_dim]))
+                if isinstance(self.action_space, (Discrete, MultiDiscrete)):
+                    prev_a = one_hot(prev_a.float(), self.action_space)
+                else:
+                    prev_a = prev_a.float()
+                prev_a_r.append(torch.reshape(prev_a, [-1, self.action_dim]))
+        # Prev rewards.
         if self.model_config["lstm_use_prev_reward"]:
             prev_a_r.append(
                 torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
                               [-1, 1]))
 
+        # Concat prev. actions + rewards to the "main" input.
         if prev_a_r:
             wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
 
-        # Then through our LSTM.
+        # Push everything through our LSTM.
         input_dict["obs_flat"] = wrapped_out
         return super().forward(input_dict, state, seq_lens)
 

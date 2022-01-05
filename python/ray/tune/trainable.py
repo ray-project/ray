@@ -13,6 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -445,6 +446,10 @@ class Trainable:
                                           self.logdir)
             self.storage_client.wait()
 
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -490,6 +495,10 @@ class Trainable:
         Args:
             checkpoint_path (str): Path to checkpoint.
         """
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         except FileNotFoundError:

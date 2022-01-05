@@ -73,7 +73,7 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_.
+For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
 
 Click on the images below to see an example script for each of the listed features:
 

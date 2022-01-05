@@ -27,8 +27,9 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
-    GcsSubscriber
+    GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -434,8 +435,13 @@ class Worker:
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job.
         """
-        subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
-        subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+        if self.gcs_pubsub_enabled:
+            subscriber = self.gcs_log_subscriber
+            subscriber.subscribe()
+        else:
+            subscriber = self.redis_client.pubsub(
+                ignore_subscribe_messages=True)
+            subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -449,7 +455,10 @@ class Worker:
                 if self.threads_stopped.is_set():
                     return
 
-                msg = subscriber.get_message()
+                if self.gcs_pubsub_enabled:
+                    msg = subscriber.poll()
+                else:
+                    msg = subscriber.get_message()
                 if msg is None:
                     num_consecutive_messages_received = 0
                     self.threads_stopped.wait(timeout=0.01)
@@ -463,7 +472,10 @@ class Worker:
                         "logs to the driver, use "
                         "'ray.init(log_to_driver=False)'.")
 
-                data = json.loads(ray._private.utils.decode(msg["data"]))
+                if self.gcs_pubsub_enabled:
+                    data = msg
+                else:
+                    data = json.loads(ray._private.utils.decode(msg["data"]))
 
                 # Don't show logs from other drivers.
                 if (self.filter_logs_by_job and data["job"]
@@ -828,17 +840,19 @@ def init(
         node_ip_address = services.address_to_ip(_node_ip_address)
     raylet_ip_address = node_ip_address
 
+    bootstrap_address, redis_address, gcs_address = None, None, None
     if address:
-        redis_address, _, _ = services.validate_redis_address(address)
-    else:
-        redis_address = None
+        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        assert bootstrap_address is not None
+        logger.info("Connecting to existing Ray cluster at address: "
+                    f"{bootstrap_address}")
+        if gcs_utils.use_gcs_for_bootstrap():
+            gcs_address = bootstrap_address
+        else:
+            redis_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
-
-    if redis_address is not None:
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -861,15 +875,14 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if redis_address is None:
+    if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+        # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -932,6 +945,7 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1261,12 +1275,9 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
-    worker.gcs_subscriber.subscribe_error()
+    worker.gcs_error_subscriber.subscribe()
 
     try:
         if _internal_kv_initialized():
@@ -1281,7 +1292,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            _, error_data = worker.gcs_subscriber.poll_error()
+            _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
             if error_data.job_id not in [
@@ -1360,19 +1371,28 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
-    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    if not gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = node.create_redis_client()
+    worker.gcs_client = node.get_gcs_client()
+    assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(
-            channel=worker.gcs_channel.channel())
-        worker.gcs_subscriber = GcsSubscriber(
-            channel=worker.gcs_channel.channel())
+        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
+        worker.gcs_error_subscriber = GcsErrorSubscriber(
+            address=worker.gcs_client.address)
+        worker.gcs_log_subscriber = GcsLogSubscriber(
+            address=worker.gcs_client.address)
+        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+            address=worker.gcs_client.address)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1405,7 +1425,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1435,12 +1455,19 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
-        node.redis_password,
-    )
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
+        # As the synchronous and the asynchronous context of redis client is
+        # not used in this gcs client. We would not open connection for it
+        # by setting `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -1575,8 +1602,10 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_subscriber"):
-            worker.gcs_subscriber.close()
+        if worker.gcs_pubsub_enabled:
+            worker.gcs_function_key_subscriber.close()
+            worker.gcs_error_subscriber.close()
+            worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
@@ -2020,7 +2049,8 @@ def make_decorator(num_returns=None,
                    placement_group="default",
                    worker=None,
                    retry_exceptions=None,
-                   concurrency_groups=None):
+                   concurrency_groups=None,
+                   scheduling_strategy: SchedulingStrategyT = None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2050,7 +2080,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group)
+                runtime_env, placement_group, scheduling_strategy)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2078,7 +2108,8 @@ def make_decorator(num_returns=None,
             return ray.actor.make_actor(
                 function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, accelerator_type, max_restarts,
-                max_task_retries, runtime_env, concurrency_groups)
+                max_task_retries, runtime_env, concurrency_groups,
+                scheduling_strategy)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2188,6 +2219,17 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
+            schedule a remote function or actor. Possible values are
+            None: ray will figure out the scheduling strategy to use, it
+            will either be the PlacementGroupSchedulingStrategy using parent's
+            placement group if parent has one and has
+            placement_group_capture_child_tasks set to true,
+            or "DEFAULT";
+            "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
+            `PlacementGroupSchedulingStrategy`:
+            placement group based scheduling.
     """
     worker = global_worker
 
@@ -2212,6 +2254,7 @@ def remote(*args, **kwargs):
         "retry_exceptions",
         "placement_group",
         "concurrency_groups",
+        "scheduling_strategy",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2247,6 +2290,7 @@ def remote(*args, **kwargs):
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
+    scheduling_strategy = kwargs.get("scheduling_strategy")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2264,4 +2308,5 @@ def remote(*args, **kwargs):
         placement_group=placement_group,
         worker=worker,
         retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [])
+        concurrency_groups=concurrency_groups or [],
+        scheduling_strategy=scheduling_strategy)

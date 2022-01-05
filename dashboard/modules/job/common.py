@@ -16,6 +16,9 @@ from ray._private.runtime_env.packaging import parse_uri
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
 
+# Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
+CURRENT_VERSION = "1"
+
 
 class JobStatus(str, Enum):
     def __str__(self):
@@ -97,6 +100,13 @@ def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
 def validate_request_type(json_data: Dict[str, Any],
                           request_type: dataclass) -> Any:
     return request_type(**json_data)
+
+
+@dataclass
+class VersionResponse:
+    version: str
+    ray_version: str
+    ray_commit: str
 
 
 @dataclass

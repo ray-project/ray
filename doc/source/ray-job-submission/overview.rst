@@ -1,12 +1,12 @@
 
 
 ===========================================================
-Ray Job Submission: Going from your laptop from production
+Ray Job Submission: Going from your laptop to production
 ===========================================================
 
 .. warning::
 
-    Ray Job Submission is at Alpha phase with APIs mostly stable but subject to change in the future.
+    Ray Job Submission is at an Alpha phase with APIs mostly stable but subject to change in the future.
 
 .. note::
 
@@ -17,14 +17,14 @@ Concepts
 
 - **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained). Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
-- **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs will be terminated.
+- **Job**: A Ray application submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are bound to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs on that cluster will be terminated.
 
 - **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a Job and potentially also Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Can be any existing framework with these abilities, such as Airflow.
 
 Example - Setup
 ---------------
 
-Let's start with a sample Ray script as example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
@@ -60,13 +60,18 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node. The address and port shown in terminal should be where we submit Job requests to.
+| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
    ❯ ray start --head
     Local node IP: 127.0.0.1
     INFO services.py:1360 -- View the Ray dashboard at http://127.0.0.1:8265
+
+.. note::
+
+    If you're building from ray source instead of any pre-built or nightly wheels, please set extra environment variable if you want to use runtime environment features.
+    :code:`export RAY_RUNTIME_ENV_LOCAL_DEV_MODE="1"`
 
 Ray Job APIs
 ------------
@@ -83,7 +88,7 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 
 .. warning::
 
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages, it will be supported in later releases.
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages. It will be supported in later releases.
 
 
 Job CLI API
@@ -99,18 +104,36 @@ If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster
 
 .. code-block::
 
-    ❯ ray job submit -- "python -c 'print(123); import time; time.sleep(5)'"
-    2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
-    2021-11-18 16:14:47,602	INFO cli.py:104 -- Query the status of the job using: `ray job status raysubmit_GsQYzyvZpgNicU8F`.
+    ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+    2021-12-01 23:04:52,672	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:04:52,809	INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
+    2021-12-01 23:04:52,810	INFO packaging.py:352 -- Creating a file package for local directory './'.
+    2021-12-01 23:04:52,878	INFO cli.py:105 -- Job submitted successfully: raysubmit_RXhvSyEPbxhcXtm6.
+    2021-12-01 23:04:52,878	INFO cli.py:106 -- Query the status of the job using: `ray job status raysubmit_RXhvSyEPbxhcXtm6`.
 
+    ❯ ray job status raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:00,356	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:00,371	INFO cli.py:127 -- Job status for 'raysubmit_RXhvSyEPbxhcXtm6': PENDING.
+    2021-12-01 23:05:00,371	INFO cli.py:129 -- Job has not started yet, likely waiting for the runtime_env to be set up.
 
-    ❯ ray job status raysubmit_GsQYzyvZpgNicU8F
-    2021-11-18 16:15:07,727	INFO cli.py:125 -- Job status for 'raysubmit_GsQYzyvZpgNicU8F': SUCCEEDED.
-    2021-11-18 16:15:07,727	INFO cli.py:127 -- Job finished successfully.
+    ❯ ray job status raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:37,751	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:37,764	INFO cli.py:127 -- Job status for 'raysubmit_RXhvSyEPbxhcXtm6': SUCCEEDED.
+    2021-12-01 23:05:37,764	INFO cli.py:129 -- Job finished successfully.
 
+    ❯ ray job logs raysubmit_RXhvSyEPbxhcXtm6
+    2021-12-01 23:05:59,026	INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+    2021-12-01 23:05:23,037	INFO worker.py:851 -- Connecting to existing Ray cluster at address: 127.0.0.1:6379
+    (pid=runtime_env) 2021-12-01 23:05:23,212	WARNING conda.py:54 -- Injecting /Users/jiaodong/Workspace/ray/python to environment /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5 because _inject_current_ray flag is on.
+    (pid=runtime_env) 2021-12-01 23:05:23,212	INFO conda.py:328 -- Finished setting up runtime environment at /tmp/ray/session_2021-12-01_23-04-44_771129_7693/runtime_resources/conda/99305e1352b2dcc9d5f38c2721c7c1f1cc0551d5
+    (pid=runtime_env) 2021-12-01 23:05:23,213	INFO working_dir.py:85 -- Setup working dir for gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip
+    1
+    2
+    3
+    4
+    5
+    2.26.0
 
-    ❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
-    123
 
 
 Ray Job SDK
@@ -142,7 +165,7 @@ Then we can submit our application to the Ray cluster via the Job SDK.
 
 .. tip::
 
-    By default Ray Job server will generate a new ID as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster.
+    By default Ray Job server will generate a new ID as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case, the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster.
 
 Now we can have a simple polling loop that checks the job status until it reaches a terminal state (namely, ``JobStatus.SUCCEEDED``, ``JobStatus.STOPPED``, or ``JobStatus.FAILED``), and gets the logs at the end. We expect to see actor printed numbers as well as the correct version of the :code:`requests` module specified in the ``runtime_env``.
 
@@ -259,4 +282,4 @@ Job Submission Architecture
 
 The following diagram shows the underlying structure and steps for each Job submission.
 
-.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_subimssion_arch.png
+.. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_submission_arch_v2.png

@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import math
-from typing import List, Tuple, Any
+from typing import Dict, List, Tuple, Any
 
 import ray
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -9,11 +9,15 @@ from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
     LAST_TARGET_UPDATE_TS, LEARN_ON_BATCH_TIMER, \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_TRAINED, \
+    NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
     LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -22,6 +26,43 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+
+@ExperimentalAPI
+def train_one_step(trainer, train_batch) -> Dict:
+    config = trainer.config
+    workers = trainer.workers
+    local_worker = workers.local_worker()
+    policies = local_worker.policies_to_train
+    num_sgd_iter = config.get("sgd_num_iter", 1)
+    sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
+
+    learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]
+    with learn_timer:
+        # Subsample minibatches (size=`sgd_minibatch_size`) from the
+        # train batch and loop through train batch `num_sgd_iter` times.
+        if num_sgd_iter > 1 or sgd_minibatch_size > 0:
+            info = do_minibatch_sgd(
+                train_batch,
+                {pid: local_worker.get_policy(pid)
+                 for pid in policies}, local_worker, num_sgd_iter,
+                sgd_minibatch_size, [])
+        # Single update step using train batch.
+        else:
+            info = local_worker.learn_on_batch(train_batch)
+
+    learn_timer.push_units_processed(train_batch.count)
+    trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
+    trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
+
+    # Update weights - after learning on the local worker - on all remote
+    # workers.
+    if workers.remote_workers():
+        with trainer._timers[WORKER_UPDATE_TIMER]:
+            weights = ray.put(workers.local_worker().get_weights(policies))
+            for e in workers.remote_workers():
+                e.set_weights.remote(weights)
+    return info
 
 
 class TrainOneStep:
@@ -75,6 +116,7 @@ class TrainOneStep:
             metrics.info[LEARNER_INFO] = learner_info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = batch.count
         if isinstance(batch, MultiAgentBatch):
             metrics.counters[
                 AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
@@ -209,6 +251,7 @@ class MultiGPUTrainOneStep:
         learn_timer.push_units_processed(samples.count)
 
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += samples.agent_steps()
         metrics.info[LEARNER_INFO] = learner_info
 
@@ -296,6 +339,7 @@ class ApplyGradients:
         gradients, count = item
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
 
         apply_timer = metrics.timers[APPLY_GRADS_TIMER]
         with apply_timer:

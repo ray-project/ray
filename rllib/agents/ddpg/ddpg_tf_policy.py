@@ -97,10 +97,8 @@ def get_distribution_inputs_and_class(
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, ActionDistribution, List[TensorType]]:
-    model_out, _ = model({
-        "obs": obs_batch,
-        "is_training": is_training,
-    }, [], None)
+    model_out, _ = model(
+        SampleBatch(obs=obs_batch, _is_training=is_training), [], None)
     dist_inputs = model.get_policy_output(model_out)
 
     if isinstance(policy.action_space, Simplex):
@@ -121,14 +119,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     huber_threshold = policy.config["huber_threshold"]
     l2_reg = policy.config["l2_reg"]
 
-    input_dict = {
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": True,
-    }
-    input_dict_next = {
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": True,
-    }
+    input_dict = SampleBatch(
+        obs=train_batch[SampleBatch.CUR_OBS], _is_training=True)
+    input_dict_next = SampleBatch(
+        obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True)
 
     model_out_t, _ = model(input_dict, [], None)
     model_out_tp1, _ = model(input_dict_next, [], None)

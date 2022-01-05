@@ -17,7 +17,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
-
 #include <chrono>
 
 #include "absl/synchronization/mutex.h"
@@ -221,6 +220,9 @@ class ClientCallManager {
   /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
+  /// \param[in] call_name The name of the gRPC method call.
+  /// \param[in] method_timeout_ms The timeout of the RPC method in ms.
+  /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
@@ -228,10 +230,13 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
-      std::string call_name) {
+      std::string call_name, int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.RecordStart(call_name);
+    if (method_timeout_ms == -1) {
+      method_timeout_ms = call_timeout_ms_;
+    }
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle),
-                                                        call_timeout_ms_);
+                                                        method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -255,7 +260,7 @@ class ClientCallManager {
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
     SetThreadName("client.poll" + std::to_string(index));
-    void *got_tag;
+    void *got_tag = nullptr;
     bool ok = false;
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
@@ -273,7 +278,11 @@ class ClientCallManager {
         // cases (e.g., test_wait will hang on shutdown without this check).
         break;
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
+        // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
+        // If the client deadline is exceeded, event is obtained at this block.
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        // Refresh the tag.
+        got_tag = nullptr;
         tag->GetCall()->SetReturnStatus();
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);

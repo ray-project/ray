@@ -380,6 +380,10 @@ def test_add_min_workers_nodes():
             "max_workers": 0,
         },
     }
+    # Formatting is disabled to prevent Black from erroring while formatting
+    # this file. See https://github.com/ray-project/ray/issues/21313 for more
+    # information.
+    # yapf: disable
     assert _add_min_workers_nodes([],
                                   {},
                                   types, None, None, None) == \
@@ -426,6 +430,7 @@ def test_add_min_workers_nodes():
                                   }, {
                                       "gpubla": 10
                                   })
+    # yapf: enable
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -1408,6 +1413,12 @@ class LoadMetricsTest(unittest.TestCase):
 
         # Ensure summary_dict is json-serializable
         json.dumps(summary_dict)
+
+        # Backwards compatibility check: head_ip is correctly processed
+        # when included as an argument to LoadMetricsSummary.
+        summary_dict["head_ip"] = "1.1.1.1"
+        # No compatibility issue.
+        LoadMetricsSummary(**summary_dict)
 
 
 class AutoscalingTest(unittest.TestCase):

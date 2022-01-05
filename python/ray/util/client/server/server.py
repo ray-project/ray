@@ -34,9 +34,9 @@ from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
-from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -652,16 +652,10 @@ def encode_exception(exception) -> str:
 
 def decode_options(
         options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, Any]]:
-    if options.json_options == "":
+    if not options.pickled_options:
         return None
-    opts = json.loads(options.json_options)
+    opts = pickle.loads(options.pickled_options)
     assert isinstance(opts, dict)
-
-    if isinstance(opts.get("placement_group", None), dict):
-        # Placement groups in Ray client options are serialized as dicts.
-        # Convert the dict to a PlacementGroup.
-        opts["placement_group"] = PlacementGroup.from_dict(
-            opts["placement_group"])
 
     return opts
 
@@ -723,20 +717,18 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-def create_ray_handler(redis_address, redis_password):
+def create_ray_handler(address, redis_password):
     def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
-        if redis_address:
+        if address:
             if redis_password:
                 ray.init(
-                    address=redis_address,
+                    address=address,
                     _redis_password=redis_password,
                     job_config=job_config,
                     **ray_init_kwargs)
             else:
                 ray.init(
-                    address=redis_address,
-                    job_config=job_config,
-                    **ray_init_kwargs)
+                    address=address, job_config=job_config, **ray_init_kwargs)
         else:
             ray.init(job_config=job_config, **ray_init_kwargs)
 
@@ -775,7 +767,7 @@ def main():
         choices=["proxy", "legacy", "specific-server"],
         default="proxy")
     parser.add_argument(
-        "--redis-address",
+        "--address",
         required=False,
         type=str,
         help="Address to use to connect to Ray")
@@ -799,20 +791,14 @@ def main():
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
-    # This redis client is used for health checking. We can't use `internal_kv`
-    # because it requires `ray.init` to be called, which only connect handlers
-    # should do.
-    redis_client = None
-
-    ray_connect_handler = create_ray_handler(args.redis_address,
-                                             args.redis_password)
+    ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
-            args.redis_address,
+            args.address,
             redis_password=args.redis_password,
             runtime_env_agent_port=args.metrics_agent_port)
     else:
@@ -826,12 +812,15 @@ def main():
             }
 
             try:
-                if not redis_client:
-                    redis_client = try_create_redis_client(
-                        args.redis_address, args.redis_password)
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    gcs_client = (ray._private.gcs_utils.GcsClient.
-                                  create_from_redis(redis_client))
+                    if use_gcs_for_bootstrap():
+                        gcs_client = ray._private.gcs_utils.GcsClient(
+                            address=args.address)
+                    else:
+                        redis_client = try_create_redis_client(
+                            args.address, args.redis_password)
+                        gcs_client = (ray._private.gcs_utils.GcsClient.
+                                      create_from_redis(redis_client))
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
@@ -840,7 +829,7 @@ def main():
                     namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
-                             f"on {args.redis_address}")
+                             f"on {args.address}")
                 logger.exception(e)
 
             time.sleep(1)
