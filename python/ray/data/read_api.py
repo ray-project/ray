@@ -58,6 +58,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
+        stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
         for item in items[i:i + block_size]:
             builder.add(item)
@@ -65,10 +66,12 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         blocks.append(ray.put(block))
         metadata.append(
             BlockAccessor.for_block(block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO))
+                input_files=None, exec_stats=stats.build()))
         i += block_size
 
-    return Dataset(BlockList(blocks, metadata), 0, DatasetStats.TODO())
+    return Dataset(
+        BlockList(blocks, metadata), 0,
+        DatasetStats(stages={"from_items": metadata}, parent=None))
 
 
 @PublicAPI(stability="beta")
@@ -606,7 +609,8 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
     return Dataset(
-        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
+        BlockList(blocks, ray.get(list(metadata))), 0,
+        DatasetStats(stages={"from_pandas_refs": metadata}, parent=None))
 
 
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
@@ -623,7 +627,10 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
     return Dataset(
-        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
+        BlockList(blocks, ray.get(list(metadata))), 0,
+        DatasetStats({
+            "from_numpy": metadata
+        }, parent=None))
 
 
 @PublicAPI(stability="beta")
@@ -664,7 +671,8 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(
-        BlockList(tables, ray.get(metadata)), 0, DatasetStats.TODO())
+        BlockList(tables, ray.get(metadata)), 0,
+        DatasetStats(stages={"from_arrow_refs": metadata}, parent=None))
 
 
 @PublicAPI(stability="beta")
@@ -688,20 +696,23 @@ def from_spark(df: "pyspark.sql.DataFrame",
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
+    stats = BlockExecStats.builder()
     import pyarrow as pa
     block = pa.table(df)
     return (block, BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=BlockExecStats.TODO))
+        input_files=None, exec_stats=stats.build()))
 
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
+    stats = BlockExecStats.builder()
     import pyarrow as pa
     from ray.data.extensions import TensorArray
     table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
     return (table, BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=BlockExecStats.TODO))
+        input_files=None, exec_stats=stats.build()))
 
 
 def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
+    stats = BlockExecStats.builder()
     return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=BlockExecStats.TODO)
+        input_files=None, exec_stats=stats.build())

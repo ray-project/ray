@@ -89,6 +89,8 @@ class _StatsActor:
         self.last_time[stats_uuid] = time.time()
 
     def get(self, stats_uuid):
+        if stats_uuid not in self.metadata:
+            return {}, 0.0
         return self.metadata[stats_uuid], \
             self.last_time[stats_uuid] - self.start_time
 
