@@ -60,6 +60,11 @@ TEST(RayClusterModeTest, FullTest) {
   auto get_result = *(ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
+  auto py_actor_handle =
+      ray::Actor(ray::PyClass<int>{"test_cross_language_invocation", "Counter"})
+          .Remote(1);
+  EXPECT_TRUE(!py_actor_handle.ID().empty());
+
   auto py_obj =
       ray::Task(ray::PyFunction<int>{"test_cross_language_invocation", "py_return_val"})
           .Remote();

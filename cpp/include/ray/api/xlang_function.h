@@ -19,15 +19,21 @@
 
 namespace ray {
 
-template<typename R, typename ...Args>
-struct PyFunction{
-  R operator()(Args... args){
-    return {};
-  }
-  
+template <typename R, typename... Args>
+struct PyFunction {
+  R operator()(Args... args) { return {}; }
+
   std::string module_name;
   std::string function_name;
+};
+
+template <typename... Args>
+struct PyClass {
+  void operator()(Args... args) {}
+
+  std::string module_name;
   std::string class_name;
+  std::string function_name = "__init__";
 };
 
 namespace internal {
@@ -39,11 +45,10 @@ enum class LangType {
 };
 
 inline constexpr size_t XLANG_HEADER_LEN = 9;
-inline constexpr std::string_view PYTHON_INIT_METHOD_NAME = "__init__";
 inline constexpr std::string_view METADATA_STR_DUMMY = "__RAY_DUMMY__";
 inline constexpr std::string_view METADATA_STR_RAW = "RAW";
 inline constexpr std::string_view METADATA_STR_XLANG = "XLANG";
 
-}
+}  // namespace internal
 
-}
+}  // namespace ray

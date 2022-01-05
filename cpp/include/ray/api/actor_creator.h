@@ -79,7 +79,8 @@ ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&... args) {
   StaticCheck<F, Args...>();
   CheckTaskOptions(create_options_.resources);
   using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-  Arguments::WrapArgs<ArgsTuple>(false, &args_,
+  bool cross_lang = remote_function_holder_.lang_type != LangType::CPP;
+  Arguments::WrapArgs<ArgsTuple>(cross_lang, &args_,
                                  std::make_index_sequence<sizeof...(Args)>{},
                                  std::forward<Args>(args)...);
   auto returned_actor_id =

@@ -217,11 +217,18 @@ inline ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &creat
                                                std::move(remote_func_holder));
 }
 
+template <typename... Args>
+ray::internal::ActorCreator<PyClass<Args...>> Actor(PyClass<Args...> func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(
+      func.module_name, func.function_name, func.class_name,
+      ray::internal::LangType::PYTHON);
+  return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
+}
+
 template <typename R, typename... Args>
 ray::internal::TaskCaller<PyFunction<R, Args...>> Task(PyFunction<R, Args...> func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
-      func.module_name, func.function_name, /*class_name=*/"",
-      ray::internal::LangType::PYTHON);
+      func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
 }
 

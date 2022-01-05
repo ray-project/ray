@@ -76,7 +76,7 @@ ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
   CheckTaskOptions(task_options_.resources);
   using ReturnType = boost::callable_traits::return_type_t<F>;
   using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-  bool cross_lang = remote_function_holder_.lang_type == LangType::PYTHON;
+  bool cross_lang = remote_function_holder_.lang_type != LangType::CPP;
   Arguments::WrapArgs<ArgsTuple>(cross_lang, &args_,
                                  std::make_index_sequence<sizeof...(Args)>{},
                                  std::forward<Args>(args)...);
