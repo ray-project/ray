@@ -4,8 +4,7 @@ import logging
 import numpy as np
 import random
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
-    MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
@@ -83,8 +82,9 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     Returns:
         averaged info fetches over the last SGD epoch taken.
     """
-    if isinstance(samples, SampleBatch):
-        samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
+
+    # Handle everything as if multi-agent.
+    samples = samples.as_multi_agent()
 
     # Use LearnerInfoBuilder as a unified way to build the final
     # results dict from `learn_on_loaded_batch` call(s).

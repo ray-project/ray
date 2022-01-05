@@ -252,7 +252,6 @@ def test_config_change(serve_instance, use_handle):
     assert val5 == "4"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconfigure_with_exception(serve_instance):
     @serve.deployment
     class A:
@@ -703,7 +702,6 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     assert all(pid not in pids1 for pid in responses2["2"])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_handle_validation(serve_instance):
     @serve.deployment
     class A:

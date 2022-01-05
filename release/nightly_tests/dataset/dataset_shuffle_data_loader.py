@@ -77,7 +77,7 @@ def create_torch_iterator(split, batch_size, rank=None):
         label_column=label_column,
         feature_columns=feature_columns,
         label_column_dtype=label_type,
-        feature_column_dtypes=feature_types,
+        feature_column_dtypes=feature_types[0],
         batch_size=batch_size,
     )
     return torch_iterator
