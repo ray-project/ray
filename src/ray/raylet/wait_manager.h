@@ -29,7 +29,7 @@ class WaitManager {
               const std::function<bool(const ray::ObjectID &)> is_object_local)
       : io_service_(io_service), is_object_local_(is_object_local), next_wait_id_(0) {}
 
-  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
+  using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &ready,
                                           const std::vector<ray::ObjectID> &remaining)>;
   /// Wait until either num_required_objects are locally available
   /// or timeout_ms has elapsed, then invoke the provided callback.
@@ -65,7 +65,7 @@ class WaitManager {
     const int64_t timeout_ms;
     /// The timer used whenever timeout_ms > 0.
     boost::asio::deadline_timer timeout_timer;
-    /// The callback invoked when WaitCallback is complete.
+    /// The callback invoked when Wait is complete.
     WaitCallback callback;
     /// Ordered input object_ids.
     const std::vector<ObjectID> object_ids;
