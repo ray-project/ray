@@ -57,6 +57,7 @@ python/.eggs
 *.so
 *.dylib
 *.dll
+python/ray/_raylet.pyd
 
 # Incremental linking files
 *.ilk
@@ -162,6 +163,8 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+
+dependency-reduced-pom.xml
 
 # Cpp
 cpp/example/thirdparty/

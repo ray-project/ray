@@ -568,6 +568,9 @@ def wrap_function(train_func: Callable[[Any], Any],
         _name = name or (train_func.__name__
                          if hasattr(train_func, "__name__") else "func")
 
+        def __repr__(self):
+            return self._name
+
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:
                 fn = partial(train_func, config)

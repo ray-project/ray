@@ -165,17 +165,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.second = port;
       });
 
-  // Initialize gcs client.
-  // As the synchronous and the asynchronous context of redis client is not used in this
-  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
-  // `enable_async_conn` as false.
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
-      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
-      options_.gcs_options.password_,
-      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
-      /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<gcs::GcsClient>(
-      gcs_options, [this](std::pair<std::string, int> *address) {
+      options_.gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
           address->first = gcs_server_address_.first;
@@ -323,9 +314,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                               worker_context_.GetCurrentJobID(),
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
                               GetCallerId(), rpc_address_);
-
-    std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
-    data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     SetCurrentTaskId(task_id);
   }
 
@@ -354,7 +342,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
                                              *task_manager_, *actor_creator_,
-                                             on_excess_queueing));
+                                             on_excess_queueing, io_service_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -1425,6 +1413,10 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
     const auto &uri = runtime_env->uris().conda_uri();
     result.emplace_back(encode_plugin_uri("conda", uri));
   }
+  if (!runtime_env->uris().pip_uri().empty()) {
+    const auto &uri = runtime_env->uris().pip_uri();
+    result.emplace_back(encode_plugin_uri("pip", uri));
+  }
   for (const auto &uri : runtime_env->uris().plugin_uris()) {
     result.emplace_back(encode_plugin_uri("plugin", uri));
   }
@@ -1602,6 +1594,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries, actor_name, ray_namespace,
+      actor_creation_options.max_pending_calls,
       actor_creation_options.execute_out_of_order);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
@@ -1681,8 +1674,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
@@ -1704,65 +1695,61 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
-      placement_group_spec,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncCreatePlacementGroup(placement_group_spec);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in creating the placement group of id "
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-  return status_future.get();
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   // Synchronously wait for placement group removal.
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncRemovePlacementGroup(placement_group_id);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in removing the placement group of id "
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-  return status_future.get();
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                            int timeout_seconds) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
-  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(timeout_seconds)) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncWaitUntilReady(placement_group_id);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
            << " creation.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-  return status_future.get();
 }
 
-std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
+std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
+  absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  /// Check whether backpressure may happen at the very beginning of submitting a task.
+  if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
+    RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
+                   << ". " << direct_actor_submitter_->DebugString(actor_id);
+    return std::nullopt;
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
@@ -1801,17 +1788,18 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
+    /// NOTE: The lock should be released in local mode. The user code may
+    /// submit another task when executing the current task locally, which
+    /// cause deadlock. The code call chain is:
+    /// SubmitActorTask -> python user code -> actor.xx.remote() -> SubmitActorTask
+    lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    io_service_.post(
-        [this, task_spec]() {
-          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
-        },
-        "CoreWorker.SubmitActorTask");
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return returned_refs;
+  return {std::move(returned_refs)};
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,
@@ -1943,33 +1931,19 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
-  std::shared_ptr<std::promise<void>> ready_promise =
-      std::make_shared<std::promise<void>>(std::promise<void>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncListNamedActors(
-      all_namespaces, ray_namespace,
-      [&actors, ready_promise](const std::vector<rpc::NamedActorInfo> &result) {
-        for (const auto &actor_info : result) {
-          actors.push_back(std::make_pair(actor_info.ray_namespace(), actor_info.name()));
-        }
-        ready_promise->set_value();
-      }));
-
-  // Block until the RPC completes. Set a timeout to avoid hangs if the
-  // GCS service crashes.
-  Status status;
-  if (ready_promise->get_future().wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
               "probably because the GCS server is dead or under high load .";
-    return std::make_pair(actors, Status::TimedOut(stream.str()));
+    return std::make_pair(std::move(actors), Status::TimedOut(stream.str()));
+  } else if (!status.ok()) {
+    return std::make_pair(std::move(actors), status);
   } else {
-    status = Status::OK();
+    return std::make_pair(std::move(actors), status);
   }
-
-  return std::make_pair(actors, status);
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status>

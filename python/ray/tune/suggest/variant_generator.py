@@ -397,7 +397,7 @@ def _split_resolved_unresolved_values(
                 resolved_vars[(k, ) + path] = value
             for (path, value) in _unresolved_children.items():
                 unresolved_vars[(k, ) + path] = value
-        elif isinstance(v, list):
+        elif isinstance(v, (list, tuple)):
             # Recurse into a list
             for i, elem in enumerate(v):
                 _resolved_children, _unresolved_children = \

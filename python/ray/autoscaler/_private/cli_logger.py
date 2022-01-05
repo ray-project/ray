@@ -8,12 +8,12 @@ Supports color, bold text, italics, underlines, etc.
 as well as indentation and other structured output.
 """
 from contextlib import contextmanager
-import sys
-import logging
+from functools import wraps
 import inspect
+import logging
 import os
-
-from typing import Any, Dict, Tuple, Optional, List
+import sys
+from typing import Any, Callable, Dict, Tuple, Optional, List
 
 import click
 
@@ -776,3 +776,35 @@ class SilentClickException(click.ClickException):
 
 
 cli_logger = _CliLogger()
+
+CLICK_LOGGING_OPTIONS = [
+    click.option(
+        "--log-style",
+        required=False,
+        type=click.Choice(cli_logger.VALID_LOG_STYLES, case_sensitive=False),
+        default="auto",
+        help=("If 'pretty', outputs with formatting and color. If 'record', "
+              "outputs record-style without formatting. "
+              "'auto' defaults to 'pretty', and disables pretty logging "
+              "if stdin is *not* a TTY.")),
+    click.option(
+        "--log-color",
+        required=False,
+        type=click.Choice(["auto", "false", "true"], case_sensitive=False),
+        default="auto",
+        help=("Use color logging. "
+              "Auto enables color logging if stdout is a TTY.")),
+    click.option("-v", "--verbose", default=None, count=True)
+]
+
+
+def add_click_logging_options(f: Callable) -> Callable:
+    for option in reversed(CLICK_LOGGING_OPTIONS):
+        f = option(f)
+
+    @wraps(f)
+    def wrapper(*args, log_style=None, log_color=None, verbose=None, **kwargs):
+        cli_logger.configure(log_style, log_color, verbose)
+        return f(*args, **kwargs)
+
+    return wrapper

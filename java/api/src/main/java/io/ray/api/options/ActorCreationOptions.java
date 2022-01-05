@@ -11,35 +11,42 @@ import java.util.Map;
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
   public final String name;
+  public final ActorLifetime lifetime;
   public final int maxRestarts;
   public final List<String> jvmOptions;
   public final int maxConcurrency;
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final int maxPendingCalls;
 
   private ActorCreationOptions(
       String name,
+      ActorLifetime lifetime,
       Map<String, Double> resources,
       int maxRestarts,
       List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups) {
+      List<ConcurrencyGroup> concurrencyGroups,
+      int maxPendingCalls) {
     super(resources);
     this.name = name;
+    this.lifetime = lifetime;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.maxPendingCalls = maxPendingCalls;
   }
 
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
     private String name;
+    private ActorLifetime lifetime = ActorLifetime.DEFAULT;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private List<String> jvmOptions = new ArrayList<>();
@@ -47,6 +54,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private int maxPendingCalls = -1;
 
     /**
      * Set the actor name of a named actor. This named actor is accessible in this namespace by this
@@ -58,6 +66,12 @@ public class ActorCreationOptions extends BaseTaskOptions {
      */
     public Builder setName(String name) {
       this.name = name;
+      return this;
+    }
+
+    /** Declare the lifetime of this actor. */
+    public Builder setLifetime(ActorLifetime lifetime) {
+      this.lifetime = lifetime;
       return this;
     }
 
@@ -133,6 +147,24 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
+     * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+     * ray.exceptions.PendingCallsLimitExceededException will be thrown for further tasks. Note that
+     * this limit is counted per handle. -1 means that the number of pending calls is unlimited.
+     *
+     * @param maxPendingCalls The maximum number of pending calls for this actor.
+     * @return self
+     */
+    public Builder setMaxPendingCalls(int maxPendingCalls) {
+      if (maxPendingCalls < -1 || maxPendingCalls == 0) {
+        throw new IllegalArgumentException(
+            "maxPendingCalls must be greater than 0, or -1 to disable.");
+      }
+
+      this.maxPendingCalls = maxPendingCalls;
+      return this;
+    }
+
+    /**
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
@@ -148,13 +180,15 @@ public class ActorCreationOptions extends BaseTaskOptions {
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
           name,
+          lifetime,
           resources,
           maxRestarts,
           jvmOptions,
           maxConcurrency,
           group,
           bundleIndex,
-          concurrencyGroups);
+          concurrencyGroups,
+          maxPendingCalls);
     }
 
     /** Set the concurrency groups for this actor. */

@@ -201,6 +201,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -289,7 +290,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// owned an actor, those actors will be destroyed.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const NodeID &node_id);
+  /// \param node_ip_address The ip address of the dead node.
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -301,9 +303,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const rpc::RayException *creation_task_exception = nullptr);
 
+  /// Testing only.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
   /// Handle actor creation task failure. This should be called
@@ -350,10 +354,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       &GetActorRegisterCallbacks() const;
 
-  /// Collect stats from gcs actor manager in-memory data structures.
-  void CollectStats() const;
-
   std::string DebugString() const;
+
+  /// Collect stats from gcs actor manager in-memory data structures.
+  void RecordMetrics() const;
 
   bool GetSchedulePendingActorsPosted() const;
 
@@ -384,7 +388,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
+  /// \param[in] force_kill Whether destory the actor forcelly.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+                    bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -462,6 +468,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
                                const TaskID &task_id);
 
+  /// Get the alive or dead actor of the actor id.
+  /// NOTE: The return value is not meant to be passed to other scope.
+  /// This return value should be used only for a short-time usage.
+  ///
+  /// \param actor_id The id of the actor.
+  /// \return Actor instance. The nullptr if the actor doesn't exist.
+  ///
+  const GcsActor *GetActor(const ActorID &actor_id) const;
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -517,6 +532,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
+  /// A callback to get the number of java workers per process config item by the
+  /// given job id. It is necessary for deciding whether we should clear the Java actor.
+  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
   RuntimeEnvManager &runtime_env_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.

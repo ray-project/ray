@@ -128,16 +128,18 @@ class PlacementGroupFactory:
                  **kwargs):
         assert len(bundles) > 0, (
             "Cannot initialize a PlacementGroupFactory with zero bundles.")
-        if not bundles[0]:
-            # This is when trainable itself doesn't need resources.
-            self._head_bundle_is_empty = True
-            bundles.pop(0)
-        else:
-            self._head_bundle_is_empty = False
 
         self._bundles = [{k: float(v)
                           for k, v in bundle.items() if v != 0}
                          for bundle in bundles]
+
+        if not self._bundles[0]:
+            # This is when trainable itself doesn't need resources.
+            self._head_bundle_is_empty = True
+            self._bundles.pop(0)
+        else:
+            self._head_bundle_is_empty = False
+
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs

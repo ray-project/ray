@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Set, Union
+from pkg_resources import Requirement
+from collections import OrderedDict
 import yaml
 
 import ray
@@ -10,7 +12,11 @@ from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
                                              encode_plugin_uri)
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
-from ray._private.runtime_env import conda
+from ray._private.runtime_env.conda import (
+    _resolve_install_from_source_ray_extras, get_uri as get_conda_uri)
+from ray._private.runtime_env.pip import RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP
+
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +109,57 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
+def _rewrite_pip_list_ray_libraries(pip_list: List[str]) -> List[str]:
+    result = []
+    for specifier in pip_list:
+        requirement = Requirement.parse(specifier)
+        package_name = requirement.name
+        if package_name == "ray":
+            libraries = requirement.extras  # e.g. ("serve", "tune")
+            if libraries == ():
+                # Ray alone was specified (e.g. "ray" or "ray>1.4"). Remove it.
+                if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != "1":
+                    logger.warning(
+                        "Ray was specified in the `pip` field of the "
+                        f"`runtime_env`: '{specifier}'. This is not needed; "
+                        "Ray is already installed on the cluster, so that Ray"
+                        "installation will be used. To prevent Ray version "
+                        f"incompatibility issues, '{specifier}' has been "
+                        "deleted from the `pip` field. To disable this "
+                        "deletion, set the environment variable "
+                        f"{RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP} to 1.")
+                else:
+                    result.append(specifier)
+            else:
+                # Replace the library with its dependencies.
+                extras = _resolve_install_from_source_ray_extras()
+                for library in libraries:
+                    result += extras[library]
+        else:
+            # Pass through all non-Ray packages unmodified.
+            result.append(specifier)
+    return result
+
+
 def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
-    Conda can be one of two cases:
+    The value of the input 'pip' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
         2) A string pointing to a local requirements file. In this case, the
            file contents will be read split into a list.
+
+    The returned parsed value will be a list of pip packages. If a Ray library
+    (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
+    dependencies (e.g. "uvicorn", "requests").
+
+    If the base Ray package (e.g. "ray>1.4" or "ray") is specified in the
+    input, it will be removed, unless the environment variable
+    RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP is set to 1.
     """
     assert pip is not None
 
-    result = None
+    pip_list = None
     if sys.platform == "win32":
         raise NotImplementedError("The 'pip' field in runtime_env "
                                   "is not currently supported on "
@@ -123,15 +169,25 @@ def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
         pip_file = Path(pip)
         if not pip_file.is_file():
             raise ValueError(f"{pip_file} is not a valid file")
-        result = pip_file.read_text().strip().split("\n")
+        pip_list = pip_file.read_text().strip().split("\n")
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
-        if len(pip) == 0:
-            result = None
-        else:
-            result = pip
+        pip_list = pip
     else:
         raise TypeError("runtime_env['pip'] must be of type str or "
                         f"List[str], got {type(pip)}")
+
+    result = _rewrite_pip_list_ray_libraries(pip_list)
+
+    # Eliminate duplicates to prevent `pip install` from erroring. Use
+    # OrderedDict to preserve the order of the list.  This makes the output
+    # deterministic and easier to debug, because pip install can have
+    # different behavior depending on the order of the input.
+    result = list(OrderedDict.fromkeys(result))
+
+    if len(result) == 0:
+        result = None
+
+    logger.debug(f"Rewrote runtime_env `pip` field from {pip} to {result}.")
 
     return result
 
@@ -345,17 +401,22 @@ class ParsedRuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(encode_plugin_uri("py_modules", uri))
-        if "conda" or "pip" in self:
-            uri = conda.get_uri(self)
+        if "conda" in self:
+            uri = get_conda_uri(self)
             if uri is not None:
                 plugin_uris.append(encode_plugin_uri("conda", uri))
+        if "pip" in self:
+            uri = get_pip_uri(self)
+            if uri is not None:
+                plugin_uris.append(encode_plugin_uri("pip", uri))
 
         return plugin_uris
 
     def get_proto_runtime_env(self):
         """Return the protobuf structure of runtime env."""
         if self._cached_pb is None:
-            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
+            self._cached_pb = RuntimeEnv.from_dict(self, get_conda_uri,
+                                                   get_pip_uri)
 
         return self._cached_pb
 

@@ -26,11 +26,14 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id, bool execute_out_of_order) {
+    const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
-  client_queues_.emplace(actor_id, ClientQueue(actor_id, execute_out_of_order));
+  RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
+                << actor_id;
+  client_queues_.emplace(actor_id,
+                         ClientQueue(actor_id, execute_out_of_order, max_pending_calls));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -80,32 +83,39 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // this sequence number.
       send_pos = task_spec.ActorCounter();
       RAY_CHECK(queue->second.actor_submit_queue->Emplace(send_pos, task_spec));
+      queue->second.cur_pending_calls++;
       task_queued = true;
     }
   }
 
   if (task_queued) {
-    // We must release the lock before resolving the task dependencies since
-    // the callback may get called in the same call stack.
-    resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id](Status status) {
-      absl::MutexLock lock(&mu_);
-      auto queue = client_queues_.find(actor_id);
-      RAY_CHECK(queue != client_queues_.end());
-      auto &actor_submit_queue = queue->second.actor_submit_queue;
-      // Only dispatch tasks if the submitted task is still queued. The task
-      // may have been dequeued if the actor has since failed.
-      if (actor_submit_queue->Contains(send_pos)) {
-        if (status.ok()) {
-          actor_submit_queue->MarkDependencyResolved(send_pos);
-          SendPendingTasks(actor_id);
-        } else {
-          auto task_id = actor_submit_queue->Get(send_pos).first.TaskId();
-          actor_submit_queue->MarkDependencyFailed(send_pos);
-          task_finisher_.FailOrRetryPendingTask(
-              task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-        }
-      }
-    });
+    io_service_.post(
+        [task_spec, send_pos, this]() mutable {
+          // We must release the lock before resolving the task dependencies since
+          // the callback may get called in the same call stack.
+          auto actor_id = task_spec.ActorId();
+          resolver_.ResolveDependencies(
+              task_spec, [this, send_pos, actor_id](Status status) {
+                absl::MutexLock lock(&mu_);
+                auto queue = client_queues_.find(actor_id);
+                RAY_CHECK(queue != client_queues_.end());
+                auto &actor_submit_queue = queue->second.actor_submit_queue;
+                // Only dispatch tasks if the submitted task is still queued. The task
+                // may have been dequeued if the actor has since failed.
+                if (actor_submit_queue->Contains(send_pos)) {
+                  if (status.ok()) {
+                    actor_submit_queue->MarkDependencyResolved(send_pos);
+                    SendPendingTasks(actor_id);
+                  } else {
+                    auto task_id = actor_submit_queue->Get(send_pos).first.TaskId();
+                    actor_submit_queue->MarkDependencyFailed(send_pos);
+                    task_finisher_.FailOrRetryPendingTask(
+                        task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+                  }
+                }
+              });
+        },
+        "CoreWorkerDirectActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_.MarkTaskCanceled(task_id);
@@ -291,16 +301,25 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  absl::MutexLock lock(&mu_);
-  for (auto &queue_pair : client_queues_) {
-    auto &queue = queue_pair.second;
-    auto deque_itr = queue.wait_for_death_info_tasks.begin();
-    while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-           /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-      auto task_spec = deque_itr->second;
-      task_finisher_.MarkTaskReturnObjectsFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
-      deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+  std::vector<TaskSpecification> task_specs;
+  {
+    absl::MutexLock lock(&mu_);
+    for (auto &queue_pair : client_queues_) {
+      auto &queue = queue_pair.second;
+      auto deque_itr = queue.wait_for_death_info_tasks.begin();
+      while (deque_itr != queue.wait_for_death_info_tasks.end() &&
+             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+        auto &task_spec = deque_itr->second;
+        task_specs.push_back(task_spec);
+        deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+      }
     }
+  }
+
+  // Do not hold mu_, because MarkTaskReturnObjectsFailed may call python from cpp,
+  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
+  for (auto &task_spec : task_specs) {
+    task_finisher_.MarkTaskReturnObjectsFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
   }
 }
 
@@ -427,14 +446,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                 << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
           }
         }
-
-        if (!will_retry) {
-          // If we don't need to retry, mark the task as completed.
+        {
           absl::MutexLock lock(&mu_);
           auto queue_pair = client_queues_.find(actor_id);
           RAY_CHECK(queue_pair != client_queues_.end());
           auto &queue = queue_pair->second;
-          queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+          if (!will_retry) {
+            queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+          }
+          queue.cur_pending_calls--;
         }
       };
 
@@ -468,5 +488,25 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   auto iter = client_queues_.find(actor_id);
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
+
+bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  return it->second.max_pending_calls > 0 &&
+         it->second.cur_pending_calls >= it->second.max_pending_calls;
+}
+
+std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  std::ostringstream stream;
+  stream << "Submitter debug string for actor " << actor_id << " "
+         << it->second.DebugString();
+  return stream.str();
+}
+
 }  // namespace core
 }  // namespace ray
