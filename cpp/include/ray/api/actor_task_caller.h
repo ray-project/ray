@@ -33,7 +33,7 @@ class ActorTaskCaller {
         remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&...args);
 
   ActorTaskCaller &SetName(std::string name) {
     task_options_.name = std::move(name);
@@ -63,7 +63,7 @@ class ActorTaskCaller {
 template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
-    Args &&... args) {
+    Args &&...args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
   StaticCheck<F, Args...>();
   CheckTaskOptions(task_options_.resources);
