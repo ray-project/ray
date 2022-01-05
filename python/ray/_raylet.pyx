@@ -98,7 +98,6 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
@@ -144,7 +143,6 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
-include "includes/gcs_client.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -1025,14 +1023,6 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.destroy_event_loop_if_exists()
 
 
-def connect_to_gcs(ip, port, password):
-    return GcsClient.make_from_address(ip, port, password)
-
-
-def disconnect_from_gcs(gcs_client):
-    gcs_client.disconnect()
-
-
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -1115,10 +1105,6 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
-
-    def get_gcs_client(self):
-        return GcsClient.make_from_existing(
-            CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
 
     def notify_raylet(self):
         with nogil:
