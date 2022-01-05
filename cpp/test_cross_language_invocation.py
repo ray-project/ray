@@ -1,5 +1,6 @@
 import ray
 
+
 @ray.remote
 def py_return_input(v):
     return v
