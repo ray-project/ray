@@ -144,10 +144,6 @@ class Node:
         self._gcs_client = None
 
         if not self.head:
-            # TODO(mwtian): remove after supporting bootstraapping with GCS
-            # address.
-            if self._redis_address and not self._gcs_address:
-                self._gcs_address = self._get_gcs_address_from_redis()
             self.validate_ip_port(self.address)
             self.get_gcs_client()
 
@@ -459,6 +455,8 @@ class Node:
         `ray start` or `ray.int()` to start worker nodes, that has been
         converted to ip:port format.
         """
+        if use_gcs_for_bootstrap():
+            return self._gcs_address
         return self._redis_address
 
     @property
@@ -1042,9 +1040,9 @@ class Node:
         assert self._gcs_client is None
 
         # If this is the head node, start the relevant head node processes.
-        # TODO(mwtian): guard with `if not use_gcs_for_bootstrap():`
-        self.start_redis()
-        assert self._redis_address is not None
+        if not use_gcs_for_bootstrap():
+            self.start_redis()
+            assert self._redis_address is not None
 
         self.start_gcs_server()
         assert self._gcs_client is not None

@@ -270,7 +270,10 @@ def _find_address_from_flag(flag: str):
                         # TODO(ekl): Find a robust solution for locating Redis.
                         if arg.startswith(flag):
                             proc_addr = arg.split("=")[1]
-                            addresses.add(proc_addr)
+                            # TODO(mwtian): remove this workaround after Ray
+                            # no longer sets --redis-address to None.
+                            if proc_addr != "" and proc_addr != "None":
+                                addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
@@ -282,9 +285,15 @@ def find_redis_address():
     return _find_address_from_flag("--redis-address")
 
 
+def find_gcs_address():
+    return _find_address_from_flag("--gcs-address")
+
+
 def find_bootstrap_address():
-    # TODO(mwtian): add find_gcs_address()
-    return find_redis_address()
+    if use_gcs_for_bootstrap():
+        return find_gcs_address()
+    else:
+        return find_redis_address()
 
 
 def _find_redis_address_or_die():
@@ -306,6 +315,26 @@ def _find_redis_address_or_die():
     return redis_addresses.pop()
 
 
+def _find_gcs_address_or_die():
+    """Find one GCS address unambiguously, or raise an error.
+
+    Callers outside of this module should use get_ray_address_to_use_or_die()
+    """
+    gcs_addresses = _find_address_from_flag("--gcs-address")
+    if len(gcs_addresses) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {gcs_addresses}. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable.")
+        sys.exit(1)
+    elif not gcs_addresses:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable.")
+    return gcs_addresses.pop()
+
+
 def get_ray_address_from_environment():
     """
     Attempts to find the address of Ray cluster to use, first from
@@ -316,8 +345,10 @@ def get_ray_address_from_environment():
     """
     addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
     if addr is None or addr == "auto":
-        # TODO(mwtian): support _find_gcs_address_or_die()
-        addr = _find_redis_address_or_die()
+        if use_gcs_for_bootstrap():
+            addr = _find_gcs_address_or_die()
+        else:
+            addr = _find_redis_address_or_die()
     return addr
 
 
@@ -424,13 +455,12 @@ def canonicalize_bootstrap_address(addr: str):
 
 
 def extract_ip_port(bootstrap_address: str):
-    address_parts = bootstrap_address.split(":")
-    if len(address_parts) != 2:
+    if ":" not in bootstrap_address:
         raise ValueError(f"Malformed address {bootstrap_address}. "
-                         "Expected '<host>:<port>'.")
-    ip = address_parts[0]
+                         f"Expected '<host>:<port>'.")
+    ip, _, port = bootstrap_address.rpartition(":")
     try:
-        port = int(address_parts[1])
+        port = int(port)
     except ValueError:
         raise ValueError(f"Malformed address port {port}. Must be an integer.")
     if port < 1024 or port > 65535:
@@ -453,6 +483,8 @@ def address_to_ip(address: str):
         The same address but with the hostname replaced by a numerical IP
             address.
     """
+    if not address:
+        raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
@@ -1519,9 +1551,6 @@ def start_raylet(redis_address,
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
-    # TODO (iycheng): remove redis_ip_address after redis removal
-    redis_ip_address, redis_port = redis_address.split(":")
-
     has_java_command = False
     if shutil.which("java") is not None:
         has_java_command = True
@@ -1621,15 +1650,12 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
-        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
-        f"--redis_address={redis_ip_address}",
-        f"--redis_port={redis_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
@@ -1647,6 +1673,15 @@ def start_raylet(redis_address,
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
     ]
+    if use_gcs_for_bootstrap():
+        command.append(f"--gcs-address={gcs_address}")
+    else:
+        # TODO (iycheng): remove redis_ip_address after redis removal
+        redis_ip_address, redis_port = redis_address.split(":")
+        command.extend([
+            f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"
+        ])
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
