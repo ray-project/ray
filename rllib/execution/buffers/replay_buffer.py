@@ -84,6 +84,7 @@ class ReplayBuffer:
         self._est_size_bytes = 0
 
     def __len__(self) -> int:
+        """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
     @DeveloperAPI
@@ -96,6 +97,7 @@ class ReplayBuffer:
                 sampling steps. Only relevant if this ReplayBuffer is
                 a PrioritizedReplayBuffer.
         """
+        print(f"Adding item {item} to buffer.")
         assert item.count > 0, item
         warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
@@ -127,7 +129,11 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
-        """Sample a batch of experiences.
+        """Sample a batch of size `num_items` from this buffer.
+
+        If less than `num_items` records are in this buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -137,9 +143,12 @@ class ReplayBuffer:
         Returns:
             Concatenated batch of items.
         """
+        # If we don't have any samples yet in this buffer, return None.
+        if len(self) == 0:
+            return None
+
         idxes = [
-            random.randint(0,
-                           len(self._storage) - 1) for _ in range(num_items)
+            random.randint(0, len(self) - 1) for _ in range(num_items)
         ]
         self._num_timesteps_sampled += num_items
         return self._encode_sample(idxes)
@@ -255,7 +264,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, beta: float) -> SampleBatchType:
-        """Sample a batch of experiences and return priority weights, indices.
+        """Sample `num_items` items from this buffer, including prio. weights.
+
+        If less than `num_items` records are in this buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -267,6 +280,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """
+        # If we don't have any samples yet in this buffer, return None.
+        if len(self) == 0:
+            return None
+
         assert beta >= 0.0
 
         idxes = self._sample_proportional(num_items)
@@ -274,11 +291,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self._storage))**(-beta)
+        max_weight = (p_min * len(self))**(-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self._storage))**(-beta)
+            weight = (p_sample * len(self))**(-beta)
             count = self._storage[idx].count
             # If zero-padded, count will not be the actual batch size of the
             # data.

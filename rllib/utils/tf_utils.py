@@ -163,7 +163,8 @@ def get_tf_eager_cls_if_necessary(
                 cls = orig_cls.as_eager()
                 if config.get("eager_tracing"):
                     cls = cls.with_tracing()
-            # Could be some other type of policy.
+            # Could be some other type of policy or already
+            # eager-ized.
             elif not issubclass(orig_cls, TFPolicy):
                 pass
             else:

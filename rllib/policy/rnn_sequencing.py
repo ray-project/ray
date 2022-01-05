@@ -288,7 +288,7 @@ def chop_into_sequences(
                 f = np.array(f)
 
             length = len(seq_lens) * max_seq_len
-            if f.dtype == np.object or f.dtype.type is np.str_:
+            if f.dtype == object or f.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.

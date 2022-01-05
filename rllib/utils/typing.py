@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Tuple, Union, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.rllib.utils import try_import_tf, try_import_torch
@@ -118,3 +118,6 @@ TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+
+# Generic type var.
+T = TypeVar("T")

@@ -1,9 +1,11 @@
 from collections import defaultdict
 import logging
 import time
-from typing import Callable, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, \
+    TYPE_CHECKING
 
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
@@ -75,49 +77,56 @@ def synchronous_parallel_sample(
     return sample_batches
 
 
+#TODO: Move to generic parallel ops module and rename to
+# `asynchronous_parallel_requests`:
 @ExperimentalAPI
 def asynchronous_parallel_sample(
         trainer: "Trainer",
-        worker_set: WorkerSet,
-        timeout_s: Optional[float] = None,
-        max_remote_requests_in_flight_per_worker: int = 2,
+        actors: List[ActorHandle],
+        ray_wait_timeout_s: Optional[float] = None,
+        max_remote_requests_in_flight_per_actor: int = 2,
         remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+        remote_args: Optional[List[List[Any]]] = None,
+        remote_kwargs: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[List[SampleBatch]]:
     """Runs parallel and asynchronous rollouts on all remote workers.
 
     May use a timeout (if provided) on `ray.wait()` and returns only those
     samples that could be gathered in the timeout window. Allows a maximum
-    of `max_remote_requests_in_flight_per_worker` remote calls to be in-flight
-    per remote worker.
+    of `max_remote_requests_in_flight_per_actor` remote calls to be in-flight
+    per remote actor.
 
-    Alternatively to calling `worker.sample.remote()`, the user can provide a
-    `remote_fn()`, which will be applied to the worker(s) instead.
-
-    If no remote workers exist (num_workers == 0), use the local worker
-    for sampling/remote_fn.
+    Alternatively to calling `actor.sample.remote()`, the user can provide a
+    `remote_fn()`, which will be applied to the actor(s) instead.
 
     Args:
         trainer: The Trainer object that we run the sampling for.
-        worker_set: The WorkerSet to use for sampling.
-        timeout_s: Timeout (in sec) to be used for the underlying `ray.wait()`
-            calls. If None (default), never time out (block until at least one
-            worker returns a sample).
-        max_remote_requests_in_flight_per_worker: Maximum number of remote
-            requests sent to each remote worker. 2 (default) is probably
+        actors: The List of ActorHandles to perform the remote requests on.
+        ray_wait_timeout_s: Timeout (in sec) to be used for the underlying
+            `ray.wait()` calls. If None (default), never time out (block
+            until at least one actor returns something).
+        max_remote_requests_in_flight_per_actor: Maximum number of remote
+            requests sent to each actor. 2 (default) is probably
             sufficient to avoid idle times between two requests.
-        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead of
-            `worker.sample.remote()` to generate the requests. 
+        remote_fn: If provided, use `actor.apply.remote(remote_fn)` instead of
+            `actor.sample.remote()` to generate the requests.
+        remote_args: If provided, use this list (per-actor) of lists (call args)
+            as *args to be passed to the `remote_fn`. E.g.: actors=[A, B],
+            remote_args=[[...] <- *args for A, [...] <- *args for B].
+        remote_kwargs: If provided, use this list (per-actor) of dicts (kwargs)
+            as **kwargs to be passed to the `remote_fn`. E.g.: actors=[A, B],
+            remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
 
     Returns:
         The list of asynchronously collected sample batch types. None, if no
         samples are ready.
 
     Examples:
-        >>> # 2 remote workers (num_workers=2):
+        >>> # 2 remote rollout workers (num_workers=2):
         >>> batches = asynchronous_parallel_sample(
         ...     trainer,
-        ...     trainer.workers,
-        ...     0.1,  # timeout after 0.1sec
+        ...     actors=trainer.workers.remote_workers(),
+        ...     ray_wait_timeout_s=0.1,
         ...     remote_fn=lambda w: time.sleep(1)  # sleep 1sec
         ... )
         >>> print(len(batches))
@@ -127,52 +136,51 @@ def asynchronous_parallel_sample(
         ... True
     """
 
-    # No remote workers in the set -> Use local worker for collecting
-    # samples.
-    if not worker_set.remote_workers():
-        if remote_fn is not None:
-            return [worker_set.local_worker().apply(remote_fn)]
-        else:
-            return [worker_set.local_worker().sample()]
+    if remote_args is not None:
+        assert len(remote_args) == len(actors)
+    if remote_kwargs is not None:
+        assert len(remote_kwargs) == len(actors)
 
-    # Create a map inside Trainer instance that maps workers to sets of open
-    # requests (object refs). This way, we keep track, of which workers have already
-    # been sent how many requests (`max_remote_requests_in_flight_per_worker` arg).
+    # Create a map inside Trainer instance that maps actorss to sets of open
+    # requests (object refs). This way, we keep track, of which actorss have already
+    # been sent how many requests (`max_remote_requests_in_flight_per_actor` arg).
     if not hasattr(trainer, "_remote_requests_in_flight"):
         trainer._remote_requests_in_flight = defaultdict(set)
 
     # Collect all currently pending remote requests into a single set of
     # object refs.
     pending_remotes = set()
-    # Also build a map to get the associated worker for each remote request.
+    # Also build a map to get the associated actor for each remote request.
     remote_to_actor = {}
-    for worker, set_ in trainer._remote_requests_in_flight.items():
+    for actor, set_ in trainer._remote_requests_in_flight.items():
         pending_remotes |= set_
         for r in set_:
-            remote_to_actor[r] = worker
+            remote_to_actor[r] = actor
 
     # Add new requests, if possible (if
-    # `max_remote_requests_in_flight_per_worker` setting allows it).
-    for worker in worker_set.remote_workers():
-        # Still room for another request to this worker.
-        if len(trainer._remote_requests_in_flight[worker]) < \
-                max_remote_requests_in_flight_per_worker:
+    # `max_remote_requests_in_flight_per_actor` setting allows it).
+    for actor_idx, actor in enumerate(actors):
+        # Still room for another request to this actor.
+        if len(trainer._remote_requests_in_flight[actor]) < \
+                max_remote_requests_in_flight_per_actor:
             if remote_fn is None:
-                req = worker.sample.remote()
+                req = actor.sample.remote()
             else:
-                req = worker.apply.remote(remote_fn)
+                args = remote_args[actor_idx] if remote_args else []
+                kwargs = remote_kwargs[actor_idx] if remote_kwargs else {}
+                req = actor.apply.remote(remote_fn, *args, **kwargs)
             # Add to our set to send to ray.wait().
             pending_remotes.add(req)
             # Keep our mappings properly updated.
-            trainer._remote_requests_in_flight[worker].add(req)
-            remote_to_actor[req] = worker
+            trainer._remote_requests_in_flight[actor].add(req)
+            remote_to_actor[req] = actor
 
     # There must always be pending remote requests.
     assert len(pending_remotes) > 0
     pending_remote_list = list(pending_remotes)
 
     # No timeout: Block until at least one result is returned.
-    if timeout_s is None:
+    if ray_wait_timeout_s is None:
         # First try to do a `ray.wait` w/o timeout for efficiency.
         ready, _ = ray.wait(
             pending_remote_list, num_returns=len(pending_remotes), timeout=0)
@@ -184,7 +192,7 @@ def asynchronous_parallel_sample(
     else:
         ready, _ = ray.wait(
             pending_remote_list, num_returns=len(pending_remotes),
-            timeout=timeout_s)
+            timeout=ray_wait_timeout_s)
 
         # Return None if nothing ready after the timeout.
         if not ready:

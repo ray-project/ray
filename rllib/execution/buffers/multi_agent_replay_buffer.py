@@ -159,11 +159,10 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         Args:
             batch (SampleBatchType): The batch to be added.
         """
+        #print(f"Adding item {batch} to buffer.")
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
-        # Handle everything as if multiagent
-        if isinstance(batch, SampleBatch):
-            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+        batch = batch.as_multi_agent()
 
         with self.add_batch_timer:
             # Lockstep mode: Store under _ALL_POLICIES key (we will always

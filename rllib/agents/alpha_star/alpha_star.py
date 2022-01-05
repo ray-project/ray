@@ -5,6 +5,7 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 import ray
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
+from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import asynchronous_parallel_sample
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
@@ -27,7 +28,8 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
-        "replay_buffer_num_slots": 10,
+        #TODO: This is timesteps!
+        "replay_buffer_capacity": 500,
 
         # Use the `training_iteration` method instead of an execution plan.
         "_disable_execution_plan_api": True,
@@ -114,9 +116,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # 4 GPUs 2 Policies -> 2 shards.
         # 2 GPUs 4 Policies -> 2 shards.
         if self.config["num_gpus"]:
-            num_learner_shards = max(
+            num_learner_shards = int(max(
                 self.config["num_gpus"] / len(_policy_learners),
-                self.config["num_gpus"])
+                self.config["num_gpus"]))
             num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
         else:
             num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
@@ -138,7 +140,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         replay_actor_args = [
             num_learner_shards,
             self.config["train_batch_size"],  # learning starts
-            self.config["replay_buffer_num_slots"],
+            self.config["replay_buffer_capacity"],
             self.config["train_batch_size"],
             0.0,  # no prioritization
         ]
@@ -193,38 +195,83 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for w in self.workers.remote_workers()
         ])
 
+        # Store replay buffer shard for each learning Policy such that
+        # all Policies know where to get their samples from.
+
+        #def _set_replay_buffer_shard(policy, shard):
+        #    policy._replay_buffer_shard = shard
+
+        #ray.get([
+        #    p[0].apply.remote(_set_replay_buffer_shard, p[1])
+        #    for p in _policy_learners.values()
+        #])
+
         self._policy_learners = _policy_learners
 
     def training_iteration(self) -> ResultDict:
+        # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
-        #   shards, instead of here (to the local worker).
-
-        def _sample_to_buffer(worker):
-            # Generate a sample.
-            sample = worker.sample()
-            # Send the per-agent SampleBatches to the correct buffer(s),
-            # depending on which policies participated in the episode.
-            assert isinstance(sample, MultiAgentBatch)
-            for pid, batch in sample.policy_batches.items():
-                replay_actor = worker._policy_learners[pid][1]
-                ma_batch = MultiAgentBatch({pid: batch}, batch.count)
-                replay_actor.add_batch.remote(ma_batch)
-
-        # Trigger rollouts on all RolloutWorkers (w/ timeout for asynch).
-        sample_results = asynchronous_parallel_sample(
+        #   shards, instead of here (to the driver).
+        asynchronous_parallel_sample(
             trainer=self,
-            worker_set=self.workers,
-            timeout_s=0.1,
-            max_remote_requests_in_flight_per_worker=2,
-            remote_fn=_sample_to_buffer,
+            actors=self.workers.remote_workers() or
+                   [self.workers.local_worker()],
+            ray_wait_timeout_s=0.1,
+            max_remote_requests_in_flight_per_actor=2,
+            remote_fn=self._sample_and_send_to_buffer,
         )
 
-        # Trigger one update on each learning policy.
-        train_results = ray.get([
-            pol_actor.learn_on_batch_from_replay_buffer.remote(
-                replay_actor=replay_actor, policy_id=pid)
-            for pid, (pol_actor,
-                      replay_actor) in self._policy_learners.items()
-        ])
+        # Trigger asynchronous training update requests on all learning
+        # policies.
+        idx_to_pol_actor_and_pid = {}
+        args = []
+        for i, (pid, (pol_actor, repl_actor)) in enumerate(self._policy_learners.items()):
+            idx_to_pol_actor_and_pid[i] = (pol_actor, pid)
+            args.append([repl_actor, pid])
+        train_results = asynchronous_parallel_sample(
+            trainer=self,
+            actors=[act for (act, _) in idx_to_pol_actor_and_pid.values()],
+            ray_wait_timeout_s=0.1,
+            max_remote_requests_in_flight_per_actor=2,
+            remote_fn=self._update_policy,
+            remote_args=args,
+        )
 
-        return {}
+        # For those policies that have been updated in this iteration
+        # (not all policies may have undergone an updated as we are
+        # requesting updates asynchronously):
+        # - Gather train infos.
+        # - Update weights to those remote rollout workers that contain
+        #   the respective policy.
+        train_infos = {}
+        policy_weights = {}
+        with self._timers[WORKER_UPDATE_TIMER]:
+            for i, policy_result in enumerate(train_results):
+                if policy_result:
+                    pol_actor, pid = idx_to_pol_actor_and_pid[i]
+                    train_infos[pid] = policy_result
+                    policy_weights[pid] = self._policy_learners[pid][0].get_weights.remote()
+                    
+            policy_weights_ref = ray.put(policy_weights)
+
+            for worker in self.workers.remote_workers():
+                worker.set_weights.remote(policy_weights_ref)
+
+        return train_infos
+
+    @staticmethod
+    def _sample_and_send_to_buffer(worker):
+        # Generate a sample.
+        sample = worker.sample()
+        # Send the per-agent SampleBatches to the correct buffer(s),
+        # depending on which policies participated in the episode.
+        assert isinstance(sample, MultiAgentBatch)
+        for pid, batch in sample.policy_batches.items():
+            replay_actor = worker._policy_learners[pid][1]
+            ma_batch = MultiAgentBatch({pid: batch}, batch.count)
+            replay_actor.add_batch.remote(ma_batch)
+
+    @staticmethod
+    def _update_policy(policy, replay_actor, pid):
+        return policy.learn_on_batch_from_replay_buffer(
+            replay_actor=replay_actor, policy_id=pid)
