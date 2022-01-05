@@ -1,4 +1,5 @@
 # __client_function_start__
+# router_client.py
 import requests
 
 article_text = ("HOUSTON -- Men have landed and walked on the moon. "
@@ -25,6 +26,7 @@ print(response)
 # __client_function_end__
 
 # __client_class_start__
+# summarizer_client.py
 import requests
 
 article_text = ("HOUSTON -- Men have landed and walked on the moon. "

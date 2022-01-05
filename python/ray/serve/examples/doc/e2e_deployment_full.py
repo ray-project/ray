@@ -1,4 +1,5 @@
 # __deployment_full_start__
+# model_on_ray_serve.py
 import ray
 from ray import serve
 from transformers import pipeline
@@ -10,7 +11,7 @@ def summarize(text):
     return summary
 
 ray.init(address="auto", namespace="serve")
-serve.start()
+serve.start(detached=True)
 
 @serve.deployment
 def router(request):
