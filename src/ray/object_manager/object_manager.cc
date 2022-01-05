@@ -188,26 +188,6 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
     }
     unfulfilled_push_requests_.erase(iter);
   }
-
-  // Handle the active_wait_requests_ which may contain wait requests that can now
-  // be completed due to the add of this object.
-  if (object_to_active_wait_requests_.find(object_id) !=
-      object_to_active_wait_requests_.end()) {
-    std::vector<UniqueID> complete_waits;
-    for (const auto &wait_id : object_to_active_wait_requests_.at(object_id)) {
-      auto wait_state_iter = active_wait_requests_.find(wait_id);
-      RAY_CHECK(wait_state_iter != active_wait_requests_.end());
-      auto &wait_state = wait_state_iter->second;
-      wait_state.remaining.erase(object_id);
-      wait_state.found.emplace(object_id);
-      if (wait_state.found.size() >= wait_state.num_required_objects) {
-        complete_waits.emplace_back(wait_id);
-      }
-    }
-    for (const auto &wait_id : complete_waits) {
-      WaitComplete(wait_id);
-    }
-  }
 }
 
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
@@ -525,110 +505,6 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   rpc_client->Push(push_request, callback);
 }
 
-ray::Status ObjectManager::Wait(
-    const std::vector<ObjectID> &object_ids,
-    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, const WaitCallback &callback) {
-  UniqueID wait_id = UniqueID::FromRandom();
-  RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
-  return AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
-                        num_required_objects, callback);
-}
-
-ray::Status ObjectManager::AddWaitRequest(
-    const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
-    const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, const WaitCallback &callback) {
-  RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
-  RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size())
-      << num_required_objects << " " << object_ids.size();
-  if (object_ids.size() == 0) {
-    callback(std::vector<ObjectID>(), std::vector<ObjectID>());
-  }
-
-  // Initialize fields.
-  active_wait_requests_.emplace(wait_id, WaitState(*main_service_, timeout_ms, callback));
-  auto &wait_state = active_wait_requests_.find(wait_id)->second;
-  wait_state.object_id_order = object_ids;
-  wait_state.owner_addresses = owner_addresses;
-  wait_state.timeout_ms = timeout_ms;
-  wait_state.num_required_objects = num_required_objects;
-  for (const auto &object_id : object_ids) {
-    if (local_objects_.count(object_id) > 0) {
-      wait_state.found.insert(object_id);
-    } else {
-      wait_state.remaining.insert(object_id);
-    }
-  }
-
-  for (const auto &object_id : wait_state.object_id_order) {
-    object_to_active_wait_requests_[object_id].emplace(wait_id);
-  }
-
-  if (wait_state.found.size() >= wait_state.num_required_objects ||
-      wait_state.timeout_ms == 0) {
-    // Requirements already satisfied.
-    WaitComplete(wait_id);
-  } else if (wait_state.timeout_ms != -1) {
-    // If a timeout was provided, then set a timer. If we don't find locations
-    // for enough objects by the time the timer expires, then we will return
-    // from the Wait.
-    auto timeout = boost::posix_time::milliseconds(wait_state.timeout_ms);
-    wait_state.timeout_timer->expires_from_now(timeout);
-    wait_state.timeout_timer->async_wait(
-        [this, wait_id](const boost::system::error_code &error_code) {
-          if (error_code.value() != 0) {
-            return;
-          }
-          if (active_wait_requests_.find(wait_id) == active_wait_requests_.end()) {
-            // When HandleObjectAdded is called first, WaitComplete might be
-            // called. The timer may at the same time goes off and may be an
-            // interruption will post WaitComplete to main_service_ the second time.
-            // This check will avoid the duplicated call of this function.
-            return;
-          }
-          WaitComplete(wait_id);
-        });
-  }
-
-  return ray::Status::OK();
-}
-
-void ObjectManager::WaitComplete(const UniqueID &wait_id) {
-  auto iter = active_wait_requests_.find(wait_id);
-  RAY_CHECK(iter != active_wait_requests_.end());
-  auto &wait_state = iter->second;
-  // Cancel the timer. This is okay even if the timer hasn't been started.
-  // The timer handler will be given a non-zero error code. The handler
-  // will do nothing on non-zero error codes.
-  wait_state.timeout_timer->cancel();
-
-  for (const auto &object_id : wait_state.object_id_order) {
-    auto &requests = object_to_active_wait_requests_[object_id];
-    requests.erase(wait_id);
-    if (requests.empty()) {
-      object_to_active_wait_requests_.erase(object_id);
-    }
-  }
-
-  // Order objects according to input order.
-  std::vector<ObjectID> found;
-  std::vector<ObjectID> remaining;
-  for (const auto &item : wait_state.object_id_order) {
-    if (found.size() < wait_state.num_required_objects &&
-        wait_state.found.count(item) > 0) {
-      found.push_back(item);
-    } else {
-      remaining.push_back(item);
-    }
-  }
-  wait_state.callback(found, remaining);
-  active_wait_requests_.erase(wait_id);
-  RAY_LOG(DEBUG) << "Wait request " << wait_id << " finished: found " << found.size()
-                 << " remaining " << remaining.size();
-}
-
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
@@ -781,7 +657,6 @@ std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
-  result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
