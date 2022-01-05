@@ -17,11 +17,11 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
-#include "ray/gcs/test/gcs_test_util.h"
-// #include "mock/ray/gcs/store_client/store_client.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
+#include "ray/gcs/test/gcs_test_util.h"
+
 namespace ray {
 
 class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
