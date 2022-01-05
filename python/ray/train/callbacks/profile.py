@@ -23,7 +23,7 @@ class TorchWorkerProfiler():
         self.trace_dir = pathlib.Path(trace_dir)
         self.trace_dir.mkdir(parents=True, exist_ok=True)
         # Accumulated traces.
-        self.profiler_traces = []
+        self.profiler_trace_filenames = []
 
     def trace_handler(self, p: profile):
         trace_filename = \
@@ -31,17 +31,19 @@ class TorchWorkerProfiler():
         trace_path = self.trace_dir.joinpath(trace_filename)
 
         logger.debug(f"Writing worker trace to {trace_path}.")
-
         p.export_chrome_trace(str(trace_path))
-        with trace_path.open() as f:
-            data = f.read()
 
-        trace = (trace_filename, data)
-        self.profiler_traces.append(trace)
+        self.profiler_trace_filenames.append(trace_filename)
 
     def get_and_clear_profile_traces(self):
-        traces = self.profiler_traces
-        self.profiler_traces = []
+        def get_trace(filename):
+            trace_path = self.trace_dir.joinpath(filename)
+            return trace_path.read_text()
+
+        traces = [(trace_filename, get_trace(trace_filename))
+                  for trace_filename in self.profiler_trace_filenames]
+
+        self.profiler_trace_files = []
         return {PROFILER_KEY: traces}
 
 
@@ -68,5 +70,5 @@ class TorchTensorboardProfilerCallback(TrainingLogdirCallback,
                 profile_traces = result[PROFILER_KEY]
                 for (name, data) in profile_traces:
                     path = self.logdir.joinpath(DRIVER_TRACE_DIR, name)
-                    with open(path, "w") as f:
+                    with path.open("w") as f:
                         f.write(data)
