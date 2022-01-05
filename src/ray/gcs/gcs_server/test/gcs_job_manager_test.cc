@@ -97,7 +97,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   auto job_config2 = gcs_job_manager.GetJobConfig(job_id2);
   ASSERT_EQ("namespace_2", job_config2->ray_namespace());
   ASSERT_EQ(8, job_config2->num_java_workers_per_process());
-}  // namespace ray
+}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
