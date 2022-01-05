@@ -131,7 +131,7 @@ def test_detached_placement_group(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
@@ -245,7 +245,7 @@ def test_named_placement_group(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 pg = ray.util.placement_group(
         [{{"CPU": 1}} for _ in range(2)],
