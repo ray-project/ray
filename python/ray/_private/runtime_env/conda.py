@@ -229,6 +229,7 @@ class CondaManager:
 
         conda_env_path = self._get_path_from_hash(hash)
         # To be safe, disallow concurrent deletions and installs.
+        # TODO(architkulkarni): Refactor to use same lock file
         file_lock_name = "ray-conda-install.lock"
         with FileLock(os.path.join(self._resources_dir, file_lock_name)):
             successful = delete_conda_env(prefix=conda_env_path, logger=logger)
@@ -261,28 +262,31 @@ class CondaManager:
                                          extra_pip_dependencies)
 
         logger.info(f"Setting up conda environment with {runtime_env}")
-        # It is not safe for multiple processes to install conda envs
-        # concurrently, even if the envs are different, so use a global
-        # lock for all conda installs.
-        # See https://github.com/ray-project/ray/issues/17086
-        file_lock_name = "ray-conda-install.lock"
-        with FileLock(os.path.join(self._resources_dir, file_lock_name)):
-            try:
-                conda_yaml_file = os.path.join(self._resources_dir,
-                                               "environment.yml")
-                with open(conda_yaml_file, "w") as file:
-                    yaml.dump(conda_dict, file)
-                # TODO(architkulkarni): This fails and throws an exception
-                # if the conda environment with this name already exists.
-                # Should we be more lenient and only create if necessary?
-                create_conda_env(
-                    conda_yaml_file, prefix=conda_env_name, logger=logger)
-            finally:
-                os.remove(conda_yaml_file)
+        try:
+            conda_yaml_file = os.path.join(self._resources_dir,
+                                           "environment.yml")
+            with open(conda_yaml_file, "w") as file:
+                yaml.dump(conda_dict, file)
+            # TODO(architkulkarni): This fails and throws an exception
+            # if the conda environment with this name already exists.
+            # Should we be more lenient and only create if necessary?
+            # Need to be careful, could be a race condition.  If create()
+            # gets called while a conda environment is still being installed
+            # from an installation that already started in another thread,
+            # then create() would return successfully before the conda env
+            # was finished installing, and a task might start with an
+            # unfinished conda env.  Wait, but shouldn't the lock
+            # take care of this? Ah, they both go into create() still.  We
+            # need to expand the range of the lock.  Could lock the entire
+            # create() function but that may be too much.
+            create_conda_env(
+                conda_yaml_file, prefix=conda_env_name, logger=logger)
+        finally:
+            os.remove(conda_yaml_file)
 
-            if runtime_env.get_extension("_inject_current_ray") == "True":
-                _inject_ray_to_conda_site(
-                    conda_path=conda_env_name, logger=logger)
+        if runtime_env.get_extension("_inject_current_ray") == "True":
+            _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
+        logger.info(f"Finished creating conda environment at {conda_env_name}")
         return get_directory_size(conda_env_name)
 
     def modify_context(self,
@@ -300,5 +304,3 @@ class CondaManager:
             conda_env_name = self._get_path_from_hash(hash)
         context.py_executable = "python"
         context.command_prefix += get_conda_activate_commands(conda_env_name)
-        logger.info(
-            f"Finished setting up runtime environment at {conda_env_name}")
