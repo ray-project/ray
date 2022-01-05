@@ -32,7 +32,7 @@ class TrainingCallback(abc.ABC):
 
     def process_results(self, results: List[Dict], **info):
         for preprocessor in self._results_preprocessors:
-            results = preprocessor.preprocess(results)
+            results = preprocessor.preprocess(results, **info)
         self.handle_result(results)
 
     def finish_training(self, error: bool = False, **info):

@@ -22,8 +22,10 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirMixin:
-    def start_training(self, logdir: str):
+class TrainingLogdirCallback(TrainingCallback, abc.ABC):
+    """Abstract Train callback class with logging directory."""
+
+    def start_training(self, logdir: str, config: Dict, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
         else:
@@ -42,8 +44,7 @@ class TrainingLogdirMixin:
         return Path(self._logdir_path)
 
 
-class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
-                                        abc.ABC):
+class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Args:
@@ -75,8 +76,8 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
             raise ValueError("filename cannot be None or empty.")
         return logdir_path.joinpath(Path(filename))
 
-    def start_training(self, logdir: str):
-        super().start_training(logdir)
+    def start_training(self, logdir: str, **info):
+        super().start_training(logdir=logdir, **info)
 
         if not self._filename:
             filename = self._default_filename
@@ -109,7 +110,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir)
+        super().start_training(logdir=logdir, **info)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
@@ -123,7 +124,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
             json.dump(loaded_results + [results], f, cls=SafeFallbackEncoder)
 
 
-class MLflowLoggerCallback(TrainingLogdirMixin, TrainingCallback):
+class MLflowLoggerCallback(TrainingLogdirCallback, TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
     MLflow (https://mlflow.org) Tracking is an open source library for
@@ -186,7 +187,7 @@ class MLflowLoggerCallback(TrainingLogdirMixin, TrainingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir)
+        super().start_training(logdir=logdir, config=config, **info)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
@@ -216,7 +217,7 @@ class MLflowLoggerCallback(TrainingLogdirMixin, TrainingCallback):
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
 
-class TBXLoggerCallback(TrainingLogdirMixin, TrainingCallback):
+class TBXLoggerCallback(TrainingLogdirCallback, TrainingCallback):
     """Logs Train results in TensorboardX format.
 
     Args:
@@ -241,7 +242,7 @@ class TBXLoggerCallback(TrainingLogdirMixin, TrainingCallback):
         ]
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir)
+        super().start_training(logdir=logdir, **info)
 
         try:
             from tensorboardX import SummaryWriter
