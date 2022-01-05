@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+
 #include <string_view>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 
@@ -53,7 +55,8 @@ void RedisInternalKV::Put(const std::string &key, const std::string &value,
       }));
 }
 
-void RedisInternalKV::Del(const std::string &key, bool del_by_prefix, std::function<void(int64_t)> callback) {
+void RedisInternalKV::Del(const std::string &key, bool del_by_prefix,
+                          std::function<void(int64_t)> callback) {
   if (del_by_prefix) {
     std::vector<std::string> cmd = {"KEYS", key + "*"};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
@@ -65,7 +68,7 @@ void RedisInternalKV::Del(const std::string &key, bool del_by_prefix, std::funct
             del_cmd.emplace_back(*r);
           }
           redis_client_->GetPrimaryContext()->RunArgvAsync(
-              del_cmd, [callback=std::move(callback)](auto redis_reply) {
+              del_cmd, [callback = std::move(callback)](auto redis_reply) {
                 callback(redis_reply->ReadAsInteger());
               });
         }));
@@ -130,7 +133,8 @@ void MemoryInternalKV::Put(const std::string &key, const std::string &value,
   }
 }
 
-void MemoryInternalKV::Del(const std::string &key, bool del_by_prefix, std::function<void(int64_t)> callback) {
+void MemoryInternalKV::Del(const std::string &key, bool del_by_prefix,
+                           std::function<void(int64_t)> callback) {
   absl::WriterMutexLock _(&mu_);
   auto it = map_.find(key);
   bool deleted = true;
@@ -167,21 +171,21 @@ void MemoryInternalKV::Keys(const std::string &prefix,
   }
 }
 
-
 constexpr std::string_view kNamespacePrefix = "@namespace_";
 constexpr std::string_view kNamespaceSep = ":";
 
-std::string MakeKey(const std::string& ns, const std::string& key) {
-  if(ns.empty()) {
+std::string MakeKey(const std::string &ns, const std::string &key) {
+  if (ns.empty()) {
     return key;
   }
   return absl::StrCat(kNamespacePrefix, ns, ":", key);
 }
 
-std::string_view ExtractKey(const std::string& key) {
-  if(absl::StartsWith(key, kNamespacePrefix)) {
-    std::vector<std::string_view> parts = absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
-    if(parts.size() != 1) {
+std::string_view ExtractKey(const std::string &key) {
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    std::vector<std::string_view> parts =
+        absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
+    if (parts.size() != 1) {
       return "";
     }
     return parts[1];
@@ -211,8 +215,8 @@ void GcsInternalKVManager::HandleInternalKVPut(
     reply->set_added_num(newly_added ? 1 : 0);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Put(MakeKey(request.ns(), request.key()), request.value(), request.overwrite(),
-                    std::move(callback));
+  kv_instance_->Put(MakeKey(request.ns(), request.key()), request.value(),
+                    request.overwrite(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVDel(
@@ -222,7 +226,8 @@ void GcsInternalKVManager::HandleInternalKVDel(
     reply->set_deleted_num(deleted ? 1 : 0);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Del(MakeKey(request.ns(), request.key()), request.del_by_prefix(), std::move(callback));
+  kv_instance_->Del(MakeKey(request.ns(), request.key()), request.del_by_prefix(),
+                    std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(
