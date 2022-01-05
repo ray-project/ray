@@ -72,25 +72,19 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     local_worker = workers.local_worker()
     policies = local_worker.policies_to_train
     num_sgd_iter = config.get("sgd_num_iter", 1)
-    sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
+    sgd_minibatch_size = config.get("sgd_minibatch_size",
+                                    config["train_batch_size"])
 
-    # Collect actual GPU devices to use.
-    if not config.get("num_gpus", 0):
-        _fake_gpus = True
-        num_gpus = 1
-    type_ = "cpu" if _fake_gpus else "gpu"
-    devices = [
-        "/{}:{}".format(type_, 0 if _fake_gpus else i)
-        for i in range(int(math.ceil(num_gpus)))
-    ]
+    # Determine the number of devices (GPUs or 1 CPU) we use.
+    num_devices = int(math.ceil(config["num_gpus"] or 1))
 
     # Make sure total batch size is dividable by the number of devices.
     # Batch size per tower.
-    per_device_batch_size = sgd_minibatch_size // len(devices)
+    per_device_batch_size = sgd_minibatch_size // num_devices
     # Total batch size.
-    batch_size = per_device_batch_size * len(devices)
-    assert batch_size % len(devices) == 0
-    assert batch_size >= len(devices), "Batch size too small!"
+    batch_size = per_device_batch_size * num_devices
+    assert batch_size % num_devices == 0
+    assert batch_size >= num_devices, "Batch size too small!"
 
     # Handle everything as if multi-agent.
     train_batch = train_batch.as_multi_agent()
@@ -122,7 +116,7 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
         # This makes sure results dicts always have the same structure
         # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
         # tf vs torch).
-        learner_info_builder = LearnerInfoBuilder(num_devices=len(devices))
+        learner_info_builder = LearnerInfoBuilder(num_devices=num_devices)
 
         for policy_id, samples_per_device in num_loaded_samples.items():
             policy = local_worker.policy_map[policy_id]
