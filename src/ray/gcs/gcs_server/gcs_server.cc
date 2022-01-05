@@ -169,13 +169,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  // Store gcs rpc server address in redis.
-  // TODO (iycheng): Don't write once redis removal is done
-  //   if (!RayConfig::instance().bootstrap_with_gcs()) {
-  //     // Store gcs rpc server address in redis.
-  //     StoreGcsServerAddressInRedis();
-  //   }
-  StoreGcsServerAddressInRedis();
+  if (!RayConfig::instance().bootstrap_with_gcs()) {
+    StoreGcsServerAddressInRedis();
+  }
+
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
   // some living nodes as dead as the timer inside node failure
