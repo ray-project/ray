@@ -246,6 +246,10 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
 
 class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
+    def tearDown(self) -> None:
+        if ray.is_initialized:
+            ray.shutdown()
+
     def testResourceDeadlock(self):
         """Tests that resource deadlock is avoided for heterogeneous PGFs.
 
