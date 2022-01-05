@@ -87,73 +87,99 @@ class _LocalWrapper:
         return self._result
 
 
-class _TrialCleanup:
-    """Mechanism for ensuring trial stop futures are cleaned up.
+from threading import Thread
+from queue import Queue
+from ray.util.placement_group import remove_placement_group
 
-    Args:
-        threshold (int): Number of futures to hold at once. If the threshold
-            is passed, cleanup will kick in and remove futures.
-        force_cleanup (int): Grace periods for forceful actor termination.
-            If 0, actors will not be forcefully terminated.
-    """
 
-    def __init__(self,
-                 threshold: int = TRIAL_CLEANUP_THRESHOLD,
-                 force_cleanup: int = 0):
-        self.threshold = threshold
-        self._cleanup_map = {}
-        if force_cleanup < 0:
-            force_cleanup = 0
-        self._force_cleanup = force_cleanup
+class TrialCleanupThread(Thread):
 
-    def add(self, trial: Trial, actor: ActorHandle):
-        """Adds a trial actor to be stopped.
+    def __init__(self, queue: Queue):
+        self._futures = {}
+        self._queue = queue
 
-        If the number of futures exceeds the threshold, the cleanup mechanism
-        will kick in.
+    def run(self):
+        while True:
+            while not self._queue.empty():
+                item = self._queue.get(block=False)
+                if item:
+                    actor, pg = item
+                    self._futures[actor.stop.remote()] = pg
+                    del actor
+            ready_futures, _ = ray.wait(list(self._futures.keys()))
+            for ready_future in ready_futures:
+                pg = self._futures.pop(ready_future)
+                remove_placement_group(pg)
+                self._queue.task_done()
 
-        Args:
-            trial (Trial): The trial corresponding to the future.
-            actor (ActorHandle): Handle to the trainable to be stopped.
-        """
-        future = actor.stop.remote()
-
-        del actor
-
-        self._cleanup_map[future] = trial
-        if len(self._cleanup_map) > self.threshold:
-            self.cleanup(partial=True)
-
-    def cleanup(self, partial: bool = True):
-        """Waits for cleanup to finish.
-
-        If partial=False, all futures are expected to return. If a future
-        does not return within the timeout period, the cleanup terminates.
-        """
-        # At this point, self._cleanup_map holds the last references
-        # to actors. Removing those references either one-by-one
-        # (graceful termination case) or all at once, by reinstantiating
-        # self._cleanup_map (forceful termination case) will cause Ray
-        # to kill the actors during garbage collection.
-        logger.debug("Cleaning up futures")
-        num_to_keep = int(self.threshold) / 2 if partial else 0
-        while len(self._cleanup_map) > num_to_keep:
-            dones, _ = ray.wait(
-                list(self._cleanup_map),
-                timeout=DEFAULT_GET_TIMEOUT
-                if not self._force_cleanup else self._force_cleanup)
-            if not dones:
-                logger.warning(
-                    "Skipping cleanup - trainable.stop did not return in "
-                    "time. Consider making `stop` a faster operation.")
-                if not partial and self._force_cleanup:
-                    logger.warning(
-                        "Forcing trainable cleanup by terminating actors.")
-                    self._cleanup_map = {}
-                    return
-            else:
-                done = dones[0]
-                del self._cleanup_map[done]
+#
+# class _TrialCleanup:
+#     """Mechanism for ensuring trial stop futures are cleaned up.
+#
+#     Args:
+#         threshold (int): Number of futures to hold at once. If the threshold
+#             is passed, cleanup will kick in and remove futures.
+#         force_cleanup (int): Grace periods for forceful actor termination.
+#             If 0, actors will not be forcefully terminated.
+#     """
+#
+#     def __init__(self,
+#                  threshold: int = TRIAL_CLEANUP_THRESHOLD,
+#                  force_cleanup: int = 0):
+#         self.threshold = threshold
+#         self._cleanup_map = {}
+#         if force_cleanup < 0:
+#             force_cleanup = 0
+#         self._force_cleanup = force_cleanup
+#
+#     def add(self, trial: Trial, actor: ActorHandle):
+#         """Adds a trial actor to be stopped.
+#
+#         If the number of futures exceeds the threshold, the cleanup mechanism
+#         will kick in.
+#
+#         Args:
+#             trial (Trial): The trial corresponding to the future.
+#             actor (ActorHandle): Handle to the trainable to be stopped.
+#         """
+#         future = actor.stop.remote()
+#
+#         del actor
+#
+#         self._cleanup_map[future] = trial
+#         if len(self._cleanup_map) > self.threshold:
+#             self.cleanup(partial=True)
+#
+#     def cleanup(self, partial: bool = True):
+#         """Waits for cleanup to finish.
+#
+#         If partial=False, all futures are expected to return. If a future
+#         does not return within the timeout period, the cleanup terminates.
+#         """
+#         # At this point, self._cleanup_map holds the last references
+#         # to actors. Removing those references either one-by-one
+#         # (graceful termination case) or all at once, by reinstantiating
+#         # self._cleanup_map (forceful termination case) will cause Ray
+#         # to kill the actors during garbage collection.
+#         logger.debug("Cleaning up futures")
+#         num_to_keep = int(self.threshold) / 2 if partial else 0
+#         while len(self._cleanup_map) > num_to_keep:
+#             dones, _ = ray.wait(
+#                 list(self._cleanup_map),
+#                 timeout=DEFAULT_GET_TIMEOUT
+#                 if not self._force_cleanup else self._force_cleanup)
+#             if not dones:
+#                 logger.warning(
+#                     "Skipping cleanup - trainable.stop did not return in "
+#                     "time. Consider making `stop` a faster operation.")
+#                 if not partial and self._force_cleanup:
+#                     logger.warning(
+#                         "Forcing trainable cleanup by terminating actors.")
+#                     self._cleanup_map = {}
+#                     return
+#             else:
+#                 done = dones[0]
+#                 del self._cleanup_map[done]
 
 
 def noop_logger_creator(config, logdir):
@@ -178,7 +204,11 @@ class RayTrialExecutor(TrialExecutor):
 
         force_trial_cleanup = int(
             os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
-        self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
+        # self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
+        self._cleanup_queue = Queue()
+        self._cleanup_thread = TrialCleanupThread(self._cleanup_queue)
+        self._cleanup_thread.start()
+
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
@@ -310,6 +340,7 @@ class RayTrialExecutor(TrialExecutor):
             if pg:
                 self._pg_manager.return_or_clean_cached_pg(pg)
 
+            self._cleanup_queue.put((existing_runner, pg))
             with self._change_working_directory(trial):
                 self._trial_cleanup.add(trial, actor=existing_runner)
 
@@ -529,11 +560,9 @@ class RayTrialExecutor(TrialExecutor):
                 if should_destroy_actor:
                     logger.debug("Trial %s: Destroying actor.", trial)
 
-                    # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial)
-
-                    with self._change_working_directory(trial):
-                        self._trial_cleanup.add(trial, actor=trial.runner)
+                    pg = self._pg_manager.return_pg(trial)
+                    self._cleanup_queue.put((trial.runner, pg))
+                    trial.runner = None
 
                 if trial in self._staged_trials:
                     self._staged_trials.remove(trial)
@@ -927,10 +956,12 @@ class RayTrialExecutor(TrialExecutor):
             return self._avail_resources.gpu > 0
 
     def cleanup(self, trials: List[Trial]) -> None:
-        self._trial_cleanup.cleanup(partial=False)
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
+        # Waiting for all tasks are done.
+        self._cleanup_queue.join()
+        self._cleanup_thread.join()
 
     @contextmanager
     def _change_working_directory(self, trial):

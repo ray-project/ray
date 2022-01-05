@@ -617,7 +617,7 @@ class PlacementGroupManager:
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        self.remove_pg(pg)
+        return pg
 
     def _unstage_unused_pg(
             self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
