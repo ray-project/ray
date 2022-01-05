@@ -146,7 +146,6 @@ while True:
 
     # This should start a cluster.
     p1 = run_string_as_driver_nonblocking(blocking_local_script)
-    # sleep is necessary to avoid port conflict
     # ray.client("local").connect() should start a second cluster.
     p2 = run_string_as_driver_nonblocking(blocking_local_script)
     # ray.client().connect() shouldn't connect to a cluster started by
