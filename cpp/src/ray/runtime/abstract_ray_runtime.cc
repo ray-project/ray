@@ -87,9 +87,8 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id = ObjectID::FromIndex(GetWorkerContext().GetCurrentTaskID(),
-                                           GetWorkerContext().GetNextPutIndex());
-  Put(data, &object_id);
+  ObjectID object_id{};
+  object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
 

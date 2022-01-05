@@ -41,5 +41,12 @@ ActorID LocalModeRayRuntime::GetCurrentActorID() { return worker_.GetCurrentActo
 
 WorkerContext &LocalModeRayRuntime::GetWorkerContext() { return worker_; }
 
+std::string LocalModeRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
+  ObjectID object_id =
+      ObjectID::FromIndex(worker_.GetCurrentTaskID(), worker_.GetNextPutIndex());
+  AbstractRayRuntime::Put(data, &object_id);
+  return object_id.Binary();
+}
+
 }  // namespace internal
 }  // namespace ray
