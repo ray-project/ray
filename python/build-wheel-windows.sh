@@ -6,7 +6,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
 PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
-PY_SCRIPT_SUBDIR=Scripts  # 'bin' for UNIX, 'Scripts' for Windows
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/travis/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -92,11 +91,6 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        # local pydirs=("${RUNNER_TOOL_CACHE}/Python/${pyversion}".*/x64)
-        # local pydir="${pydirs[-1]}"
-        # pydir="$(cygpath -u "${pydir}")"  # Translate Windows path
-        # test -d "${pydir}"
-        # export PATH="${pydir}:${pydir}/${PY_SCRIPT_SUBDIR}:${PATH}"
         conda install -y python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
