@@ -50,9 +50,9 @@ class TestAlphaStar(unittest.TestCase):
             "policy_mapping_fn": policy_mapping_fn,
         }
 
-        num_iterations = 2
+        num_iterations = 100
 
-        for _ in framework_iterator(config, frameworks="tf"):#TODO
+        for _ in framework_iterator(config, frameworks="torch"):#TODO
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):

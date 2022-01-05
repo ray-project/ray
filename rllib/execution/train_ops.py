@@ -55,13 +55,6 @@ def train_one_step(trainer, train_batch) -> Dict:
     trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
-    # Update weights - after learning on the local worker - on all remote
-    # workers.
-    if workers.remote_workers():
-        with trainer._timers[WORKER_UPDATE_TIMER]:
-            weights = ray.put(workers.local_worker().get_weights(policies))
-            for e in workers.remote_workers():
-                e.set_weights.remote(weights)
     return info
 
 

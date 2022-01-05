@@ -29,7 +29,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         #  implementations of different buffers.
         "replay_buffer_num_slots": 10,
 
-        # Use the `training_iteration` method instead of an execution-plan.
+        # Use the `training_iteration` method instead of an execution plan.
         "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
@@ -45,7 +45,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
-        num_policies = len(ma_cfg["policies"])
+        num_policies = len(cf["multiagent"]["policies"])
         if cf["num_gpus"]:
             num_learner_shards = max(
                 cf["num_gpus"] / num_policies, cf["num_gpus"])
@@ -211,7 +211,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 replay_actor.add_batch.remote(ma_batch)
 
         # Trigger rollouts on all RolloutWorkers (w/ timeout for asynch).
-        eval_results = asynchronous_parallel_sample(
+        sample_results = asynchronous_parallel_sample(
             trainer=self,
             worker_set=self.workers,
             timeout_s=0.1,
@@ -220,7 +220,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         )
 
         # Trigger one update on each learning policy.
-        ray.get([
+        train_results = ray.get([
             pol_actor.learn_on_batch_from_replay_buffer.remote(
                 replay_actor=replay_actor, policy_id=pid)
             for pid, (pol_actor,

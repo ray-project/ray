@@ -29,6 +29,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
+from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
     synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
@@ -1301,6 +1302,12 @@ class Trainer(Trainable):
             raise NotImplementedError(
                 "`_disable_execution_plan_api=True` only supported for "
                 "SimpleOptimizer so far!")
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights()
 
         return train_results
 
