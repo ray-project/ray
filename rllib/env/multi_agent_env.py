@@ -535,19 +535,21 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def observation_space_contains(self, x: MultiEnvDict) -> bool:
-        return self.envs[0].observation_space_contains(x)
+        return all(
+            self.envs[0].observation_space_contains(val) for val in x.values())
 
     @override(BaseEnv)
     def action_space_contains(self, x: MultiEnvDict) -> bool:
-        return self.envs[0].action_space_contains(x)
+        return all(
+            self.envs[0].action_space_contains(val) for val in x.values())
 
     @override(BaseEnv)
-    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        return self.envs[0].observation_space_sample(agent_id)
+    def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        return self.envs[0].observation_space_sample(agent_ids)
 
     @override(BaseEnv)
-    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        return self.envs[0].action_space_sample(agent_id)
+    def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
+        return self.envs[0].action_space_sample(agent_ids)
 
 
 class _MultiAgentEnvState:
