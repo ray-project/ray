@@ -26,14 +26,14 @@ class ActorTaskCaller {
  public:
   ActorTaskCaller() = default;
 
-  ActorTaskCaller(RayRuntime *runtime, std::string id,
+  ActorTaskCaller(RayRuntime *runtime, const std::string &id,
                   RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime),
         id_(id),
         remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&...args);
 
   ActorTaskCaller &SetName(std::string name) {
     task_options_.name = std::move(name);
@@ -63,14 +63,22 @@ class ActorTaskCaller {
 template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
-    Args &&... args) {
+    Args &&...args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
   StaticCheck<F, Args...>();
   CheckTaskOptions(task_options_.resources);
-  using ArgsTuple = RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<F>>>;
-  Arguments::WrapArgs<ArgsTuple>(false, &args_,
-                                 std::make_index_sequence<sizeof...(Args)>{},
-                                 std::forward<Args>(args)...);
+  if constexpr (is_python_actor_function_v<F>) {
+    using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  } else {
+    using ArgsTuple = RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<F>>>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  }
+
   auto returned_object_id =
       runtime_->CallActor(remote_function_holder_, id_, args_, task_options_);
   return ObjectRef<ReturnType>(returned_object_id);

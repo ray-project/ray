@@ -156,8 +156,8 @@ cc_test(
     data = [
         "counter.so",
         "plus.so",
-        "test_cross_language_invocation.py",
         "ray_cpp_pkg",
+        "test_cross_language_invocation.py",
     ],
     linkstatic = True,
     tags = ["team:serverless"],

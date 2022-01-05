@@ -179,8 +179,22 @@ std::string AbstractRayRuntime::CreateActor(
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
     std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
-  auto invocation_spec = BuildInvocationSpec1(
-      TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
+  InvocationSpec invocation_spec{};
+  if (remote_function_holder.lang_type == LangType::PYTHON) {
+    const auto native_actor_handle = CoreWorkerProcess::GetCoreWorker().GetActorHandle(
+        ray::ActorID::FromBinary(actor));
+    auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
+    auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
+    RemoteFunctionHolder func_holder = remote_function_holder;
+    func_holder.module_name = typed_descriptor->ModuleName();
+    func_holder.class_name = typed_descriptor->ClassName();
+    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, func_holder, args,
+                                           ActorID::FromBinary(actor));
+  } else {
+    invocation_spec = BuildInvocationSpec1(TaskType::ACTOR_TASK, remote_function_holder,
+                                           args, ActorID::FromBinary(actor));
+  }
+
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
 }
 

@@ -1,5 +1,6 @@
 import ray
 
+
 @ray.remote
 def py_return_input(v):
     return v
@@ -17,4 +18,4 @@ class Counter(object):
 
     def increase(self, delta):
         self.value += int(delta)
-        return str(self.value).encode("utf-8")
+        return str(self.value)

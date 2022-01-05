@@ -50,7 +50,7 @@ class Arguments {
 
         msgpack::sbuffer buffer(XLANG_HEADER_LEN + data_buf.size());
         buffer.write(len_buf.data(), len_buf.size());
-        for (int i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
+        for (size_t i = 0; i < XLANG_HEADER_LEN - len_buf.size(); ++i) {
           buffer.write("", 1);
         }
         buffer.write(data_buf.data(), data_buf.size());
@@ -73,6 +73,7 @@ class Arguments {
          0)...};
     /// Silence gcc warning error.
     (void)task_args;
+    (void)cross_lang;
   }
 
  private:
