@@ -6,11 +6,11 @@ By the end of this tutorial you will have learned how to deploy a machine
 learning model locally via Ray Serve.
 
 First, install Ray Serve and all of its dependencies by running the following
-command in your terminal:
+command in your Terminal:
 
 .. code-block:: bash
 
-  pip install "ray[serve]"
+  $ pip install "ray[serve]"
 
 For this tutorial, we'll use `HuggingFace's SummarizationPipeline <https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.SummarizationPipeline>`_
 to access a model that summarizes text. Let's take a look at how it works.
