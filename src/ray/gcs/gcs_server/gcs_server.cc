@@ -497,11 +497,12 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
         auto node_id = NodeID::FromBinary(node->node_id());
+        const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id);
+        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         gcs_resource_report_poller_->HandleNodeRemoved(*node);
         if (config_.grpc_based_resource_broadcast) {
@@ -515,11 +516,12 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        auto worker_ip = worker_address.ip_address();
         const rpc::RayException *creation_task_exception = nullptr;
         if (worker_failure_data->has_creation_task_exception()) {
           creation_task_exception = &worker_failure_data->creation_task_exception();
         }
-        gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
+        gcs_actor_manager_->OnWorkerDead(node_id, worker_id, worker_ip,
                                          worker_failure_data->exit_type(),
                                          creation_task_exception);
       });
