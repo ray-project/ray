@@ -87,7 +87,7 @@ create are accessible by default.
   ``ray.init()`` connects to or starts a single-node Ray cluster on your
   local machine,  which allows you to use all your CPU cores to serve
   requests in parallel. To start a multi-node cluster, see
-  :doc:`../cluster/index`.
+  :ref:`serve-deploy-tutorial`.
 
 Next, we start the Ray Serve runtime:
 
@@ -317,7 +317,7 @@ Serve! You should now have enough context to dive into the :doc:`core-apis` to
 get a deeper understanding of Ray Serve.
 
 To learn more about how to start a multi-node cluster for your Ray Serve
-deployments, see :doc:`../cluster/index`. For more interesting example
+deployments, see :ref:`serve-deploy-tutorial`. For more interesting example
 applications, including integrations with popular machine learning frameworks
 and Python web servers, be sure to check out :doc:`tutorials/index`.
 
