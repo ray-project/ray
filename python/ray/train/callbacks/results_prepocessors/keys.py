@@ -16,34 +16,26 @@ class KeysResultsPreprocessor(ResultsPreprocessor):
     def __init__(self,
                  included_keys: Optional[Iterable[str]] = None,
                  excluded_keys: Optional[Iterable[str]] = None) -> None:
-        included_keys = included_keys or []
-        excluded_keys = excluded_keys or []
+        included_keys = included_keys or {}
+        excluded_keys = excluded_keys or {}
 
         keys_to_exclude = [
             key for key in DEFAULT_EXCLUDED_KEYS if key not in included_keys
         ]
         for key in excluded_keys:
             if key in included_keys:
-                logger.error(
+                logger.warning(
                     f"Found key {key} in both {included_keys} and {excluded_keys}."
                     f" This key will be included.")
             keys_to_exclude.append(key)
 
-        print(keys_to_exclude)
-
-        def keep_key(key: str) -> bool:
-            return key not in keys_to_exclude
-
-        self.keep_key = keep_key
+        self._keys_to_exclude = keys_to_exclude
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:
-
-        new_results = []
-        for result in results:
-            new_result = {
-                key: value
-                for key, value in result.items() if self.keep_key(key)
-            }
-            new_results.append(new_result)
+        new_results = [{
+            key: value
+            for key, value in result.items()
+            if key not in self._keys_to_exclude
+        } for result in results]
 
         return new_results

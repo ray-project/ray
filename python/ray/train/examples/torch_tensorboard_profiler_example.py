@@ -2,6 +2,7 @@ import argparse
 
 import torch
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+from torch.profiler import profile, record_function, schedule
 
 import ray
 import ray.train as train
@@ -12,47 +13,45 @@ from ray.train.callbacks.profile import TorchTensorboardProfilerCallback, \
 
 
 def train_func():
-    p = TorchWorkerProfiler()
-    p.__enter__()
+    twp = TorchWorkerProfiler()
+    with profile(
+            activities=[],
+            schedule=schedule(wait=0, warmup=0, active=1),
+            on_trace_ready=twp.trace_handler) as p:
 
-    # Setup model.
-    model = torch.nn.Linear(1, 1)
-    model = train.torch.prepare_model(model)
-    loss_fn = torch.nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
+        # Setup model.
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+        loss_fn = torch.nn.MSELoss()
+        optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
 
-    # Setup data.
-    input = torch.randn(1000, 1)
-    labels = input * 2
-    dataset = torch.utils.data.TensorDataset(input, labels)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=32)
-    dataloader = train.torch.prepare_data_loader(dataloader)
+        # Setup data.
+        input = torch.randn(1000, 1)
+        labels = input * 2
+        dataset = torch.utils.data.TensorDataset(input, labels)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=32)
+        dataloader = train.torch.prepare_data_loader(dataloader)
 
-    # Train.
-    for epoch in range(5):
-        p.record_function_enter("train_epoch")
-        for X, y in dataloader:
-            pred = model(X)
-            loss = loss_fn(pred, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        p.record_function_exit("train_epoch")
+        # Train.
+        for epoch in range(5):
+            with record_function("train_epoch"):
+                for X, y in dataloader:
+                    pred = model(X)
+                    loss = loss_fn(pred, y)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-        p.record_function_enter("train_checkpoint")
-        state_dict = model.state_dict()
-        consume_prefix_in_state_dict_if_present(state_dict, "module.")
-        train.save_checkpoint(epoch=epoch, model_weights=state_dict)
-        p.record_function_exit("train_checkpoint")
+            with record_function("train_checkpoint"):
+                state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
 
-        p.step()
+            p.step()
 
-        p.record_function_enter("train_report")
-        profile_results = p.get_and_clear_profile_traces()
-        train.report(epoch=epoch, **profile_results)
-        p.record_function_exit("train_report")
-
-    p.__exit__(None, None, None)
+            with record_function("train_report"):
+                profile_results = twp.get_and_clear_profile_traces()
+                train.report(epoch=epoch, **profile_results)
 
 
 if __name__ == "__main__":
