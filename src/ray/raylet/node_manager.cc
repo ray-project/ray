@@ -267,10 +267,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
-      wait_manager_(&io_service,
-                    /*is_object_local*/
+      wait_manager_(/*is_object_local*/
                     [this](const ObjectID &object_id) {
                       return dependency_manager_.CheckObjectLocal(object_id);
+                    },
+                    /*delay_executor*/
+                    [this](std::function<void()> fn, int64_t delay_ms) {
+                      return execute_after(io_service_, fn, delay_ms);
                     }),
       node_manager_server_("NodeManager", config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),

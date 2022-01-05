@@ -22,9 +22,14 @@ namespace raylet {
 class WaitManagerTest : public ::testing::Test {
  protected:
   WaitManagerTest()
-      : wait_manager(&io_service, [this](const ObjectID &object_id) {
-          return local_objects.count(object_id) > 0;
-        }) {}
+      : wait_manager(
+            [this](const ObjectID &object_id) {
+              return local_objects.count(object_id) > 0;
+            },
+            [this](std::function<void()> fn, int64_t ms) {
+              delay_fn = fn;
+              delay_ms = ms;
+            }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(wait_manager.wait_requests_.empty());
@@ -32,7 +37,8 @@ class WaitManagerTest : public ::testing::Test {
   }
 
   std::unordered_set<ObjectID> local_objects;
-  instrumented_io_context io_service;
+  std::function<void()> delay_fn;
+  int64_t delay_ms = -1;
   WaitManager wait_manager;
 };
 
@@ -49,6 +55,7 @@ TEST_F(WaitManagerTest, TestImmediatelyCompleteWait) {
                     });
   ASSERT_EQ(ready, std::vector<ObjectID>{obj1});
   ASSERT_EQ(remaining, std::vector<ObjectID>{obj2});
+  ASSERT_EQ(delay_ms, -1);
 
   local_objects.clear();
   ready.clear();
@@ -61,6 +68,7 @@ TEST_F(WaitManagerTest, TestImmediatelyCompleteWait) {
                     });
   ASSERT_EQ(ready, std::vector<ObjectID>{});
   ASSERT_EQ(remaining, (std::vector<ObjectID>{obj1, obj2}));
+  ASSERT_EQ(delay_ms, -1);
 
   AssertNoLeaks();
 }
@@ -83,6 +91,7 @@ TEST_F(WaitManagerTest, TestMultiWaits) {
                     });
   ASSERT_TRUE(ready1.empty());
   ASSERT_TRUE(ready2.empty());
+  ASSERT_EQ(delay_ms, -1);
 
   wait_manager.HandleObjectLocal(obj1);
   ASSERT_EQ(ready1, std::vector<ObjectID>{obj1});
@@ -107,9 +116,10 @@ TEST_F(WaitManagerTest, TestWaitTimeout) {
                     });
   ASSERT_TRUE(ready.empty());
   ASSERT_TRUE(remaining.empty());
+  ASSERT_EQ(delay_ms, 1);
 
-  // Run the timer
-  io_service.run_one_for(std::chrono::seconds(10));
+  // Fire the timer
+  delay_fn();
   ASSERT_EQ(ready, std::vector<ObjectID>{});
   ASSERT_EQ(remaining, std::vector<ObjectID>{obj1});
 

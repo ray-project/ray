@@ -20,14 +20,18 @@
 namespace ray {
 namespace raylet {
 
-/// This class is responsible for handling wait requests (e.g. `ray.wait`).
+/// This class is responsible for handling wait requests with `fetch_local=true`.
 /// It is not thread safe and is expected to run ONLY in
 /// the NodeManager.io_service_ thread.
 class WaitManager {
  public:
-  WaitManager(instrumented_io_context *io_service,
-              const std::function<bool(const ray::ObjectID &)> is_object_local)
-      : io_service_(io_service), is_object_local_(is_object_local), next_wait_id_(0) {}
+  WaitManager(const std::function<bool(const ray::ObjectID &)> is_object_local,
+              const std::function<std::shared_ptr<boost::asio::deadline_timer>(
+                  std::function<void()>, int64_t delay_ms)>
+                  delay_executor)
+      : is_object_local_(is_object_local),
+        delay_executor_(delay_executor),
+        next_wait_id_(0) {}
 
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &ready,
                                           const std::vector<ray::ObjectID> &remaining)>;
@@ -53,18 +57,16 @@ class WaitManager {
 
  private:
   struct WaitRequest {
-    WaitRequest(instrumented_io_context &service, int64_t timeout_ms,
-                const WaitCallback &callback, const std::vector<ObjectID> &object_ids,
-                uint64_t num_required_objects)
+    WaitRequest(int64_t timeout_ms, const WaitCallback &callback,
+                const std::vector<ObjectID> &object_ids, uint64_t num_required_objects)
         : timeout_ms(timeout_ms),
-          timeout_timer(service, boost::posix_time::milliseconds(timeout_ms)),
           callback(callback),
           object_ids(object_ids),
           num_required_objects(num_required_objects) {}
     /// The period of time to wait before invoking the callback.
     const int64_t timeout_ms;
     /// The timer used whenever timeout_ms > 0.
-    boost::asio::deadline_timer timeout_timer;
+    std::shared_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when Wait is complete.
     WaitCallback callback;
     /// Ordered input object_ids.
@@ -82,11 +84,13 @@ class WaitManager {
   /// method call.
   void WaitComplete(uint64_t wait_id);
 
-  /// The asio service where all methods of this class should run.
-  instrumented_io_context *io_service_;
   /// A callback which should return true if a given object is
   /// locally available.
   const std::function<bool(const ObjectID &)> is_object_local_;
+
+  const std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
+                                                                   int64_t delay_ms)>
+      delay_executor_;
 
   /// A set of active wait requests.
   std::unordered_map<uint64_t, WaitRequest> wait_requests_;

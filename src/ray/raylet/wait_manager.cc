@@ -25,8 +25,8 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_
       << num_required_objects << " " << object_ids.size();
 
   const uint64_t wait_id = next_wait_id_++;
-  wait_requests_.emplace(wait_id, WaitRequest(*io_service_, timeout_ms, callback,
-                                              object_ids, num_required_objects));
+  wait_requests_.emplace(
+      wait_id, WaitRequest(timeout_ms, callback, object_ids, num_required_objects));
 
   auto &wait_request = wait_requests_.at(wait_id);
   for (const auto &object_id : object_ids) {
@@ -47,13 +47,8 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_
     // If a timeout was provided, then set a timer. If there are no
     // enough locally available objects by the time the timer expires,
     // then we will return from the Wait.
-    auto timeout = boost::posix_time::milliseconds(wait_request.timeout_ms);
-    wait_request.timeout_timer.expires_from_now(timeout);
-    wait_request.timeout_timer.async_wait(
-        [this, wait_id](const boost::system::error_code &error_code) {
-          if (error_code.value() != 0) {
-            return;
-          }
+    wait_request.timeout_timer = delay_executor_(
+        [this, wait_id]() {
           if (wait_requests_.find(wait_id) == wait_requests_.end()) {
             // When HandleObjectLocal is called first, WaitComplete might be
             // called. The timer may at the same time goes off and may be an
@@ -62,7 +57,8 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_
             return;
           }
           WaitComplete(wait_id);
-        });
+        },
+        wait_request.timeout_ms);
   }
 }
 
@@ -73,7 +69,9 @@ void WaitManager::WaitComplete(uint64_t wait_id) {
   // Cancel the timer. This is okay even if the timer hasn't been started.
   // The timer handler will be given a non-zero error code. The handler
   // will do nothing on non-zero error codes.
-  wait_request.timeout_timer.cancel();
+  if (wait_request.timeout_timer) {
+    wait_request.timeout_timer->cancel();
+  }
 
   for (const auto &object_id : wait_request.object_ids) {
     auto &requests = object_to_wait_requests_.at(object_id);
