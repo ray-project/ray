@@ -16,7 +16,7 @@ from ray.util.ml_utils.dict import deep_update
 logger = logging.getLogger(__name__)
 
 
-class DockerMonitor:
+class _DockerMonitor:
     """Wrapper around docker_monitor.py script"""
 
     def __init__(self, config_file: str):
@@ -56,6 +56,8 @@ class DockerCluster:
         self._partial_config = config
         self._cluster_config = None
         self._docker_image = None
+
+        self._monitor = None
 
     @property
     def config_file(self):
@@ -172,12 +174,16 @@ class DockerCluster:
         self.update_config()
         self.maybe_pull_image()
 
+        self._monitor = _DockerMonitor(self.config_file)
+
     def teardown(self):
         shutil.rmtree(self._tempdir)
         self._tempdir = None
         self._config_file = None
 
     def start(self):
+        self._monitor.start()
+
         subprocess.check_output(
             f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True)
 
@@ -187,3 +193,5 @@ class DockerCluster:
 
         subprocess.check_output(
             f"RAY_FAKE_CLUSTER=1 ray down -y {self.config_file}", shell=True)
+
+        self._monitor.stop()

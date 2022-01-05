@@ -3,8 +3,7 @@ import time
 import unittest
 
 import ray
-from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster, \
-    DockerMonitor
+from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 
 
 @ray.remote
@@ -17,12 +16,8 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.cluster = DockerCluster()
         self.cluster.setup()
 
-        self.monitor = DockerMonitor(self.cluster.config_file)
-        self.monitor.start()
-
     def tearDown(self):
         self.cluster.stop()
-        self.monitor.stop()
         self.cluster.teardown()
 
     def testClusterAutoscaling(self):
