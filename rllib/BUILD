@@ -1240,7 +1240,7 @@ py_test(
 py_test(
     name = "test_preprocessors",
     tags = ["team:ml", "models"],
-    size = "medium",
+    size = "large",
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
@@ -2571,7 +2571,7 @@ py_test(
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
     tags = ["team:ml", "gpu"],
-    size = "large",
+    size = "enormous",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
