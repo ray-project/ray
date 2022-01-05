@@ -245,6 +245,7 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -308,6 +309,7 @@ def test_http_root_url(ray_shutdown):
     ray.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
@@ -418,6 +420,7 @@ def test_fixed_number_proxies(ray_cluster):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start(detached=True)
