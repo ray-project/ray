@@ -3,6 +3,7 @@
 
 from transformers import pipeline
 
+
 def summarize(text):
     # Load model
     summarizer = pipeline("summarization", model="t5-small")
@@ -15,7 +16,9 @@ def summarize(text):
 
     return summary
 
-article_text = ("HOUSTON -- Men have landed and walked on the moon. "
+
+article_text = (
+    "HOUSTON -- Men have landed and walked on the moon. "
     "Two Americans, astronauts of Apollo 11, steered their fragile "
     "four-legged lunar module safely and smoothly to the historic landing "
     "yesterday at 4:17:40 P.M., Eastern daylight time. Neil A. Armstrong, the "
@@ -36,7 +39,8 @@ summary = summarize(article_text)
 print(summary)
 # __local_model_end__
 
-assert summary == ("two astronauts steered their fragile lunar module safely "
+assert summary == (
+    "two astronauts steered their fragile lunar module safely "
     "and smoothly to the historic landing . the first men to reach the moon "
     "-- Armstrong and his co-pilot, col. Edwin E. Aldrin Jr. of the air force "
     "-- brought their ship to rest on a level, rock-strewn plain .")

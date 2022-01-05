@@ -2,7 +2,8 @@
 # File name: router_client.py
 import requests
 
-article_text = ("HOUSTON -- Men have landed and walked on the moon. "
+article_text = (
+    "HOUSTON -- Men have landed and walked on the moon. "
     "Two Americans, astronauts of Apollo 11, steered their fragile "
     "four-legged lunar module safely and smoothly to the historic landing "
     "yesterday at 4:17:40 P.M., Eastern daylight time. Neil A. Armstrong, the "
@@ -19,8 +20,8 @@ article_text = ("HOUSTON -- Men have landed and walked on the moon. "
     "transmitted his every move to an awed and excited audience of hundreds "
     "of millions of people on earth.")
 
-response = requests.get("http://127.0.0.1:8000/router?txt="
-                        + article_text).text
+response = requests.get("http://127.0.0.1:8000/router?txt=" +
+                        article_text).text
 
 print(response)
 # __client_function_end__
@@ -29,7 +30,8 @@ print(response)
 # File name: summarizer_client.py
 import requests
 
-article_text = ("HOUSTON -- Men have landed and walked on the moon. "
+article_text = (
+    "HOUSTON -- Men have landed and walked on the moon. "
     "Two Americans, astronauts of Apollo 11, steered their fragile "
     "four-legged lunar module safely and smoothly to the historic landing "
     "yesterday at 4:17:40 P.M., Eastern daylight time. Neil A. Armstrong, the "
@@ -46,8 +48,8 @@ article_text = ("HOUSTON -- Men have landed and walked on the moon. "
     "transmitted his every move to an awed and excited audience of hundreds "
     "of millions of people on earth.")
 
-response = requests.get("http://127.0.0.1:8000/Summarizer?txt="
-                        + article_text).text
+response = requests.get("http://127.0.0.1:8000/Summarizer?txt=" +
+                        article_text).text
 
 print(response)
 # __client_class_end__
@@ -56,7 +58,8 @@ print(response)
 # File name: fastapi_client.py
 import requests
 
-article_text = ("HOUSTON -- Men have landed and walked on the moon. "
+article_text = (
+    "HOUSTON -- Men have landed and walked on the moon. "
     "Two Americans, astronauts of Apollo 11, steered their fragile "
     "four-legged lunar module safely and smoothly to the historic landing "
     "yesterday at 4:17:40 P.M., Eastern daylight time. Neil A. Armstrong, the "
@@ -73,8 +76,8 @@ article_text = ("HOUSTON -- Men have landed and walked on the moon. "
     "transmitted his every move to an awed and excited audience of hundreds "
     "of millions of people on earth.")
 
-response = requests.get("http://127.0.0.1:8000/Summarizer/max10?txt="
-                        + article_text).text
+response = requests.get("http://127.0.0.1:8000/Summarizer/max10?txt=" +
+                        article_text).text
 
 print(response)
 # __client_fastapi_end__

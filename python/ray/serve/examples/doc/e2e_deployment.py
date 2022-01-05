@@ -6,11 +6,14 @@ from ray import serve
 # __local_model_start__
 from transformers import pipeline
 
+
 def summarize(text):
     summarizer = pipeline("summarization", model="t5-small")
     summary_list = summarizer(text)
     summary = summary_list[0]["summary_text"]
     return summary
+
+
 # __local_model_end__
 
 # __start_ray_cluster_start__
@@ -21,11 +24,14 @@ ray.init(address="auto", namespace="serve")
 serve.start(detached=True)
 # __start_serve_end__
 
+
 # __router_start__
 @serve.deployment
 def router(request):
     txt = request.query_params["txt"]
     return summarize(txt)
+
+
 # __router_end__
 
 # __router_deploy_start__
