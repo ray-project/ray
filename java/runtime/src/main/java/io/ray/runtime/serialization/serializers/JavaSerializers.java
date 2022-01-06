@@ -8,7 +8,6 @@ import io.ray.runtime.io.SerdeObjectInput;
 import io.ray.runtime.io.SerdeObjectOutput;
 import io.ray.runtime.serialization.RaySerde;
 import io.ray.runtime.serialization.Serializer;
-import io.ray.runtime.serialization.util.LoggerFactory;
 import io.ray.runtime.serialization.util.ReflectionUtils;
 import java.io.Externalizable;
 import java.io.IOException;
@@ -19,10 +18,9 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
-import java.util.Collection;
-import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class JavaSerializers {
@@ -274,45 +272,5 @@ public class JavaSerializers {
     }
 
     public static class ReplaceStub {}
-  }
-
-  public static final class CollectionJavaSerializer<T extends Collection> extends Serializer<T> {
-    private final JavaSerializer javaSerializer;
-
-    public CollectionJavaSerializer(RaySerde raySerDe, Class<T> cls) {
-      super(raySerDe, cls);
-      javaSerializer = new JavaSerializer(raySerDe, cls);
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public T read(MemoryBuffer buffer) {
-      return (T) javaSerializer.read(buffer);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, T value) {
-      javaSerializer.write(buffer, value);
-    }
-  }
-
-  public static class MapJavaSerializer<T extends Map> extends Serializer<T> {
-    private final JavaSerializer javaSerializer;
-
-    public MapJavaSerializer(RaySerde raySerDe, Class<T> cls) {
-      super(raySerDe, cls);
-      javaSerializer = new JavaSerializer(raySerDe, cls);
-    }
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public T read(MemoryBuffer buffer) {
-      return (T) javaSerializer.read(buffer);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, T value) {
-      javaSerializer.write(buffer, value);
-    }
   }
 }

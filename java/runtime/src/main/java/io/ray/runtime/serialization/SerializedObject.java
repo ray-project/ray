@@ -17,29 +17,6 @@ public interface SerializedObject {
   /** Write serialized data as Buffer. */
   ByteBuffer toBuffer();
 
-  class ByteArraySerializedObject implements SerializedObject {
-    private final byte[] bytes;
-
-    public ByteArraySerializedObject(byte[] bytes) {
-      this.bytes = bytes;
-    }
-
-    @Override
-    public int totalBytes() {
-      return bytes.length;
-    }
-
-    @Override
-    public void writeTo(MemoryBuffer buffer) {
-      buffer.writeBytes(bytes);
-    }
-
-    @Override
-    public ByteBuffer toBuffer() {
-      return ByteBuffer.wrap(bytes);
-    }
-  }
-
   class ByteBufferSerializedObject implements SerializedObject {
     private final ByteBuffer buffer;
 

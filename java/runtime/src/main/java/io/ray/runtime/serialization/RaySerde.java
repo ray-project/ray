@@ -200,7 +200,9 @@ public final class RaySerde {
   public ByteBuffer readSerializedObject(MemoryBuffer buffer) {
     if (outOfBandBuffers != null) {
       Preconditions.checkArgument(outOfBandBuffers.hasNext());
-      return outOfBandBuffers.next();
+      ByteBuffer next = outOfBandBuffers.next();
+      next.order(ByteOrder.LITTLE_ENDIAN);
+      return next;
     } else {
       int size = buffer.readInt();
       ByteBuffer byteBuffer = buffer.sliceAsByteBuffer(buffer.readerIndex(), size);

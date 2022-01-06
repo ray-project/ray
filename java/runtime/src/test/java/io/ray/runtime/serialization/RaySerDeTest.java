@@ -257,28 +257,6 @@ public class RaySerDeTest {
     }
   }
 
-  @Test
-  public void testTreeMap() {
-    boolean referenceTracking = true;
-    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
-    TreeMap<String, String> map =
-        new TreeMap<>(
-            (Comparator<? super String> & Serializable)
-                (s1, s2) -> {
-                  int delta = s1.length() - s2.length();
-                  if (delta == 0) {
-                    return s1.compareTo(s2);
-                  } else {
-                    return delta;
-                  }
-                });
-    map.put("str1", "1");
-    map.put("str2", "1");
-    assertEquals(map, serDe(raySerDe, map));
-    BeanForMap beanForMap = new BeanForMap();
-    assertEquals(beanForMap, serDe(raySerDe, beanForMap));
-  }
-
   @Test(dataProvider = "referenceTrackingConfig")
   public void testOffHeap(boolean referenceTracking) {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
@@ -345,43 +323,6 @@ public class RaySerDeTest {
     }
   }
 
-  @Test(dataProvider = "referenceTrackingConfig")
-  public void testSerializePrivateBean(boolean referenceTracking) {
-    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
-    Outer outer = new Outer();
-    outer.inner = new Outer.Inner();
-    raySerDe.deserialize(raySerDe.serialize(outer));
-    assertTrue(
-        raySerDe.getClassResolver().getSerializer(Outer.Inner.class) instanceof DefaultSerializer);
-  }
-
-  @Test(dataProvider = "referenceTrackingConfig")
-  public void testSerializeJavaConcurrent(boolean referenceTracking) {
-    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(referenceTracking).build();
-    {
-      ArrayBlockingQueue<Integer> queue = new ArrayBlockingQueue<>(10);
-      queue.add(1);
-      queue.add(2);
-      queue.add(3);
-      assertEquals(
-          new ArrayList<>((Collection<Integer>) serDe(raySerDe, queue)), new ArrayList<>(queue));
-    }
-    {
-      LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
-      queue.add(1);
-      queue.add(2);
-      queue.add(3);
-      assertEquals(
-          new ArrayList<>((Collection<Integer>) serDe(raySerDe, queue)), new ArrayList<>(queue));
-    }
-    {
-      ConcurrentMap<String, Integer> map = Maps.newConcurrentMap();
-      map.put("k1", 1);
-      map.put("k2", 3);
-      assertEquals(serDe(raySerDe, map), map);
-    }
-  }
-
   static class B {
     int f1;
   }
@@ -403,34 +344,6 @@ public class RaySerDeTest {
   }
 
   @Test
-  public void testUnmodifiableCollection() {
-    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(true).build();
-    Assert.assertEquals(
-        raySerDe.deserialize(
-            raySerDe.serialize(Collections.unmodifiableList((Lists.newArrayList(1))))),
-        Collections.unmodifiableList(Lists.newArrayList(1)));
-    Assert.assertEquals(
-        raySerDe.deserialize(
-            raySerDe.serialize(Collections.unmodifiableList(Lists.newLinkedList()))),
-        Collections.unmodifiableList(Lists.newLinkedList()));
-    Assert.assertEquals(
-        raySerDe.deserialize(raySerDe.serialize(Collections.unmodifiableSet(Sets.newHashSet(1)))),
-        Collections.unmodifiableSet(Sets.newHashSet(1)));
-    Assert.assertEquals(
-        raySerDe.deserialize(
-            raySerDe.serialize(Collections.unmodifiableSortedSet(Sets.newTreeSet()))),
-        Collections.unmodifiableSortedSet(Sets.newTreeSet()));
-    Assert.assertEquals(
-        raySerDe.deserialize(
-            raySerDe.serialize(Collections.unmodifiableMap(ImmutableMap.of(1, 2)))),
-        Collections.unmodifiableMap(ImmutableMap.of(1, 2)));
-    Assert.assertEquals(
-        raySerDe.deserialize(
-            raySerDe.serialize(Collections.unmodifiableSortedMap(new TreeMap<>()))),
-        Collections.unmodifiableSortedMap(new TreeMap<>()));
-  }
-
-  @Test
   public void testJDKSerializable() throws Exception {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(true).build();
     serDe(raySerDe, ByteBuffer.allocate(32));
@@ -441,28 +354,42 @@ public class RaySerDeTest {
   @Test(dataProvider = "oobConfig")
   public void testOutOfBandSerialization(boolean oob) {
     RaySerde raySerDe = RaySerde.builder().withReferenceTracking(true).build();
-    List<Object> list = Arrays.asList(new byte[10000], ByteBuffer.allocate(10000));
-    Object[] objects =
-        new Object[] {
-          new byte[10000], ByteBuffer.allocate(10000), ByteBuffer.allocateDirect(10000)
-        };
     Collection<SerializedObject> serializedObjects = new ArrayList<>();
     BufferCallback bufferCallback = o -> !serializedObjects.add(o);
     if (!oob) {
       bufferCallback = null;
     }
-    byte[] inBandBuffer = raySerDe.serialize(objects, bufferCallback);
-    if (oob) {
-      assertEquals(serializedObjects.size(), 3);
-    }
-    List<ByteBuffer> buffers =
+    {
+      byte[] inBandBuffer = raySerDe.serialize(new int[10000], bufferCallback);
+      List<ByteBuffer> buffers =
         serializedObjects.stream().map(SerializedObject::toBuffer).collect(Collectors.toList());
-    if (!oob) {
-      buffers = null;
+      if (!oob) {
+        buffers = null;
+      }
+      int[] newObjects = (int[]) raySerDe.deserialize(inBandBuffer, buffers);
+      assertEquals(newObjects.length, 10000);
+      serializedObjects.clear();
     }
-    Object[] newObjects = (Object[]) raySerDe.deserialize(inBandBuffer, buffers);
-    assertEquals(((byte[]) newObjects[0]).length, 10000);
-    assertEquals(((ByteBuffer) newObjects[1]).remaining(), 10000);
-    assertEquals(((ByteBuffer) newObjects[2]).remaining(), 10000);
+    {
+      Object[] objects =
+        new Object[] {
+          new byte[10000], new int[10000],
+          ByteBuffer.allocate(10000), ByteBuffer.allocateDirect(10000)
+        };
+      byte[] inBandBuffer = raySerDe.serialize(objects, bufferCallback);
+      if (oob) {
+        assertEquals(serializedObjects.size(), 4);
+      }
+      List<ByteBuffer> buffers =
+        serializedObjects.stream().map(SerializedObject::toBuffer).collect(Collectors.toList());
+      if (!oob) {
+        buffers = null;
+      }
+      Object[] newObjects = (Object[]) raySerDe.deserialize(inBandBuffer, buffers);
+      assertEquals(((byte[]) newObjects[0]).length, 10000);
+      assertEquals(((int[]) newObjects[1]).length, 10000);
+      assertEquals(((ByteBuffer) newObjects[2]).remaining(), 10000);
+      assertEquals(((ByteBuffer) newObjects[3]).remaining(), 10000);
+    }
   }
 }

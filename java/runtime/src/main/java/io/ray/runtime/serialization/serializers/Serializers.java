@@ -15,13 +15,7 @@ import io.ray.runtime.serialization.util.Tuple2;
 import io.ray.runtime.serialization.util.TypeUtils;
 import java.lang.reflect.Array;
 import java.lang.reflect.Modifier;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.Date;
 import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -155,111 +149,6 @@ public class Serializers {
     }
   }
 
-  public static final class LocalDateSerializer extends Serializer<LocalDate> {
-    public LocalDateSerializer(RaySerde raySerDe) {
-      super(raySerDe, LocalDate.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, LocalDate value) {
-      buffer.writeInt(value.getYear());
-      buffer.writeByte((byte) value.getMonthValue());
-      buffer.writeByte((byte) value.getDayOfMonth());
-    }
-
-    @Override
-    public LocalDate read(MemoryBuffer buffer) {
-      return LocalDate.of(buffer.readInt(), buffer.readByte(), buffer.readByte());
-    }
-  }
-
-  public static final class DateSerializer extends Serializer<Date> {
-    public DateSerializer(RaySerde raySerDe) {
-      super(raySerDe, Date.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Date value) {
-      buffer.writeLong(value.getTime());
-    }
-
-    @Override
-    public Date read(MemoryBuffer buffer) {
-      return new Date(buffer.readLong());
-    }
-  }
-
-  public static final class TimestampSerializer extends Serializer<Timestamp> {
-    public TimestampSerializer(RaySerde raySerDe) {
-      super(raySerDe, Timestamp.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Timestamp value) {
-      buffer.writeLong(value.getTime());
-    }
-
-    @Override
-    public Timestamp read(MemoryBuffer buffer) {
-      return new Timestamp(buffer.readLong());
-    }
-  }
-
-  public static final class InstantSerializer extends Serializer<Instant> {
-    public InstantSerializer(RaySerde raySerDe) {
-      super(raySerDe, Instant.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Instant value) {
-      buffer.writeLong(value.getEpochSecond());
-      buffer.writeInt(value.getNano());
-    }
-
-    @Override
-    public Instant read(MemoryBuffer buffer) {
-      return Instant.ofEpochSecond(buffer.readLong(), buffer.readInt());
-    }
-  }
-
-  public static final class StringBuilderSerializer extends Serializer<StringBuilder> {
-    private final StringSerializer stringSerializer;
-
-    public StringBuilderSerializer(RaySerde raySerDe) {
-      super(raySerDe, StringBuilder.class);
-      stringSerializer = new StringSerializer(raySerDe);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, StringBuilder value) {
-      stringSerializer.writeJavaString(buffer, value.toString());
-    }
-
-    @Override
-    public StringBuilder read(MemoryBuffer buffer) {
-      return new StringBuilder(stringSerializer.readJavaString(buffer));
-    }
-  }
-
-  public static final class StringBufferSerializer extends Serializer<StringBuffer> {
-    private final StringSerializer stringSerializer;
-
-    public StringBufferSerializer(RaySerde raySerDe) {
-      super(raySerDe, StringBuffer.class);
-      stringSerializer = new StringSerializer(raySerDe);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, StringBuffer value) {
-      stringSerializer.writeJavaString(buffer, value.toString());
-    }
-
-    @Override
-    public StringBuffer read(MemoryBuffer buffer) {
-      return new StringBuffer(stringSerializer.readJavaString(buffer));
-    }
-  }
-
   @SuppressWarnings("rawtypes")
   public static final class EnumSerializer extends Serializer<Enum> {
     private final Enum[] enumConstants;
@@ -286,253 +175,6 @@ public class Serializers {
     @Override
     public Enum read(MemoryBuffer buffer) {
       return enumConstants[buffer.readInt()];
-    }
-  }
-
-  public static final class BigDecimalSerializer extends Serializer<BigDecimal> {
-    public BigDecimalSerializer(RaySerde raySerDe) {
-      super(raySerDe, BigDecimal.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, BigDecimal value) {
-      final byte[] bytes = value.unscaledValue().toByteArray();
-      Preconditions.checkArgument(bytes.length <= 16);
-      buffer.writeByte((byte) value.scale());
-      buffer.writeByte((byte) bytes.length);
-      buffer.writeBytes(bytes);
-    }
-
-    @Override
-    public BigDecimal read(MemoryBuffer buffer) {
-      int scale = buffer.readByte();
-      int len = buffer.readByte();
-      byte[] bytes = buffer.readBytes(len);
-      final BigInteger bigInteger = new BigInteger(bytes);
-      return new BigDecimal(bigInteger, scale);
-    }
-  }
-
-  public static final class BigIntegerSerializer extends Serializer<BigInteger> {
-    public BigIntegerSerializer(RaySerde raySerDe) {
-      super(raySerDe, BigInteger.class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, BigInteger value) {
-      final byte[] bytes = value.toByteArray();
-      Preconditions.checkArgument(bytes.length <= 16);
-      buffer.writeByte((byte) bytes.length);
-      buffer.writeBytes(bytes);
-    }
-
-    @Override
-    public BigInteger read(MemoryBuffer buffer) {
-      int len = buffer.readByte();
-      byte[] bytes = buffer.readBytes(len);
-      return new BigInteger(bytes);
-    }
-  }
-
-  public static final class BooleanArraySerializer extends Serializer<boolean[]> {
-    public BooleanArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, boolean[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, boolean[] value) {
-      writePrimitiveArray(buffer, value, Platform.BOOLEAN_ARRAY_OFFSET, value.length, 1);
-    }
-
-    @Override
-    public boolean[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      boolean[] values = new boolean[size];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.BOOLEAN_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class ByteArraySerializer extends Serializer<byte[]> {
-    public ByteArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, byte[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, byte[] value) {
-      raySerde.writeSerializedObject(buffer, new SerializedObject.ByteArraySerializedObject(value));
-    }
-
-    @Override
-    public byte[] read(MemoryBuffer buffer) {
-      ByteBuffer buf = raySerde.readSerializedObject(buffer);
-      int remaining = buf.remaining();
-      if (buf.hasArray() && remaining == buf.array().length) {
-        return buf.array();
-      } else {
-        byte[] arr = new byte[remaining];
-        buf.get(arr);
-        return arr;
-      }
-    }
-  }
-
-  public static final class CharArraySerializer extends Serializer<char[]> {
-    public CharArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, char[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, char[] value) {
-      writePrimitiveArray(buffer, value, Platform.CHAR_ARRAY_OFFSET, value.length, 2);
-    }
-
-    @Override
-    public char[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 2;
-      char[] values = new char[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.CHAR_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class ShortArraySerializer extends Serializer<short[]> {
-    public ShortArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, short[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, short[] value) {
-      writePrimitiveArray(buffer, value, Platform.SHORT_ARRAY_OFFSET, value.length, 2);
-    }
-
-    @Override
-    public short[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 2;
-      short[] values = new short[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.SHORT_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class IntArraySerializer extends Serializer<int[]> {
-    public IntArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, int[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, int[] value) {
-      writePrimitiveArray(buffer, value, Platform.INT_ARRAY_OFFSET, value.length, 4);
-    }
-
-    @Override
-    public int[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 4;
-      int[] values = new int[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.INT_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class LongArraySerializer extends Serializer<long[]> {
-    public LongArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, long[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, long[] value) {
-      writePrimitiveArray(buffer, value, Platform.LONG_ARRAY_OFFSET, value.length, 8);
-    }
-
-    @Override
-    public long[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 8;
-      long[] values = new long[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.LONG_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class FloatArraySerializer extends Serializer<float[]> {
-    public FloatArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, float[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, float[] value) {
-      writePrimitiveArray(buffer, value, Platform.FLOAT_ARRAY_OFFSET, value.length, 4);
-    }
-
-    @Override
-    public float[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 4;
-      float[] values = new float[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.FLOAT_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class DoubleArraySerializer extends Serializer<double[]> {
-    public DoubleArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, double[].class);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, double[] value) {
-      writePrimitiveArray(buffer, value, Platform.DOUBLE_ARRAY_OFFSET, value.length, 8);
-    }
-
-    @Override
-    public double[] read(MemoryBuffer buffer) {
-      int size = buffer.readInt();
-      int numElements = size / 8;
-      double[] values = new double[numElements];
-      buffer.copyToUnsafe(buffer.readerIndex(), values, Platform.DOUBLE_ARRAY_OFFSET, size);
-      buffer.readerIndex(buffer.readerIndex() + size);
-      return values;
-    }
-  }
-
-  public static final class StringArraySerializer extends Serializer<String[]> {
-    private final StringSerializer stringSerializer;
-    private final ReferenceResolver referenceResolver;
-
-    public StringArraySerializer(RaySerde raySerDe) {
-      super(raySerDe, String[].class);
-      stringSerializer = new StringSerializer(raySerDe);
-      referenceResolver = raySerDe.getReferenceResolver();
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, String[] value) {
-      int len = value.length;
-      buffer.writeInt(len);
-      for (String elem : value) {
-        raySerde.serializeReferencableToJava(buffer, elem, stringSerializer);
-      }
-    }
-
-    @Override
-    public String[] read(MemoryBuffer buffer) {
-      int numElements = buffer.readInt();
-      String[] value = new String[numElements];
-      referenceResolver.reference(value);
-      for (int i = 0; i < numElements; i++) {
-        String elem = raySerde.deserializeReferencableFromJava(buffer, stringSerializer);
-        value[i] = elem;
-      }
-      return value;
     }
   }
 
@@ -603,6 +245,112 @@ public class Serializers {
         value = (Object[]) Array.newInstance(innerType, stubDims);
       }
       return value;
+    }
+  }
+
+  @SuppressWarnings("rawtypes")
+  public static final class PrimitiveArraySerializer extends Serializer {
+    private final Class<?> innerType;
+    private final int offset;
+    private final int elemSize;
+
+    public PrimitiveArraySerializer(RaySerde raySerDe, Class<?> cls) {
+      super(raySerDe, cls);
+      this.innerType = TypeUtils.getArrayComponentInfo(cls).f0;
+      this.offset = getPrimitiveInfo().get(innerType).f0;
+      this.elemSize = getPrimitiveInfo().get(innerType).f1;
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, Object value) {
+      raySerde.writeSerializedObject(
+          buffer, new PrimitiveArraySerializedObject(value, offset, elemSize));
+    }
+
+    @Override
+    public Object read(MemoryBuffer buffer) {
+      ByteBuffer buf = raySerde.readSerializedObject(buffer);
+      int size = buf.getInt();
+      int numElements = size / elemSize;
+      Object values = Array.newInstance(innerType, numElements);
+      MemoryBuffer.fromByteBuffer(buf).copyToUnsafe(0, values, offset, size);
+      return values;
+    }
+  }
+
+  public static class PrimitiveArraySerializedObject implements SerializedObject {
+    private final Object array;
+    private final int offset;
+    private final int elemSize;
+
+    public PrimitiveArraySerializedObject(Object array, int offset, int elemSize) {
+      this.array = array;
+      this.offset = offset;
+      this.elemSize = elemSize;
+    }
+
+    @Override
+    public int totalBytes() {
+      return 4 + Array.getLength(array) * elemSize;
+    }
+
+    @Override
+    public void writeTo(MemoryBuffer buffer) {
+      writePrimitiveArray(buffer, array, offset, Array.getLength(array), elemSize);
+    }
+
+    @Override
+    public ByteBuffer toBuffer() {
+      MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
+      writeTo(buffer);
+      return buffer.sliceAsByteBuffer(0, buffer.writerIndex());
+    }
+  }
+
+  public static final class ByteArraySerializer extends Serializer<byte[]> {
+    public ByteArraySerializer(RaySerde raySerDe) {
+      super(raySerDe, byte[].class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, byte[] value) {
+      raySerde.writeSerializedObject(buffer, new ByteArraySerializedObject(value));
+    }
+
+    @Override
+    public byte[] read(MemoryBuffer buffer) {
+      ByteBuffer buf = raySerde.readSerializedObject(buffer);
+      int remaining = buf.remaining();
+      if (buf.hasArray() && remaining == buf.array().length) {
+        return buf.array();
+      } else {
+        byte[] arr = new byte[remaining];
+        buf.get(arr);
+        return arr;
+      }
+    }
+  }
+
+  public static class ByteArraySerializedObject implements SerializedObject {
+    private final byte[] bytes;
+
+    public ByteArraySerializedObject(byte[] bytes) {
+      this.bytes = bytes;
+    }
+
+    @Override
+    public int totalBytes() {
+      return bytes.length;
+    }
+
+    @Override
+    public void writeTo(MemoryBuffer buffer) {
+      buffer.writeBytes(bytes);
+    }
+
+    @Override
+    public ByteBuffer toBuffer() {
+      return ByteBuffer.wrap(bytes);
     }
   }
 
@@ -711,5 +459,18 @@ public class Serializers {
             .collect(Collectors.toList())
             .hashCode();
     return Hashing.murmur3_32().hashInt(hash).asInt();
+  }
+
+  private static IdentityHashMap<Class<?>, Tuple2<Integer, Integer>> getPrimitiveInfo() {
+    IdentityHashMap<Class<?>, Tuple2<Integer, Integer>> primitiveInfo = new IdentityHashMap<>();
+    primitiveInfo.put(boolean.class, Tuple2.of(Platform.BOOLEAN_ARRAY_OFFSET, 1));
+    primitiveInfo.put(byte.class, Tuple2.of(Platform.BYTE_ARRAY_OFFSET, 1));
+    primitiveInfo.put(char.class, Tuple2.of(Platform.CHAR_ARRAY_OFFSET, 2));
+    primitiveInfo.put(short.class, Tuple2.of(Platform.SHORT_ARRAY_OFFSET, 2));
+    primitiveInfo.put(int.class, Tuple2.of(Platform.INT_ARRAY_OFFSET, 4));
+    primitiveInfo.put(long.class, Tuple2.of(Platform.LONG_ARRAY_OFFSET, 8));
+    primitiveInfo.put(float.class, Tuple2.of(Platform.FLOAT_ARRAY_OFFSET, 4));
+    primitiveInfo.put(double.class, Tuple2.of(Platform.DOUBLE_ARRAY_OFFSET, 8));
+    return primitiveInfo;
   }
 }

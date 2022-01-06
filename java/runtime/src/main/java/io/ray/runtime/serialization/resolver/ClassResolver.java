@@ -12,21 +12,14 @@ import io.ray.runtime.serialization.serializers.ExternalizableSerializer;
 import io.ray.runtime.serialization.serializers.JavaSerializers;
 import io.ray.runtime.serialization.serializers.Serializers;
 import io.ray.runtime.serialization.serializers.StringSerializer;
-import io.ray.runtime.serialization.util.LoggerFactory;
 import java.io.Externalizable;
 import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -44,10 +37,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
 
 public class ClassResolver {
-  private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
   private static final byte USE_CLASSNAME = 0;
   private static final byte USE_CLASS_ID = 1;
   private static final Short LONG_CLASS_ID = 0;
@@ -104,23 +95,14 @@ public class ClassResolver {
     addDefaultSerializer(Float.class, Serializers.FloatSerializer.class);
     addDefaultSerializer(Double.class, Serializers.DoubleSerializer.class);
     addDefaultSerializer(String.class, StringSerializer.class);
-    addDefaultSerializer(StringBuilder.class, Serializers.StringBuilderSerializer.class);
-    addDefaultSerializer(StringBuffer.class, Serializers.StringBufferSerializer.class);
-    addDefaultSerializer(BigInteger.class, Serializers.BigIntegerSerializer.class);
-    addDefaultSerializer(BigDecimal.class, Serializers.BigDecimalSerializer.class);
-    addDefaultSerializer(LocalDate.class, Serializers.LocalDateSerializer.class);
-    addDefaultSerializer(Date.class, Serializers.DateSerializer.class);
-    addDefaultSerializer(Timestamp.class, Serializers.TimestampSerializer.class);
-    addDefaultSerializer(Instant.class, Serializers.InstantSerializer.class);
     addDefaultSerializer(byte[].class, Serializers.ByteArraySerializer.class);
-    addDefaultSerializer(char[].class, Serializers.CharArraySerializer.class);
-    addDefaultSerializer(short[].class, Serializers.ShortArraySerializer.class);
-    addDefaultSerializer(int[].class, Serializers.IntArraySerializer.class);
-    addDefaultSerializer(long[].class, Serializers.LongArraySerializer.class);
-    addDefaultSerializer(float[].class, Serializers.FloatArraySerializer.class);
-    addDefaultSerializer(double[].class, Serializers.DoubleArraySerializer.class);
-    addDefaultSerializer(boolean[].class, Serializers.BooleanArraySerializer.class);
-    addDefaultSerializer(String[].class, Serializers.StringArraySerializer.class);
+    addDefaultSerializer(char[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(short[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(int[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(long[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(float[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(double[].class, Serializers.PrimitiveArraySerializer.class);
+    addDefaultSerializer(boolean[].class, Serializers.PrimitiveArraySerializer.class);
     addDefaultSerializer(
         Object[].class, new Serializers.ObjectArraySerializer<>(raySerde, Object[].class));
     addDefaultSerializer(
@@ -328,10 +310,6 @@ public class ClassResolver {
   }
 
   private Serializer<?> createSerializer(Class<?> cls) {
-    if (!registeredClassIdMap.containsKey(cls)) {
-      LOG.info(
-          "{} is not registered, serialize object of this class will " + "write class name.", cls);
-    }
     if (serializerFactory != null) {
       Serializer<?> serializer = serializerFactory.createSerializer(raySerde, cls);
       if (serializer != null) {

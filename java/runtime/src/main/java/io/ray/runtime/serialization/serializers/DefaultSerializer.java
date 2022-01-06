@@ -1,12 +1,10 @@
 package io.ray.runtime.serialization.serializers;
 
-import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.RaySerde;
 import io.ray.runtime.serialization.Serializer;
 import io.ray.runtime.serialization.resolver.ReferenceResolver;
-import io.ray.runtime.serialization.serializers.FieldAccessor.ObjectAccessor;
 import io.ray.runtime.serialization.util.Descriptor;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -34,7 +32,7 @@ import java.util.TreeSet;
  * <p>Comparing to CodegenSerializer, this serializer allow parent class and child class to have
  * duplicate fields names.
  */
-@SuppressWarnings({"UnstableApiUsage", "rawtypes", "unchecked"})
+@SuppressWarnings({"rawtypes", "unchecked"})
 public final class DefaultSerializer<T> extends Serializer<T> {
   private final ReferenceResolver referenceResolver;
   private Constructor<T> constructor;
@@ -48,9 +46,9 @@ public final class DefaultSerializer<T> extends Serializer<T> {
   private final UnsafeFieldAccessor[] shortFieldAccessors;
   private final UnsafeFieldAccessor[] charFieldAccessors;
   // Use ObjectAccessor instead of FieldAccessor to avoid virtual methods calls.
-  private final ObjectAccessor[] finalFieldAccessors;
+  private final UnsafeFieldAccessor[] finalFieldAccessors;
   private final Serializer<?>[] finalFieldSerializers;
-  private final ObjectAccessor[] otherFieldAccessors;
+  private final UnsafeFieldAccessor[] otherFieldAccessors;
   private final int classVersionHash;
 
   public DefaultSerializer(RaySerde raySerDe, Class<T> cls) {
@@ -76,19 +74,19 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     List<UnsafeFieldAccessor> shortFieldAccessorsList = new ArrayList<>();
     List<UnsafeFieldAccessor> charFieldAccessorsList = new ArrayList<>();
     new ArrayList<>();
-    Comparator<ObjectAccessor> comparator =
+    Comparator<UnsafeFieldAccessor> comparator =
         (a1, a2) -> {
           // sort by type so that we can hit class info cache more possibly.
           // sort by field name to fix order if type is same.
-          int c = a2.field.getType().getName().compareTo(a1.field.getType().getName());
+          int c = a2.getField().getType().getName().compareTo(a1.getField().getType().getName());
           if (c == 0) {
-            return a2.field.getName().compareTo(a1.field.getName());
+            return a2.getField().getName().compareTo(a1.getField().getName());
           } else {
             return c;
           }
         };
-    TreeSet<ObjectAccessor> finalFieldAccessorsList = new TreeSet<>(comparator);
-    TreeSet<ObjectAccessor> otherFieldAccessorsList = new TreeSet<>(comparator);
+    TreeSet<UnsafeFieldAccessor> finalFieldAccessorsList = new TreeSet<>(comparator);
+    TreeSet<UnsafeFieldAccessor> otherFieldAccessorsList = new TreeSet<>(comparator);
     for (Map.Entry<Field, Descriptor> descriptorEntry : allFields.entrySet()) {
       Field field = descriptorEntry.getKey();
       Class<?> fieldType = field.getType();
@@ -111,9 +109,9 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         charFieldAccessorsList.add(unsafeFieldAccessor);
       } else if (Modifier.isFinal(fieldType.getModifiers()) && fieldType != cls) {
         // avoid recursive
-        finalFieldAccessorsList.add(new ObjectAccessor(field));
+        finalFieldAccessorsList.add(unsafeFieldAccessor);
       } else {
-        otherFieldAccessorsList.add((ObjectAccessor) FieldAccessor.createAccessor(field));
+        otherFieldAccessorsList.add(unsafeFieldAccessor);
       }
     }
     this.intFieldAccessors = intFieldAccessorsList.toArray(new UnsafeFieldAccessor[0]);
@@ -128,16 +126,14 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         byteFieldAccessors.length > 0
             || shortFieldAccessors.length > 0
             || charFieldAccessors.length > 0;
-    this.finalFieldAccessors = finalFieldAccessorsList.toArray(new ObjectAccessor[0]);
+    this.finalFieldAccessors = finalFieldAccessorsList.toArray(new UnsafeFieldAccessor[0]);
     this.finalFieldSerializers =
         finalFieldAccessorsList.stream()
             .map(
                 accessor ->
-                    raySerDe
-                        .getClassResolver()
-                        .getSerializer(Primitives.wrap(accessor.field.getType())))
+                    raySerDe.getClassResolver().getSerializer(accessor.getField().getType()))
             .toArray(Serializer[]::new);
-    this.otherFieldAccessors = otherFieldAccessorsList.toArray(new ObjectAccessor[0]);
+    this.otherFieldAccessors = otherFieldAccessorsList.toArray(new UnsafeFieldAccessor[0]);
   }
 
   @Override
@@ -146,16 +142,16 @@ public final class DefaultSerializer<T> extends Serializer<T> {
       buffer.writeInt(classVersionHash);
     }
     writePrimitives(buffer, value);
-    ObjectAccessor[] finalFieldAccessors = this.finalFieldAccessors;
+    UnsafeFieldAccessor[] finalFieldAccessors = this.finalFieldAccessors;
     Serializer<?>[] finalFieldSerializers = this.finalFieldSerializers;
     for (int i = 0; i < finalFieldAccessors.length; i++) {
-      ObjectAccessor fieldAccessor = finalFieldAccessors[i];
-      Object fieldValue = fieldAccessor.get(value);
+      UnsafeFieldAccessor fieldAccessor = finalFieldAccessors[i];
+      Object fieldValue = fieldAccessor.getObject(value);
       if (!referenceResolver.writeReferenceOrNull(buffer, fieldValue)) {
         // don't use fieldValue.getClass(), because fieldAccessor.field.getType() may be
         // Object.class
         // while fieldValue.getClass() is String.class, which can't be known ahead for read method.
-        Class<?> fieldClass = fieldAccessor.field.getType();
+        Class<?> fieldClass = fieldAccessor.getField().getType();
         // fast path for frequent types.
         if (fieldClass == Long.class) {
           buffer.writeLong((Long) fieldValue);
@@ -169,8 +165,8 @@ public final class DefaultSerializer<T> extends Serializer<T> {
         }
       }
     }
-    for (ObjectAccessor fieldAccessor : this.otherFieldAccessors) {
-      Object fieldValue = fieldAccessor.get(value);
+    for (UnsafeFieldAccessor fieldAccessor : this.otherFieldAccessors) {
+      Object fieldValue = fieldAccessor.getObject(value);
       if (!referenceResolver.writeReferenceOrNull(buffer, fieldValue)) {
         raySerde.serializeNonReferenceToJava(buffer, fieldValue);
       }
@@ -217,10 +213,10 @@ public final class DefaultSerializer<T> extends Serializer<T> {
     Object bean = newBean();
     referenceResolver.reference(bean);
     readPrimitives(bean, buffer);
-    ObjectAccessor[] finalFieldAccessors = this.finalFieldAccessors;
+    UnsafeFieldAccessor[] finalFieldAccessors = this.finalFieldAccessors;
     Serializer<?>[] finalFieldSerializers = this.finalFieldSerializers;
     for (int i = 0; i < finalFieldAccessors.length; i++) {
-      ObjectAccessor fieldAccessor = finalFieldAccessors[i];
+      UnsafeFieldAccessor fieldAccessor = finalFieldAccessors[i];
       Object fieldValue;
       // It's not a reference, we need read field data.
       if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
@@ -238,26 +234,26 @@ public final class DefaultSerializer<T> extends Serializer<T> {
           fieldValue = serializer.read(buffer);
         }
         raySerde.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
-        fieldAccessor.set(bean, fieldValue);
+        fieldAccessor.putObject(bean, fieldValue);
       } else {
         fieldValue = referenceResolver.getReadObject();
         if (fieldValue != null) {
-          fieldAccessor.set(bean, fieldValue);
+          fieldAccessor.putObject(bean, fieldValue);
         }
       }
     }
-    for (ObjectAccessor fieldAccessor : this.otherFieldAccessors) {
+    for (UnsafeFieldAccessor fieldAccessor : this.otherFieldAccessors) {
       Object fieldValue;
       // It's not a reference, we need read field data.
       if (referenceResolver.readReferenceOrNull(buffer) == RaySerde.NOT_NULL) {
         int nextReadRefId = referenceResolver.preserveReferenceId();
         fieldValue = raySerde.deserializeNonReferenceFromJava(buffer);
         raySerde.getReferenceResolver().setReadObject(nextReadRefId, fieldValue);
-        fieldAccessor.set(bean, fieldValue);
+        fieldAccessor.putObject(bean, fieldValue);
       } else {
         fieldValue = referenceResolver.getReadObject();
         if (fieldValue != null) {
-          fieldAccessor.set(bean, fieldValue);
+          fieldAccessor.putObject(bean, fieldValue);
         }
       }
     }
