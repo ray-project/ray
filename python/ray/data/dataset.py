@@ -1349,8 +1349,8 @@ class Dataset(Generic[T]):
             return self
         stats_builder = self._stats.child_builder("sort")
         blocks, stage_info = sort_impl(self._blocks, key, descending)
-        return Dataset(
-            blocks, self._epoch, stats_builder.build_multistage(stage_info))
+        return Dataset(blocks, self._epoch,
+                       stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1405,8 +1405,7 @@ class Dataset(Generic[T]):
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
         blocks = BlockList(blocks, metadata)
-        return Dataset(
-            blocks, self._epoch, stats_builder.build(blocks))
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.

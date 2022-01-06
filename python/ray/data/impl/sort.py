@@ -101,8 +101,7 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
     map_meta = []
     for i, block in enumerate(blocks):
-        result = sort_block.remote(block, boundaries, key,
-                                              descending)
+        result = sort_block.remote(block, boundaries, key, descending)
         map_results[i, :] = result[:-1]
         map_meta.append(result[-1])
     map_bar = ProgressBar("Sort Map", len(map_results))
@@ -133,7 +132,8 @@ def _sort_block(block, boundaries, key, descending):
     stats = BlockExecStats.builder()
     out = BlockAccessor.for_block(block).sort_and_partition(
         boundaries, key, descending)
-    meta = BlockAccessor.for_block(block).get_metadata(input_files=None, exec_stats=stats.build())
+    meta = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build())
     return out + [meta]
 
 
