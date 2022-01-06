@@ -816,6 +816,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        start_time = time.perf_counter()
         context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
@@ -850,9 +851,12 @@ class Dataset(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
+        dataset_stats = DatasetStats(
+            stages={"union": []}, parent=[d._stats for d in datasets])
+        dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.child_TODO("union"))
+            dataset_stats)
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).

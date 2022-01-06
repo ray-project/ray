@@ -168,6 +168,7 @@ def read_datasource(datasource: Datasource[T],
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
+    stats_actor.record_start.remote(stats_uuid)
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
@@ -183,7 +184,7 @@ def read_datasource(datasource: Datasource[T],
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=task.get_metadata().input_files,
                 exec_stats=stats.build())
-        stats_actor.add.remote(stats_uuid, i, metadata)
+        stats_actor.record_task.remote(stats_uuid, i, metadata)
         return block
 
     if ray_remote_args is None:
