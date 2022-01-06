@@ -98,7 +98,6 @@ def test_dataset_stats_repartition(ray_start_regular_shared):
     ds = ds.repartition(1, shuffle=False)
     stats = ds.stats()
     assert "repartition" in stats, stats
-    assert "TODO" not in stats, stats
 
 
 def test_dataset_stats_union(ray_start_regular_shared):
@@ -106,7 +105,6 @@ def test_dataset_stats_union(ray_start_regular_shared):
     ds = ds.union(ds)
     stats = ds.stats()
     assert "union" in stats, stats
-    assert "TODO" not in stats, stats
 
 
 def test_dataset_stats_zip(ray_start_regular_shared):
@@ -114,7 +112,6 @@ def test_dataset_stats_zip(ray_start_regular_shared):
     ds = ds.zip(ds)
     stats = ds.stats()
     assert "zip" in stats, stats
-    assert "TODO" not in stats, stats
 
 
 def test_dataset_stats_sort(ray_start_regular_shared):
@@ -123,14 +120,12 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     stats = ds.stats()
     assert "sort_map" in stats, stats
     assert "sort_merge" in stats, stats
-    assert "TODO" not in stats, stats
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(range(10))
     stats = ds.stats()
     assert "from_items" in stats, stats
-    assert "TODO" not in stats, stats
 
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
