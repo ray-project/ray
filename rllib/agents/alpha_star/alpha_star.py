@@ -7,8 +7,8 @@ from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import asynchronous_parallel_sample
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
-    MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.mixin_replay_buffer import \
+    MixInMultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
@@ -28,8 +28,10 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
-        #TODO: This is timesteps!
-        "replay_buffer_capacity": 500,
+        # This is num batches held at any time for each policy.
+        "replay_buffer_capacity": 20,
+        # e.g. ratio=0.2 -> 20% of samples are old (replayed) ones.
+        "replay_buffer_replay_ratio": 0.33,
 
         # Use the `training_iteration` method instead of an execution plan.
         "_disable_execution_plan_api": True,
@@ -133,16 +135,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
             num_cpus=1,
             num_gpus=0.01 if (self.config["num_gpus"] and
                               not self.config["_fake_gpus"]) else 0)(
-            MultiAgentReplayBuffer)
+            MixInMultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
         # (located on any GPU machine in the cluster):
         replay_actor_args = [
-            num_learner_shards,
-            self.config["train_batch_size"],  # learning starts
             self.config["replay_buffer_capacity"],
-            self.config["train_batch_size"],
-            0.0,  # no prioritization
+            self.config["replay_buffer_replay_ratio"]
         ]
         self._replay_actors = []
 
@@ -156,8 +155,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # num_gpus, not the total number of GPUs).
             configs = [
                 self.merge_trainer_configs(
-                    self.config, dict(ma_cfg["policies"][pid].config), \
-                    **{"num_gpus": num_gpus_per_policy})
+                    self.config, dict(ma_cfg["policies"][pid].config,
+                                      **{"num_gpus": num_gpus_per_policy}))
                 for pid in policies
             ]
 
@@ -255,6 +254,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for i, policy_result in enumerate(train_results):
                 if policy_result:
                     pol_actor, pid = idx_to_pol_actor_and_pid[i]
+                    #print(f"synching policy {pid}")
                     train_infos[pid] = policy_result
                     policy_weights[pid] = self._policy_learners[pid][0].get_weights.remote()
                     

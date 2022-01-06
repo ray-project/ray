@@ -35,7 +35,18 @@ class TestAlphaStar(unittest.TestCase):
                 return f"p{np.random.choice(list({0, 1, 2, 3} - {head_pol}))}"
 
         config = alpha_star.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
+
+        config["num_workers"] = 4
+        config["num_envs_per_worker"] = 5
+        config["observation_filter"] = "MeanStdFilter"
+        #config["vf_loss_coeff"] = 0.01
+        config["vtrace_drop_last_ts"] = False
+        config["model"] = {
+            "fcnet_hiddens": [32],
+            "fcnet_activation": "linear",
+            "vf_share_layers": True
+        }
+
         # Multi-agent cartpole with 2 agents (IDs: 0, 1)
         # mapping to 4 different policies ("p0" to "p3").
         config["env"] = MultiAgentCartPole
