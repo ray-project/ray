@@ -5,6 +5,7 @@ import os
 import shutil
 import platform
 import pytest
+import subprocess
 
 import ray
 from ray._private.test_utils import wait_for_condition
@@ -246,6 +247,33 @@ def test_fallback_allocation_failure(shutdown_only):
 #             ray.get(consume.remote(*refs))
 #     finally:
 #         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_plasma_allocate(shutdown_only):
+    ray.init(
+        object_store_memory=300 * 1024**2,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+        },
+        _temp_dir="/tmp/ray/test_tmp_dir")
+    res = []
+    data = np.random.randint(
+        low=0, high=256, size=(90 * 1024**2, ), dtype=np.uint8)
+    for _ in range(3):
+        res.append(ray.put(data))
+    # keep reference for second and third object, force evict first object
+    _ = ray.get(res[1:])
+    # keep reference for fourth object, avoid released by plasma GC.
+    __ = ray.put(data)
+
+    # Check fourth object whether allocate to disk
+    cmd = "lsof | grep \"/tmp/ray/test_tmp_dir/plasma\" | wc -l"
+    out = subprocess.check_output(cmd, shell=True).decode("utf-8").split("\n")[0]
+    assert int(out) == 0
+
 
 if __name__ == "__main__":
     import sys

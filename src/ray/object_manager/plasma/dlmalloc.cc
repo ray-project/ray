@@ -56,6 +56,9 @@ int fake_munmap(void *, int64_t);
 #define HAVE_MORECORE 0
 #define DEFAULT_MMAP_THRESHOLD MAX_SIZE_T
 #define DEFAULT_GRANULARITY ((size_t)128U * 1024U)
+// Copied from plasma_allocator.cc variable kAllocationAlignment,
+// make sure to keep in sync
+#define MALLOC_ALIGNMENT 64
 
 #include "ray/thirdparty/dlmalloc.c"  // NOLINT
 
