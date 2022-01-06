@@ -22,12 +22,13 @@ config = {
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
         "episode_reward_mean": 65.0,
-        "timesteps_total": 100000,
+        "timesteps_total": 50000,
     },
     "metric": "episode_reward_mean",
     "mode": "max",
     "verbose": 2,
     "config": {
+        "seed": 42,
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch",
         "num_workers": 4,

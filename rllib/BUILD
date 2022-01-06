@@ -2571,7 +2571,7 @@ py_test(
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
     tags = ["team:ml", "gpu"],
-    size = "enormous",
+    size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
