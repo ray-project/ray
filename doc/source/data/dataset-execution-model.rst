@@ -122,77 +122,42 @@ At a high level, execution stats for tasks (e.g., CPU time) are attached to bloc
 
 .. code-block::
 
-    (consume pid=723600) == Pipeline Window 2 ==
-    (consume pid=723600) Stage 0 read: 200/200 blocks executed in 0.13s
-    (consume pid=723600) * Wall time: 117.63us min, 6.6ms max, 413.57us mean, 82.71ms total
-    (consume pid=723600) * CPU time: 116.3us min, 6.48ms max, 380.74us mean, 76.15ms total
-    (consume pid=723600) * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    (consume pid=723600) * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    (consume pid=723600) * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-    (consume pid=723600) 
-    (consume pid=723600) Stage 1 map: 200/200 blocks executed in 0.3s
-    (consume pid=723600) * Wall time: 294.12us min, 2.55ms max, 918.35us mean, 183.67ms total
-    (consume pid=723600) * CPU time: 292.68us min, 829.32us max, 554.42us mean, 110.88ms total
-    (consume pid=723600) * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    (consume pid=723600) * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    (consume pid=723600) * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-    (consume pid=723600) 
-    (consume pid=723600) Stage 2 map: 200/200 blocks executed in 0.41s
-    (consume pid=723600) * Wall time: 8.06ms min, 18.29ms max, 9.37ms mean, 1.87s total
-    (consume pid=723600) * CPU time: 572.05us min, 3.43ms max, 992.16us mean, 198.43ms total
-    (consume pid=723600) * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    (consume pid=723600) * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    (consume pid=723600) * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-    (consume pid=723600) 
-    (consume pid=723600) Stage 3 random_shuffle_TODO: 0/0 blocks executed in -1s
-    (consume pid=723600) 
-    (consume pid=723600) Dataset iterator time breakdown:
-    (consume pid=723600) * In ray.wait(): 1.85ms
-    (consume pid=723600) * In format_batch(): 15.28ms
-    (consume pid=723600) * In user code: 429.99us
-    (consume pid=723600) * Total time: 18.07ms
-    (consume pid=723600) 
-    (consume pid=723600) == Pipeline Window 3 ==
-    (consume pid=723600) Stage 0 read: [execution cached]
-    (consume pid=723600) Stage 1 map: [execution cached]
-    (consume pid=723600) Stage 2 map: 200/200 blocks executed in 0.46s
-    (consume pid=723600) * Wall time: 7.97ms min, 27.64ms max, 9.79ms mean, 1.96s total
-    (consume pid=723600) * CPU time: 592.86us min, 1.75ms max, 1.01ms mean, 201.85ms total
-    (consume pid=723600) * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    (consume pid=723600) * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    (consume pid=723600) * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-    (consume pid=723600) 
-    (consume pid=723600) Stage 3 random_shuffle_TODO: 0/0 blocks executed in -1s
-    (consume pid=723600) 
-    (consume pid=723600) Dataset iterator time breakdown:
-    (consume pid=723600) * In ray.wait(): 1.2ms
-    (consume pid=723600) * In format_batch(): 10.03ms
-    (consume pid=723600) * In user code: 292.8us
-    (consume pid=723600) * Total time: 11.86ms
-    (consume pid=723600) 
-    (consume pid=723600) == Pipeline Window 4 ==
-    (consume pid=723600) Stage 0 read: [execution cached]
-    (consume pid=723600) Stage 1 map: [execution cached]
-    (consume pid=723600) Stage 2 map: 200/200 blocks executed in 0.42s
-    (consume pid=723600) * Wall time: 8.04ms min, 16.93ms max, 9.48ms mean, 1.9s total
-    (consume pid=723600) * CPU time: 662.75us min, 3.33ms max, 972.26us mean, 194.45ms total
-    (consume pid=723600) * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    (consume pid=723600) * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    (consume pid=723600) * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-    (consume pid=723600) 
-    (consume pid=723600) Stage 3 random_shuffle_TODO: 0/0 blocks executed in -1s
-    (consume pid=723600) 
-    (consume pid=723600) Dataset iterator time breakdown:
-    (consume pid=723600) * In ray.wait(): 1.18ms
-    (consume pid=723600) * In format_batch(): 9.98ms
-    (consume pid=723600) * In user code: 284.75us
-    (consume pid=723600) * Total time: 11.78ms
-    (consume pid=723600) 
-    (consume pid=723600) ##### Overall Pipeline Time Breakdown #####
-    (consume pid=723600) * Time stalled waiting for next dataset: 2.74ms min, 701.09ms max, 491.05ms mean, 1.96s total
-    (consume pid=723600) * Time in dataset iterator: 315.69ms
-    (consume pid=723600) * Time in user code: 1.21ms
-    (consume pid=723600) * Total time: 5.0s
+    == Pipeline Window 4 ==
+    Stage 0 read: [execution cached]
+    Stage 1 map: [execution cached]
+    Stage 2 map: 200/200 blocks executed in 0.37s
+    * Remote wall time: 8.08ms min, 15.82ms max, 9.36ms mean, 1.87s total
+    * Remote cpu time: 688.79us min, 3.63ms max, 977.38us mean, 195.48ms total
+    * Output num rows: 50 min, 50 max, 50 mean, 10000 total
+    * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
+    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
+    
+    Stage 3 random_shuffle_map: 200/200 blocks executed in 0.63s
+    * Remote wall time: 550.98us min, 5.2ms max, 900.66us mean, 180.13ms total
+    * Remote cpu time: 550.79us min, 1.13ms max, 870.82us mean, 174.16ms total
+    * Output num rows: 50 min, 50 max, 50 mean, 10000 total
+    * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
+    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
+    
+    Stage 3 random_shuffle_reduce: 200/200 blocks executed in 0.63s
+    * Remote wall time: 152.37us min, 322.96us max, 218.32us mean, 43.66ms total
+    * Remote cpu time: 151.9us min, 321.53us max, 217.96us mean, 43.59ms total
+    * Output num rows: 32 min, 69 max, 50 mean, 10000 total
+    * Output size bytes: 312 min, 608 max, 456 mean, 91200 total
+    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
+    
+    Dataset iterator time breakdown:
+    * In ray.wait(): 1.15ms
+    * In ray.get(): 3.51ms
+    * In format_batch(): 6.83ms
+    * In user code: 441.53us
+    * Total time: 12.92ms
+    
+    ##### Overall Pipeline Time Breakdown #####
+    * Time stalled waiting for next dataset: 3.48ms min, 758.48ms max, 486.78ms mean, 1.95s total
+    * Time in dataset iterator: 270.66ms
+    * Time in user code: 1.38ms
+    * Total time: 4.47s
 
 Batching Transforms
 ~~~~~~~~~~~~~~~~~~~
