@@ -1390,7 +1390,10 @@ class RolloutWorker(ParallelIteratorWorker):
         # If per-policy weights are object refs, `ray.get()` them first.
         if weights and isinstance(next(iter(weights.values())), ObjectRef):
             actual_weights = ray.get(list(weights.values()))
-            weights = {pid: actual_weights[i] for i, pid in enumerate(weights.keys())}
+            weights = {
+                pid: actual_weights[i]
+                for i, pid in enumerate(weights.keys())
+            }
 
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)

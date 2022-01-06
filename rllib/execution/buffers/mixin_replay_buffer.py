@@ -23,7 +23,8 @@ class MixInMultiAgentReplayBuffer:
 
     Examples:
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100, replay_ratio=0.66)
+        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100,
+        ...                                      replay_ratio=0.66)
         >>> buffer.add_batch(<A>)
         >>> buffer.add_batch(<B>)
         >>> buffer.replay()
@@ -101,7 +102,8 @@ class MixInMultiAgentReplayBuffer:
         if self.num_added == 0:
             return None
         with self.replay_timer:
-            output_batches = self.replay_buffers[policy_id].last_added_batches.copy()
+            output_batches = self.replay_buffers[
+                policy_id].last_added_batches.copy()
 
             # replay ratio = old / [old + new]
             num_new = len(output_batches)
@@ -110,7 +112,6 @@ class MixInMultiAgentReplayBuffer:
                 num_old += 1
                 output_batches.append(self.replay_buffers[policy_id].replay())
             return_batch = SampleBatch.concat_samples(output_batches)
-            #print(f"returning batch {return_batch}")
             return return_batch
 
     def get_host(self) -> str:

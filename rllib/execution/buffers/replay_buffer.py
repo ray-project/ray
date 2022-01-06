@@ -147,9 +147,7 @@ class ReplayBuffer:
         if len(self) == 0:
             return None
 
-        idxes = [
-            random.randint(0, len(self) - 1) for _ in range(num_items)
-        ]
+        idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
         self._num_timesteps_sampled += num_items
         return self._encode_sample(idxes)
 

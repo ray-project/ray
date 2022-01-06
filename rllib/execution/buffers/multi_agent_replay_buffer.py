@@ -159,7 +159,6 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         Args:
             batch (SampleBatchType): The batch to be added.
         """
-        #print(f"Adding item {batch} to buffer.")
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
         batch = batch.as_multi_agent()

@@ -24,8 +24,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     appo.DEFAULT_CONFIG,  # See keys in appo.py, which are also supported.
     {
-        #"num_gpus_per_policy_learner": 0.1,
-
         # TODO: Unify the buffer API, then clean up our existing
         #  implementations of different buffers.
         # This is num batches held at any time for each policy.
@@ -51,8 +49,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         num_policies = len(cf["multiagent"]["policies"])
         if cf["num_gpus"]:
-            num_learner_shards = max(
-                cf["num_gpus"] / num_policies, cf["num_gpus"])
+            num_learner_shards = max(cf["num_gpus"] / num_policies,
+                                     cf["num_gpus"])
             num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
         else:
             num_learner_shards = cf.get("num_replay_buffer_shards", 1)
@@ -118,9 +116,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # 4 GPUs 2 Policies -> 2 shards.
         # 2 GPUs 4 Policies -> 2 shards.
         if self.config["num_gpus"]:
-            num_learner_shards = int(max(
-                self.config["num_gpus"] / len(_policy_learners),
-                self.config["num_gpus"]))
+            num_learner_shards = int(
+                max(self.config["num_gpus"] / len(_policy_learners),
+                    self.config["num_gpus"]))
             num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
         else:
             num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
@@ -133,9 +131,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # policies on the same machine(s)).
         ReplayActor = ray.remote(
             num_cpus=1,
-            num_gpus=0.01 if (self.config["num_gpus"] and
-                              not self.config["_fake_gpus"]) else 0)(
-            MixInMultiAgentReplayBuffer)
+            num_gpus=0.01
+            if (self.config["num_gpus"] and not self.config["_fake_gpus"]) else
+            0)(MixInMultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
         # (located on any GPU machine in the cluster):
@@ -155,8 +153,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # num_gpus, not the total number of GPUs).
             configs = [
                 self.merge_trainer_configs(
-                    self.config, dict(ma_cfg["policies"][pid].config,
-                                      **{"num_gpus": num_gpus_per_policy}))
+                    self.config,
+                    dict(ma_cfg["policies"][pid].config,
+                         **{"num_gpus": num_gpus_per_policy}))
                 for pid in policies
             ]
 
@@ -167,9 +166,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     (
                         ray.remote(
                             num_cpus=1,
-                            num_gpus=num_gpus_per_policy if
-                            not self.config["_fake_gpus"] else 0)(
-                            ma_cfg["policies"][pid].policy_class),
+                            num_gpus=num_gpus_per_policy
+                            if not self.config["_fake_gpus"] else 0)(
+                                ma_cfg["policies"][pid].policy_class),
                         # Policy c'tor args.
                         (ma_cfg["policies"][pid].observation_space,
                          ma_cfg["policies"][pid].action_space, cfg),
@@ -200,17 +199,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for w in self.workers.remote_workers()
         ])
 
-        # Store replay buffer shard for each learning Policy such that
-        # all Policies know where to get their samples from.
-
-        #def _set_replay_buffer_shard(policy, shard):
-        #    policy._replay_buffer_shard = shard
-
-        #ray.get([
-        #    p[0].apply.remote(_set_replay_buffer_shard, p[1])
-        #    for p in _policy_learners.values()
-        #])
-
         self._policy_learners = _policy_learners
 
     def training_iteration(self) -> ResultDict:
@@ -219,8 +207,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         #   shards, instead of here (to the driver).
         asynchronous_parallel_sample(
             trainer=self,
-            actors=self.workers.remote_workers() or
-                   [self.workers.local_worker()],
+            actors=self.workers.remote_workers()
+            or [self.workers.local_worker()],
             ray_wait_timeout_s=0.1,
             max_remote_requests_in_flight_per_actor=2,
             remote_fn=self._sample_and_send_to_buffer,
@@ -230,7 +218,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # policies.
         idx_to_pol_actor_and_pid = {}
         args = []
-        for i, (pid, (pol_actor, repl_actor)) in enumerate(self._policy_learners.items()):
+        for i, (pid, (pol_actor,
+                      repl_actor)) in enumerate(self._policy_learners.items()):
             idx_to_pol_actor_and_pid[i] = (pol_actor, pid)
             args.append([repl_actor, pid])
         train_results = asynchronous_parallel_sample(
@@ -254,10 +243,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for i, policy_result in enumerate(train_results):
                 if policy_result:
                     pol_actor, pid = idx_to_pol_actor_and_pid[i]
-                    #print(f"synching policy {pid}")
                     train_infos[pid] = policy_result
-                    policy_weights[pid] = self._policy_learners[pid][0].get_weights.remote()
-                    
+                    policy_weights[pid] = self._policy_learners[pid][
+                        0].get_weights.remote()
+
             policy_weights_ref = ray.put(policy_weights)
 
             for worker in self.workers.remote_workers():

@@ -475,7 +475,7 @@ class Policy(metaclass=ABCMeta):
             return {}
 
         # Send to own learn_on_batch method for updating.
-        #TODO: hack w/ `hasattr`
+        # TODO: hack w/ `hasattr`
         if hasattr(self, "devices") and len(self.devices) > 1:
             self.load_batch_into_buffer(batch, buffer_index=0)
             return self.learn_on_loaded_batch(offset=0, buffer_index=0)
@@ -671,10 +671,9 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = state["global_timestep"]
 
     @ExperimentalAPI
-    def apply(
-            self,
-            func: Callable[["Policy", Optional[Any], Optional[Any]], T],
-            *args, **kwargs) -> T:
+    def apply(self,
+              func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+              *args, **kwargs) -> T:
         """Calls the given function with this Policy instance.
 
         Useful for when the Policy class has been converted into a ActorHandle

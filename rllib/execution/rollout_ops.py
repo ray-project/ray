@@ -23,6 +23,7 @@ from ray.util.iter_metrics import SharedMetrics
 
 if TYPE_CHECKING:
     from ray.rllib.agents.trainer import Trainer
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,8 @@ def synchronous_parallel_sample(
 
     Args:
         worker_set: The WorkerSet to use for sampling.
-        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead of
-            `worker.sample.remote()` to generate the requests. 
+        remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
+            of `worker.sample.remote()` to generate the requests.
 
     Returns:
         The list of collected sample batch types (one for each parallel
@@ -77,8 +78,8 @@ def synchronous_parallel_sample(
     return sample_batches
 
 
-#TODO: Move to generic parallel ops module and rename to
-# `asynchronous_parallel_requests`:
+# TODO: Move to generic parallel ops module and rename to
+#  `asynchronous_parallel_requests`:
 @ExperimentalAPI
 def asynchronous_parallel_sample(
         trainer: "Trainer",
@@ -110,11 +111,13 @@ def asynchronous_parallel_sample(
             sufficient to avoid idle times between two requests.
         remote_fn: If provided, use `actor.apply.remote(remote_fn)` instead of
             `actor.sample.remote()` to generate the requests.
-        remote_args: If provided, use this list (per-actor) of lists (call args)
-            as *args to be passed to the `remote_fn`. E.g.: actors=[A, B],
+        remote_args: If provided, use this list (per-actor) of lists (call
+            args) as *args to be passed to the `remote_fn`.
+            E.g.: actors=[A, B],
             remote_args=[[...] <- *args for A, [...] <- *args for B].
-        remote_kwargs: If provided, use this list (per-actor) of dicts (kwargs)
-            as **kwargs to be passed to the `remote_fn`. E.g.: actors=[A, B],
+        remote_kwargs: If provided, use this list (per-actor) of dicts
+            (kwargs) as **kwargs to be passed to the `remote_fn`.
+            E.g.: actors=[A, B],
             remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
 
     Returns:
@@ -142,8 +145,9 @@ def asynchronous_parallel_sample(
         assert len(remote_kwargs) == len(actors)
 
     # Create a map inside Trainer instance that maps actorss to sets of open
-    # requests (object refs). This way, we keep track, of which actorss have already
-    # been sent how many requests (`max_remote_requests_in_flight_per_actor` arg).
+    # requests (object refs). This way, we keep track, of which actorss have
+    # already been sent how many requests
+    # (`max_remote_requests_in_flight_per_actor` arg).
     if not hasattr(trainer, "_remote_requests_in_flight"):
         trainer._remote_requests_in_flight = defaultdict(set)
 
@@ -191,16 +195,18 @@ def asynchronous_parallel_sample(
     # Timeout: Do a `ray.wait() call` w/ timeout.
     else:
         ready, _ = ray.wait(
-            pending_remote_list, num_returns=len(pending_remotes),
+            pending_remote_list,
+            num_returns=len(pending_remotes),
             timeout=ray_wait_timeout_s)
 
         # Return None if nothing ready after the timeout.
         if not ready:
             return
-    
+
     for obj_ref in ready:
         # Remove in-flight record for this ref.
-        trainer._remote_requests_in_flight[remote_to_actor[obj_ref]].remove(obj_ref)
+        trainer._remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
+            obj_ref)
         remote_to_actor.pop(obj_ref)
 
     results = ray.get(ready)
