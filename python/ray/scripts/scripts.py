@@ -527,18 +527,18 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         if port is None:
             port = ray_constants.DEFAULT_PORT
-        # TODO(mwtian): use a more robust mechanism to avoid collision,
-        # e.g. node._get_cached_port()
-        if port == 0:
-            with socket() as s:
-                s.bind(("", 0))
-                port = s.getsockname()[1]
 
         # Set bootstrap port.
-        # TODO(mwtian): set bootstrap port as GCS server port.
-        ray_params.redis_port = port
-
-        if not use_gcs_for_bootstrap():
+        assert ray_params.redis_port is None
+        assert ray_params.gcs_server_port is None
+        if use_gcs_for_bootstrap():
+            ray_params.gcs_server_port = port
+        else:
+            if port == 0:
+                with socket() as s:
+                    s.bind(("", 0))
+                    port = s.getsockname()[1]
+            ray_params.redis_port = port
             ray_params.gcs_server_port = gcs_server_port
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
@@ -715,10 +715,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             raise Exception("Cannot canonicalize address "
                             f"`--address={address}`.")
 
-        # TODO(mwtian): set ray_params.gcs_address in GCS bootstrap mode.
-        ray_params.redis_address = bootstrap_address
-
-        if not use_gcs_for_bootstrap():
+        if use_gcs_for_bootstrap():
+            ray_params.gcs_address = bootstrap_address
+        else:
+            ray_params.redis_address = bootstrap_address
             address_ip, address_port = services.extract_ip_port(
                 bootstrap_address)
             # Wait for the Redis server to be started. And throw an exception
@@ -1485,10 +1485,13 @@ def memory(address, redis_password, group_by, sort_by, units, no_format,
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
-    redis_client = ray._private.services.create_redis_client(
-        address, redis_password)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
-        redis_client)
+    if use_gcs_for_bootstrap():
+        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    else:
+        redis_client = ray._private.services.create_redis_client(
+            address, redis_password)
+        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+            redis_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         DEBUG_AUTOSCALING_STATUS)
@@ -1737,17 +1740,19 @@ def healthcheck(address, redis_password, component):
     """
 
     address = services.canonicalize_bootstrap_address(address)
-    redis_client = ray._private.services.create_redis_client(
-        address, redis_password)
+
+    if use_gcs_for_bootstrap():
+        gcs_address = address
+    else:
+        # If client creation or ping fails, this will exit with a non-zero
+        # exit code.
+        redis_client = ray._private.services.create_redis_client(
+            address, redis_password)
+        redis_client.ping()
+        gcs_address = redis_client.get("GcsServerAddress").decode()
 
     if not component:
-        # If no component is specified, we are health checking the core. If
-        # client creation or ping fails, we will still exit with a non-zero
-        # exit code.
-        redis_client.ping()
         try:
-            # TODO: add feature to ray._private.GcsClient to share channel
-            gcs_address = redis_client.get("GcsServerAddress").decode()
             options = (("grpc.enable_http_proxy", 0), )
             channel = ray._private.utils.init_grpc_channel(
                 gcs_address, options)
@@ -1760,8 +1765,8 @@ def healthcheck(address, redis_password, component):
         except Exception:
             pass
         sys.exit(1)
-    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
-        redis_client)
+
+    gcs_client = ray._private.gcs_utils.GcsClient(address=gcs_address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)

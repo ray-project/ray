@@ -844,10 +844,12 @@ def init(
     if address:
         bootstrap_address = services.canonicalize_bootstrap_address(address)
         assert bootstrap_address is not None
-        # TODO(mwtian): bootstrap with GCS address
-        redis_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: "
                     f"{bootstrap_address}")
+        if gcs_utils.use_gcs_for_bootstrap():
+            gcs_address = bootstrap_address
+        else:
+            redis_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1369,8 +1371,8 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    # TODo(mwtian): do not create Redis client when bootstrapping with GCS
-    worker.redis_client = node.create_redis_client()
+    if not gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = node.create_redis_client()
     worker.gcs_client = node.get_gcs_client()
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
