@@ -51,7 +51,7 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   return entry;
 }
 
-LocalObject *ObjectStore::GetLowestPriObject() {
+ray::Priority &ObjectStore::GetLowestPriObject() {
   auto it = object_table_.begin();
   auto return_it = it;
   ray::Priority *lowest_priority = it->second->GetPriority();
@@ -63,7 +63,7 @@ LocalObject *ObjectStore::GetLowestPriObject() {
 	  return_it = it;
 	}
   }
-  return return_it->second.get();
+  return return_it->second->GetPriority();
 }
 
 

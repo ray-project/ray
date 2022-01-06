@@ -216,6 +216,7 @@ void ReadCreateRequest(uint8_t *data, size_t size, ray::ObjectInfo *object_info,
   object_info->owner_ip_address = message->owner_ip_address()->str();
   object_info->owner_port = message->owner_port();
   object_info->owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
+  object_info->priority = message->priority();
   *source = message->source();
   *device_num = message->device_num();
   return;

@@ -49,7 +49,7 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   return {entry, PlasmaError::OK};
 }
 
-LocalObject *ObjectLifecycleManager::GetLowestPriObject() {
+ray::Priority &ObjectLifecycleManager::GetLowestPriObject() {
   return object_store_->GetLowestPriObject();
 }
 

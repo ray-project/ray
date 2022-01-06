@@ -40,8 +40,7 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint,
-    const Priority &priority,
+    const std::string debugger_breakpoint, const Priority &priority,
     const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name = "") {
@@ -50,9 +49,7 @@ void BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint,
-      priority,
-      serialized_runtime_env, runtime_env_uris,
+      debugger_breakpoint, priority, serialized_runtime_env, runtime_env_uris,
       concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -684,9 +681,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
-      /*get_task_priority=*/[](const TaskSpecification &spec) {
-	    return spec.GetPriority();
-      },
+      /*get_task_priority=*/
+      [](const TaskSpecification &spec) { return spec.GetPriority(); },
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =
@@ -1214,11 +1210,11 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     if (status.ok()) {
+    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
+                   << "] Create() is called. Priority is not set this case";
       status = plasma_store_provider_->Create(metadata, data_size, *object_id,
                                               /* owner_address = */ rpc_address_,
-                                              Priority(),
-                                              data,
-                                              created_by_worker);
+                                              Priority(), data, created_by_worker);
     }
     if (!status.ok() || !data) {
       if (owned_by_us) {
@@ -1235,8 +1231,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
 Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const size_t data_size, const ObjectID &object_id,
                                   const rpc::Address &owner_address,
-                                  const Priority &priority,
-                                  std::shared_ptr<Buffer> *data, bool created_by_worker) {
+                                  const Priority &priority, std::shared_ptr<Buffer> *data,
+                                  bool created_by_worker) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local "
@@ -1670,19 +1666,20 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint,
-                      Priority(),
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
+  BuildCommonTaskSpec(
+      builder, worker_context_.GetCurrentJobID(), task_id, task_name,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, args, task_options.num_returns, constrained_resources, required_resources,
+      placement_options, placement_group_capture_child_tasks, debugger_breakpoint,
+      Priority(), task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
-  //priority = task_manager_->GenerateTaskPriority(task_spec);
+  // priority = task_manager_->GenerateTaskPriority(task_spec);
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
+    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
+                   << "] ExecuteTaskLocalMode is called. Priority is not set this case";
     returned_refs = ExecuteTaskLocalMode(task_spec);
   } else {
     returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec,
@@ -1733,8 +1730,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
-                      Priority(),
-                      actor_creation_options.serialized_runtime_env,
+                      Priority(), actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
   auto actor_handle = std::make_unique<ActorHandle>(
@@ -1916,11 +1912,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
-                      Priority(),
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      true,             /* placement_group_capture_child_tasks */
+                      "",               /* debugger_breakpoint */
+                      Priority(), "{}", /* serialized_runtime_env */
+                      {},               /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -2167,9 +2162,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
+      RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
+                     << "] CreateExisting is called. Priority is not set this case";
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
-                                       Priority(),
-                                       &data_buffer,
+                                       Priority(), &data_buffer,
                                        /*created_by_worker=*/true));
       object_already_exists = !data_buffer;
     }
@@ -3125,16 +3121,15 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(
-      Status::OK(),
-      [this, is_idle]() {
-        // If the worker is idle, we exit.
-        if (is_idle) {
-          Exit(rpc::WorkerExitType::IDLE_EXIT);
-        }
-      },
-      // We need to kill it regardless if the RPC failed.
-      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(Status::OK(),
+                      [this, is_idle]() {
+                        // If the worker is idle, we exit.
+                        if (is_idle) {
+                          Exit(rpc::WorkerExitType::IDLE_EXIT);
+                        }
+                      },
+                      // We need to kill it regardless if the RPC failed.
+                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

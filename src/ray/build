@@ -1,1 +1,0 @@
-bazel build -c fastbuild //:ray_pkg

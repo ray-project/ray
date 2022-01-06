@@ -55,6 +55,8 @@ struct ObjectInfo {
   int owner_port;
   /// Owner's worker ID.
   WorkerID owner_worker_id;
+  // Priority of the object. Used for blockTasks() memory backpressure
+  ray::Priority priority;
 
   int64_t GetObjectSize() const { return data_size + metadata_size; }
 
@@ -64,7 +66,8 @@ struct ObjectInfo {
             (owner_raylet_id == other.owner_raylet_id) &&
             (owner_ip_address == other.owner_ip_address) &&
             (owner_port == other.owner_port) &&
-            (owner_worker_id == other.owner_worker_id));
+            (owner_worker_id == other.owner_worker_id) &&
+            (priority == other.priority));
   }
 };
 

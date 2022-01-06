@@ -109,7 +109,7 @@ class LocalObject {
 
   const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
 
-  ray::Priority *GetPriority() { return &priority; }
+  ray::Priority &GetPriority() { return object_info.priority; }
 
   void ToPlasmaObject(PlasmaObject *object, bool check_sealed) const {
     RAY_DCHECK(object != nullptr);
@@ -150,7 +150,5 @@ class LocalObject {
   ObjectState state;
   /// The source of the object. Used for debugging purposes.
   plasma::flatbuf::ObjectSource source;
-  // Priority of the object. Used for blockTasks() memory backpressure
-  ray::Priority priority;
 };
 }  // namespace plasma
