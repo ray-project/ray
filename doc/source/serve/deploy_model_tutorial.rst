@@ -40,7 +40,7 @@ article about the Apollo 11 moon landing.
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to
   rest on a level, rock-strewn plain ."
 
-This tutorial's goal is to deploy this model using Ray Serve, so it can be
+This tutorial's goal is to deploy this model using Ray Serve, so it can be scaled up and
 queried over HTTP. We'll start by converting the above Python function into a
 Ray Serve deployment that can be launched locally on a laptop.
 
