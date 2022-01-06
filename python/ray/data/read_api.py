@@ -625,9 +625,7 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
     blocks, metadata = zip(*res)
     return Dataset(
         BlockList(blocks, ray.get(list(metadata))), 0,
-        DatasetStats({
-            "from_numpy": metadata
-        }, parent=None))
+        DatasetStats(stages={"from_numpy": metadata}, parent=None))
 
 
 @PublicAPI(stability="beta")
