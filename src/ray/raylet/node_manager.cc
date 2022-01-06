@@ -1438,7 +1438,6 @@ void NodeManager::ProcessWaitRequestMessage(
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  RAY_LOG(INFO) << "jjyao ProcessWaitForDirectActorCallArgsRequestMessage";
   // Read the data.
   auto message =
       flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
@@ -1458,11 +1457,9 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
-  RAY_LOG(INFO) << "jjyao object_manager wait " << object_ids;
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, -1, object_ids.size(),
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
-        RAY_LOG(INFO) << "jjyao DirectActorCallArgWaitComplete";
         RAY_CHECK(remaining.empty());
         std::shared_ptr<WorkerInterface> worker =
             worker_pool_.GetRegisteredWorker(client);

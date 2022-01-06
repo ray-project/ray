@@ -169,7 +169,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
-        RAY_LOG(INFO) << "jjyao Activating pull for object " << obj_id << " " << next_request_it->first;
+        RAY_LOG(DEBUG) << "Activating pull for object " << obj_id << " "
+                       << next_request_it->first;
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -199,7 +200,7 @@ void PullManager::DeactivatePullBundleRequest(
       continue;
     }
     if (it->second.empty()) {
-      RAY_LOG(INFO) << "jjyao Deactivating pull for object " << obj_id;
+      RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
       auto it = object_pull_requests_.find(obj_id);
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
@@ -218,7 +219,6 @@ void PullManager::DeactivatePullBundleRequest(
       *highest_req_id_being_pulled = std::prev(request_it)->first;
     }
   }
-  RAY_LOG(INFO) << "jjyao DeactivatePullBundleRequest " << bundles.size() << " " << *highest_req_id_being_pulled;
 
   num_active_bundles_ -= 1;
 }
@@ -230,7 +230,7 @@ void PullManager::DeactivateUntilMarginAvailable(
     if (num_active_bundles_ <= retain_min) {
       return;
     }
-    RAY_LOG(INFO) << "jjyao Deactivating " << debug_name << " " << *highest_id_for_bundle
+    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << *highest_id_for_bundle
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
@@ -331,7 +331,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
-  RAY_LOG(INFO) << "jjyao Cancel pull request " << request_id;
+  RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
 
   Queue *request_queue = nullptr;
   uint64_t *highest_req_id_being_pulled = nullptr;
@@ -614,9 +614,9 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   bool active = active_object_pull_requests_.count(object_id) > 0;
   if (active) {
     if (TryPinObject(object_id)) {
-      RAY_LOG(INFO) << "jjyao Pinned newly created object " << object_id;
+      RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
     } else {
-      RAY_LOG(INFO) << "jjyao Failed to pin newly created object " << object_id;
+      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
     }
   }
 }

@@ -164,7 +164,7 @@ void ObjectManager::StopRpcService() {
 void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
   const ObjectID &object_id = object_info.object_id;
-  RAY_LOG(INFO) << "jjyao Object added " << object_id;
+  RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
@@ -193,7 +193,6 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
-  RAY_LOG(INFO) << "jjyao Object deleted " << object_id;
   auto object_info = it->second.object_info;
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
@@ -240,7 +239,6 @@ void ObjectManager::CancelPull(uint64_t request_id) {
 }
 
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
-  RAY_LOG(INFO) << "jjyao SendPullRequest " << object_id;
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
     // Try pulling from the client.
@@ -253,7 +251,6 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
           rpc_client->Pull(
               pull_request,
               [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
-                RAY_LOG(INFO) << "jjyao PullReply " << status;
                 if (!status.ok()) {
                   RAY_LOG(WARNING) << "Send pull " << object_id << " request to client "
                                    << client_id << " failed due to" << status.message();
@@ -303,7 +300,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
-  RAY_LOG(INFO) << "jjyao Push on " << self_node_id_ << " to " << node_id << " of object "
+  RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << node_id << " of object "
                  << object_id;
   if (local_objects_.count(object_id) != 0) {
     return PushLocalObject(object_id, node_id);
@@ -513,7 +510,7 @@ ray::Status ObjectManager::Wait(
     const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
     uint64_t num_required_objects, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
-  RAY_LOG(INFO) << "jjyao Wait request " << wait_id << " on " << self_node_id_;
+  RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
                                    num_required_objects, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
@@ -548,7 +545,6 @@ ray::Status ObjectManager::AddWaitRequest(
       wait_state.remaining.insert(object_id);
     }
   }
-  RAY_LOG(INFO) << "jjyao wait found " << wait_state.found.size() << " remaining " << wait_state.remaining.size();
 
   return ray::Status::OK();
 }
@@ -565,7 +561,6 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
     // This is required to ensure we do not bias returning locally available objects
     // as ready whenever Wait is invoked with a mixture of local and remote objects.
     for (const auto &object_id : wait_state.remaining) {
-      RAY_LOG(INFO) << "jjyao LookupLocations " << object_id;
       // Lookup remaining objects.
       wait_state.requested_objects.insert(object_id);
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
@@ -578,14 +573,11 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
             if (local_objects_.count(lookup_object_id) > 0) {
-              RAY_LOG(INFO) << "jjyao " << lookup_object_id << " is local";
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
-            } else {
-              RAY_LOG(INFO) << "jjyao " << lookup_object_id << " is not local";
             }
-            RAY_LOG(INFO) << "jjyao Wait request " << wait_id << ": " << node_ids.size()
-                          << " locations found for object " << lookup_object_id;
+            RAY_LOG(DEBUG) << "Wait request " << wait_id << ": " << node_ids.size()
+                           << " locations found for object " << lookup_object_id;
             wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
               RAY_LOG(INFO) << "jjyao SubscribeRemainingWaitObjects";
@@ -610,8 +602,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
   // locations from the object directory.
   for (const auto &object_id : wait_state.object_id_order) {
     if (wait_state.remaining.count(object_id) > 0) {
-      RAY_LOG(INFO) << "jjyao Wait request " << wait_id << ": subscribing to object "
-                    << object_id;
+      RAY_LOG(DEBUG) << "Wait request " << wait_id << ": subscribing to object "
+                     << object_id;
       wait_state.requested_objects.insert(object_id);
       // Subscribe to object notifications.
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
@@ -620,7 +612,6 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
                           const std::unordered_set<NodeID> &node_ids,
                           const std::string &spilled_url, const NodeID &spilled_node_id,
                           bool pending_creation, size_t object_size) {
-            RAY_LOG(INFO) << "jjyao SubscribeObjectLocations returned " << subscribe_object_id;
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we
@@ -633,7 +624,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
             if (local_objects_.count(subscribe_object_id) > 0) {
-              RAY_LOG(INFO) << "jjyao Wait request " << wait_id
+              RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
               wait_state.remaining.erase(subscribe_object_id);
@@ -774,7 +765,7 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "jjyao Received pull request from node " << node_id << " for object ["
+  RAY_LOG(DEBUG) << "Received pull request from node " << node_id << " for object ["
                  << object_id << "].";
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
