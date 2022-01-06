@@ -24,10 +24,16 @@ def check_env(env: EnvType) -> None:
             env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv, VectorEnv)):
         raise ValueError(
             "Env must be one of the supported types: BaseEnv, gym.Env, "
-            "MultiAgentEnv, VectorEnv, RemoteVectorEnv")
+            "MultiAgentEnv, VectorEnv, RemoteBaseEnv")
 
-    if isinstance(env, gym.Env):
+    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
         check_gym_environments(env)
+
+    elif isinstance(env, MultiAgentEnv):
+        check_multiagent_environments(env)
+    else:
+        logger.warning("Env checking isn't implemented fro VectorEnvs or "
+                       "RemoteBaseEnvs.")
 
 
 def check_gym_environments(env: gym.Env) -> None:
@@ -148,3 +154,27 @@ def check_gym_environments(env: gym.Env) -> None:
         done, bool), "Your step function must return a done that is a boolean."
     assert isinstance(
         info, dict), "Your step function must return a info that is a dict."
+
+
+def check_multiagent_environments(env: "MultiAgentEnv") -> None:
+    """Checking for common errors in RLlib MultiAgentEnvs.
+
+    Args:
+        env: The env to be checked.
+
+    """
+    from ray.rllib.env import MultiAgentEnv
+    if not isinstance(env, MultiAgentEnv):
+        raise ValueError("The passed env is not a MultiAgentEnv.")
+
+    reset_obs = env.reset()
+    sampled_obs = env.observation_space_sample()
+    if not env.observation_space_contains(reset_obs):
+        error = (
+            f"The observation collected from env.reset() was not  "
+            f"contained within your env's observation space. Its possible "
+            f"that There was a type mismatch, or that one of the "
+            f"sub-observations was out of bounds: \n\n reset_obs: "
+            f"{reset_obs}\n\n env.observation_space_sample():"
+            f" {sampled_obs}\n\n ")
+        raise ValueError(error)
