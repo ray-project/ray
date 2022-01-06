@@ -36,6 +36,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -812,11 +813,14 @@ def main():
 
             try:
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    # TODO(mwtian): bootstrap with GCS address
-                    redis_client = try_create_redis_client(
-                        args.address, args.redis_password)
-                    gcs_client = (ray._private.gcs_utils.GcsClient.
-                                  create_from_redis(redis_client))
+                    if use_gcs_for_bootstrap():
+                        gcs_client = ray._private.gcs_utils.GcsClient(
+                            address=args.address)
+                    else:
+                        redis_client = try_create_redis_client(
+                            args.address, args.redis_password)
+                        gcs_client = (ray._private.gcs_utils.GcsClient.
+                                      create_from_redis(redis_client))
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(

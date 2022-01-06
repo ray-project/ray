@@ -50,6 +50,7 @@ def handle_docker_login(resp):
 
 
 def gather_paths(dir_path) -> List[str]:
+    dir_path = dir_path.replace("/", os.path.sep)
     assert os.path.exists(dir_path)
     if os.path.isdir(dir_path):
         paths = [os.path.join(dir_path, f) for f in os.listdir(dir_path)]
