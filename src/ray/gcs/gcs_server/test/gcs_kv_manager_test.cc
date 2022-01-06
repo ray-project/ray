@@ -52,18 +52,18 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 };
 
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  kv_instance->Get("A", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Put("A", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A", "C", false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("A", [](auto b) { ASSERT_EQ("B", *b); });
-  kv_instance->Put("A", "C", true, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("A", [](auto b) { ASSERT_EQ("C", *b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_FALSE(b.has_value()); });
+  kv_instance->Put("N1", "A", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A", "C", false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("B", *b); });
+  kv_instance->Put("N1", "A", "C", true, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("C", *b); });
 
-  kv_instance->Put("A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
 
-  kv_instance->Keys("A_", [](std::vector<std::string> keys) {
+  kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
     auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
     ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
   });

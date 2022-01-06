@@ -95,10 +95,10 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
             RAY_CHECK(r.has_value());
             del_cmd.emplace_back(*r);
           }
-          redis_client_->GetPrimaryContext()->RunArgvAsync(
+          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
               del_cmd, [callback = std::move(callback)](auto redis_reply) {
                 callback(redis_reply->ReadAsInteger());
-              });
+              }));
         }));
   } else {
     std::vector<std::string> cmd = {"DEL", true_key};
