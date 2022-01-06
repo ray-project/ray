@@ -321,10 +321,8 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
-      [this](const JobID &job_id) {
-        return gcs_job_manager_->GetNumJavaWorkersPerProcess(job_id);
-      },
+      /*get_job_config_func=*/
+      [this](const JobID &job_id) { return gcs_job_manager_->GetJobConfig(job_id); },
       [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
         boost::asio::deadline_timer timer(main_service_);
         timer.expires_from_now(delay);
@@ -359,7 +357,9 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
-      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); });
+      [this](const JobID &job_id) {
+        return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
