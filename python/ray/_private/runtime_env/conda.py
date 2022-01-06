@@ -5,6 +5,7 @@ import logging
 import yaml
 import hashlib
 import subprocess
+import platform
 import runpy
 import shutil
 
@@ -81,6 +82,10 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
+def _is_m1_mac():
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
 def current_ray_pip_specifier(
         logger: Optional[logging.Logger] = default_logger) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
@@ -112,9 +117,17 @@ def current_ray_pip_specifier(
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.
+        if _is_m1_mac():
+            raise ValueError("Nightly wheels are not available for M1 Macs.")
         return get_master_wheel_url()
     else:
-        return get_release_wheel_url()
+        if _is_m1_mac():
+            # M1 Mac release wheels are currently not uploaded to AWS S3; they
+            # are only available on PyPI.  So unfortunately, this codepath is
+            # not end-to-end testable prior to the release going live on PyPI.
+            return f"ray=={ray.__version__}"
+        else:
+            return get_release_wheel_url()
 
 
 def inject_dependencies(
@@ -192,6 +205,26 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     return uri
 
 
+def _get_conda_dict_with_ray_inserted(
+        runtime_env: RuntimeEnv,
+        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
+    """Returns the conda spec with the Ray and `python` dependency inserted."""
+    conda_dict = json.loads(runtime_env.conda_config())
+    assert conda_dict is not None
+
+    ray_pip = current_ray_pip_specifier(logger=logger)
+    if ray_pip:
+        extra_pip_dependencies = [ray_pip, "ray[default]"]
+    elif runtime_env.get_extension("_inject_current_ray") == "True":
+        extra_pip_dependencies = (
+            _resolve_install_from_source_ray_dependencies())
+    else:
+        extra_pip_dependencies = []
+    conda_dict = inject_dependencies(conda_dict, _current_py_version(),
+                                     extra_pip_dependencies)
+    return conda_dict
+
+
 class CondaManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "conda")
@@ -240,21 +273,11 @@ class CondaManager:
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
-            conda_dict = json.loads(runtime_env.conda_config())
             protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
-            assert conda_dict is not None
 
-            ray_pip = current_ray_pip_specifier(logger=logger)
-            if ray_pip:
-                extra_pip_dependencies = [ray_pip, "ray[default]"]
-            elif runtime_env.get_extension("_inject_current_ray") == "True":
-                extra_pip_dependencies = (
-                    _resolve_install_from_source_ray_dependencies())
-            else:
-                extra_pip_dependencies = []
-            conda_dict = inject_dependencies(conda_dict, _current_py_version(),
-                                             extra_pip_dependencies)
+            conda_dict = _get_conda_dict_with_ray_inserted(
+                runtime_env, logger=logger)
 
             # It is not safe for multiple processes to install conda envs
             # concurrently, even if the envs are different, so use a global

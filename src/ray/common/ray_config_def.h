@@ -323,9 +323,6 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
-/// Whether put small objects in the local memory store.
-RAY_CONFIG(bool, put_small_object_in_memory_store, false)
-
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 

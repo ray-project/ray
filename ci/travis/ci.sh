@@ -132,6 +132,7 @@ test_core() {
   bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
 }
 
+# For running Python tests on Windows.
 test_python() {
   local pathsep=":" args=()
   if [ "${OSTYPE}" = msys ]; then
@@ -165,6 +166,8 @@ test_python() {
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_reference_counting  # too flaky 9/25/21
+      -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
+      -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
@@ -191,6 +194,23 @@ test_python() {
       -- \
       ${test_shard_selection};
   fi
+}
+
+# For running large Python tests on Linux and MacOS.
+test_large() {
+  bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
+      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
+      -- python/ray/tests/...
+}
+
+# For running large Python tests on Linux and MacOS in GCS HA mode.
+test_large_gcs() {
+  bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
+      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
+      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1 --test_env=RAY_gcs_storage=memory \
+      -- python/ray/tests/... -//python/ray/tests:test_failure_2
 }
 
 test_cpp() {
