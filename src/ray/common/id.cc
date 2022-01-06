@@ -194,6 +194,14 @@ TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
   return TaskID::FromBinary(data);
 }
 
+TaskID TaskID::ForExecution(const TaskID &task_id, int64_t execution_counter) {
+  std::string data_str;
+  std::copy_n(task_id.Data(), TaskID::kLength, std::back_inserter(data_str));
+  auto data = reinterpret_cast<uint8_t *>(data_str.data());
+  data[TaskID::kLength - 1] += execution_counter;
+  return TaskID::FromBinary(data_str);
+}
+
 ActorID TaskID::ActorId() const {
   return ActorID::FromBinary(std::string(
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));

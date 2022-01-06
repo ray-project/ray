@@ -49,7 +49,7 @@ class WorkerContext {
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
-  const TaskID &GetCurrentTaskUniqueBytes() const;
+  const TaskID &GetCurrentInternalTaskId() const;
 
   void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
 
