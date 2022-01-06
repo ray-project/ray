@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
     TYPE_CHECKING, Union
 
 import ray
-from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
