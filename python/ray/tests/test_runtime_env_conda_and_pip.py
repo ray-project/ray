@@ -11,7 +11,6 @@ from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 import yaml
-from unittest import mock
 import tempfile
 from pathlib import Path
 
@@ -21,17 +20,6 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-# Set scope to "class" to force this to run before start_cluster, whose scope
-# is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
-def disable_URI_cache():
-    with mock.patch.dict(os.environ, {
-            "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
-    }):
-        print("URI caching disabled (cache size set to 0).")
-        yield
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
@@ -119,8 +107,8 @@ class TestGC:
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
-    def test_job_level_gc(self, disable_URI_cache, start_cluster, field,
-                          spec_format, tmp_path):
+    def test_job_level_gc(self, runtime_env_disable_URI_cache, start_cluster,
+                          field, spec_format, tmp_path):
         """Tests that job-level conda env is GC'd when the job exits."""
         # We must use a single-node cluster.  If we simulate a multi-node
         # cluster then the conda installs will proceed simultaneously, one on
@@ -166,8 +154,8 @@ class TestGC:
                 "machines."))
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
-    def test_detached_actor_gc(self, disable_URI_cache, start_cluster, field,
-                               spec_format, tmp_path):
+    def test_detached_actor_gc(self, runtime_env_disable_URI_cache,
+                               start_cluster, field, spec_format, tmp_path):
         """Tests that detached actor's conda env is GC'd only when it exits."""
         cluster, address = start_cluster
 
@@ -206,8 +194,8 @@ class TestGC:
                 "machines."))
     @pytest.mark.parametrize("field", ["conda", "pip"])
     @pytest.mark.parametrize("spec_format", ["file", "python_object"])
-    def test_actor_level_gc(self, disable_URI_cache, start_cluster, field,
-                            spec_format, tmp_path):
+    def test_actor_level_gc(self, runtime_env_disable_URI_cache, start_cluster,
+                            field, spec_format, tmp_path):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         cluster, address = start_cluster
 

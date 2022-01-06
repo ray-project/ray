@@ -9,6 +9,7 @@ import subprocess
 import json
 import time
 from pathlib import Path
+from unittest import mock
 
 import ray
 from ray.cluster_utils import (Cluster, AutoscalingCluster,
@@ -493,3 +494,16 @@ def ray_start_chaos_cluster(request):
     """
     for x in _ray_start_chaos_cluster(request):
         yield x
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def runtime_env_disable_URI_cache():
+    with mock.patch.dict(
+            os.environ, {
+                "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
+                "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            }):
+        print("URI caching disabled (conda and pip cache size set to 0).")
+        yield

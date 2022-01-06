@@ -28,7 +28,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 # Set scope to "class" to force this to run before start_cluster, whose scope
 # is "function".  We need these env vars to be set before Ray is started.
 @pytest.fixture(scope="class")
-def disable_URI_cache():
+def runtime_env_disable_URI_cache():
     with mock.patch.dict(
             os.environ, {
                 "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
@@ -274,8 +274,8 @@ class TestGC:
     @pytest.mark.parametrize(
         "source",
         [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-    def test_job_level_gc(self, start_cluster, disable_URI_cache, option: str,
-                          source: str):
+    def test_job_level_gc(self, start_cluster, runtime_env_disable_URI_cache,
+                          option: str, source: str):
         """Tests that job-level working_dir is GC'd when the job exits."""
         NUM_NODES = 3
         cluster, address = start_cluster
@@ -324,7 +324,7 @@ class TestGC:
     @pytest.mark.skipif(
         sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-    def test_actor_level_gc(self, start_cluster, disable_URI_cache,
+    def test_actor_level_gc(self, start_cluster, runtime_env_disable_URI_cache,
                             option: str):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
@@ -360,8 +360,9 @@ class TestGC:
     @pytest.mark.parametrize(
         "source",
         [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-    def test_detached_actor_gc(self, start_cluster, disable_URI_cache,
-                               option: str, source: str):
+    def test_detached_actor_gc(self, start_cluster,
+                               runtime_env_disable_URI_cache, option: str,
+                               source: str):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
 
