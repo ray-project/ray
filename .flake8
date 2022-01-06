@@ -9,13 +9,14 @@ exclude =
   python/.eggs/
   python/ray/_private/thirdparty/*
   python/ray/workflow/tests/mock_server.py
-max-line-length = 79
+max-line-length = 88
 inline-quotes = "
 ignore =
   C408
   E121
   E123
   E126
+  E203
   E226
   E24
   E704

@@ -455,7 +455,7 @@ class SampleBatch(dict):
                 }
             else:
                 data = {
-                    k: v[start:end]
+                    k: tree.map_structure(lambda s: s[start:end], v)
                     for k, v in self.items() if k != SampleBatch.SEQ_LENS
                     and not k.startswith("state_in_")
                 }
