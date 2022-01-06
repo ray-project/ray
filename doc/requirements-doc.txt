@@ -5,6 +5,7 @@ filelock
 flask
 flatbuffers
 fastapi
+grpcio>=1.28.1
 jsonschema
 mock
 numpy
