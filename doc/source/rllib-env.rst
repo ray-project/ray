@@ -213,17 +213,17 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
 
 .. code-block:: python
 
     from ray.tune.registry import register_env
     # import the pettingzoo environment
-    from pettingzoo.butterfly import prison_v2
+    from pettingzoo.butterfly import prison_v3
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
     # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v2.env(num_floors=config.get("num_floors", 4))
+    env_creator = lambda config: prison_v3.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
     # now you can use `prison` as an environment

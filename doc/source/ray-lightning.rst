@@ -225,5 +225,5 @@ Tune Integration
 
 .. autoclass:: ray_lightning.tune.TuneReportCheckpointCallback
 
-.. autofunction:: ray_lightning.tune.get_tune_ddp_resources
+.. autofunction:: ray_lightning.tune.get_tune_resources
 
