@@ -36,7 +36,8 @@ std::string_view ExtractKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
     std::vector<std::string_view> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
-    if (parts.size() != 1) {
+    if (parts.size() != 2) {
+      RAY_LOG(ERROR) << "Invalid key: " << key;
       return "";
     }
     return parts[1];
@@ -171,15 +172,27 @@ void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
                            bool del_by_prefix, std::function<void(int64_t)> callback) {
   absl::WriterMutexLock _(&mu_);
   auto true_key = MakeKey(ns, key);
-  auto it = map_.find(true_key);
-  bool deleted = true;
-  if (it == map_.end()) {
-    deleted = false;
-  } else {
-    map_.erase(it);
+  auto it = map_.lower_bound(true_key);
+  int64_t del_num = 0;
+  while(it != map_.end()) {
+    if(!del_by_prefix) {
+      if(it->first == true_key) {
+        map_.erase(it);
+        ++del_num;
+      }
+      break;
+    }
+
+    if(absl::StartsWith(it->first, true_key)) {
+      it = map_.erase(it);
+      ++del_num;
+    } else {
+      break;
+    }
   }
+
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), deleted));
+    io_context_.post(std::bind(std::move(callback), del_num));
   }
 }
 
@@ -237,8 +250,8 @@ void GcsInternalKVManager::HandleInternalKVPut(
 void GcsInternalKVManager::HandleInternalKVDel(
     const rpc::InternalKVDelRequest &request, rpc::InternalKVDelReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](bool deleted) {
-    reply->set_deleted_num(deleted ? 1 : 0);
+  auto callback = [reply, send_reply_callback](int64_t del_num) {
+    reply->set_deleted_num(del_num);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   kv_instance_->Del(request.ns(), request.key(), request.del_by_prefix(),

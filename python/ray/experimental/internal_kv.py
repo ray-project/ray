@@ -89,7 +89,7 @@ def _internal_kv_put(key: Union[str, bytes],
 def _internal_kv_del(key: Union[str, bytes],
                      *,
                      del_by_prefix: bool = False,
-                     namespace: Optional[Union[str, bytes]] = None):
+                     namespace: Optional[Union[str, bytes]] = None) -> int:
     if isinstance(key, str):
         key = key.encode()
     if isinstance(namespace, str):
