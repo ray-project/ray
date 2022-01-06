@@ -580,7 +580,6 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
                            << " locations found for object " << lookup_object_id;
             wait_state.requested_objects.erase(lookup_object_id);
             if (wait_state.requested_objects.empty()) {
-              RAY_LOG(INFO) << "jjyao SubscribeRemainingWaitObjects";
               SubscribeRemainingWaitObjects(wait_id);
             }
           }));

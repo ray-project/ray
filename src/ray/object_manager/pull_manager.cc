@@ -169,8 +169,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
-        RAY_LOG(DEBUG) << "Activating pull for object " << obj_id << " "
-                       << next_request_it->first;
+        RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
