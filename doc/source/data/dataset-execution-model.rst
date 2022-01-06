@@ -92,9 +92,9 @@ Performance Tips and Tuning
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
-You can view debug stats for your Dataset and DatasetPipeline executions via ``ds.stats()``.
+You can view debug stats for your Dataset and DatasetPipeline executions via ``ds.stats()``. These stats can be used to understand the performance of your Datasets workload and can help you debug problematic bottlenecks.
 
-At a high level, execution stats for tasks (e.g., CPU time) are attached to block metadata objects. Datasets have stats objects that hold references to these stats and parent dataset stats (this avoids stats holding references to parent datasets, allowing them to be gc'ed). Similarly, DatasetPipelines hold stats from recently computed datasets.  In addition, we also collect statistics about iterator timings (time spent waiting / processing / in user code). Here's a sample output of getting stats in one of the most advanced use cases: iterating over a split of a dataset pipeline in a remote task:
+At a high level, execution stats for tasks (e.g., CPU time) are attached to block metadata objects. Datasets have stats objects that hold references to these stats and parent dataset stats (this avoids stats holding references to parent datasets, allowing them to be gc'ed). Similarly, DatasetPipelines hold stats from recently computed datasets. In addition, we also collect statistics about iterator timings (time spent waiting / processing / in user code). Here's a sample output of getting stats in one of the most advanced use cases: iterating over a split of a dataset pipeline in a remote task:
 
 .. code-block:: python
 
