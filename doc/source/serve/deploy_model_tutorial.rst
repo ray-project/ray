@@ -63,7 +63,7 @@ can operate on article text sent via HTTP request.
   :start-after: __local_model_start__
   :end-before: __local_model_end__
 
-Ray Serve needs to run on top of a Ray Cluster, so we connect to a local one:
+Ray Serve needs to run on top of a Ray cluster, so we connect to a local one:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
   :language: python
