@@ -6,6 +6,7 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -14,6 +15,10 @@ import com.google.common.primitives.Primitives;
 import io.ray.runtime.io.MemoryBuffer;
 import io.ray.runtime.io.Platform;
 import io.ray.runtime.serialization.serializers.DefaultSerializer;
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.io.Serializable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -391,5 +396,60 @@ public class RaySerDeTest {
       assertEquals(((ByteBuffer) newObjects[2]).remaining(), 10000);
       assertEquals(((ByteBuffer) newObjects[3]).remaining(), 10000);
     }
+  }
+
+  @Test
+  public void testBean() {
+    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(true).build();
+    ComplexObjects.Cyclic notCyclic = ComplexObjects.Cyclic.create(true);
+    Assert.assertEquals(notCyclic, raySerDe.deserialize(raySerDe.serialize(notCyclic)));
+    ComplexObjects.Cyclic cyclic = ComplexObjects.Cyclic.create(true);
+    Assert.assertEquals(cyclic, raySerDe.deserialize(raySerDe.serialize(cyclic)));
+    Object[] arr = new Object[2];
+    arr[0] = arr;
+    arr[1] = cyclic;
+    Assert.assertEquals(arr[1], ((Object[]) raySerDe.deserialize(raySerDe.serialize(arr)))[1]);
+    List<Object> list = new ArrayList<>();
+    list.add(list);
+    list.add(cyclic);
+    list.add(arr);
+    Assert.assertEquals(
+      ((Object[]) list.get(2))[1],
+      ((Object[]) ((List) raySerDe.deserialize(raySerDe.serialize(list))).get(2))[1]);
+  }
+
+  @Data
+  public static class Ext implements Externalizable {
+    private int x;
+    private int y;
+    private byte[] bytes;
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+      out.writeInt(x);
+      out.writeInt(y);
+      out.writeInt(bytes.length);
+      out.write(bytes);
+    }
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException {
+      this.x = in.readInt();
+      this.y = in.readInt();
+      int len = in.readInt();
+      byte[] arr = new byte[len];
+      Preconditions.checkArgument(in.read(arr) == len);
+      this.bytes = arr;
+    }
+  }
+
+  @Test
+  public void testExternalizable() {
+    Ext ext = new Ext();
+    ext.x = 1;
+    ext.y = 1;
+    ext.bytes = "bytes".getBytes();
+    RaySerde raySerDe = RaySerde.builder().withReferenceTracking(false).build();
+    assertEquals(ext, raySerDe.deserialize(raySerDe.serialize(ext)));
   }
 }
