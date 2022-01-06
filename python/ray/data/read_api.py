@@ -1,5 +1,4 @@
 import itertools
-import time
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
@@ -172,21 +171,18 @@ def read_datasource(datasource: Datasource[T],
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
-        start_time, start_cpu = time.perf_counter(), time.process_time()
-        exec_stats = BlockExecStats()
+        stats = BlockExecStats.builder()
 
         # Execute the read task.
         block = task()
 
-        exec_stats.cpu_time_s = time.process_time() - start_cpu
-        exec_stats.wall_time_s = time.perf_counter() - start_time
         if context.block_splitting_enabled:
             metadata = task.get_metadata()
-            metadata.exec_stats = exec_stats
+            metadata.exec_stats = stats.build()
         else:
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=task.get_metadata().input_files,
-                exec_stats=exec_stats)
+                exec_stats=stats.build())
         stats_actor.add.remote(stats_uuid, i, metadata)
         return block
 

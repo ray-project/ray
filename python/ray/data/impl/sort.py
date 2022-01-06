@@ -21,7 +21,7 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 import numpy as np
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockMetadata, BlockAccessor
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
@@ -128,7 +128,8 @@ def _sort_block(block, boundaries, key, descending):
         boundaries, key, descending)
 
 
-def _merge_sorted_blocks(key, descending, *blocks: List[Block[T]]) -> Block[T]:
+def _merge_sorted_blocks(key, descending, *blocks: List[Block[T]]
+                         ) -> Tuple[Block[T], BlockMetadata]:
     if len(blocks) == 1:
         blocks = blocks[0]  # Python weirdness
     return BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
