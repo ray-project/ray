@@ -184,8 +184,7 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
   if (lowest_priority != nullptr) {
     //LocalObject *lowest_pri_obj = object_lifecycle_mgr_.GetLowestPriObject();
     //lowest_priority = lowest_pri_obj->GetPriority();
-    lowest_priority = object_lifecycle_mgr_.GetLowestPriObject();
-	
+    lowest_priority = &object_lifecycle_mgr_.GetLowestPriObject();
   }
 
   // Trigger object spilling if current usage is above the specified threshold.

@@ -163,7 +163,7 @@ Status CreateRequestQueue::ProcessRequests() {
 	bool evict_tasks_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
 	ray::Priority lowest_pri;
-	ray::TaskKey task_id queue_it->first;
+	ray::TaskKey task_id = queue_it->first;
     auto status = ProcessRequest(/*fallback_allocator=*/false, request,
 		   	&spilling_required, &block_tasks_required, &evict_tasks_required, &lowest_pri);
 	/*
