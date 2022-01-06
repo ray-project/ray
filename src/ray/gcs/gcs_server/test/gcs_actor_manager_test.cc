@@ -110,8 +110,11 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
         io_service_, mock_actor_scheduler_, gcs_table_storage_, gcs_publisher_,
         *runtime_env_mgr_, [](const ActorID &actor_id) {},
-        [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
-        [](const JobID &job_id) { return /*num_java_worker_per_process=*/1; },
+        [this](const JobID &job_id) {
+          auto job_config = std::make_shared<rpc::JobConfig>();
+          job_config->set_ray_namespace(job_namespace_table_[job_id]);
+          return job_config;
+        },
         [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
           if (skip_delay_) {
             fn();

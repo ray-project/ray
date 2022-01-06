@@ -545,15 +545,13 @@ def test_wait_makes_object_local(ray_start_cluster):
 def test_future_resolution_skip_plasma(ray_start_cluster):
     cluster = ray_start_cluster
     # Disable worker caching so worker leases are not reused; set object
-    # inlining size threshold and enable storing of small objects in in-memory
-    # object store so the borrowed ref is inlined.
+    # inlining size threshold so the borrowed ref is inlined.
     cluster.add_node(
         num_cpus=1,
         resources={"pin_head": 1},
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 100 * 1024,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
@@ -567,13 +565,14 @@ def test_future_resolution_skip_plasma(ray_start_cluster):
     def g(x):
         borrowed_ref = x[0]
         f_ref = f.remote(borrowed_ref)
+        f_result = ray.get(f_ref)
         # borrowed_ref should be inlined on future resolution and shouldn't be
         # in Plasma.
         assert ray.worker.global_worker.core_worker.object_exists(
             borrowed_ref, memory_store_only=True)
-        return ray.get(f_ref) * 2
+        return f_result * 2
 
-    one = ray.put(1)
+    one = f.remote(0)
     g_ref = g.remote([one])
     assert ray.get(g_ref) == 4
 
@@ -591,7 +590,6 @@ def test_task_output_inline_bytes_limit(ray_start_cluster):
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 100 * 1024,
             "task_rpc_inlined_bytes_limit": 20,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
@@ -629,7 +627,6 @@ def test_task_arguments_inline_bytes_limit(ray_start_cluster):
             # max_grpc_message_size, this test fails.
             "task_rpc_inlined_bytes_limit": 18 * 1024,
             "max_grpc_message_size": 20 * 1024,
-            "put_small_object_in_memory_store": True,
         },
     )
     cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
