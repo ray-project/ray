@@ -29,6 +29,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
     MultiAgentReplayBuffer
+from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
     synchronous_parallel_sample
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
@@ -775,8 +776,8 @@ class Trainer(Trainable):
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
-        update_global_seed_if_necessary(
-            config.get("framework"), config.get("seed"))
+        update_global_seed_if_necessary(self.config["framework"],
+                                        self.config["seed"])
 
         self.validate_config(self.config)
         if not callable(self.config["callbacks"]):
@@ -843,6 +844,11 @@ class Trainer(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
+
+        # Now that workers have been created, update our policy specs
+        # in the config[multiagent] dict with the correct spaces.
+        self.config["multiagent"]["policies"] = \
+            self.workers.local_worker().policy_map.policy_specs
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -1294,6 +1300,12 @@ class Trainer(Trainable):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights()
 
         return train_results
 
@@ -1976,6 +1988,22 @@ class Trainer(Trainable):
                               config2: PartialTrainerConfigDict,
                               _allow_unknown_configs: Optional[bool] = None
                               ) -> TrainerConfigDict:
+        """Merges a complete Trainer config with a partial override dict.
+
+        Respects nested structures within the config dicts. The values in the
+        partial override dict take priority.
+
+        Args:
+            config1: The complete Trainer's dict to be merged (overridden)
+                with `config2`.
+            config2: The partial override config dict to merge on top of
+                `config1`.
+            _allow_unknown_configs: If True, keys in `config2` that don't exist
+                in `config1` are allowed and will be added to the final config.
+
+        Returns:
+            The merged full trainer config dict.
+        """
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]

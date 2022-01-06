@@ -168,7 +168,7 @@ class MultiAgentEnv(gym.Env):
             Returns:
                 The resulting BaseEnv object.
             """
-        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        from ray.rllib.env.remote_base_env import RemoteBaseEnv
         if remote_envs:
             env = RemoteBaseEnv(
                 make_env,
