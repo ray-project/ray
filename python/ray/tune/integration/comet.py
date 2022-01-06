@@ -139,6 +139,7 @@ class CometLoggerCallback(LoggerCallback):
 
         experiment.set_name(str(trial))
         experiment.add_tags(self.tags)
+experiment.log_other("Created from", "Ray")
 
         config = trial.config.copy()
         config.pop("callbacks", None)
