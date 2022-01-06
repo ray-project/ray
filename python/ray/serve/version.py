@@ -1,5 +1,4 @@
 from abc import ABC
-import pickle
 from typing import Any, Optional
 from zlib import crc32
 

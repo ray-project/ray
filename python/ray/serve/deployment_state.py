@@ -16,7 +16,6 @@ from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
-from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
@@ -332,7 +331,9 @@ class ActorReplicaWrapper:
         """
         try:
             handle = ray.get_actor(self._actor_name)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote() if not self._is_cross_language else handle.prepareForShutdown.remote()
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote(
+            ) if not self._is_cross_language else handle.prepareForShutdown.remote(
+            )
         except ValueError:
             pass
 

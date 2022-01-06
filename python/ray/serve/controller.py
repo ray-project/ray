@@ -20,7 +20,6 @@ from ray.serve.common import (
     NodeId,
     RunningReplicaInfo,
 )
-from ray.serve.generated.serve_pb2 import JAVA
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState

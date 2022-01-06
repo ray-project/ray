@@ -64,15 +64,17 @@ public class RayServeWrappedReplica implements RayServeReplica {
         null);
   }
 
-//  Caused by: java.lang.RuntimeException: RayFunction io.ray.serve.RayServeWrappedReplica.<init> is overloaded, the signature can't be empty.
-//(ServeController pid=70252)     at io.ray.runtime.functionmanager.FunctionManager$JobFunctionTable.getFunction(FunctionManager.java:183)
-//  public RayServeWrappedReplica(
-//      DeploymentInfo deploymentInfo,
-//      String replicaTag,
-//      String controllerName,
-//      RayServeConfig rayServeConfig) {
-//    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
-//  }
+  //  Caused by: java.lang.RuntimeException: RayFunction io.ray.serve.RayServeWrappedReplica.<init>
+  // is overloaded, the signature can't be empty.
+  // (ServeController pid=70252)     at
+  // io.ray.runtime.functionmanager.FunctionManager$JobFunctionTable.getFunction(FunctionManager.java:183)
+  //  public RayServeWrappedReplica(
+  //      DeploymentInfo deploymentInfo,
+  //      String replicaTag,
+  //      String controllerName,
+  //      RayServeConfig rayServeConfig) {
+  //    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
+  //  }
 
   @SuppressWarnings("rawtypes")
   private void init(
@@ -141,7 +143,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       return new Object[0];
     }
 
-      return MessagePackSerializer.decode(initArgsbytes, Object[].class);
+    return MessagePackSerializer.decode(initArgsbytes, Object[].class);
   }
 
   /**
@@ -176,9 +178,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
 
   /**
    * Tell the caller this replica is successfully launched.
+   *
    * @return
    */
-  public boolean isAllocated() { return true;}
+  public boolean isAllocated() {
+    return true;
+  }
 
   /**
    * Wait until there is no request in processing. It is used for stopping replica gracefully.
