@@ -6,7 +6,7 @@ By the end of this tutorial you will have learned how to deploy a machine
 learning model locally via Ray Serve.
 
 First, install Ray Serve and all of its dependencies by running the following
-command in your Terminal:
+command in your terminal:
 
 .. code-block:: bash
 
@@ -40,9 +40,9 @@ article about the Apollo 11 moon landing.
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to
   rest on a level, rock-strewn plain ."
 
-This tutorial's goal is to deploy this model using Ray Serve, so it can be scaled up and
-queried over HTTP. We'll start by converting the above Python function into a
-Ray Serve deployment that can be launched locally on a laptop.
+This tutorial's goal is to deploy this model using Ray Serve, so it can be
+scaled up and queried over HTTP. We'll start by converting the above Python
+function into a Ray Serve deployment that can be launched locally on a laptop.
 
 We start by opening a new Python file. First, we need to import ``ray`` and
 ``ray serve``, to use features in Ray Serve such as ``deployments``, which
@@ -72,9 +72,7 @@ Ray Serve needs to run on top of a Ray cluster, so we connect to a local one:
 
 The ``address`` parameter in ``ray.init()`` connects your Serve script to a
 running local Ray cluster. Later, we'll discuss how to start a local Ray
-cluster. The ``namespace`` parameter determines what Ray objects are accessible
-in this script. Setting it to ``serve`` ensures that the Ray Serve objects we
-create are accessible by default.
+cluster.
 
 .. note::
 
