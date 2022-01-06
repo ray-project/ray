@@ -1347,9 +1347,10 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        stats_builder = self._stats.child_builder("sort")
+        blocks, stage_info = sort_impl(self._blocks, key, descending)
         return Dataset(
-            sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.child_TODO("sort"))
+            blocks, self._epoch, stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1374,6 +1375,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
+        stats_builder = self._stats.child_builder("zip")
         blocks1 = self.get_internal_block_refs()
         blocks2 = other.get_internal_block_refs()
 
@@ -1402,9 +1404,9 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
+        blocks = BlockList(blocks, metadata)
         return Dataset(
-            BlockList(blocks, metadata), self._epoch,
-            self._stats.child_TODO("zip"))
+            blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.

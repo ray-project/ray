@@ -196,15 +196,16 @@ class DatasetStats:
                 out += "\n"
         first = True
         for stage_name, metadata in sorted(self.stages.items()):
+            stage_uuid = self.dataset_uuid + stage_name
             if first:
                 first = False
             else:
                 out += "\n"
             out += "Stage {} {}: ".format(self.number, stage_name)
-            if self.dataset_uuid in already_printed:
+            if stage_uuid in already_printed:
                 out += "[execution cached]"
             else:
-                already_printed.add(self.dataset_uuid)
+                already_printed.add(stage_uuid)
                 out += self._summarize_blocks(metadata)
         out += self._summarize_iter()
         return out
