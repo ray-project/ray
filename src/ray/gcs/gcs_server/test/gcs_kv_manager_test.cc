@@ -72,7 +72,6 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
   kv_instance->Del("N1", "A_", true, [](auto b) { ASSERT_EQ(3, b); });
   kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
-
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,

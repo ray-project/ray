@@ -174,16 +174,16 @@ void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
   auto true_key = MakeKey(ns, key);
   auto it = map_.lower_bound(true_key);
   int64_t del_num = 0;
-  while(it != map_.end()) {
-    if(!del_by_prefix) {
-      if(it->first == true_key) {
+  while (it != map_.end()) {
+    if (!del_by_prefix) {
+      if (it->first == true_key) {
         map_.erase(it);
         ++del_num;
       }
       break;
     }
 
-    if(absl::StartsWith(it->first, true_key)) {
+    if (absl::StartsWith(it->first, true_key)) {
       it = map_.erase(it);
       ++del_num;
     } else {
