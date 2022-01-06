@@ -1,9 +1,9 @@
 {
   "success": 1,
-  "avg_pg_create_time_ms": 0.7208639624610856,
-  "avg_pg_remove_time_ms": 3.1487892117118057,
-  "_runtime": 219.55696439743042,
-  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_VcEz8Eqh9vCsM6QX3CYy347b",
-  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.9.0/ebd189758eec941abe202b55040d349e8f3e36e6/ray-1.9.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "avg_pg_create_time_ms": 0.9864369969983381,
+  "avg_pg_remove_time_ms": 3.734628445944271,
+  "_runtime": 245.52684569358826,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_zqHvxdJsNaqEzrpxpF6pQkb9",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.10.0rc0/555bd2d453abbb301f85b0b46ce4a15ac38ca940/ray-1.10.0rc0-cp37-cp37m-manylinux2014_x86_64.whl",
   "_stable": true
 }
