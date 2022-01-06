@@ -130,7 +130,7 @@ void RedisInternalKV::Keys(const std::string &ns, const std::string &prefix,
         std::vector<std::string> results;
         for (const auto &r : reply) {
           RAY_CHECK(r.has_value());
-          results.emplace_back(*r);
+          results.emplace_back(std::string(ExtractKey(*r)));
         }
         callback(std::move(results));
       }));
