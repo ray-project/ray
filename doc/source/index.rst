@@ -358,9 +358,9 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   xgboost-ray.rst
-   lightgbm-ray.rst
-   ray-lightning.rst
+   Distributed XGBoost on Ray <https://github.com/ray-project/xgboost_ray#readme>
+   Distributed LightGBM on Ray <https://github.com/ray-project/lightgbm_ray#readme>
+   Distributed PyTorch Lightning Training on Ray <https://github.com/ray-project/ray_lightning#readme>
    ray-collective.rst
 
 .. toctree::
