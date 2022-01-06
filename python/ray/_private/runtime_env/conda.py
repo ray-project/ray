@@ -282,7 +282,7 @@ class CondaManager:
         conda_env_name = self._get_path_from_hash(hash)
 
         conda_dict = _get_conda_dict_with_ray_inserted(
-                runtime_env, logger=logger)
+            runtime_env, logger=logger)
 
         logger.info(f"Setting up conda environment with {runtime_env}")
         try:
