@@ -36,3 +36,4 @@ uvicorn
 werkzeug
 scikit-optimize
 sphinx-sitemap==2.2.0
+git+https://github.com/ray-project/tune-sklearn.git

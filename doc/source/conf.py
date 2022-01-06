@@ -50,6 +50,9 @@ MOCK_MODULES = [
     "hyperopt",
     "hyperopt.hp"
     "kubernetes",
+    "lightgbm",
+    "lightgbm.basic",
+    "lightgbm.callback",
     "mlflow",
     "modin",
     "mxnet",
@@ -94,12 +97,17 @@ MOCK_MODULES = [
     "torch.utils.data.distributed",
     "wandb",
     "zoopt",
+    "xgboost",
+    "xgboost.core",
 ]
 
 CHILD_MOCK_MODULES = [
-    "pytorch_lightning", "pytorch_lightning.accelerators",
-    "pytorch_lightning.plugins", "pytorch_lightning.plugins.environments",
-    "pytorch_lightning.utilities", "tensorflow.keras.callbacks"
+    "pytorch_lightning",
+    "pytorch_lightning.accelerators",
+    "pytorch_lightning.plugins",
+    "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.utilities",
+    "tensorflow.keras.callbacks",
 ]
 
 import scipy.stats
