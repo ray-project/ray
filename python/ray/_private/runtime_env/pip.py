@@ -75,7 +75,7 @@ class PipManager:
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-        logger.info(f"Got request to delete URI {uri}")
+        logger.info(f"Got request to delete pip URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError("PipManager can only delete URIs with protocol "
@@ -85,9 +85,10 @@ class PipManager:
         try:
             shutil.rmtree(pip_env_path)
             successful = True
-        except OSError:
+        except OSError as e:
             successful = False
-            logger.warning(f"Error when deleting pip env {pip_env_path}.")
+            logger.warning(
+                f"Error when deleting pip env {pip_env_path}: {str(e)}")
         return successful
 
     def create(self,

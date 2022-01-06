@@ -389,7 +389,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 serialized_runtime_env_context=serialized_context)
 
     async def DeleteURIs(self, request, context):
-        self._logger.info(f"Got request to delete URIs: {request.uris}.")
+        self._logger.info(f"Got request to mark URIs unused: {request.uris}.")
 
         failed_uris = []  # URIs that we failed to delete.
 
@@ -407,9 +407,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             elif plugin == "conda":
                 self._conda_uri_cache.mark_unused(uri)
             elif plugin == "pip":
-                # TODO(architkulkarni): Make and use pip URI cache
-                if not self._pip_manager.delete_uri(uri):
-                    failed_uris.append(uri)
+                self._pip_uri_cache.mark_unused(uri)
             else:
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
