@@ -103,12 +103,8 @@ def main(results=None):
     def get_small():
         ray.get(value)
 
-    results += timeit("single client get calls", get_small)
-
     def put_small():
         ray.put(0)
-
-    results += timeit("single client put calls", put_small)
 
     @ray.remote
     def do_put_small():
@@ -118,12 +114,6 @@ def main(results=None):
     def put_multi_small():
         ray.get([do_put_small.remote() for _ in range(10)])
 
-    results += timeit("multi client put calls", put_multi_small, 1000)
-
-    ray.shutdown()
-    ray.init()
-
-    value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 
     results += timeit("single client get calls (Plasma Store)", get_small)
