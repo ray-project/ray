@@ -147,14 +147,20 @@ class AlphaStarTrainer(appo.APPOTrainer):
         self._replay_actors = []
 
         for shard_idx in range(num_learner_shards):
+            # Which policies should be placed in this learner shard?
             policies = list(_policy_learners.keys())[slice(
                 int(shard_idx * num_policies_per_shard),
                 int((shard_idx + 1) * num_policies_per_shard))]
+            # Merge the policies config overrides with the main config.
+            # Also, wdjust `num_gpus` (to indicate an individual policy's
+            # num_gpus, not the total number of GPUs).
             configs = [
-                self.merge_trainer_configs(self.config,
-                                           ma_cfg["policies"][pid].config)
+                self.merge_trainer_configs(
+                    self.config, dict(ma_cfg["policies"][pid].config), \
+                    **{"num_gpus": num_gpus_per_policy})
                 for pid in policies
             ]
+
             colocated = create_colocated_actors(
                 actor_specs=[
                     (ReplayActor, replay_actor_args, {}, 1),
