@@ -47,13 +47,11 @@ void WaitManager::Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_
     // If a timeout was provided, then set a timer. If there are no
     // enough locally available objects by the time the timer expires,
     // then we will return from the Wait.
-    wait_request.timeout_timer = delay_executor_(
+    delay_executor_(
         [this, wait_id]() {
           if (wait_requests_.find(wait_id) == wait_requests_.end()) {
-            // When HandleObjectLocal is called first, WaitComplete might be
-            // called. The timer may at the same time goes off and may be an
-            // interruption will post WaitComplete to io_service_ the second time.
-            // This check will avoid the duplicated call of this function.
+            // The wait is already complete by the time the timer expires,
+            // so we don't need to do anything here.
             return;
           }
           WaitComplete(wait_id);
@@ -66,12 +64,6 @@ void WaitManager::WaitComplete(uint64_t wait_id) {
   auto iter = wait_requests_.find(wait_id);
   RAY_CHECK(iter != wait_requests_.end());
   auto &wait_request = iter->second;
-  // Cancel the timer. This is okay even if the timer hasn't been started.
-  // The timer handler will be given a non-zero error code. The handler
-  // will do nothing on non-zero error codes.
-  if (wait_request.timeout_timer) {
-    wait_request.timeout_timer->cancel();
-  }
 
   for (const auto &object_id : wait_request.object_ids) {
     auto &requests = object_to_wait_requests_.at(object_id);

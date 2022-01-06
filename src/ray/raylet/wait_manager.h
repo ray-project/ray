@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 
 namespace ray {
@@ -25,10 +24,9 @@ namespace raylet {
 /// the NodeManager.io_service_ thread.
 class WaitManager {
  public:
-  WaitManager(const std::function<bool(const ray::ObjectID &)> is_object_local,
-              const std::function<std::shared_ptr<boost::asio::deadline_timer>(
-                  std::function<void()>, int64_t delay_ms)>
-                  delay_executor)
+  WaitManager(
+      const std::function<bool(const ray::ObjectID &)> is_object_local,
+      const std::function<void(std::function<void()>, int64_t delay_ms)> delay_executor)
       : is_object_local_(is_object_local),
         delay_executor_(delay_executor),
         next_wait_id_(0) {}
@@ -65,8 +63,6 @@ class WaitManager {
           num_required_objects(num_required_objects) {}
     /// The period of time to wait before invoking the callback.
     const int64_t timeout_ms;
-    /// The timer used whenever timeout_ms > 0.
-    std::shared_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when Wait is complete.
     WaitCallback callback;
     /// Ordered input object_ids.
@@ -88,9 +84,7 @@ class WaitManager {
   /// locally available.
   const std::function<bool(const ObjectID &)> is_object_local_;
 
-  const std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
-                                                                   int64_t delay_ms)>
-      delay_executor_;
+  const std::function<void(std::function<void()>, int64_t delay_ms)> delay_executor_;
 
   /// A set of active wait requests.
   std::unordered_map<uint64_t, WaitRequest> wait_requests_;
