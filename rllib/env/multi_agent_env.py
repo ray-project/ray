@@ -1,4 +1,3 @@
-import abc
 import gym
 import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class MultiAgentEnv(gym.Env, abc.ABC):
+class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
