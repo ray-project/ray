@@ -243,3 +243,10 @@ def wrap_to_ray_error(function_name: str,
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
+
+
+def msgpack_serialize(obj):
+    ctx = ray.worker.global_worker.get_serialization_context()
+    buffer = ctx.serialize(obj)
+    serialized = buffer.to_bytes()
+    return serialized

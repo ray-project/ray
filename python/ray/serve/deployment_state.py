@@ -16,10 +16,11 @@ from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             wrap_to_ray_error)
+                             msgpack_serialize, wrap_to_ray_error)
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
 
@@ -112,6 +113,8 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
+        self._is_cross_language = False
+
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -186,20 +189,46 @@ class ActorReplicaWrapper:
                      f"{self.deployment_name} component=serve deployment="
                      f"{self.deployment_name} replica={self.replica_tag}")
 
-        self._actor_handle = deployment_info.actor_def.options(
+        actor_def = deployment_info.actor_def
+        init_args = (self.deployment_name, self.replica_tag,
+                     deployment_info.replica_config.init_args,
+                     deployment_info.replica_config.init_kwargs,
+                     deployment_info.deployment_config.to_proto_bytes(),
+                     version, self._controller_name, self._detached)
+        if deployment_info.deployment_config.deployment_language == "JAVA":
+            self._is_cross_language = True
+            actor_def = ray.java_actor_class(
+                "io.ray.serve.RayServeWrappedReplica")
+            init_args = (
+                # String deploymentName,
+                self.deployment_name,
+                # String replicaTag,
+                self.replica_tag,
+                # String deploymentDef
+                deployment_info.replica_config.func_or_class_name,
+                # byte[] initArgsbytes
+                msgpack_serialize(deployment_info.replica_config.init_args),
+                # byte[] deploymentConfigBytes,
+                deployment_info.deployment_config.to_proto_bytes(),
+                # byte[] deploymentVersionBytes,
+                version.to_proto().SerializeToString(),
+                # String controllerName
+                self._controller_name,
+            )
+
+        self._actor_handle = actor_def.options(
             name=self._actor_name,
             namespace=self._controller_namespace,
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
             **deployment_info.replica_config.ray_actor_options).remote(
-                self.deployment_name, self.replica_tag,
-                deployment_info.replica_config.init_args,
-                deployment_info.replica_config.init_kwargs,
-                deployment_info.deployment_config.to_proto_bytes(), version,
-                self._controller_name, self._detached)
+                *init_args)
 
-        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+        if self._is_cross_language:
+            self._allocated_obj_ref = self._actor_handle.isAllocated.remote()
+        else:
+            self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             deployment_info.deployment_config.user_config)
 
@@ -274,6 +303,8 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         elif len(ready) > 0:
             try:
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
                 deployment_config, version = ray.get(ready)[0]
                 self._max_concurrent_queries = (
                     deployment_config.max_concurrent_queries)
@@ -301,7 +332,7 @@ class ActorReplicaWrapper:
         """
         try:
             handle = ray.get_actor(self._actor_name)
-            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
+            self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote() if not self._is_cross_language else handle.prepareForShutdown.remote()
         except ValueError:
             pass
 
@@ -322,6 +353,9 @@ class ActorReplicaWrapper:
 
     def check_health(self) -> bool:
         """Check if the actor is healthy."""
+        if self._is_cross_language:
+            return True
+
         if self._health_check_ref is None:
             self._health_check_ref = self._actor_handle.run_forever.remote()
 

@@ -64,13 +64,15 @@ public class RayServeWrappedReplica implements RayServeReplica {
         null);
   }
 
-  public RayServeWrappedReplica(
-      DeploymentInfo deploymentInfo,
-      String replicaTag,
-      String controllerName,
-      RayServeConfig rayServeConfig) {
-    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
-  }
+//  Caused by: java.lang.RuntimeException: RayFunction io.ray.serve.RayServeWrappedReplica.<init> is overloaded, the signature can't be empty.
+//(ServeController pid=70252)     at io.ray.runtime.functionmanager.FunctionManager$JobFunctionTable.getFunction(FunctionManager.java:183)
+//  public RayServeWrappedReplica(
+//      DeploymentInfo deploymentInfo,
+//      String replicaTag,
+//      String controllerName,
+//      RayServeConfig rayServeConfig) {
+//    init(deploymentInfo, replicaTag, controllerName, rayServeConfig);
+//  }
 
   @SuppressWarnings("rawtypes")
   private void init(
@@ -139,14 +141,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       return new Object[0];
     }
 
-    if (deploymentConfig.isCrossLanguage()) {
-      // For other language like Python API, not support Array type.
-      return new Object[] {MessagePackSerializer.decode(initArgsbytes, Object.class)};
-    } else {
-      // If the construction request is from Java API, deserialize initArgsbytes to Object[]
-      // directly.
       return MessagePackSerializer.decode(initArgsbytes, Object[].class);
-    }
   }
 
   /**
@@ -178,6 +173,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
   public boolean checkHealth() {
     return replica.checkHealth();
   }
+
+  /**
+   * Tell the caller this replica is successfully launched.
+   * @return
+   */
+  public boolean isAllocated() { return true;}
 
   /**
    * Wait until there is no request in processing. It is used for stopping replica gracefully.
