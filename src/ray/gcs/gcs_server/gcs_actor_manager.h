@@ -528,7 +528,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the job config of an actor belongs to based on its job id. This is
+  /// A callback to get the job config of an actor based on its job id. This is
   /// necessary for actor creation.
   std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
 
