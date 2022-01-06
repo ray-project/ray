@@ -848,12 +848,16 @@ class Deployment:
                     handle_name = self._child_deployments[name]._name
                 else:
                     handle_name = f"{value.__deployment_class__._name}"
-                deployment_handle = get_deployment(handle_name)
+                deployment_handle = _get_global_client().get_handle(
+                    handle_name, missing_ok=True, sync=False
+                )
                 print(f"Swapping {instance} - variable {name} as {str(deployment_handle)}")
                 object.__setattr__(instance, name, deployment_handle)
             else:
                 print(f"Assigning non-deployment attribute for {instance} - {name} as {str(value)}")
                 object.__setattr__(instance, name, value)
+        # def call(self, *args, **kwargs):
+
         self._func_or_class.__setattr__ = setattr
 
         if recursive and len(self._child_deployments) > 0:

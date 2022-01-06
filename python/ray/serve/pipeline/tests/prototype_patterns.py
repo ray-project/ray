@@ -3,6 +3,7 @@ import asyncio
 # import statistics
 
 from ray import serve
+from starlette.requests import Request
 # from ray.serve import pipeline
 # from ray.serve.pipeline.common import ExecutionMode
 # from ray.serve.pipeline.node import INPUT, INJECTED, PipelineNode
@@ -119,6 +120,21 @@ async def main():
     # Add pprint strings
     # Can be called
     pipeline = Pipeline()
+    # for i in range(10):
+    #     print(await pipeline(i))
+    """
+    Output:
+    0
+    1
+    2
+    3
+    4
+    10
+    12
+    14
+    16
+    18
+    """
     # Recursively do:
     # add executor for self
     # traces other nodes as instance variables of my class, annotated as "step"
@@ -126,13 +142,10 @@ async def main():
     # pipeline.instantiate(recursive=True)
 
     serve.start()
-    # for i in range(10):
-    #     print(await pipeline(i))
-
-
-    pipeline = Pipeline.deploy(recursive=True)
-    # for i in range(10):
-    #     print(await pipeline(i))
-    print("AA")
+    Pipeline.deploy(recursive=True)
+    pipeline = serve.api._get_global_client().get_handle("Pipeline")
+    for i in range(10):
+        print(await pipeline(i))
+    # print("AA")
 if __name__ == "__main__":
     asyncio.run(main())
