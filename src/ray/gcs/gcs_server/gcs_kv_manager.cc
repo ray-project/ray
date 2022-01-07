@@ -203,7 +203,7 @@ void GcsInternalKVManager::HandleInternalKVGet(
                          Status::NotFound("Failed to find the key"));
     }
   };
-  kv_instance_->Get(request.ns(), request.key(), std::move(callback));
+  kv_instance_->Get(request.namespace_(), request.key(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
@@ -213,7 +213,7 @@ void GcsInternalKVManager::HandleInternalKVPut(
     reply->set_added_num(newly_added ? 1 : 0);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Put(request.ns(), request.key(), request.value(), request.overwrite(),
+  kv_instance_->Put(request.namespace_(), request.key(), request.value(), request.overwrite(),
                     std::move(callback));
 }
 
@@ -224,7 +224,7 @@ void GcsInternalKVManager::HandleInternalKVDel(
     reply->set_deleted_num(del_num);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Del(request.ns(), request.key(), std::move(callback));
+  kv_instance_->Del(request.namespace_(), request.key(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(
@@ -234,7 +234,7 @@ void GcsInternalKVManager::HandleInternalKVExists(
     reply->set_exists(exists);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Exists(request.ns(), request.key(), std::move(callback));
+  kv_instance_->Exists(request.namespace_(), request.key(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVKeys(
@@ -246,7 +246,7 @@ void GcsInternalKVManager::HandleInternalKVKeys(
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Keys(request.ns(), request.prefix(), std::move(callback));
+  kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
 }
 
 }  // namespace gcs
