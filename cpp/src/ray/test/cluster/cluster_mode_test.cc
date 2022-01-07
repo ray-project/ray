@@ -68,10 +68,15 @@ TEST(RayClusterModeTest, FullTest) {
   task_result = *(ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
-  /// common task with nested remote
+  /// common task with nested remote and get
   task_obj = ray::Task(Plus1Remote).Remote(5);
   task_result = *(ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
+
+  /// common task with nested put, wait and remote
+  task_obj = ray::Task(PlusPutWaitRemote).Remote(5, 6);
+  task_result = *(ray::Get(task_obj));
+  EXPECT_EQ(11, task_result);
 
   ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
                                         .SetMaxRestarts(1)

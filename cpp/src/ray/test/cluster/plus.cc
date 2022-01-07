@@ -20,6 +20,13 @@ int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
 int Plus1Remote(int x) { return x + *(ray::Get(ray::Task(Return1).Remote())); };
 int Plus(int x, int y) { return x + y; };
+
+int PlusPutWaitRemote(int x, int y) {
+  auto y_ref = ray::Put(y);
+  assert (ray::Wait(y_ref)[0]);
+  return *ray::Get(ray::Task(Plus).Remote(x, y_ref));
+};
+
 void ThrowTask() { throw std::logic_error("error"); }
 
-RAY_REMOTE(Return1, Plus1Remote, Plus1, Plus, ThrowTask);
+RAY_REMOTE(Return1, Plus1Remote, Plus1, Plus, PlusPutWaitRemote, ThrowTask);
