@@ -1445,7 +1445,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Args:
             func: The function to call, with this RolloutWorker as first
-                argument, followed by *args, and **kwargs.
+                argument, followed by args, and kwargs.
             args: Optional additional args to pass to the function call.
             kwargs: Optional additional kwargs to pass to the function call.
 
