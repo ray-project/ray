@@ -271,7 +271,8 @@ def test_plasma_allocate(shutdown_only):
 
     # Check fourth object whether allocate to disk
     cmd = "lsof | grep \"/tmp/ray/test_tmp_dir/plasma\" | wc -l"
-    out = subprocess.check_output(cmd, shell=True).decode("utf-8").split("\n")[0]
+    out = subprocess.check_output(
+        cmd, shell=True).decode("utf-8").split("\n")[0]
     assert int(out) == 0
 
 
