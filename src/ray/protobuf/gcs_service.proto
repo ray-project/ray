@@ -451,9 +451,9 @@ message DrainNodeReply {
 }
 
 message InternalKVGetRequest {
+  bytes key = 1;
   // namespace of the key
-  bytes ns = 1;
-  bytes key = 2;
+  bytes ns = 2;
 }
 
 message InternalKVGetReply {
@@ -462,11 +462,11 @@ message InternalKVGetReply {
 }
 
 message InternalKVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
   // namespace of the key
-  bytes ns = 1;
-  bytes key = 2;
-  bytes value = 3;
-  bool overwrite = 4;
+  bytes ns = 4;
 }
 
 message InternalKVPutReply {
@@ -475,10 +475,9 @@ message InternalKVPutReply {
 }
 
 message InternalKVDelRequest {
+  bytes key = 1;
   // namespace of the key
-  bytes ns = 1;
-  bytes key = 2;
-  bool del_by_prefix = 3;
+  bytes ns = 2;
 }
 
 message InternalKVDelReply {
@@ -487,9 +486,9 @@ message InternalKVDelReply {
 }
 
 message InternalKVExistsRequest {
+  bytes key = 1;
   // namespace of the key
-  bytes ns = 1;
-  bytes key = 2;
+  bytes ns = 2;
 }
 
 message InternalKVExistsReply {
@@ -498,9 +497,9 @@ message InternalKVExistsReply {
 }
 
 message InternalKVKeysRequest {
+  bytes prefix = 1;
   // namespace of the key
-  bytes ns = 1;
-  bytes prefix = 2;
+  bytes ns = 2;
 }
 
 message InternalKVKeysReply {
