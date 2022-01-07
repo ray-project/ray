@@ -12,6 +12,8 @@ Benchmark test for autoscaling a single deployment at 1k no-op replica scale.
 import click
 import math
 import os
+import time
+import requests
 
 import ray
 from ray import serve
@@ -37,10 +39,6 @@ DEFAULT_FULL_TEST_MIN_REPLICA = 1
 DEFAULT_SMOKE_TEST_MAX_REPLICA = 4
 DEFAULT_FULL_TEST_MAX_REPLICA = 100
 
-# Experiment configs - wrk specific
-DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "5m"
-
 
 def get_num_running_replicas(controller: ServeController,
                              deployment_name: str) -> int:
@@ -61,41 +59,14 @@ def running_replicas_bounded(controller: ServeController,
     return min <= get_num_running_replicas(controller, deployment_name) <= max
 
 
-def convert_duration_to_seconds(duration_string: str) -> float:
-    """
-    Takes in a string indicated a time duration and converts it to a float
-    in seconds.
-
-    duration_string: The duration parameter string for a wrk command. Some
-                     examples are "1s", "5m", "3us", "17h".
-    return: A float representing the duration in seconds. Some examples are:
-            "1s" -> 1.0, "5m" -> 300.0, "3us" -> 0.000003, "17h" -> 61200.0.
-    """
-    if len(duration_string) < 2:
-        raise ValueError("duration_string should be wrk duration formatted "
-                         "string with a numeric duration and time units.")
-
-    unit_multipliers = {"us": 0.000001, "ms": 0.001, "s": 1, "m": 60, "h": 360}
-
-    duration, unit = None, None
-
-    if duration_string[-2].isalpha():
-        duration, unit = float(duration_string[:-2]), duration_string[-2:]
-    else:
-        duration, unit = float(duration_string[:-1]), duration_string[-1:]
-
-    return duration * unit_multipliers[unit]
-
-
-def deploy_replicas(min_replicas: int, max_replicas: int, trial_length: str,
-                    signal: SignalActor, deployment_name: str):
+def deploy_replicas(min_replicas: int, max_replicas: int, signal: SignalActor,
+                    deployment_name: str):
 
     # A long _graceful_shutdown_timeout_s prevents any downscaling until after
     # the wrk simulation ends. This allows the test to check whether the
     # autoscaler can sustain high loads of traffic for long periods of time.
     @serve.deployment(
         name=deployment_name,
-        _graceful_shutdown_timeout_s=convert_duration_to_seconds(trial_length),
         _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
@@ -118,9 +89,7 @@ def deploy_replicas(min_replicas: int, max_replicas: int, trial_length: str,
 @click.command()
 @click.option("--min-replicas", "-min", type=int)
 @click.option("--max-replicas", "-max", type=int)
-@click.option("--trial-length", "-tl", type=str)
-def main(max_replicas: Optional[int], min_replicas: Optional[int],
-         trial_length: Optional[str]):
+def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
@@ -128,7 +97,6 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
     if smoke_test == "1":
         min_replicas = min_replicas or DEFAULT_SMOKE_TEST_MIN_REPLICA
         max_replicas = max_replicas or DEFAULT_SMOKE_TEST_MAX_REPLICA
-        trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
         logger.info(
             f"Running local / smoke test with a minimum of {min_replicas} "
             f"replicas and a maximum of {max_replicas} replicas.\n")
@@ -142,7 +110,6 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
     else:
         min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_REPLICA
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
-        trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
         logger.info(
             f"Running full test with a minimum of {min_replicas} "
             f"replicas and a maximum of {max_replicas} replicas.\n")
@@ -159,8 +126,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
     deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    deploy_replicas(min_replicas, max_replicas, trial_length, signal,
-                    deployment_name)
+    deploy_replicas(min_replicas, max_replicas, signal, deployment_name)
 
     logger.info("Warming up cluster ....\n")
     ray.get(
@@ -178,32 +144,35 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
 
         ray.get(signal.send.remote(clear=True))
 
-        logger.info(
-            f"Starting wrk trial on all nodes for {trial_length} ....\n")
-        # For detailed discussion, see https://github.com/wg/wrk/issues/205
-        # TODO:(jiaodong) What's the best number to use here ?
-        all_endpoints = list(serve.list_deployments().keys())
-        run_wrk_on_all_nodes(
-            trial_length,
-            100,
-            http_host,
-            http_port,
-            all_endpoints=all_endpoints)
+        trial_length = 30  # Number of seconds to send requests
+        sleep_interval = 0.0003  # Time between requests (30/.0003 = 100k reqs)
+        timeout = 0.0001  # Timeout arbitrarily low to make request nonblocking
+        start_time = time.time()
+        while time.time() < start_time + trial_length:
+            try:
+                requests.get(
+                    f"http://{http_host}:{http_port}/{deployment_name}",
+                    timeout=timeout)
+            except requests.exceptions.ReadTimeout:
+                time.sleep(sleep_interval)
 
         # Check that deployments upscaled to max_replicas
+        num_wrk_replicas = get_num_running_replicas(controller,
+                                                      deployment_name)
+        print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
                                                             min=max_replicas))
-        logger.info("Deployments scaled up to max replicas ....\n")
+        print("Deployments scaled up to max replicas ....\n")
 
         ray.get(signal.send.remote())
-        logger.info("Clearing all requests ....\n")
+        print("Clearing all requests ....\n")
 
         # Check that deployments scale back to min_replicas
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
                                                             max=min_replicas))
-        logger.info("Deployments scaled down to min replicas ....\n")
+        print("Deployments scaled down to min replicas ....\n")
 
     save_test_results(
         {
