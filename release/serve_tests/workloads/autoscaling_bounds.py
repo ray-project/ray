@@ -37,7 +37,7 @@ from typing import Optional
 DEFAULT_SMOKE_TEST_MIN_REPLICA = 1
 DEFAULT_FULL_TEST_MIN_REPLICA = 1
 DEFAULT_SMOKE_TEST_MAX_REPLICA = 4
-DEFAULT_FULL_TEST_MAX_REPLICA = 1000
+DEFAULT_FULL_TEST_MAX_REPLICA = 100
 
 
 def get_num_running_replicas(controller: ServeController,
@@ -125,7 +125,10 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    deploy_replicas(min_replicas, max_replicas, signal, deployment_name)
+    handle = deploy_replicas(min_replicas,
+                             max_replicas,
+                             signal,
+                             deployment_name)
 
     logger.info("Warming up cluster ....\n")
     ray.get(
@@ -145,15 +148,10 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
 
         trial_length = 30  # Number of seconds to send requests
         sleep_interval = 0.0003  # Time between requests (30/.0003 = 100k reqs)
-        timeout = 0.0001  # Timeout arbitrarily low to make request nonblocking
         start_time = time.time()
         while time.time() < start_time + trial_length:
-            try:
-                requests.get(
-                    f"http://{http_host}:{http_port}/{deployment_name}",
-                    timeout=timeout)
-            except requests.exceptions.ReadTimeout:
-                time.sleep(sleep_interval)
+            handle.remote()
+            time.sleep(sleep_interval)
 
         # Check that deployments upscaled to max_replicas
         num_wrk_replicas = get_num_running_replicas(controller,
