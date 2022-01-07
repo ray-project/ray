@@ -66,6 +66,11 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED)
         if client_disconnection_task in done:
+            message = await client_disconnection_task
+            assert message["type"] == "http.receive", (
+                "Received additional request payload that's not disconnect. "
+                "This is an invalid HTTP state.")
+
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
                 "request.")
