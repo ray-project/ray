@@ -68,6 +68,7 @@ def warm_up_one_cluster(num_warmup_iterations: int,
                         http_port: str,
                         endpoint: str,
                         nonblocking: bool = False) -> None:
+    # Specifying a low timeout effectively makes requests.get() nonblocking
     timeout = 0.0001 if nonblocking else None
     logger.info(f"Warming up {endpoint} ..")
     for _ in range(num_warmup_iterations):
