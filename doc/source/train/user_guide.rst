@@ -67,6 +67,10 @@ training.
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
 
+    .. note::
+       Ray Train will still work even if you don't use the ``prepare_model`` and ``prepare_data_loader`` utilities below,
+       and instead handle the logic directly inside your training function.
+
     First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
 
@@ -119,11 +123,6 @@ training.
             for X, y in data_loader:
         -       X = X.to_device(device)
         -       y = y.to_device(device)
-
-    .. note::
-       You can choose not to use the ``prepare_model`` or ``prepare_data_loader``. However, if you choose not to
-       do so, then you are responsible for moving the model & data to the right devices, adding ``DistributedSampler``
-       to your ``DataLoader`` and wrapping the model in ``DistributedDataParallel`` in your training function.
 
   .. group-tab:: TensorFlow
 

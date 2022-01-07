@@ -28,6 +28,7 @@ def ray_start_4_cpus_2_gpus():
 
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
+
     def train_fn():
         model = torch.nn.Linear(1, 1)
 
@@ -67,6 +68,7 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_fn)
     trainer.shutdown()
+
 
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
