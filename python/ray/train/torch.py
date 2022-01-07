@@ -177,8 +177,14 @@ class _WrappedDataLoader(DataLoader):
         self._dataloader = base_dataloader
         self._device = device
 
+    def _move_to_device(self, item):
+        return (i.to(self.device) for i in item)
+
     def __len__(self):
         return len(self._dataloader)
+
+    def __getitem__(self, idx):
+        return self._move_to_device(self._dataloader[idx])
 
     @property
     def device(self) -> Optional[torch.device]:
@@ -190,7 +196,7 @@ class _WrappedDataLoader(DataLoader):
             yield from iterator
 
         for item in iterator:
-            yield (i.to(self.device) for i in item)
+            yield self._move_to_device(item)
 
 
 def get_device() -> torch.device:

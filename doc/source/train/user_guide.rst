@@ -120,6 +120,11 @@ training.
         -       X = X.to_device(device)
         -       y = y.to_device(device)
 
+    .. note::
+       You can choose not to use the ``prepare_model`` or ``prepare_data_loader``. However, if you choose not to
+       do so, then you are responsible for moving the model & data to the right devices, adding ``DistributedSampler``
+       to your ``DataLoader`` and wrapping the model in ``DistributedDataParallel`` in your training function.
+
   .. group-tab:: TensorFlow
 
     .. note::
