@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockExecStats
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
@@ -171,7 +171,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 size_bytes=sum(file_sizes),
                 schema=schema,
                 input_files=read_paths,
-                exec_stats=BlockExecStats.TODO)
+                exec_stats=None)  # Exec stats filled in later.
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(
                     read_paths, filesystem), meta
