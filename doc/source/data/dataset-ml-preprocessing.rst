@@ -1,7 +1,7 @@
 .. _datasets-ml-preprocessing:
 
-ML Preprocessing
-=======================
+Dataset ML Preprocessing
+========================
 
 Datasets supports data preprocessing transformations commonly performed just before model training and model inference, which we refer to as **last-mile preprocessing**. These transformations are carried out via a few key operations: mapping, groupbys + aggregations, and random shuffling.
 
