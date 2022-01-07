@@ -86,12 +86,11 @@ def Deprecated(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
 
+    message = "\n    DEPRECATED: This API is deprecated and may be removed " \
+              "in future Ray releases."
     if "message" in kwargs:
-        message = kwargs["message"]
+        message = message + " " + kwargs["message"]
         del kwargs["message"]
-    else:
-        message = "This API is deprecated and may be removed in future " \
-                  "Ray releases."
 
     if kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
@@ -99,7 +98,7 @@ def Deprecated(*args, **kwargs):
     def inner(obj):
         if not obj.__doc__:
             obj.__doc__ = ""
-        obj.__doc__ += f"\n    DEPRECATED: {message}"
+        obj.__doc__ += f"{message}"
         return obj
 
     return inner
