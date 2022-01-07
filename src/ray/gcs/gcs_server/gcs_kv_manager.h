@@ -101,7 +101,7 @@ class RedisInternalKV : public InternalKVInterface {
            bool overwrite, std::function<void(bool)> callback) override;
 
   void Del(const std::string &ns, const std::string &key,
-           bool del_by_prefix std::function<void(int64_t)> callback) override;
+           bool del_by_prefix, std::function<void(int64_t)> callback) override;
 
   void Exists(const std::string &ns, const std::string &key,
               std::function<void(bool)> callback) override;
