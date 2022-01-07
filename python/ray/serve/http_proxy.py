@@ -57,6 +57,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     retries = 0
     backoff_time_s = 0.05
     loop = asyncio.get_event_loop()
+    # We have received all the http request conent. The next `receive`
+    # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
         assignment_task = loop.create_task(handle.remote(request))
@@ -64,12 +66,15 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             [assignment_task, client_disconnection_task],
             return_when=FIRST_COMPLETED)
         if client_disconnection_task in done:
-            logger.error(f"Client from {scope['client']} disconnected.")
+            logger.warning(
+                f"Client from {scope['client']} disconnected, cancelling the "
+                "request.")
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
             result = await object_ref
+            client_disconnection_task.cancel()
             break
         except asyncio.CancelledError:
             # Here because the client disconnected, we will return a custom
