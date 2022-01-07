@@ -64,19 +64,42 @@ def DeveloperAPI(obj):
     return obj
 
 
-def Deprecated(obj):
+def Deprecated(*args, **kwargs):
     """Annotation for documenting a deprecated API.
 
     Deprecated APIs may be removed in future releases of Ray.
+
+    Args:
+        message: a message to help users understand the reason for the
+            deprecation, and provide a migration path.
 
     Examples:
         >>> @Deprecated
         >>> def func(x):
         >>>     return x
-    """
 
-    if not obj.__doc__:
-        obj.__doc__ = ""
-    obj.__doc__ += ("\n    DEPRECATED: This API is deprecated and may be "
-                    "removed in future Ray releases.")
-    return obj
+        >>> @Deprecated(message="g() is deprecated because the API is error "
+        "prone. Please call h() instead.")
+        >>> def g(y):
+        >>>     return y
+    """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return Deprecated()(args[0])
+
+    if "message" in kwargs:
+        message = kwargs["message"]
+        del kwargs["message"]
+    else:
+        message = "This API is deprecated and may be removed in future " \
+                  "Ray releases."
+
+    if kwargs:
+        raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
+
+    def inner(obj):
+        if not obj.__doc__:
+            obj.__doc__ = ""
+        obj.__doc__ += f"\n    DEPRECATED: {message}"
+        return obj
+
+    return inner
