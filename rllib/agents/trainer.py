@@ -845,10 +845,13 @@ class Trainer(Trainable):
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
 
-            # Now that workers have been created, update our policy specs
-            # in the config[multiagent] dict with the correct spaces.
-            self.config["multiagent"]["policies"] = \
-                self.workers.local_worker().policy_map.policy_specs
+            # TODO: Now that workers have been created, update our policy
+            #  specs in the config[multiagent] dict with the correct spaces.
+            #  However, this leads to a problem with the evaluation
+            #  workers' observation one-hot preprocessor in
+            #  `examples/documentation/rllib_in_6sec.py` script.
+            # self.config["multiagent"]["policies"] = \
+            #     self.workers.local_worker().policy_map.policy_specs
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
