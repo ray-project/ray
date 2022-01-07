@@ -1,8 +1,12 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
+from typing import TYPE_CHECKING
 
 import gym
 from ray.rllib.utils.typing import EnvType
+
+if TYPE_CHECKING:
+    from ray.rllib.env import MultiAgentEnv
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +173,13 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
+
+    try:
+        env.observation_space_contains(reset_obs)
+    except Exception as e:
+        raise ValueError("Your observation_space_contains function has some "
+                         "error ") from e
+
     if not env.observation_space_contains(reset_obs):
         error = (
             f"The observation collected from env.reset() was not  "
@@ -177,4 +188,27 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
             f"sub-observations was out of bounds: \n\n reset_obs: "
             f"{reset_obs}\n\n env.observation_space_sample():"
             f" {sampled_obs}\n\n ")
+        raise ValueError(error)
+
+    sampled_action = env.action_space_sample()
+    try:
+        env.action_space_contains(sampled_action)
+    except Exception as e:
+        raise ValueError("Your action_space_contains function has some "
+                         "error ") from e
+
+    next_obs, reward, done, info = env.step(sampled_action)
+    assert isinstance(reward, (float, int)), \
+        "Your step function must return a reward that is integer or float."
+    assert isinstance(
+        done, bool), "Your step function must return a done that is a boolean."
+    assert isinstance(
+        info, dict), "Your step function must return a info that is a dict."
+    if not env.observation_space.contains(next_obs):
+        error = (
+            f"The observation collected from env.step(sampled_action) was "
+            f"not contained within your env's observation space. Its "
+            f"possible that there was a type mismatch, or that one of the "
+            f"sub-observations was out of bounds:\n\n next_obs: {next_obs}"
+            f"\n\n sampled_obs: {sampled_obs}")
         raise ValueError(error)
