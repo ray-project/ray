@@ -117,6 +117,7 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
     ASSERT_TRUE(b.has_value());
     mu.unlock();
   });
+  mu.lock();
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,

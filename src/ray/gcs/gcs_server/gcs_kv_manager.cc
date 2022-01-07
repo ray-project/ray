@@ -85,7 +85,8 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
 
 void RedisInternalKV::Del(const std::string &ns, const std::string &key,
                           std::function<void(int64_t)> callback) {
-  std::vector<std::string> cmd = {"HDEL", key, "value"};
+  auto true_key = MakeKey(ns, key);
+  std::vector<std::string> cmd = {"HDEL", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
         callback(redis_reply->ReadAsInteger() != 0);
@@ -153,7 +154,8 @@ void MemoryInternalKV::Put(const std::string &ns, const std::string &key,
 void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
                            std::function<void(int64_t)> callback) {
   absl::WriterMutexLock _(&mu_);
-  auto it = map_.find(key);
+  auto true_key = MakeKey(ns, key);
+  auto it = map_.find(true_key);
   int64_t del_num = 0;
   if (it != map_.end()) {
     map_.erase(it);
