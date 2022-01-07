@@ -71,11 +71,14 @@ TEST(TaskIDTest, TestTaskID) {
 
 TEST(TaskIDTest, TestTaskIDForExecution) {
   const TaskID task_id = TaskID::FromRandom(kDefaultJobId);
-  ASSERT_NE(task_id, TaskID::ForExecution(task_id, 0));
-  ASSERT_NE(task_id, TaskID::ForExecution(task_id, 1));
-  ASSERT_NE(TaskID::ForExecution(task_id, 0), TaskID::ForExecution(task_id, 1));
-  ASSERT_EQ(TaskID::ForExecution(task_id, 0), TaskID::ForExecution(task_id, 0));
-  ASSERT_EQ(TaskID::ForExecution(task_id, 1), TaskID::ForExecution(task_id, 1));
+  ASSERT_NE(task_id, TaskID::ForExecutionAttempt(task_id, 0));
+  ASSERT_NE(task_id, TaskID::ForExecutionAttempt(task_id, 1));
+  ASSERT_NE(TaskID::ForExecutionAttempt(task_id, 0),
+            TaskID::ForExecutionAttempt(task_id, 1));
+  ASSERT_EQ(TaskID::ForExecutionAttempt(task_id, 0),
+            TaskID::ForExecutionAttempt(task_id, 0));
+  ASSERT_EQ(TaskID::ForExecutionAttempt(task_id, 1),
+            TaskID::ForExecutionAttempt(task_id, 1));
 }
 
 TEST(ObjectIDTest, TestObjectID) {

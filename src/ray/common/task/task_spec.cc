@@ -167,9 +167,7 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
 }
 
-uint64_t TaskSpecification::ExecutionCounter() const {
-  return message_->execution_counter();
-}
+uint64_t TaskSpecification::AttemptNumber() const { return message_->attempt_number(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   absl::flat_hash_map<std::string, double> required_resource;
