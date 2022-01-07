@@ -45,7 +45,7 @@ py_test(
     env = {
         "IS_SMOKE_TEST": "1",
     },
-    main = "autoscaling_single_deployment_1k.py",
+    main = "autoscaling_single_deployment.py",
     tags = [
         "exclusive",
         "team:serve",
