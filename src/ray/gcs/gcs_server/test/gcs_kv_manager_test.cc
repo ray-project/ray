@@ -52,40 +52,20 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 };
 
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  kv_instance->Get("N1", "A", [](auto b) {
-    ASSERT_FALSE(b.has_value());
-  });
-  kv_instance->Put("N1", "A", "B", false, [](auto b) {
-    ASSERT_TRUE(b);
-  });
-  kv_instance->Put("N1", "A", "C", false, [](auto b) {
-      ASSERT_FALSE(b);
-  });
-  kv_instance->Get("N1", "A", [](auto b) {
-      ASSERT_EQ("B", *b);
-  });
-  kv_instance->Put("N1", "A", "C", true, [](auto b) {
-    ASSERT_FALSE(b);
-  });
-  kv_instance->Get("N1", "A", [](auto b) {
-    ASSERT_EQ("C", *b);
-  });
-  kv_instance->Put("N1", "A_1", "B", false, [](auto b) {
-    ASSERT_TRUE(b);
-  });
-  kv_instance->Put("N1", "A_2", "C", false, [](auto b) {
-    ASSERT_TRUE(b);
-  });
-  kv_instance->Put("N1", "A_3", "C", false, [](auto b) {
-    ASSERT_TRUE(b);
-  });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_FALSE(b.has_value()); });
+  kv_instance->Put("N1", "A", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A", "C", false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("B", *b); });
+  kv_instance->Put("N1", "A", "C", true, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("C", *b); });
+  kv_instance->Put("N1", "A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
   kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
     auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
     ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
   });
-  kv_instance->Get("N2", "A_1", [](auto b) {
-    ASSERT_FALSE(b.has_value());
-  });
+  kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
   // Make sure the last callback is called before end.
   std::promise<void> p;
   auto f = p.get_future();
