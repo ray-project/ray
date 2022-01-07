@@ -136,7 +136,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         logger.info(f"Setting up local ray cluster with {num_nodes} nodes.\n")
         serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
-        min_replicas = min_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
+        min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_REPLICA
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
         logger.info(
