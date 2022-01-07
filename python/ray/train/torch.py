@@ -191,9 +191,9 @@ class _WrappedDataLoader(DataLoader):
         iterator = iter(self._dataloader)
         if self._device is None:
             yield from iterator
-
-        for item in iterator:
-            yield self._move_to_device(item)
+        else:
+            for item in iterator:
+                yield self._move_to_device(item)
 
 
 def get_device() -> torch.device:
