@@ -49,6 +49,14 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # (via config._disable_preprocessor_api=True). If True, observations
     # will arrive in model as they are returned by the env.
     "_disable_preprocessor_api": False,
+    # Experimental flag.
+    # If True, RLlib will no longer flatten the policy-computed actions into
+    # a single tensor (for storage in SampleCollectors/output files/etc..),
+    # but leave (possibly nested) actions as-is. Disabling flattening affects:
+    # - SampleCollectors: Have to store possibly nested action structs.
+    # - Models that have the previous action(s) as part of their input.
+    # - Algorithms reading from offline files (incl. action information).
+    "_disable_action_flattening": False,
 
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
@@ -252,8 +260,11 @@ class ModelCatalog:
                         "using a Tuple action space, or the multi-agent API.")
                 # TODO(sven): Check for bounds and return SquashedNormal, etc..
                 if dist_type is None:
-                    dist_cls = TorchDiagGaussian if framework == "torch" \
-                        else DiagGaussian
+                    return partial(
+                        TorchDiagGaussian if framework == "torch" else
+                        DiagGaussian, action_space=action_space), \
+                           DiagGaussian.required_model_output_shape(
+                               action_space, config)
                 elif dist_type == "deterministic":
                     dist_cls = TorchDeterministic if framework == "torch" \
                         else Deterministic
@@ -385,7 +396,10 @@ class ModelCatalog:
         """
 
         # Validate the given config dict.
-        ModelCatalog._validate_config(config=model_config, framework=framework)
+        ModelCatalog._validate_config(
+            config=model_config,
+            action_space=action_space,
+            framework=framework)
 
         if model_config.get("custom_model"):
             # Allow model kwargs to be overridden / augmented by
@@ -858,13 +872,17 @@ class ModelCatalog:
             action_space, config)
 
     @staticmethod
-    def _validate_config(config: ModelConfigDict, framework: str) -> None:
+    def _validate_config(config: ModelConfigDict,
+                         action_space: gym.spaces.Space,
+                         framework: str) -> None:
         """Validates a given model config dict.
 
         Args:
-            config (ModelConfigDict): The "model" sub-config dict
+            config: The "model" sub-config dict
                 within the Trainer's config dict.
-            framework (str): One of "jax", "tf2", "tf", "tfe", or "torch".
+            action_space: The action space of the model, whose config are
+                    validated.
+            framework: One of "jax", "tf2", "tf", "tfe", or "torch".
 
         Raises:
             ValueError: If something is wrong with the given config.
@@ -881,6 +899,20 @@ class ModelCatalog:
         if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")
+
+        # For complex action spaces, only allow prev action inputs to
+        # LSTMs and attention nets iff `_disable_action_flattening=True`.
+        # TODO: `_disable_action_flattening=True` will be the default in
+        #  the future.
+        if (config.get("lstm_use_prev_action") or
+            config.get("attention_use_n_prev_actions", 0) > 0) and not \
+                config.get("_disable_action_flattening") and \
+                isinstance(action_space, (Tuple, Dict)):
+            raise ValueError(
+                "For your complex action space (Tuple|Dict) and your model's "
+                "`prev-actions` setup of your model, you must set "
+                "`_disable_action_flattening=True` in your main config dict!")
+
         if framework == "jax":
             if config.get("use_attention"):
                 raise ValueError("`use_attention` not available for "

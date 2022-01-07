@@ -53,6 +53,10 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    # Error if deprecated --torch option used.
+    if args.torch:
+        deprecation_warning(old="--torch", new="--framework=torch", error=True)
+
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
     rllib_dir = Path(__file__).parent.parent
@@ -81,13 +85,14 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        # Add torch option to exp config.
         exp = list(experiments.values())[0]
         exp["config"]["framework"] = args.framework
-        if args.torch:
-            deprecation_warning(old="--torch", new="--framework=torch")
-            exp["config"]["framework"] = "torch"
-            args.framework = "torch"
+
+        # QMIX does not support tf yet -> skip.
+        if exp["run"] == "QMIX" and args.framework != "torch":
+            print(f"Skipping framework='{args.framework}' for QMIX.")
+            continue
+
         # Always run with eager-tracing when framework=tf2.
         if args.framework in ["tf2", "tfe"]:
             exp["config"]["eager_tracing"] = True

@@ -169,6 +169,9 @@ class GcsChannel:
         self._aio = aio
 
     def connect(self):
+        # GCS server uses a cached port, so it should use the same port after
+        # restarting, whether in Redis or GCS bootstrapping mode. This means
+        # GCS address should stay the same for the lifetime of the Ray cluster.
         if self._gcs_address is None:
             assert self._redis_client is not None
             gcs_address = get_gcs_address_from_redis(self._redis_client)

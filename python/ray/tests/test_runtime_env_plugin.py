@@ -53,7 +53,6 @@ def test_simple_env_modification_plugin(ray_start_regular):
         }).remote()
 
     if os.name != "nt":
-        # Windows does not have a command-line nice
         output = ray.get(
             f.options(
                 runtime_env={
@@ -71,7 +70,7 @@ def test_simple_env_modification_plugin(ray_start_regular):
         assert output == {
             "env_value": "42",
             "tmp_content": "hello",
-            "nice": 19,
+            "nice": 19
         }
 
 

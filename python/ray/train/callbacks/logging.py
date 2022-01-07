@@ -19,8 +19,10 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirMixin:
-    def start_training(self, logdir: str):
+class TrainingLogdirCallback(TrainingCallback, abc.ABC):
+    """Abstract Train callback class with logging directory."""
+
+    def start_training(self, logdir: str, config: Dict, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
         else:
@@ -39,8 +41,7 @@ class TrainingLogdirMixin:
         return Path(self._logdir_path)
 
 
-class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
-                                        abc.ABC):
+class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Args:
@@ -86,8 +87,8 @@ class TrainingSingleFileLoggingCallback(TrainingLogdirMixin, TrainingCallback,
             raise ValueError("filename cannot be None or empty.")
         return logdir_path.joinpath(Path(filename))
 
-    def start_training(self, logdir: str):
-        super().start_training(logdir)
+    def start_training(self, logdir: str, **info):
+        super().start_training(logdir=logdir, **info)
 
         if not self._filename:
             filename = self._default_filename
@@ -120,7 +121,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir)
+        super().start_training(logdir=logdir, **info)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
@@ -142,8 +143,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class TrainingSingleWorkerLoggingCallback(TrainingLogdirMixin,
-                                          TrainingCallback, abc.ABC):
+class TrainingSingleWorkerLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
@@ -237,7 +237,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir)
+        super().start_training(logdir=logdir, config=config, **info)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
@@ -282,7 +282,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir)
+        super().start_training(logdir=logdir, **info)
 
         try:
             from tensorboardX import SummaryWriter

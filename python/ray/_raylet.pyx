@@ -1264,7 +1264,6 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
         # TODO(suquark): This method does not support put objects to
@@ -1303,16 +1302,12 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
-        put_small_object_in_memory_store = (
-            RayConfig.instance().put_small_object_in_memory_store() and
-            inline_small_object)
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -1325,8 +1320,7 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
-            if self.is_local_mode or (put_small_object_in_memory_store
-               and <int64_t>total_bytes < put_threshold):
+            if self.is_local_mode:
                 contained_object_refs = (
                         CCoreWorkerProcess.GetCoreWorker().
                         GetObjectRefs(contained_object_ids))
