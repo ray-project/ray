@@ -13,7 +13,6 @@ from ray._private.test_utils import SignalActor
 from ray.serve.utils import get_random_letters
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_recover_start_from_replica_actor_names(serve_instance):
     """Test controller is able to recover starting -> running replicas from
     actor names.
@@ -91,7 +90,6 @@ def test_recover_start_from_replica_actor_names(serve_instance):
             "recover from actor names")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     """Test controller is able to recover starting -> updating -> running
     replicas from actor names, with right replica versions during rolling
@@ -135,7 +133,8 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         blocking = []
         responses = defaultdict(set)
         start = time.time()
-        while time.time() - start < 30:
+        timeout_value = 1000 if sys.platform == "win32" else 30
+        while time.time() - start < timeout_value:
             refs = [call.remote(block=False) for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
