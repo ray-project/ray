@@ -3,7 +3,7 @@ import sys
 import pytest
 from unittest import mock
 
-from typing import List
+from typing import List, Iterable
 
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
@@ -112,8 +112,8 @@ def get_num_running_replicas(controller: ServeController,
     return len(running_replicas)
 
 
-def assert_no_replicas_deprovisioned(replica_tags_1: List[str],
-                                     replica_tags_2: List[str]) -> None:
+def assert_no_replicas_deprovisioned(replica_tags_1: Iterable[str],
+                                     replica_tags_2: Iterable[str]) -> None:
     """
     Checks whether any replica tags from replica_tags_1 are absent from
     replica_tags_2. Assumes that this indicates replicas were de-provisioned.
@@ -122,16 +122,25 @@ def assert_no_replicas_deprovisioned(replica_tags_1: List[str],
     replica_tags_2: Replica tags of running replicas at the second timestep
     """
 
-    replica_tags_2 = set(replica_tags_2)
-    num_matching_replicas = 0
-    for replica in replica_tags_1:
-        num_matching_replicas += replica in replica_tags_2
+    replica_tags_1, replica_tags_2 = set(replica_tags_1), set(replica_tags_2)
+    num_matching_replicas = len(replica_tags_1.intersection(replica_tags_2))
+
     print(f"{num_matching_replicas} replica(s) stayed provisioned between "
           f"both deployments. All {len(replica_tags_1)} replica(s) were "
           f"expected to stay provisioned. "
           f"{len(replica_tags_1) - num_matching_replicas} replica(s) were "
           f"de-provisioned.")
+
     assert len(replica_tags_1) == num_matching_replicas
+
+
+def test_assert_no_replicas_deprovisioned():
+    replica_tags_1 = ["a", "b", "c"]
+    replica_tags_2 = ["a", "b", "c", "d", "e"]
+
+    assert_no_replicas_deprovisioned(replica_tags_1, replica_tags_2)
+    with pytest.raises(AssertionError):
+        assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
 
 
 def get_deployment_start_time(controller: ServeController,
