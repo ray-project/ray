@@ -42,7 +42,6 @@ class RayObject {
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs,
             bool copy_data = false) {
-    //// TODO(qwang)
     Init(data, metadata, nested_refs, copy_data);
   }
 
