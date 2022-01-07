@@ -71,8 +71,8 @@ Python documentation:
 .. autoclass:: ray.cluster_utils.AutoscalingCluster
     :members:
 
-Features and Limitations of `fake_multinode`
---------------------------------------------
+Features and Limitations of ``fake_multinode``
+----------------------------------------------
 
 Most of the features of the autoscaler are supported in fake multi-node mode. For example, if you update the contents of the YAML file, the autoscaler will pick up the new configuration and apply changes, as it does in a real cluster. Node selection, launch, and termination are governed by the same bin-packing and idle timeout algorithms as in a real cluster.
 
@@ -92,7 +92,7 @@ Testing containerized multi nodes locally with Docker compose
 To go one step further and locally test a multi node setup where each node uses its own container (and thus
 has a separate filesystem, IP address, and Ray processes), you can use the ``fake_multinode_docker`` node provider.
 
-The setup is very similar to the :ref:`fake_multinode` provider. However, you need to start a monitoring process
+The setup is very similar to the :ref:`fake_multinode <fake-multinode>` provider. However, you need to start a monitoring process
 (``docker_monitor.py``) that takes care of running the ``docker compose`` command.
 
 Prerequisites:
@@ -143,16 +143,17 @@ wait for the cluster to come up, connect to it, and update the configuration.
 Please see the API documentation and example test cases on how to use this utility.
 
 .. autoclass:: ray.autoscaler._private.fake_multi_node.test_utils.DockerCluster
+    :members:
 
 
-Features and Limitations of `fake_multinode_docker`
----------------------------------------------------
+Features and Limitations of ``fake_multinode_docker``
+-----------------------------------------------------
 
 The fake multinode docker node provider provides fully fledged nodes in their own containers. However,
 some limitations still remain:
 
 1. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported
-(but might be in the future).
+   (but might be in the future).
 
 2. It's necessary to limit the number of nodes / node CPU / object store memory to avoid overloading your local machine.
 
@@ -170,7 +171,7 @@ things have to be kept in mind. To make this clear, consider these concepts:
 
 The control plane for the multinode docker node provider lives in the outer container. However, ``docker compose``
 commands are executed from the connected docker-in-docker network. In the Ray OSS Buildkite environment, this is
-the ``dind`-daemon` container running on the host docker. If you e.g. mounted ``/var/run/docker.sock`` from the
+the ``dind-daemon`` container running on the host docker. If you e.g. mounted ``/var/run/docker.sock`` from the
 host instead, it would be the host docker daemon. We will refer to both as the **host daemon** from now on.
 
 The outer container modifies files that have to be mounted in the inner containers (and modified from there
@@ -182,14 +183,16 @@ the ports are also only accessible on the host (or the dind container).
 For the Ray OSS Buildkite environment, we thus set some environment variables:
 
 * ``RAY_TEMPDIR="/ray-mount"``. This environment variable defines where the temporary directory for the
-cluster files should be created. This directory has to be accessible by the host, the outer container,
-and the inner container. In the inner container, we can control the directory name.
+  cluster files should be created. This directory has to be accessible by the host, the outer container,
+  and the inner container. In the inner container, we can control the directory name.
+
 * ``RAY_HOSTDIR="/ray"``. In the case where the shared directory has a different name on the host, we can
-rewrite the mount points dynamically. In this example, the outer container is started with ``-v /ray:/ray-mount``
-or similar, so the directory on the host is ``/ray`` and in the outer container ``/ray-mount`` (see ``RAY_TEMPDIR``).
+  rewrite the mount points dynamically. In this example, the outer container is started with ``-v /ray:/ray-mount``
+  or similar, so the directory on the host is ``/ray`` and in the outer container ``/ray-mount`` (see ``RAY_TEMPDIR``).
+
 * ``RAY_TESTHOST="dind-daemon"`` As the containers are started by the host daemon, we can't just connect to
-``localhost``, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment
-variable.
+  ``localhost``, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment
+  variable.
 
 Lastly, docker-compose obviously requires a docker image. The default docker image is ``rayproject/ray:nightly`.
 However, on our Ray OSS Buildkite environment, we want to test changes from the respective PR or Branch. Thus, we set
