@@ -1192,6 +1192,9 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
     return false;
   }
+  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+    return false;
+  }
 
   it->second.spilled = true;
   bool spilled_location_alive =
