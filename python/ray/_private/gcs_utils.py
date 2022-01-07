@@ -123,7 +123,8 @@ def create_gcs_channel(address: str, aio=False):
         grpc.Channel or grpc.aio.Channel to GCS
     """
     from ray._private.utils import init_grpc_channel
-    return init_grpc_channel(address, optionamespace=_GRPC_OPTIONS, asynchronous=aio)
+    return init_grpc_channel(
+        address, optionamespace=_GRPC_OPTIONS, asynchronous=aio)
 
 
 def _auto_reconnect(f):
@@ -216,7 +217,8 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_get(self, key: bytes, namespace: Optional[bytes]) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
-        req = gcs_service_pb2.InternalKVGetRequest(namespace=namespace, key=key)
+        req = gcs_service_pb2.InternalKVGetRequest(
+            namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVGet(req)
         if reply.status.code == GcsCode.OK:
             return reply.value
@@ -256,7 +258,8 @@ class GcsClient:
     def internal_kv_exists(self, key: bytes,
                            namespace: Optional[bytes]) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
-        req = gcs_service_pb2.InternalKVExistsRequest(namespace=namespace, key=key)
+        req = gcs_service_pb2.InternalKVExistsRequest(
+            namespace=namespace, key=key)
         reply = self._kv_stub.InternalKVExists(req)
         if reply.status.code == GcsCode.OK:
             return reply.exists

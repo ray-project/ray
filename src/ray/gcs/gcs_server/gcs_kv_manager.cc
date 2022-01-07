@@ -243,8 +243,8 @@ void GcsInternalKVManager::HandleInternalKVPut(
     reply->set_added_num(newly_added ? 1 : 0);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Put(request.namespace_(), request.key(), request.value(), request.overwrite(),
-                    std::move(callback));
+  kv_instance_->Put(request.namespace_(), request.key(), request.value(),
+                    request.overwrite(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVDel(
