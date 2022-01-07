@@ -144,7 +144,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
         logger.info(
-            f"Running local / smoke test with a minimum of {min_replicas} "
+            f"Running full test with a minimum of {min_replicas} "
             f"replicas and a maximum of {max_replicas} replicas.\n")
         logger.info("Setting up anyscale ray cluster. \n")
         serve_client = setup_anyscale_cluster()
