@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 import pytest
 import os
 import shutil
@@ -12,7 +14,8 @@ from ray.train import Trainer
 from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
+from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
+                                 TBXLoggerCallback)
 from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 from ray.train.callbacks.logging import MLflowLoggerCallback
@@ -56,13 +59,35 @@ class TestBackend(Backend):
         pass
 
 
+def test_print(ray_start_4_cpus):
+    num_workers = 4
+
+    def train_func():
+        train.report(rank=train.world_rank())
+
+    stream = io.StringIO()
+    with redirect_stdout(stream):
+        trainer = Trainer(TestConfig(), num_workers=num_workers)
+        trainer.start()
+        trainer.run(train_func, callbacks=[PrintCallback()])
+        trainer.shutdown()
+
+    output = stream.getvalue()
+    results = json.loads(output)
+
+    assert len(results) == num_workers
+    for i, result in enumerate(results):
+        assert set(result.keys()) == (BASIC_AUTOFILLED_KEYS | {"rank"})
+        assert result["rank"] == i
+
+
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
 @pytest.mark.parametrize("detailed", [False, True])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
-def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
-              filename):
+def test_json(monkeypatch, ray_start_4_cpus, make_temp_dir, workers_to_log,
+              detailed, filename):
     if detailed:
-        os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
+        monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
 
     config = TestConfig()
 
@@ -118,9 +143,6 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         assert all(
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
-
-    os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
-    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
 
 def _validate_tbx_result(events_dir):

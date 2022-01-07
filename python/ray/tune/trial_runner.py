@@ -692,6 +692,10 @@ class TrialRunner:
                 # Only try to start another trial if previous trial startup
                 # did not error (e.g. it just didn't start because its
                 # placement group is not ready, yet).
+                # Without this clause, this test fails:
+                # test_trial_runner_pg.py::
+                # TrialRunnerPlacementGroupHeterogeneousTest::
+                # testResourceDeadlock
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):
