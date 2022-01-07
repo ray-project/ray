@@ -14,9 +14,9 @@
 
 #pragma once
 
-#include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -25,32 +25,54 @@
 
 namespace ray {
 
-template <typename T1, typename T2>
-std::ostream &operator<<(std::ostream &os, const std::pair<T1, T2> &pair) {
-  os << "(" << pair.first << ", " << pair.second << ")";
-  return os;
+template <typename T>
+std::string debug_string(const T &obj) {
+  std::stringstream ss;
+  ss << obj;
+  return ss.str();
 }
 
-#define DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(container)            \
-  template <typename... Ts>                                               \
-  std::ostream &operator<<(std::ostream &os, const container<Ts...> &c) { \
-    os << "[";                                                            \
-    for (auto it = c.begin(); it != c.end(); ++it) {                      \
-      if (it != c.begin()) {                                              \
-        os << ", ";                                                       \
-      }                                                                   \
-      os << *it;                                                          \
-    }                                                                     \
-    os << "]";                                                            \
-    return os;                                                            \
-  }
+template <typename... Ts>
+std::string debug_string(const std::pair<Ts...> &pair) {
+  std::stringstream ss;
+  ss << "(" << debug_string(pair.first) << ", " << debug_string(pair.second) << ")";
+  return ss.str();
+}
 
-DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(std::vector);
-DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(std::set);
-DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(std::unordered_set);
-DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(std::map);
-DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR(std::unordered_map);
-#undef DEFINE_CONTAINER_OSTREAM_INSERTION_OPERATOR
+template <typename C>
+std::string _container_debug_string(const C &c) {
+  std::stringstream ss;
+  ss << "[";
+  for (auto it = c.begin(); it != c.end(); ++it) {
+    if (it != c.begin()) {
+      ss << ", ";
+    }
+    ss << debug_string(*it);
+  }
+  ss << "]";
+  return ss.str();
+}
+
+template <typename... Ts>
+std::string debug_string(const std::vector<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
+std::string debug_string(const std::set<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
+std::string debug_string(const std::unordered_set<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
+std::string debug_string(const std::map<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
+std::string debug_string(const std::unordered_map<Ts...> &c) {
+  return _container_debug_string(c);
+}
 
 template <typename C>
 const typename C::mapped_type &map_find_or_die(const C &c,

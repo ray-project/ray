@@ -18,32 +18,13 @@
 
 namespace ray {
 
-TEST(ContainerUtilTest, TestContainerOstreamInsertionOperator) {
-  {
-    std::stringstream ss;
-    ss << std::vector<int>{1, 2};
-    ASSERT_EQ(ss.str(), "[1, 2]");
-  }
-  {
-    std::stringstream ss;
-    ss << std::set<int>{1, 2};
-    ASSERT_EQ(ss.str(), "[1, 2]");
-  }
-  {
-    std::stringstream ss;
-    ss << std::unordered_set<int>{1, 2};
-    ASSERT_EQ(ss.str(), "[2, 1]");
-  }
-  {
-    std::stringstream ss;
-    ss << std::map<int, int>{{1, 2}, {3, 4}};
-    ASSERT_EQ(ss.str(), "[(1, 2), (3, 4)]");
-  }
-  {
-    std::stringstream ss;
-    ss << std::unordered_map<int, int>{{1, 2}, {3, 4}};
-    ASSERT_EQ(ss.str(), "[(3, 4), (1, 2)]");
-  }
+TEST(ContainerUtilTest, TestDebugString) {
+  ASSERT_EQ(debug_string(std::vector<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string(std::set<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string(std::unordered_set<int>{1, 2}), "[2, 1]");
+  ASSERT_EQ(debug_string(std::map<int, int>{{1, 2}, {3, 4}}), "[(1, 2), (3, 4)]");
+  ASSERT_EQ(debug_string(std::unordered_map<int, int>{{1, 2}, {3, 4}}),
+            "[(3, 4), (1, 2)]");
 }
 
 TEST(ContainerUtilTest, TestMapFindOrDie) {
