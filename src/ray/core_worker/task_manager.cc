@@ -152,7 +152,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
                                                           {actor_creation_return_id});
     }
 
-    spec.GetMutableMessage().set_execution_counter(spec.ExecutionCounter() + 1);
     retry_task_callback_(spec, /*delay=*/false);
   }
 

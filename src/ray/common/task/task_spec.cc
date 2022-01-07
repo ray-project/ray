@@ -167,7 +167,7 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
 }
 
-int64_t TaskSpecification::ExecutionCounter() const {
+uint64_t TaskSpecification::ExecutionCounter() const {
   return message_->execution_counter();
 }
 

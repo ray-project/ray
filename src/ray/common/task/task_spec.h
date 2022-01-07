@@ -163,7 +163,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int GetRuntimeEnvHash() const;
 
-  int64_t ExecutionCounter() const;
+  uint64_t ExecutionCounter() const;
 
   size_t NumArgs() const;
 
