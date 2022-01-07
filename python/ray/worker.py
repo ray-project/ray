@@ -588,7 +588,7 @@ class BaseContext(metaclass=ABCMeta):
     @abstractmethod
     def disconnect(self):
         """
-        If this context is for directly attaching a cluster, disconnect
+        If this context is for directly attaching to a cluster, disconnect
         will call ray.shutdown(). Otherwise, if the context is for a ray
         client connection, the client will be disconnected.
         """
