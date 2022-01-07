@@ -192,10 +192,10 @@ class MultiAgentEnv(gym.Env):
 
     @PublicAPI
     def get_agent_ids(self) -> Set[AgentID]:
-        """Returns a list of agent ids in the environment.
+        """Returns a set of agent ids in the environment.
 
         Returns:
-            List of agent ids.
+            Set of agent ids.
         """
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
