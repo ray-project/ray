@@ -7,6 +7,16 @@ from ray.autoscaler.command_runner import CommandRunnerInterface
 
 
 class FakeDockerCommandRunner(CommandRunnerInterface):
+    """Command runner for the fke docker multinode cluster.
+
+    This command runner uses ``docker exec`` and ``docker cp`` to
+    run commands and copy files, respectively.
+
+    The regular ``DockerCommandRunner`` is made for use in SSH settings
+    where Docker runs on a remote hose. In contrast, this command runner
+    does not wrap the docker commands in ssh calls.
+    """
+
     def __init__(self, docker_config, **common_args):
         self.container_name = docker_config["container_name"]
         self.docker_config = docker_config

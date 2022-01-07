@@ -58,6 +58,17 @@ class DockerCluster:
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
 
     def connect(self, client: bool = True, timeout: int = 120):
+        """Connect to the docker-compose Ray cluster.
+
+        Assumes the cluster is at RAY_TESTHOST (defaults to
+        ``127.0.0.1``).
+
+        Args:
+            client (bool): If True, uses Ray client to connect to the
+                cluster. If False, uses GCS to connect to the cluster.
+            timeout (int): Connection timeout in seconds.
+
+        """
         host = os.environ.get("RAY_TESTHOST", "127.0.0.1")
 
         if client:
@@ -85,6 +96,14 @@ class DockerCluster:
 
     @staticmethod
     def wait_for_resources(resources: Dict[str, float], timeout: int = 60):
+        """Wait until Ray cluster resources are available
+
+        Args:
+            resources (Dict[str, float]): Minimum resources needed before
+                this function returns.
+            timeout (int): Timeout in seconds.
+
+        """
         timeout = time.monotonic() + timeout
 
         available = ray.cluster_resources()
@@ -96,6 +115,16 @@ class DockerCluster:
             available = ray.cluster_resources()
 
     def update_config(self, config: Optional[Dict[str, Any]] = None):
+        """Update autoscaling config.
+
+        Does a deep update of the base config with a new configuration.
+        This can change autoscaling behavior.
+
+        Args:
+            config (Dict[str, Any]): Partial config to update current
+                config with.
+
+        """
         assert self._tempdir, "Call setup() first"
 
         config = config or {}
@@ -146,6 +175,11 @@ class DockerCluster:
                         f"Error pulling image {self._docker_image}: {e}")
 
     def setup(self):
+        """Setup docker compose cluster environment.
+
+        Creates the temporary directory, writes the initial config file,
+        and pulls the docker image, if required.
+        """
         self._tempdir = tempfile.mkdtemp(
             dir=os.environ.get("RAY_TEMPDIR", None))
         os.chmod(self._tempdir, 0o777)
@@ -155,6 +189,7 @@ class DockerCluster:
         self.maybe_pull_image()
 
     def teardown(self):
+        """Tear down docker compose cluster environment."""
         shutil.rmtree(self._tempdir)
         self._tempdir = None
         self._config_file = None
@@ -172,12 +207,20 @@ class DockerCluster:
         self._monitor_process = None
 
     def start(self):
+        """Start docker compose cluster.
+
+        Starts the monitor process and runs ``ray up``.
+        """
         self._start_monitor()
 
         subprocess.check_output(
             f"RAY_FAKE_CLUSTER=1 ray up -y {self.config_file}", shell=True)
 
     def stop(self):
+        """Stop docker compose cluster.
+
+        Runs ``ray down`` and stops the monitor process.
+        """
         if ray.is_initialized:
             ray.shutdown()
 

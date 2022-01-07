@@ -192,6 +192,7 @@ def create_node_spec(head: bool,
     env_vars = env_vars or {}
 
     # Pass these environment variables (to the head node)
+    # These variables are propagated by the `docker compose` command.
     env_vars.setdefault("RAY_TEMPDIR", os.environ.get("RAY_TEMPDIR", ""))
     env_vars.setdefault("RAY_HOSTDIR", os.environ.get("RAY_HOSTDIR", ""))
 

@@ -1,3 +1,13 @@
+# This is an example config file to start a local
+# multi-node cluster using Docker compose.
+# It requires the ``docker compose`` plugin to be installed:
+# https://docs.docker.com/compose/cli-command/#installing-compose-v2
+# The resulting cluster will consist of docker containers
+# scheduled via docker compose. These containers behave just like
+# regular Ray nodes, have their own IPs, and can SSH into each other.
+# They are mostly used to test multi-node setups and autoscaling on
+# a single node.
+
 # Example command to start a cluster with this config:
 #
 # python docker_monitor.py example_docker.yaml &
@@ -57,10 +67,14 @@ idle_timeout_minutes: 0.1
 head_start_ray_commands: []
 worker_start_ray_commands: []
 
+# The docker config is currently not propagated to the node provider config.
+# Thus, docker-specific configuration is expected to go into the provider part
+# as demonstrated above.
+docker: {}
+
 #
 # !!! Configurations below are not supported in fake cluster mode !!!
 #
-docker: {}
 initialization_commands: []
 setup_commands: []
 head_setup_commands: []

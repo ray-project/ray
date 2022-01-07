@@ -215,7 +215,10 @@ def start_monitor(config_file: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("config_file", )
+    parser.add_argument(
+        "config_file",
+        help="Path to cluster config file containing a fake docker "
+        "cluster configuration.")
     args = parser.parse_args()
 
     start_monitor(args.config_file)
