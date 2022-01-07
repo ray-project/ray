@@ -9,6 +9,7 @@ from ray import tune
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.trial import Trial
 from ray.tune import Callback
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import placement_group_table
 from ray.cluster_utils import Cluster
@@ -242,6 +243,62 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
     def testPlacementGroupDistributedTrainingWithActorReuse(self):
         self.testPlacementGroupDistributedTraining(reuse_actors=True)
+
+
+class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
+    def tearDown(self) -> None:
+        if ray.is_initialized:
+            ray.shutdown()
+
+    def testResourceDeadlock(self):
+        """Tests that resource deadlock is avoided for heterogeneous PGFs.
+
+        We start 4 trials in a cluster with 2 CPUs. The first two trials
+        require 1 CPU each, the third trial 2 CPUs, the fourth trial 1 CPU.
+
+        The second trial needs a bit more time to finish. This means that the
+        resources from the first trial will be freed, and the PG of the
+        _fourth_ trial becomes ready (not that of the third trial, because that
+        requires 2 CPUs - however, one is still occupied by trial 2).
+
+        After the first two trials finished, the FIFOScheduler tries to start
+        the third trial. However, it can't be started because its placement
+        group is not ready. Instead, the placement group of the fourth
+        trial is ready. Thus, we opt to run the fourth trial instead.
+        """
+
+        def train(config):
+            time.sleep(config["sleep"])
+            return 4
+
+        ray.init(num_cpus=2)
+
+        tune.register_trainable("het", train)
+        pgf1 = PlacementGroupFactory([{"CPU": 1}])
+        pgf2 = PlacementGroupFactory([{"CPU": 2}])
+
+        trial1 = Trial(
+            "het", config={"sleep": 0}, placement_group_factory=pgf1)
+        trial2 = Trial(
+            "het", config={"sleep": 2}, placement_group_factory=pgf1)
+        trial3 = Trial(
+            "het", config={"sleep": 0}, placement_group_factory=pgf2)
+        trial4 = Trial(
+            "het", config={"sleep": 0}, placement_group_factory=pgf1)
+
+        runner = TrialRunner(fail_fast=True)
+        runner.add_trial(trial1)
+        runner.add_trial(trial2)
+        runner.add_trial(trial3)
+        runner.add_trial(trial4)
+
+        timeout = time.monotonic() + 30
+        while not runner.is_finished():
+            # We enforce a timeout here
+            self.assertLess(
+                time.monotonic(), timeout, msg="Ran into a resource deadlock")
+
+            runner.step()
 
 
 def test_placement_group_no_cpu_trainer():

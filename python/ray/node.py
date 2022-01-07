@@ -144,10 +144,6 @@ class Node:
         self._gcs_client = None
 
         if not self.head:
-            # TODO(mwtian): remove after supporting bootstraapping with GCS
-            # address.
-            if self._redis_address and not self._gcs_address:
-                self._gcs_address = self._get_gcs_address_from_redis()
             self.validate_ip_port(self.address)
             self.get_gcs_client()
 
@@ -224,10 +220,10 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-            if ray_params.gcs_server_port is None:
+            if ray_params.gcs_server_port is None \
+                    or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port(
                     "gcs_server_port")
-            self._gcs_server_port = ray_params.gcs_server_port
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -276,8 +272,9 @@ class Node:
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
-        self.validate_ip_port(self.redis_address)
         self.validate_ip_port(self.gcs_address)
+        if not use_gcs_for_bootstrap():
+            self.validate_ip_port(self.redis_address)
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -458,6 +455,8 @@ class Node:
         `ray start` or `ray.int()` to start worker nodes, that has been
         converted to ip:port format.
         """
+        if use_gcs_for_bootstrap():
+            return self._gcs_address
         return self._redis_address
 
     @property
@@ -540,7 +539,7 @@ class Node:
         return {
             "node_ip_address": self._node_ip_address,
             "raylet_ip_address": self._raylet_ip_address,
-            "redis_address": self._redis_address,
+            "redis_address": self.redis_address,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
@@ -556,7 +555,7 @@ class Node:
     def create_redis_client(self):
         """Create a redis client."""
         return ray._private.services.create_redis_client(
-            self._redis_address, self._ray_params.redis_password)
+            self.redis_address, self._ray_params.redis_password)
 
     def get_gcs_client(self):
         if self._gcs_client is None:
@@ -570,12 +569,12 @@ class Node:
                             self.create_redis_client())
                     break
                 except Exception as e:
+                    logger.debug(f"Connecting to GCS: {e}")
                     time.sleep(1)
-                    logger.debug(f"Waiting for gcs up {e}")
-            assert self._gcs_client is not None
+            assert self._gcs_client is not None, \
+                f"Failed to connect to GCS at {self._gcs_address}"
             ray.experimental.internal_kv._initialize_internal_kv(
                 self._gcs_client)
-
         return self._gcs_client
 
     def get_temp_dir_path(self):
@@ -803,7 +802,7 @@ class Node:
             ]
 
     def start_redis(self):
-        """Start the Redis servers."""
+        """Start the Redis server."""
         assert self._redis_address is None
         redis_log_files = []
         if self._ray_params.external_addresses is None:
@@ -882,21 +881,22 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        assert self._gcs_server_port is not None
+        gcs_server_port = self._ray_params.gcs_server_port
+        assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
         # TODO(mwtian): append date time so restarted GCS uses different files.
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
-            self._redis_address,
+            self.redis_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
-            gcs_server_port=self._gcs_server_port,
+            gcs_server_port=gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address)
         assert (
@@ -910,7 +910,7 @@ class Node:
         # when possible.
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
-                                 f"{self._gcs_server_port}")
+                                 f"{gcs_server_port}")
         # Initialize gcs client, which also waits for GCS to start running.
         self.get_gcs_client()
 
@@ -930,7 +930,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
         process_info = ray._private.services.start_raylet(
-            self._redis_address,
+            self.redis_address,
             self.gcs_address,
             self._node_ip_address,
             self._ray_params.node_manager_port,
@@ -986,7 +986,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
-            self._redis_address,
+            self.redis_address,
             self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
@@ -1005,7 +1005,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
-            self.redis_address,
+            self.address,
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
@@ -1040,8 +1040,9 @@ class Node:
         assert self._gcs_client is None
 
         # If this is the head node, start the relevant head node processes.
-        self.start_redis()
-        assert self._redis_address is not None
+        if not use_gcs_for_bootstrap():
+            self.start_redis()
+            assert self._redis_address is not None
 
         self.start_gcs_server()
         assert self._gcs_client is not None
