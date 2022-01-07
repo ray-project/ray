@@ -55,23 +55,27 @@ void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
   PrintDebugString();
 }
 
+std::string RuntimeEnvManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "ID to URIs table:";
+  for (const auto &entry : id_to_uris_) {
+    stream << "\n- " << entry.first << ": ";
+    for (const auto uri : entry.second) {
+      stream << uri << ",";
+    }
+    // Erase the last ","
+    stream.seekp(-1, std::ios_base::end);
+  }
+  stream << "\nURIs reference table:";
+  for (const auto &entry : uri_reference_) {
+    stream << "\n- " << entry.first << ": " << entry.second;
+  }
+  return stream.str();
+};
+
 void RuntimeEnvManager::PrintDebugString() const {
   if (RAY_LOG_ENABLED(DEBUG)) {
-    std::ostringstream stream;
-    stream << "\n    ---------- id to uris table ----------";
-    for (const auto &entry : id_to_uris_) {
-      stream << "\n    " << entry.first << ": ";
-      for (const auto uri : entry.second) {
-        stream << uri << ",";
-      }
-      // Erase the last ","
-      stream.seekp(-1, std::ios_base::end);
-    }
-    stream << "\n    ---------- uri reference table ----------";
-    for (const auto &entry : uri_reference_) {
-      stream << "\n    " << entry.first << ": " << entry.second;
-    }
-    RAY_LOG(DEBUG) << stream.str();
+    RAY_LOG(DEBUG) << "\n" << DebugString();
   }
 };
 
