@@ -70,13 +70,14 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 def setup_multi_deployment_replicas(min_replicas, max_replicas,
                                     num_deployments):
+    max_replicas_per_deployment = max_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
     @serve.deployment(
         _autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
-            "max_replicas": max_replicas,
+            "max_replicas": max_replicas_per_deployment,
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2
