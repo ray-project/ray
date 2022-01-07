@@ -53,16 +53,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_client.py",
-  ],
-  size = "large",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "client_tests", "team:serverless"],
-  deps = ["//:ray_lib"],
-)
-    
-py_test_module_list(
-  files = [
     "test_client_builder.py",
     "test_client_compat.py",
     "test_client_init.py",
@@ -75,7 +65,17 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "client_tests", "team:serverless"],
+  tags = ["exclusive", "client_tests", "medium_client_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_client.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "client_tests", "large_client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
 
