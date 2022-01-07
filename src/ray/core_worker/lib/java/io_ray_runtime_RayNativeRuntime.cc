@@ -268,7 +268,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       /// This object only has metadata, and doesn't have data. In this case, we can
       /// just use the original RayObject and doesn't have to put in the JVM heap.
       return std::make_shared<ray::RayObject>(object.GetData(), object.GetMetadata(),
-                                              object.GetNestedIds(), true);
+                                              object.GetNestedRefs(), true);
     }
     JNIEnv *env = GetJNIEnv();
     auto java_byte_array = NativeBufferToJavaByteArray(env, object.GetData());
@@ -299,7 +299,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       return std::make_shared<JavaByteArrayBuffer>(env, java_byte_array);
     };
     std::shared_ptr<ray::Buffer> metadata_buffer = object.GetMetadata();
-    return std::make_shared<ray::RayObject>(metadata_buffer, object.GetNestedIds(),
+    return std::make_shared<ray::RayObject>(metadata_buffer, object.GetNestedRefs(),
                                             std::move(data_factory), /*copy_data=*/true);
   };
 
