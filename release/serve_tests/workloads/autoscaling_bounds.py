@@ -29,7 +29,7 @@ from serve_test_cluster_utils import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment_state import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
-from typing import Optional, Callable
+from typing import Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_MIN_REPLICA = 1
