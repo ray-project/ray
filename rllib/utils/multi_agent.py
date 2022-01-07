@@ -16,9 +16,26 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
     Returns:
         Tuple consisting of the resulting (all fixed) multi-agent policy
         dict and bool indicating whether we have a multi-agent setup or not.
+
+    Raises:
+        KeyError: If `config` does not contain a "multiagent" key or if there
+        is an invalid key inside the "multiagent" config.
     """
+    if "multiagent" not in config:
+        raise KeyError(
+            "Your `config` to be checked for a multi-agent setup must have "
+            "the 'multiagent' key defined!")
     multiagent_config = config["multiagent"]
+
     policies = multiagent_config.get("policies")
+
+    # Check for invalid sub-keys of multiagent config.
+    from ray.rllib.agents.trainer import COMMON_CONFIG
+    allowed = list(COMMON_CONFIG["multiagent"].keys())
+    if any(k not in allowed for k in multiagent_config.keys()):
+        raise KeyError(
+            f"You have invalid keys in your 'multiagent' config dict! "
+            f"The only allowed keys are: {allowed}.")
 
     # Nothing specified in config dict -> Assume simple single agent setup
     # with DEFAULT_POLICY_ID as only policy.
