@@ -773,7 +773,11 @@ class Trial:
         for key in self._nonjson_fields:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
+        # Ensure that stub doesn't get overriden
+        stub = getattr(self, "stub", None)
         self.__dict__.update(state)
+        self.stub = stub if stub is not None else self.stub
+
         if not self.stub:
             validate_trainable(self.trainable_name)
 
