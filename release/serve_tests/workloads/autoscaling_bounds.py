@@ -125,9 +125,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    handle = deploy_replicas(min_replicas,
-                             max_replicas,
-                             signal,
+    handle = deploy_replicas(min_replicas, max_replicas, signal,
                              deployment_name)
 
     logger.info("Warming up cluster ....\n")
