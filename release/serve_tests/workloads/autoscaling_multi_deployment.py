@@ -194,7 +194,7 @@ def main(min_replicas: Optional[int], max_replicas: Optional[int],
         logger.info(f"{key}: {val}")
     save_test_results(
         aggregated_metrics,
-        default_output_file="/tmp/autoscaling_multideployment_1k.json")
+        default_output_file="/tmp/autoscaling_multi_deployment.json")
 
 
 if __name__ == "__main__":

@@ -209,7 +209,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         {
             "success_message": "autoscaling successful!"
         },
-        default_output_file="/tmp/autoscaling_1k_bounds.json")
+        default_output_file="/tmp/autoscaling_bounds.json")
 
 
 if __name__ == "__main__":
