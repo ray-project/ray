@@ -560,7 +560,6 @@ def test_local_store_recovery(ray_shutdown):
     crash()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
         "num_cpus": 4
