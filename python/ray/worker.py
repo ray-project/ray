@@ -14,7 +14,8 @@ import time
 import traceback
 import warnings
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
+                    Union, TYPE_CHECKING)
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -67,6 +68,9 @@ from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _initialize_internal_kv,
                                           _internal_kv_reset, _internal_kv_get)
 from ray._private.client_mode_hook import client_mode_hook
+
+if TYPE_CHECKING:
+    from ray.client_builder import ClientContext
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -580,7 +584,7 @@ def get_dashboard_url():
 
 
 @dataclass
-class RayContext:
+class RayContext(dict):
     """
     Context manager for attached drivers.
     """
@@ -589,13 +593,18 @@ class RayContext:
     ray_version: str
     ray_commit: str
     address_info: Dict[str, Optional[str]]
+    protocol_version = Optional[str]
 
     def __init__(self, address_info: dict):
+        super().__init__(address_info)
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(
             sys.version_info[0], sys.version_info[1], sys.version_info[2])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
+        # No client protocol version since this driver was intiialized
+        # directly
+        self.protocol_version = None
         self.address_info = dict(address_info)
 
     def __getitem__(self, key):
@@ -605,16 +614,7 @@ class RayContext:
                 f'Use ctx.address_info["{key}"] instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return self.address_info[key]
-
-    def __contains__(self, key):
-        if log_once("ray_context_contains"):
-            warnings.warn(
-                f'Checking for a key using `"{key}" in ctx` is deprecated. '
-                f'Use `"{key}" in ctx.address_info` instead.',
-                DeprecationWarning,
-                stacklevel=2)
-        return key in self.address_info
+        return super().__getitem__(key)
 
     def get(self, key):
         if log_once("ray_context_get"):
@@ -623,7 +623,7 @@ class RayContext:
                 f'deprecated. Use ctx.address_info.get("{key}") instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return self.address_info.get(key)
+        return super().get(key)
 
     def __enter__(self) -> "RayContext":
         return self
@@ -680,7 +680,7 @@ def init(
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
-        **kwargs):
+        **kwargs) -> Union[RayContext, "ClientContext"]:
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -803,7 +803,8 @@ def init(
         "ray://" to the address to get "ray://1.2.3.4:10001", then a
         ClientContext is returned with information such as settings, server
         versions for ray and python, and the dashboard_url. Otherwise,
-        returns address information about the started processes.
+        a RayContext is returned with ray and python versions, and address
+        information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
