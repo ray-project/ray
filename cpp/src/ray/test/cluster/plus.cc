@@ -18,7 +18,13 @@
 
 int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
-int Plus1Remote(int x) { return x + *(ray::Get(ray::Task(Return1).Remote())); };
+int Plus1Remote(int x) {
+  auto res1 = x + *(ray::Get(ray::Task(Return1).Remote()));
+  auto res2 = *(ray::Get(ray::Task(Plus).Remote(x, 1)));
+  assert (res1 == res2);
+  std::move(res2);
+  return res1;
+};
 int Plus(int x, int y) { return x + y; };
 
 int PlusPutWaitRemote(int x, int y) {
