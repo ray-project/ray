@@ -939,7 +939,11 @@ def test_spilled(ray_start_cluster, reconstruction_enabled):
     obj = large_object.options(resources={"node1": 1}).remote()
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
     # Force spilling.
-    objs = [large_object.options(resources={"node1": 1}).remote() for _ in range(20)]
+    objs = [
+        large_object.options(resources={
+            "node1": 1
+        }).remote() for _ in range(20)
+    ]
     for o in objs:
         ray.get(o)
 
