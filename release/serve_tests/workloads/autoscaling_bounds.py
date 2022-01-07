@@ -110,9 +110,8 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     else:
         min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_REPLICA
         max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_REPLICA
-        logger.info(
-            f"Running full test with a minimum of {min_replicas} "
-            f"replicas and a maximum of {max_replicas} replicas.\n")
+        logger.info(f"Running full test with a minimum of {min_replicas} "
+                    f"replicas and a maximum of {max_replicas} replicas.\n")
         logger.info("Setting up anyscale ray cluster. \n")
         serve_client = setup_anyscale_cluster()
 
@@ -158,7 +157,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
 
         # Check that deployments upscaled to max_replicas
         num_wrk_replicas = get_num_running_replicas(controller,
-                                                      deployment_name)
+                                                    deployment_name)
         print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
