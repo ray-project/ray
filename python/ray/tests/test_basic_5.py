@@ -78,8 +78,10 @@ def test_actor_killing(shutdown_only):
     worker_2 = Actor.remote()
     assert ray.get(worker_2.foo.remote()) is None
 
-@pytest.mark.skip(client_test_enabled(),
-                  reason="client api doesn't support namespace right now.")
+
+@pytest.mark.skip(
+    client_test_enabled(),
+    reason="client api doesn't support namespace right now.")
 def test_internal_kv(ray_start_regular):
     import ray.experimental.internal_kv as kv
     assert kv._internal_kv_get("k1") is None
