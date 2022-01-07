@@ -123,8 +123,7 @@ def create_gcs_channel(address: str, aio=False):
         grpc.Channel or grpc.aio.Channel to GCS
     """
     from ray._private.utils import init_grpc_channel
-    return init_grpc_channel(
-        address, optionamespace=_GRPC_OPTIONS, asynchronous=aio)
+    return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
 def _auto_reconnect(f):

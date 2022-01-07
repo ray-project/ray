@@ -34,7 +34,7 @@ std::string MakeKey(const std::string &ns, const std::string &key) {
 
 Status ValidateKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
-    return Staus::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
+    return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
   }
   return Status::OK();
 }
@@ -199,16 +199,21 @@ void MemoryInternalKV::Keys(const std::string &ns, const std::string &prefix,
 void GcsInternalKVManager::HandleInternalKVGet(
     const rpc::InternalKVGetRequest &request, rpc::InternalKVGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](std::optional<std::string> val) {
-    if (val) {
-      reply->set_value(*val);
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    } else {
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                         Status::NotFound("Failed to find the key"));
-    }
-  };
-  kv_instance_->Get(request.namespace_(), request.key(), std::move(callback));
+  auto status = ValidateKey(request.key());
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else {
+    auto callback = [reply, send_reply_callback](std::optional<std::string> val) {
+      if (val) {
+        reply->set_value(*val);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      } else {
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                           Status::NotFound("Failed to find the key"));
+      }
+    };
+    kv_instance_->Get(request.namespace_(), request.key(), std::move(callback));
+  }
 }
 
 void GcsInternalKVManager::HandleInternalKVPut(
