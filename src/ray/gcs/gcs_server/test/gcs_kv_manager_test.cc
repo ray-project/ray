@@ -52,72 +52,48 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 };
 
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  std::mutex mu;
-  mu.lock();
-  kv_instance->Get("N1", "A", [&mu](auto b) {
+  kv_instance->Get("N1", "A", [](auto b) {
     ASSERT_FALSE(b.has_value());
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Put("N1", "A", "B", false, [&mu](auto b) {
+  kv_instance->Put("N1", "A", "B", false, [](auto b) {
     ASSERT_TRUE(b);
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Put("N1", "A", "C", false, [&mu](auto b) {
+  kv_instance->Put("N1", "A", "C", false, [](auto b) {
+      ASSERT_FALSE(b);
+  });
+  kv_instance->Get("N1", "A", [](auto b) {
+      ASSERT_EQ("B", *b);
+  });
+  kv_instance->Put("N1", "A", "C", true, [](auto b) {
     ASSERT_FALSE(b);
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Get("N1", "A", [&mu](auto b) {
-    ASSERT_EQ("B", *b);
-    mu.unlock();
-  });
-  mu.lock();
-  kv_instance->Put("N1", "A", "C", true, [&mu](auto b) {
-    ASSERT_FALSE(b);
-    mu.unlock();
-  });
-  mu.lock();
-  kv_instance->Get("N1", "A", [&mu](auto b) {
+  kv_instance->Get("N1", "A", [](auto b) {
     ASSERT_EQ("C", *b);
-    mu.unlock();
   });
-  mu.lock();
-
-  kv_instance->Put("N1", "A_1", "B", false, [&mu](auto b) {
+  kv_instance->Put("N1", "A_1", "B", false, [](auto b) {
     ASSERT_TRUE(b);
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Put("N1", "A_2", "C", false, [&mu](auto b) {
+  kv_instance->Put("N1", "A_2", "C", false, [](auto b) {
     ASSERT_TRUE(b);
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Put("N1", "A_3", "C", false, [&mu](auto b) {
+  kv_instance->Put("N1", "A_3", "C", false, [](auto b) {
     ASSERT_TRUE(b);
-    mu.unlock();
   });
-  mu.lock();
-
-  kv_instance->Keys("N1", "A_", [&mu](std::vector<std::string> keys) {
+  kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
     auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
     ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
-    mu.unlock();
   });
-  mu.lock();
-
-  kv_instance->Get("N2", "A_1", [&mu](auto b) {
+  kv_instance->Get("N2", "A_1", [](auto b) {
     ASSERT_FALSE(b.has_value());
-    mu.unlock();
   });
-  mu.lock();
-  kv_instance->Get("N1", "A_1", [&mu](auto b) {
+  // Make sure the last callback is called before end.
+  std::promise<void> p;
+  auto f = p.get_future();
+  kv_instance->Get("N1", "A_1", [&p](auto b) {
     ASSERT_TRUE(b.has_value());
-    mu.unlock();
+    p.set_value();
   });
-  mu.lock();
+  f.get();
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,
