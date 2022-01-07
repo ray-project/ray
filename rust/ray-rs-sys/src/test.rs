@@ -8,7 +8,7 @@ mod test {
         add_two_vecs_nested,
         add_three_vecs,
         put_and_get_nested,
-        get, get_execute_result, load_libraries_from_paths,
+        get, put, get_execute_result, load_libraries_from_paths,
         byte_vec_to_object_id,
     };
     use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
@@ -45,30 +45,30 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_init_submit_execute_shutdown() {
-        try_init();
-        const VEC_SIZE: usize = 1 << 12;
-        let num_jobs = 1 << 0;
-
-        let (a, b): (Vec<_>, Vec<_>) =
-            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-
-        let now = std::time::Instant::now();
-        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            add_two_vecs.remote(&a, &b)
-        }).collect();
-
-        ids.reverse();
-        println!("Submission: {:?}", now.elapsed().as_millis());
-
-        let results: Vec<_> = (0..num_jobs).map(|_| {
-            get::<Vec<u64>>(ids.pop().unwrap())
-        }).collect();
-
-        println!("Execute + Get: {:?}", now.elapsed().as_millis());
-        try_shutdown();
-    }
+    // #[test]
+    // fn test_init_submit_execute_shutdown() {
+    //     try_init();
+    //     const VEC_SIZE: usize = 1 << 12;
+    //     let num_jobs = 1 << 0;
+    //
+    //     let (a, b): (Vec<_>, Vec<_>) =
+    //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+    //
+    //     let now = std::time::Instant::now();
+    //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+    //         add_two_vecs.remote(&a, &b)
+    //     }).collect();
+    //
+    //     ids.reverse();
+    //     println!("Submission: {:?}", now.elapsed().as_millis());
+    //
+    //     let results: Vec<_> = (0..num_jobs).map(|_| {
+    //         get::<Vec<u64>>(ids.pop().unwrap())
+    //     }).collect();
+    //
+    //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
+    //     try_shutdown();
+    // }
 
     // #[test]
     // fn test_nested_remote() {
@@ -125,16 +125,43 @@ mod test {
     //     try_shutdown();
     // }
     //
+    #[test]
+    fn test_put_get_nested_remote() {
+        try_init();
+        const VEC_SIZE: usize = 1 << 12;
+        let num_jobs = 1 << 0;
+        let a: Vec<_> = (0u64..VEC_SIZE as u64).collect();
+
+        let now = std::time::Instant::now();
+        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+            put_and_get_nested.remote(&a)
+        }).collect();
+
+        ids.reverse();
+        println!("Submission: {:?}", now.elapsed().as_millis());
+
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+
+        let results: Vec<_> = (0..num_jobs).map(|_| {
+            let res = get::<Vec<u64>>(ids.pop().unwrap());
+            assert_eq!(a, res);
+            res
+        }).collect();
+
+        println!("Execute + Get: {:?}", now.elapsed().as_millis());
+        try_shutdown();
+    }
+
     // #[test]
-    // fn test_put_get_nested_remote() {
+    // fn test_put_and_get() {
     //     try_init();
-    //     const VEC_SIZE: usize = 1 << 3;
+    //     const VEC_SIZE: usize = 1 << 12;
     //     let num_jobs = 1 << 0;
     //     let a: Vec<_> = (0u64..VEC_SIZE as u64).collect();
     //
     //     let now = std::time::Instant::now();
     //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-    //         put_and_get_nested.remote(&a)
+    //         put::<Vec<u64>, _>(&a)
     //     }).collect();
     //
     //     ids.reverse();
@@ -151,7 +178,6 @@ mod test {
     //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
     //     try_shutdown();
     // }
-
 
     #[test]
     fn test_get_execute_result() {

@@ -121,7 +121,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
                                              bool created_by_worker) {
-  
+
   RAY_LOG(INFO) << "I am a plasma store " << store_client_.DebugString();
                                                  RAY_LOG(INFO) << "Creating Object in PS 1 " << object_id;
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
@@ -164,6 +164,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                                      RAY_LOG(INFO) << "Creating Object in PS 6 " << object_id;
     RAY_RETURN_NOT_OK(status);
   }
+                                                       RAY_LOG(INFO) << "Creating Object in PS 7 " << object_id;
   return status;
 }
 

@@ -29,7 +29,7 @@ pub use remote_functions::{
     add_three_vecs,
     add_two_vecs_nested,
     add_two_vecs_nested_remote_outer_get,
-    get,
+    get, put,
     put_and_get_nested
 };
 
