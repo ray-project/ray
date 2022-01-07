@@ -1,9 +1,11 @@
+from ray.train.callbacks.results_prepocessors.index import \
+    IndexedResultsPreprocessor
 from ray.train.callbacks.results_prepocessors.keys import \
     KeysResultsPreprocessor
-from ray.train.callbacks.results_prepocessors.workers import \
-    SingleWorkerResultsPreprocessor, WorkersResultsPreprocessor
+from ray.train.callbacks.results_prepocessors.preprocessor import \
+    SequentialResultsPreprocessor, ResultsPreprocessor
 
 __all__ = [
-    "KeysResultsPreprocessor", "SingleWorkerResultsPreprocessor",
-    "WorkersResultsPreprocessor"
+    "IndexedResultsPreprocessor", "KeysResultsPreprocessor",
+    "ResultsPreprocessor", "SequentialResultsPreprocessor"
 ]

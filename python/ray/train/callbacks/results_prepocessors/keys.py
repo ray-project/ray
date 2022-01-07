@@ -1,41 +1,29 @@
-import logging
 from typing import List, Dict, Optional, Iterable
 
 from ray.train.callbacks.results_prepocessors.preprocessor import \
     ResultsPreprocessor
-from ray.train.constants import PROFILER_KEY
-
-logger = logging.getLogger(__name__)
-
-DEFAULT_EXCLUDED_KEYS = [PROFILER_KEY]
 
 
 class KeysResultsPreprocessor(ResultsPreprocessor):
-    """Preprocesses results by key."""
+    """Preprocesses each result dictionary by key.
 
-    def __init__(self,
-                 included_keys: Optional[Iterable[str]] = None,
-                 excluded_keys: Optional[Iterable[str]] = None) -> None:
-        included_keys = included_keys or {}
-        excluded_keys = excluded_keys or {}
+    Example
+    - excluded_keys: ["a"]
+    - input: [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
+    - output: [{"b": 2}, {"b": 4}]
 
-        keys_to_exclude = [
-            key for key in DEFAULT_EXCLUDED_KEYS if key not in included_keys
-        ]
-        for key in excluded_keys:
-            if key in included_keys:
-                logger.warning(
-                    f"Found key {key} in both {included_keys} and {excluded_keys}."
-                    f" This key will be included.")
-            keys_to_exclude.append(key)
+    Args:
+        excluded_keys (Optional[Iterable[str]]): The keys to remove. If
+            ``None`` then no keys will be removed.
+    """
 
-        self._keys_to_exclude = keys_to_exclude
+    def __init__(self, excluded_keys: Optional[Iterable[str]] = None) -> None:
+        self.excluded_keys = excluded_keys or {}
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:
         new_results = [{
             key: value
-            for key, value in result.items()
-            if key not in self._keys_to_exclude
+            for key, value in result.items() if key not in self.excluded_keys
         } for result in results]
 
         return new_results

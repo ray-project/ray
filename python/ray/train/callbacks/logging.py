@@ -1,4 +1,3 @@
-import abc
 import json
 import logging
 import os
@@ -9,8 +8,10 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 import numpy as np
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.results_prepocessors import WorkersResultsPreprocessor, \
-    SingleWorkerResultsPreprocessor, KeysResultsPreprocessor
+from ray.train.callbacks.results_prepocessors import IndexedResultsPreprocessor, \
+    KeysResultsPreprocessor
+from ray.train.callbacks.results_prepocessors.preprocessor import \
+    SequentialResultsPreprocessor
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                  TIME_TOTAL_S, TIMESTAMP, PID,
                                  TRAIN_CHECKPOINT_SUBDIR)
@@ -22,80 +23,63 @@ from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirCallback(TrainingCallback, abc.ABC):
-    """Abstract Train callback class with logging directory."""
+class TrainCallbackLogdirManager():
+    """Sets up a logging directory for a callback.
 
-    def start_training(self, logdir: str, config: Dict, **info):
-        if self._logdir:
-            logdir_path = Path(self._logdir)
-        else:
-            logdir_path = Path(logdir)
+    The path of the ``logdir`` can be set during initialization. Otherwise, the
+    ``default_logdir`` will be used when ``setup_logdir`` is called.
 
-        if not logdir_path.is_dir():
-            raise ValueError(f"logdir '{logdir_path}' must be a directory.")
-
-        self._logdir_path = logdir_path
-
-    @property
-    def logdir(self) -> Optional[Path]:
-        """Path to currently used logging directory."""
-        if not hasattr(self, "_logdir_path"):
-            return Path(self._logdir)
-        return Path(self._logdir_path)
-
-
-class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
-    """Abstract Train logging callback class.
+    ``setup_logdir`` is expected to be called from
+    ``TrainingCallback.start_training``, with a default ``logdir``.
 
     Args:
-        logdir (Optional[str]): Path to directory where the results file
-            should be. If None, will be set by the Trainer.
-        filename (Optional[str]): Filename in logdir to save results to.
-        workers_to_log (int|List[int]|None): Worker indices to log.
-            If None, will log all workers. By default, will log the
-            worker with index 0.
+        logdir (Optional[str|Path]): The path of the logdir to use.
+            If None is passed in, the logdir will use the ``default_logdir``
+            when ``setup_logdir`` is called.
+        create_logdir (bool): Whether to create the logdir if it does not
+            already exist.
+
+    Attributes:
+        logdir_path (Path): The path of the logdir. The default logdir will
+            not be available until ``setup_logdir`` is called.
     """
 
-    # Defining it like this ensures it will be overwritten
-    # in a subclass - otherwise an exception will be raised
-    _default_filename: Union[str, Path]
-
     def __init__(self,
-                 logdir: Optional[str] = None,
-                 filename: Optional[str] = None,
-                 workers_to_log: Optional[Union[int, List[int]]] = 0) -> None:
-        self._logdir = logdir
-        self._filename = filename
-        self._log_path = None
-        self._results_preprocessors = [
-            WorkersResultsPreprocessor(workers_to_log=workers_to_log)
-        ]
+                 logdir: Optional[Union[str, Path]] = None,
+                 create_logdir=True):
+        self._default_logdir = None
+        self._logdir = Path(logdir) if logdir else None
+        self._create_logdir = create_logdir
 
-    def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
-        if not filename:
-            raise ValueError("filename cannot be None or empty.")
-        return logdir_path.joinpath(Path(filename))
+    def setup_logdir(self, default_logdir: str):
+        """Sets up the logdir.
 
-    def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        The directory will be created if it does not exist and
+         ``create_logdir`` is set to True.
 
-        if not self._filename:
-            filename = self._default_filename
-        else:
-            filename = self._filename
+        Args:
+            default_logdir (str): The default logdir to use, only if the
+            ``TrainCallbackLogdirManager`` was not initialized with a ``logdir``.
+        """
+        self._default_logdir = Path(default_logdir)
 
-        self._log_path = self._create_log_path(self.logdir, filename)
+        if self._create_logdir:
+            self.logdir_path.mkdir(parents=True, exist_ok=True)
+
+        if not self.logdir_path.is_dir():
+            raise ValueError(
+                f"logdir '{self.logdir_path}' must be a directory.")
 
     @property
-    def log_path(self) -> Optional[Path]:
-        """Path to the log file.
+    def logdir_path(self) -> Path:
+        if self._logdir:
+            return self._logdir
+        if self._default_logdir:
+            return self._default_logdir
+        raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
-        Will be None before `start_training` is called for the first time.
-        """
-        return self._log_path
 
-
-class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
+class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
 
     Args:
@@ -109,22 +93,40 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
 
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
+    def __init__(self,
+                 logdir: Optional[str] = None,
+                 filename: Optional[str] = None,
+                 workers_to_log=0):
+        self._filename = filename
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._results_preprocessor = IndexedResultsPreprocessor(
+            indices=workers_to_log)
+
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
-        with open(self._log_path, "w") as f:
+        with open(self.log_path, "w") as f:
             json.dump([], f, cls=SafeFallbackEncoder)
 
     def handle_result(self, results: List[Dict], **info):
-        with open(self._log_path, "r+") as f:
+        with open(self.log_path, "r+") as f:
             loaded_results = json.load(f)
             f.seek(0)
             json.dump(loaded_results + [results], f, cls=SafeFallbackEncoder)
 
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path
 
-class MLflowLoggerCallback(TrainingLogdirCallback, TrainingCallback):
+    @property
+    def log_path(self) -> Path:
+        filename = self._filename or JsonLoggerCallback._default_filename
+        return self.logdir.joinpath(filename)
+
+
+class MLflowLoggerCallback(TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
     MLflow (https://mlflow.org) Tracking is an open source library for
@@ -171,11 +173,10 @@ class MLflowLoggerCallback(TrainingLogdirCallback, TrainingCallback):
                  tags: Optional[Dict] = None,
                  save_artifact: bool = False,
                  logdir: Optional[str] = None,
-                 worker_to_log: int = 0):
-        super().__init__(logdir=logdir)
-        self._results_preprocessors = [
-            SingleWorkerResultsPreprocessor(workers_to_log=worker_to_log)
-        ]
+                 worker_to_log=0):
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._results_preprocessor = IndexedResultsPreprocessor(
+            indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
@@ -187,7 +188,7 @@ class MLflowLoggerCallback(TrainingLogdirCallback, TrainingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir, config=config, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
@@ -216,8 +217,12 @@ class MLflowLoggerCallback(TrainingLogdirCallback, TrainingCallback):
             self.mlflow_util.save_artifacts(dir=str(checkpoint_dir))
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path
 
-class TBXLoggerCallback(TrainingLogdirCallback, TrainingCallback):
+
+class TBXLoggerCallback(TrainingCallback):
     """Logs Train results in TensorboardX format.
 
     Args:
@@ -233,16 +238,17 @@ class TBXLoggerCallback(TrainingLogdirCallback, TrainingCallback):
 
     def __init__(self, logdir: Optional[str] = None,
                  worker_to_log: int = 0) -> None:
-        self._logdir = logdir
-        self._log_path = None
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
 
-        self._results_preprocessors = [
-            SingleWorkerResultsPreprocessor(workers_to_log=worker_to_log),
+        results_preprocessors = [
+            IndexedResultsPreprocessor(indices=worker_to_log),
             KeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
         ]
+        self._results_preprocessor = SequentialResultsPreprocessor(
+            results_preprocessors)
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         try:
             from tensorboardX import SummaryWriter
@@ -252,7 +258,7 @@ class TBXLoggerCallback(TrainingLogdirCallback, TrainingCallback):
                     "pip install 'tensorboardX' to see TensorBoard files.")
             raise
 
-        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
+        self._file_writer = SummaryWriter(str(self.logdir), flush_secs=30)
 
     def handle_result(self, results: List[Dict], **info):
         result = results[0]
@@ -292,3 +298,7 @@ class TBXLoggerCallback(TrainingLogdirCallback, TrainingCallback):
 
     def finish_training(self, error: bool = False, **info):
         self._file_writer.close()
+
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path

@@ -1,12 +1,11 @@
 import abc
 from typing import List, Dict
 
+from ray.train.callbacks.results_prepocessors import ResultsPreprocessor
+
 
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
-
-    def __init__(self):
-        self._results_preprocessors = []
 
     def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
@@ -19,8 +18,30 @@ class TrainingCallback(abc.ABC):
         """
         pass
 
-    def handle_result(self, results: List[Dict], **info):
+    def process_results(self, results: List[Dict], **info):
         """Called every time train.report() is called.
+
+        1. Preprocesses results. Subclasses can implement preprocessing by
+           defining a ``ResultsPreprocessor``.
+        2. Handles preprocessed results. Subclasses can implement handling by
+           overriding the ``handle_result`` method.
+
+        Args:
+            results (List[Dict]): List of results from the training
+                function. Each value in the list corresponds to the output of
+                the training function from each worker.
+            **info: kwargs dict for forward compatibility.
+        """
+        _results_preprocessor : ResultsPreprocessor = \
+            getattr(self, "_results_preprocessor", None)
+        if _results_preprocessor:
+            results = _results_preprocessor.preprocess(results)
+        self.handle_result(results, **info)
+
+    def handle_result(self, results: List[Dict], **info):
+        """Called every time train.report() is called after preprocessing.
+
+        For more information, see ``process_results``.
 
         Args:
             results (List[Dict]): List of results from the training
@@ -29,11 +50,6 @@ class TrainingCallback(abc.ABC):
             **info: kwargs dict for forward compatibility.
         """
         pass
-
-    def process_results(self, results: List[Dict], **info):
-        for preprocessor in self._results_preprocessors:
-            results = preprocessor.preprocess(results, **info)
-        self.handle_result(results)
 
     def finish_training(self, error: bool = False, **info):
         """Called once after training is over.
