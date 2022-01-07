@@ -181,7 +181,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int],
         all_endpoints = list(serve.list_deployments().keys())
         run_wrk_on_all_nodes(
             trial_length,
-            100,  # 10,
+            100,
             http_host,
             http_port,
             all_endpoints=all_endpoints)
