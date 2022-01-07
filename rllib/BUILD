@@ -1202,6 +1202,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_attention_nets",
+    tags = ["team:ml", "models"],
+    size = "large",
+    srcs = ["models/tests/test_attention_nets.py"]
+)
+
+py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:ml", "models"],
     size = "small",
@@ -1217,6 +1224,13 @@ py_test(
 )
 
 py_test(
+    name = "test_lstms",
+    tags = ["team:ml", "models"],
+    size = "large",
+    srcs = ["models/tests/test_lstms.py"]
+)
+
+py_test(
     name = "test_models",
     tags = ["team:ml", "models"],
     size = "medium",
@@ -1226,7 +1240,7 @@ py_test(
 py_test(
     name = "test_preprocessors",
     tags = ["team:ml", "models"],
-    size = "medium",
+    size = "large",
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
@@ -1342,13 +1356,6 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
-
-py_test(
-    name = "tests/test_attention_net_learning",
-    tags = ["team:ml", "tests_dir", "tests_dir_A"],
-    size = "large",
-    srcs = ["tests/test_attention_net_learning.py"]
-)
 
 py_test(
     name = "tests/test_catalog",

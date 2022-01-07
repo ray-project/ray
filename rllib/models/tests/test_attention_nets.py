@@ -1,13 +1,16 @@
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
+from ray.rllib.utils.test_utils import framework_iterator
 
 
-class TestAttentionNetLearning(unittest.TestCase):
+class TestAttentionNets(unittest.TestCase):
 
     config = {
         "env": StatelessCartPole,
@@ -28,6 +31,46 @@ class TestAttentionNetLearning(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_attention_nets_w_prev_actions_and_prev_rewards(self):
+        """Tests attention prev-a/r input insertions using complex actions."""
+        config = {
+            "env": RandomEnv,
+            "env_config": {
+                "config": {
+                    "action_space": Dict({
+                        "a": Box(-1.0, 1.0, ()),
+                        "b": Box(-1.0, 1.0, (2, )),
+                        "c": Tuple([
+                            Discrete(2),
+                            MultiDiscrete([2, 3]),
+                            Box(-1.0, 1.0, (3, )),
+                        ]),
+                    }),
+                },
+            },
+            # Need to set this to True to enable complex (prev.) actions
+            # as inputs to the attention net.
+            "_disable_action_flattening": True,
+            "model": {
+                "fcnet_hiddens": [10],
+                "use_attention": True,
+                "attention_dim": 16,
+                "attention_use_n_prev_actions": 3,
+                "attention_use_n_prev_rewards": 2,
+            },
+            "num_sgd_iter": 1,
+            "train_batch_size": 200,
+            "sgd_minibatch_size": 50,
+            "rollout_fragment_length": 100,
+            "num_workers": 1,
+        }
+        for _ in framework_iterator(config):
+            tune.run(
+                "PPO",
+                config=config,
+                stop={"training_iteration": 1},
+                verbose=1)
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
