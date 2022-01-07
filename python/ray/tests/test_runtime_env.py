@@ -156,6 +156,8 @@ def test_invalid_conda_env(shutdown_only):
     assert (time.time() - start) < (first_time / 2.0)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_no_spurious_worker_startup(shutdown_only):
     """Test that no extra workers start up during a long env installation."""
 

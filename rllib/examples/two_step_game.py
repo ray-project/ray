@@ -14,7 +14,7 @@ import os
 
 import ray
 from ray import tune
-from ray.tune import register_env, grid_search
+from ray.tune import register_env
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.policy.policy import PolicySpec
@@ -33,6 +33,12 @@ parser.add_argument(
     help="The DL framework specifier.")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
+    "--mixer",
+    type=str,
+    default="qmix",
+    choices=["qmix", "vdn", "none"],
+    help="The mixer model to use.")
+parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
@@ -45,12 +51,12 @@ parser.add_argument(
 parser.add_argument(
     "--stop-timesteps",
     type=int,
-    default=50000,
+    default=70000,
     help="Number of timesteps to train.")
 parser.add_argument(
     "--stop-reward",
     type=float,
-    default=7.0,
+    default=8.0,
     help="Reward at which we stop training.")
 parser.add_argument(
     "--local-mode",
@@ -116,11 +122,10 @@ if __name__ == "__main__":
             "rollout_fragment_length": 4,
             "train_batch_size": 32,
             "exploration_config": {
-                "epsilon_timesteps": 5000,
-                "final_epsilon": 0.05,
+                "final_epsilon": 0.0,
             },
             "num_workers": 0,
-            "mixer": grid_search([None, "qmix"]),
+            "mixer": args.mixer,
             "env_config": {
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
@@ -146,9 +151,6 @@ if __name__ == "__main__":
     config = dict(config, **{
         "env": "grouped_twostep" if group else TwoStepGame,
     })
-
-    if args.as_test:
-        config["seed"] = 1234
 
     results = tune.run(args.run, stop=stop, config=config, verbose=2)
 

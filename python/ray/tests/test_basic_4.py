@@ -109,7 +109,7 @@ def test_function_unique_export(ray_start_regular):
 
     if gcs_pubsub_enabled():
         subscriber = GcsFunctionKeySubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         subscriber.subscribe()
 
         ray.get(g.remote())
