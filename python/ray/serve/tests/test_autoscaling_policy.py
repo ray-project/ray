@@ -491,6 +491,11 @@ def test_e2e_bursty(serve_instance):
     signal.send.remote()
 
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
+    # The SignalActor allows all requests in a burst to be queued before they
+    # are all executed, which increases the
+    # target_in_flight_requests_per_replica. Then the send method will bring
+    # it back to 0. This bursty behavior should be smoothed by the delay
+    # parameters.
     for _ in range(5):
         time.sleep(0.05)
         assert get_num_running_replicas(controller, A) == num_replicas
