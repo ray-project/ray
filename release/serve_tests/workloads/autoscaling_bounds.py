@@ -89,6 +89,10 @@ def convert_duration_to_seconds(duration_string: str) -> float:
 
 def deploy_replicas(min_replicas: int, max_replicas: int, trial_length: str,
                     signal: SignalActor, deployment_name: str):
+    
+    # A long _graceful_shutdown_timeout_s prevents any downscaling until after
+    # the wrk simulation ends. This allows the test to check whether the
+    # autoscaler can sustain high loads of traffic for long periods of time.
     @serve.deployment(
         name=deployment_name,
         _graceful_shutdown_timeout_s=convert_duration_to_seconds(trial_length),
