@@ -1,4 +1,5 @@
 import asyncio
+from asyncio.tasks import FIRST_COMPLETED
 import socket
 import time
 import pickle
@@ -21,9 +22,10 @@ from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
 MAX_REPLICA_FAILURE_RETRIES = 10
+DISCONNECT_ERROR_CODE = "disconnection"
 
 
-async def _send_request_to_handle(handle, scope, receive, send):
+async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
     headers = {k.decode(): v.decode() for k, v in scope["headers"]}
@@ -54,11 +56,25 @@ async def _send_request_to_handle(handle, scope, receive, send):
 
     retries = 0
     backoff_time_s = 0.05
+    loop = asyncio.get_event_loop()
+    client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        object_ref = await handle.remote(request)
+        assignment_task = loop.create_task(handle.remote(request))
+        done, _ = await asyncio.wait(
+            [assignment_task, client_disconnection_task],
+            return_when=FIRST_COMPLETED)
+        if client_disconnection_task in done:
+            logger.error(f"Client from {scope['client']} disconnected.")
+            # This will make the .result() to raise cancelled error.
+            assignment_task.cancel()
         try:
+            object_ref = await assignment_task
             result = await object_ref
             break
+        except asyncio.CancelledError:
+            # Here because the client disconnected, we will return a custom
+            # error code for metric tracking.
+            return DISCONNECT_ERROR_CODE
         except RayTaskError as error:
             error_message = "Task Error. Traceback: {}.".format(error)
             await Response(
