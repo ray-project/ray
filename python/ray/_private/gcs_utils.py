@@ -237,11 +237,10 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_del(self, key: bytes, del_by_prefix: bool,
+    def internal_kv_del(self, key: bytes,
                         namespace: Optional[bytes]) -> int:
-        logger.debug(f"internal_kv_del {key} {del_by_prefix} {namespace}")
-        req = gcs_service_pb2.InternalKVDelRequest(
-            ns=namespace, key=key, del_by_prefix=del_by_prefix)
+        logger.debug(f"internal_kv_del {key} {namespace}")
+        req = gcs_service_pb2.InternalKVDelRequest(ns=namespace, key=key)
         reply = self._kv_stub.InternalKVDel(req)
         if reply.status.code == GcsCode.OK:
             return reply.deleted_num

@@ -32,9 +32,9 @@ std::string MakeKey(const std::string &ns, const std::string &key) {
   return absl::StrCat(kNamespacePrefix, ns, ":", key);
 }
 
-std::string_view ExtractKey(const std::string &key) {
+std::string ExtractKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
-    std::vector<std::string_view> parts =
+    std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
     if (parts.size() != 2) {
       RAY_LOG(ERROR) << "Invalid key: " << key;
@@ -84,30 +84,12 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
 }
 
 void RedisInternalKV::Del(const std::string &ns, const std::string &key,
-                          bool del_by_prefix, std::function<void(int64_t)> callback) {
-  auto true_key = MakeKey(ns, key);
-  if (del_by_prefix) {
-    std::vector<std::string> cmd = {"KEYS", true_key + "*"};
-    RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-        cmd, [this, callback = std::move(callback)](auto redis_reply) {
-          const auto &reply = redis_reply->ReadAsStringArray();
-          std::vector<std::string> del_cmd = {"DEL"};
-          for (const auto &r : reply) {
-            RAY_CHECK(r.has_value());
-            del_cmd.emplace_back(*r);
-          }
-          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-              del_cmd, [callback = std::move(callback)](auto redis_reply) {
-                callback(redis_reply->ReadAsInteger());
-              }));
-        }));
-  } else {
-    std::vector<std::string> cmd = {"DEL", true_key};
-    RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-        cmd, [callback = std::move(callback)](auto redis_reply) {
-          callback(redis_reply->ReadAsInteger());
-        }));
-  }
+                          std::function<void(int64_t)> callback) {
+  std::vector<std::string> cmd = {"HDEL", key, "value"};
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [callback = std::move(callback)](auto redis_reply) {
+        callback(redis_reply->ReadAsInteger() != 0);
+      }));
 }
 
 void RedisInternalKV::Exists(const std::string &ns, const std::string &key,
@@ -131,7 +113,7 @@ void RedisInternalKV::Keys(const std::string &ns, const std::string &prefix,
         std::vector<std::string> results;
         for (const auto &r : reply) {
           RAY_CHECK(r.has_value());
-          results.emplace_back(std::string(ExtractKey(*r)));
+          results.emplace_back(ExtractKey(*r));
         }
         callback(std::move(results));
       }));
@@ -169,31 +151,17 @@ void MemoryInternalKV::Put(const std::string &ns, const std::string &key,
 }
 
 void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
-                           bool del_by_prefix, std::function<void(int64_t)> callback) {
-  absl::WriterMutexLock _(&mu_);
-  auto true_key = MakeKey(ns, key);
-  auto it = map_.lower_bound(true_key);
+                           std::function<void(int64_t)> callback) {
+  auto it = map_.find(key);
   int64_t del_num = 0;
-  while (it != map_.end()) {
-    if (!del_by_prefix) {
-      if (it->first == true_key) {
-        map_.erase(it);
-        ++del_num;
-      }
-      break;
-    }
-
-    if (absl::StartsWith(it->first, true_key)) {
-      it = map_.erase(it);
-      ++del_num;
-    } else {
-      break;
-    }
+  if (it != map_.end()) {
+    map_.erase(it);
+    del_num += 1;
   }
-
   if (callback != nullptr) {
     io_context_.post(std::bind(std::move(callback), del_num));
   }
+
 }
 
 void MemoryInternalKV::Exists(const std::string &ns, const std::string &key,
@@ -213,7 +181,7 @@ void MemoryInternalKV::Keys(const std::string &ns, const std::string &prefix,
   auto true_prefix = MakeKey(ns, prefix);
   auto iter = map_.lower_bound(true_prefix);
   while (iter != map_.end() && absl::StartsWith(iter->first, true_prefix)) {
-    keys.emplace_back(std::string(ExtractKey(iter->first)));
+    keys.emplace_back(ExtractKey(iter->first));
     iter++;
   }
   if (callback != nullptr) {
@@ -254,8 +222,7 @@ void GcsInternalKVManager::HandleInternalKVDel(
     reply->set_deleted_num(del_num);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  kv_instance_->Del(request.ns(), request.key(), request.del_by_prefix(),
-                    std::move(callback));
+  kv_instance_->Del(request.ns(), request.key(), std::move(callback));
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(

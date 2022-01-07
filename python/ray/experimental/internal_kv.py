@@ -88,14 +88,13 @@ def _internal_kv_put(key: Union[str, bytes],
 @client_mode_hook(auto_init=False)
 def _internal_kv_del(key: Union[str, bytes],
                      *,
-                     del_by_prefix: bool = False,
                      namespace: Optional[Union[str, bytes]] = None) -> int:
     if isinstance(key, str):
         key = key.encode()
     if isinstance(namespace, str):
         namespace = namespace.encode()
     assert isinstance(key, bytes)
-    return global_gcs_client.internal_kv_del(key, del_by_prefix, namespace)
+    return global_gcs_client.internal_kv_del(key, namespace)
 
 
 @client_mode_hook(auto_init=False)
