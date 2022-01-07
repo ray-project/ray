@@ -548,7 +548,7 @@ def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsErrorSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -590,7 +590,7 @@ def init_log_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsLogSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(

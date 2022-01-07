@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray.cluster_utils
+from ray._private.test_utils import client_test_enabled
 from ray._private.test_utils import wait_for_pid_to_exit
 
 import ray
@@ -78,6 +79,9 @@ def test_actor_killing(shutdown_only):
     assert ray.get(worker_2.foo.remote()) is None
 
 
+@pytest.mark.skip(
+    client_test_enabled(),
+    reason="client api doesn't support namespace right now.")
 def test_internal_kv(ray_start_regular):
     import ray.experimental.internal_kv as kv
     assert kv._internal_kv_get("k1") is None

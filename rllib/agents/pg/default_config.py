@@ -15,8 +15,7 @@ DEFAULT_CONFIG = with_common_config({
     "_disable_preprocessor_api": True,
 
     # PG is the first algo (experimental) to not use the distr. exec API
-    # anymore. Only supported for simple_optimizer=True so far.
-    "simple_optimizer": True,
+    # anymore.
     "_disable_execution_plan_api": True,
 })
 

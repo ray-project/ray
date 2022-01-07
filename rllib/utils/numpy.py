@@ -1,10 +1,12 @@
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from typing import List, Optional
 
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.typing import TensorType, TensorStructType, Union
+from ray.rllib.utils.typing import SpaceStruct, TensorType, TensorStructType, \
+    Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -183,6 +185,105 @@ def fc(x: np.ndarray,
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
+def flatten_inputs_to_1d_tensor(inputs: TensorStructType,
+                                spaces_struct: Optional[SpaceStruct] = None,
+                                time_axis: bool = False) -> TensorType:
+    """Flattens arbitrary input structs according to the given spaces struct.
+
+    Returns a single 1D tensor resulting from the different input
+    components' values.
+
+    Thereby:
+    - Boxes (any shape) get flattened to (B, [T]?, -1). Note that image boxes
+    are not treated differently from other types of Boxes and get
+    flattened as well.
+    - Discrete (int) values are one-hot'd, e.g. a batch of [1, 0, 3] (B=3 with
+    Discrete(4) space) results in [[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1]].
+    - MultiDiscrete values are multi-one-hot'd, e.g. a batch of
+    [[0, 2], [1, 4]] (B=2 with MultiDiscrete([2, 5]) space) results in
+    [[1, 0,  0, 0, 1, 0, 0], [0, 1,  0, 0, 0, 0, 1]].
+
+    Args:
+        inputs: The inputs to be flattened.
+        spaces_struct: The structure of the spaces that behind the input
+        time_axis: Whether all inputs have a time-axis (after the batch axis).
+            If True, will keep not only the batch axis (0th), but the time axis
+            (1st) as-is and flatten everything from the 2nd axis up.
+
+    Returns:
+        A single 1D tensor resulting from concatenating all
+        flattened/one-hot'd input components. Depending on the time_axis flag,
+        the shape is (B, n) or (B, T, n).
+
+    Examples:
+        >>> # B=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
+        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        ... )
+        >>> print(out)
+        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+
+        >>> # B=2; T=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     ([[1, 0], [0, 1]],
+        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
+        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+        ...     time_axis=True
+        ... )
+        >>> print(out)
+        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
+        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+    """
+
+    flat_inputs = tree.flatten(inputs)
+    flat_spaces = tree.flatten(spaces_struct) if spaces_struct is not None \
+        else [None] * len(flat_inputs)
+
+    B = None
+    T = None
+    out = []
+    for input_, space in zip(flat_inputs, flat_spaces):
+        assert isinstance(input_, np.ndarray)
+
+        # Store batch and (if applicable) time dimension.
+        if B is None:
+            B = input_.shape[0]
+            if time_axis:
+                T = input_.shape[1]
+
+        # One-hot encoding.
+        if isinstance(space, Discrete):
+            if time_axis:
+                input_ = np.reshape(input_, [B * T])
+            out.append(one_hot(input_, depth=space.n).astype(np.float32))
+        # Multi one-hot encoding.
+        elif isinstance(space, MultiDiscrete):
+            if time_axis:
+                input_ = np.reshape(input_, [B * T, -1])
+            out.append(
+                np.concatenate(
+                    [
+                        one_hot(input_[:, i], depth=n).astype(np.float32)
+                        for i, n in enumerate(space.nvec)
+                    ],
+                    axis=-1))
+        # Box: Flatten.
+        else:
+            if time_axis:
+                input_ = np.reshape(input_, [B * T, -1])
+            else:
+                input_ = np.reshape(input_, [B, -1])
+            out.append(input_.astype(np.float32))
+
+    merged = np.concatenate(out, axis=-1)
+    # Restore the time-dimension, if applicable.
+    if time_axis:
+        merged = np.reshape(merged, [B, T, -1])
+
+    return merged
+
+
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
     """Reference: https://en.wikipedia.org/wiki/Huber_loss."""
     return np.where(
@@ -272,7 +373,7 @@ def lstm(x,
 
 def one_hot(x: Union[TensorType, int],
             depth: int = 0,
-            on_value: int = 1.0,
+            on_value: float = 1.0,
             off_value: float = 0.0) -> np.ndarray:
     """One-hot utility function for numpy.
 
