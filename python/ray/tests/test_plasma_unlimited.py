@@ -265,9 +265,9 @@ def test_plasma_allocate(shutdown_only):
     for _ in range(3):
         res.append(ray.put(data))
     # keep reference for second and third object, force evict first object
-    _ = ray.get(res[1:])
+    _ = ray.get(res[1:])  # noqa
     # keep reference for fourth object, avoid released by plasma GC.
-    __ = ray.put(data)
+    __ = ray.put(data)  # noqa
 
     # Check fourth object whether allocate to disk
     cmd = "lsof | grep \"/tmp/ray/test_tmp_dir/plasma\" | wc -l"
