@@ -21,6 +21,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -66,11 +68,19 @@ std::string debug_string(const std::unordered_set<Ts...> &c) {
   return _container_debug_string(c);
 }
 template <typename... Ts>
+std::string debug_string(const absl::flat_hash_set<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
 std::string debug_string(const std::map<Ts...> &c) {
   return _container_debug_string(c);
 }
 template <typename... Ts>
 std::string debug_string(const std::unordered_map<Ts...> &c) {
+  return _container_debug_string(c);
+}
+template <typename... Ts>
+std::string debug_string(const absl::flat_hash_map<Ts...> &c) {
   return _container_debug_string(c);
 }
 
