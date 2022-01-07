@@ -152,6 +152,7 @@ void MemoryInternalKV::Put(const std::string &ns, const std::string &key,
 
 void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
                            std::function<void(int64_t)> callback) {
+  absl::WriterMutexLock _(&mu_);
   auto it = map_.find(key);
   int64_t del_num = 0;
   if (it != map_.end()) {
