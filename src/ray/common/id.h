@@ -224,7 +224,7 @@ class TaskID : public BaseID<TaskID> {
   static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
                               size_t parent_task_counter);
 
-  /// Given a base task ID, create a task ID that reprents the n-th execution
+  /// Given a base task ID, create a task ID that represents the n-th execution
   /// of that task. This task ID should be used to seed any TaskIDs or
   /// ObjectIDs created during that task.
   /// See https://github.com/ray-project/ray/issues/20713.
