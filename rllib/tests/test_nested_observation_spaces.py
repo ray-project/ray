@@ -120,6 +120,15 @@ class RepeatedSpaceEnv(gym.Env):
 
 class NestedMultiAgentEnv(MultiAgentEnv):
     def __init__(self):
+        self.observation_space = spaces.Dict({
+            "dict_agent": DICT_SPACE,
+            "tuple_agent": TUPLE_SPACE
+        })
+        self.action_space = spaces.Dict({
+            "dict_agent": spaces.Discrete(1),
+            "tuple_agent": spaces.Discrete(1)
+        })
+        self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
     def reset(self):
