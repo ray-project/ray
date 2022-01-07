@@ -67,7 +67,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             return_when=FIRST_COMPLETED)
         if client_disconnection_task in done:
             message = await client_disconnection_task
-            assert message["type"] == "http.receive", (
+            assert message["type"] == "http.disconnect", (
                 "Received additional request payload that's not disconnect. "
                 "This is an invalid HTTP state.")
 
