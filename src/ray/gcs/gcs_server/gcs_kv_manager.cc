@@ -161,7 +161,6 @@ void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
   if (callback != nullptr) {
     io_context_.post(std::bind(std::move(callback), del_num));
   }
-
 }
 
 void MemoryInternalKV::Exists(const std::string &ns, const std::string &key,
