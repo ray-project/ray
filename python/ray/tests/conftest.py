@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.cluster_utils import (Cluster, AutoscalingCluster,
                                cluster_not_supported)
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
@@ -48,6 +49,29 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
+@pytest.fixture
+def external_redis(request, monkeypatch):
+    # Setup external Redis and env var for initialization.
+    param = getattr(request, "param", {})
+    external_redis_ports = param.get("external_redis_ports")
+    if external_redis_ports is None:
+        external_redis_ports = [7777]
+    else:
+        del param["external_redis_ports"]
+    for port in external_redis_ports:
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            port,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    address_str = ",".join(
+        map(lambda x: f"localhost:{x}", external_redis_ports))
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
+    yield None
+    # Relies on ray.shutdown() to shutdown external Redis.
+
+
 @contextmanager
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
@@ -80,6 +104,16 @@ def ray_start_no_cpu(request):
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_regular instead of creating this
+# separate fixture, if there is a good way to ensure external_redis runs before
+# ray_start_regular.
+@pytest.fixture
+def ray_start_regular_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -169,6 +203,16 @@ def ray_start_cluster_init(request):
 
 @pytest.fixture
 def ray_start_cluster_head(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_cluster_head instead of creating
+# this separate fixture, if there is a good way to ensure external_redis runs
+# before ray_start_cluster_head.
+@pytest.fixture
+def ray_start_cluster_head_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res

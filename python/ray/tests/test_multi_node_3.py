@@ -4,6 +4,8 @@ import subprocess
 import sys
 
 import ray
+import ray.ray_constants as ray_constants
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
@@ -83,14 +85,24 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     check_call_ray(["stop"])
 
-    # Test starting Ray with invalid external address.
-    # It will fall back to creating a new one.
+    # Test starting Ray with --address flag (deprecated).
+    temp_dir = ray._private.utils.get_ray_temp_dir()
+    _start_redis_instance(
+        REDIS_EXECUTABLE,
+        temp_dir,
+        7777,
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
     check_call_ray(
-        ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
+        ["start", "--head", "--address", "127.0.0.1:7777", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
-    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:6379"
+    _start_redis_instance(
+        REDIS_EXECUTABLE,
+        temp_dir,
+        7777,
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:7777"
     check_call_ray(["start", "--head", "--port", "0"])
     check_call_ray(["stop"])
     del os.environ["RAY_REDIS_ADDRESS"]

@@ -82,6 +82,23 @@ class Node:
         self.all_processes = {}
         self.removal_lock = threading.Lock()
 
+        # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
+        redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
+        if ray_params.external_addresses is None and \
+                redis_address_env is not None:
+            external_redis = redis_address_env.split(",")
+
+            # Reuse primary Redis as Redis shard when there's only one
+            # instance provided.
+            if len(external_redis) == 1:
+                external_redis.append(external_redis[0])
+            [primary_redis_ip, port] = external_redis[0].split(":")
+            ray._private.services.wait_for_redis_to_start(
+                primary_redis_ip, port, password=ray_params.redis_password)
+
+            ray_params.external_addresses = external_redis
+            ray_params.num_redis_shards = len(external_redis) - 1
+
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
@@ -803,9 +820,12 @@ class Node:
 
     def start_redis(self):
         """Start the Redis server."""
+        external_redis = self._ray_params.external_addresses
+        if use_gcs_for_bootstrap() and external_redis is None:
+            return
         assert self._redis_address is None
         redis_log_files = []
-        if self._ray_params.external_addresses is None:
+        if external_redis is None:
             redis_log_files = [self.get_log_file_handles("redis", unique=True)]
             for i in range(self._ray_params.num_redis_shards):
                 redis_log_files.append(
@@ -823,7 +843,7 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
-             external_addresses=self._ray_params.external_addresses,
+             external_addresses=external_redis,
              port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
@@ -1040,13 +1060,10 @@ class Node:
         assert self._gcs_client is None
 
         # If this is the head node, start the relevant head node processes.
-        if not use_gcs_for_bootstrap():
-            self.start_redis()
-            assert self._redis_address is not None
+        self.start_redis()
 
         self.start_gcs_server()
         assert self._gcs_client is not None
-        # import pdb; pdb.set_trace()
         self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
