@@ -9,20 +9,33 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Implementation of {@link ObjectRef}. */
 public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ObjectRefImpl.class);
+
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
 
   private static final Set<Reference<ObjectRefImpl<?>>> REFERENCES = Sets.newConcurrentHashSet();
+
+  /// All the objects that are referenced by this worker.
+  /// The key is the object ID in raw bytes, and the value is a weak reference to the ObjectRefImpl
+  // object.
+  private static ConcurrentHashMap<ObjectId, WeakReference<ObjectRefImpl<?>>> allObjects =
+    new ConcurrentHashMap<>(1024);
 
   private ObjectId id;
 
@@ -32,10 +45,24 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private Class<T> type;
 
+
+  // Raw data of this object.
+  // This is currently used by only the memory store objects.
+  // This byte array object is generated in CoreWorkerMemoryStore::Put.
+  private byte[] rawData = null;
+
   public ObjectRefImpl(ObjectId id, Class<T> type) {
     this.id = id;
     this.type = type;
+    /// Note that registerObjectRefImpl() must be invoked before addLocalReference().
+    /// Because addLocalReference() may take a long time.
+    registerObjectRefImpl(id, this);
     addLocalReference();
+  }
+
+  private void setRawData(byte[] rawData) {
+    Preconditions.checkState(this.rawData == null);
+    this.rawData = rawData;
   }
 
   public ObjectRefImpl() {}
@@ -123,8 +150,40 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
           ((RayRuntimeInternal) (Ray.internal()))
               .getObjectStore()
               .removeLocalReference(workerId, objectId);
+          allObjects.remove(objectId);
+          LOG.debug("Object {} is finalized.", objectId);
         }
       }
     }
   }
+
+  /// The callback that will be invoked once a Java object is allocated in memory store.
+  private static void onMemoryStoreObjectAllocated(byte[] rawObjectId, byte[] data) {
+    ObjectId objectId = new ObjectId(rawObjectId);
+    Preconditions.checkState(rawObjectId != null);
+    Preconditions.checkState(data != null);
+    LOG.debug("onMemoryStoreObjectAllocated: {} , data.length is {}.", objectId, data.length);
+    if (!allObjects.containsKey(objectId)) {
+      LOG.debug("The object {} doesn't exist in the weak reference pool", objectId);
+      return;
+    }
+    WeakReference<ObjectRefImpl<?>> weakRef = allObjects.get(objectId);
+    ObjectRefImpl<?> objImpl = weakRef.get();
+    if (objImpl == null) {
+      LOG.debug("The object {} has already been cleaned.", objectId);
+      allObjects.remove(objectId);
+    } else {
+      objImpl.setRawData(data);
+    }
+  }
+  private static <T> void registerObjectRefImpl(ObjectId objectId, ObjectRefImpl<T> obj) {
+    if (allObjects.containsKey(objectId)) {
+      /// This is due to testLocalRefCounts() create 2 ObjectRefImpl objects for 1 id.
+      LOG.warn("Duplicated object {}", objectId);
+      return;
+    }
+    allObjects.put(objectId, new WeakReference<>(obj));
+    LOG.debug("Putting object {} to weak reference pool.", objectId);
+  }
+
 }
