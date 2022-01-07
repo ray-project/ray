@@ -111,8 +111,9 @@ public class RayConfig {
     if (config.hasPath("ray.node-ip")) {
       nodeIp = config.getString("ray.node-ip");
     } else {
-      nodeIp = NetworkUtil.getIpAddress(null);
+      nodeIp = NetworkUtil.localhostIp();
     }
+
     // Job id.
     String jobId = config.getString("ray.job.id");
     if (!jobId.isEmpty()) {
