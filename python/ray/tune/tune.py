@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
     Union
 
@@ -601,24 +602,11 @@ def run(
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
         signal.signal(signal.SIGINT, sigint_handler)
 
-    tune_start = time.time()
-    progress_reporter.set_start_time(tune_start)
-    while not runner.is_finished() and not state[signal.SIGINT]:
-        runner.step()
-        if has_verbosity(Verbosity.V1_EXPERIMENT):
-            _report_progress(runner, progress_reporter)
-    tune_taken = time.time() - tune_start
+    import asyncio
+    loop = asyncio.get_event_loop()
 
-    try:
-        runner.checkpoint(force=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
-
-    if has_verbosity(Verbosity.V1_EXPERIMENT):
-        _report_progress(runner, progress_reporter, done=True)
-
-    wait_for_sync()
-    runner.cleanup()
+    # Need to figure out how to handle SIGINT with asyncio.
+    loop.run_until_complete(_async_run_all(runner, progress_reporter))
 
     incomplete_trials = []
     for trial in runner.get_trials():
@@ -633,8 +621,7 @@ def run(
 
     all_taken = time.time() - all_start
     if has_verbosity(Verbosity.V1_EXPERIMENT):
-        logger.info(f"Total run time: {all_taken:.2f} seconds "
-                    f"({tune_taken:.2f} seconds for the tuning loop).")
+        logger.info(f"Total run time: {all_taken:.2f} seconds ")
 
     if state[signal.SIGINT]:
         logger.warning(
@@ -649,6 +636,38 @@ def run(
         default_metric=metric,
         default_mode=mode,
         sync_config=sync_config)
+
+
+async def _async_run_main(runner, progress_reporter):
+    """The real meat of running tune main coroutine.
+
+    In the context of comparing with tune cleanup coroutine and others.
+    """
+    tune_start = time.time()
+    progress_reporter.set_start_time(tune_start)
+    while not runner.is_finished():
+        await runner.step()
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
+            _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
+    logger.info(f"({tune_taken:.2f} seconds for the tuning loop).")
+    try:
+        runner.checkpoint(force=True)
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        _report_progress(runner, progress_reporter, done=True)
+
+    wait_for_sync()
+    logger.info("runner cleanup!!")
+    await runner.cleanup()
+
+
+async def _async_run_all(runner, progress_reporter):
+    await asyncio.gather(
+        _async_run_main(runner, progress_reporter),
+        runner.trial_executor.run_cleanup())
 
 
 @PublicAPI

@@ -32,6 +32,7 @@ from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
+import asyncio
 
 MAX_DEBUG_TRIALS = 20
 
@@ -384,6 +385,8 @@ class TrialRunner:
         self._checkpoint_manager = self._create_checkpoint_manager(
             driver_sync_trial_checkpoints)
 
+        self._last_yield_time = 0
+
     def setup_experiments(self, experiments: List[Experiment],
                           total_num_samples: int) -> None:
         """Obtains any necessary information from experiments.
@@ -642,12 +645,16 @@ class TrialRunner:
                                                      for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
-    def step(self):
+    async def step(self):
         """Runs one step of the trial event loop.
 
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        # This is not needed once pg ready becomes something that's an awaitable.
+        if time.time() - self._last_yield_time > 0.1:
+            await asyncio.sleep(0)
+            self._last_yield_time = time.time()
         self._updated_queue = False
 
         if self.is_finished():
@@ -673,10 +680,10 @@ class TrialRunner:
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._live_trials)
 
-        def _start_trial(trial: Trial) -> bool:
+        async def _start_trial(trial: Trial) -> bool:
             """Helper function to start trial and call callbacks"""
             with warn_if_slow("start_trial"):
-                if self.trial_executor.start_trial(trial):
+                if await self.trial_executor.start_trial(trial):
                     self._callbacks.on_trial_start(
                         iteration=self._iteration,
                         trials=self._trials,
@@ -686,7 +693,7 @@ class TrialRunner:
 
         may_handle_events = True
         if next_trial is not None:
-            if _start_trial(next_trial):
+            if await _start_trial(next_trial):
                 may_handle_events = False
             elif next_trial.status != Trial.ERROR:
                 # Only try to start another trial if previous trial startup
@@ -694,7 +701,7 @@ class TrialRunner:
                 # placement group is not ready, yet).
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
-                    if _start_trial(next_trial):
+                    if await _start_trial(next_trial):
                         may_handle_events = False
 
         if may_handle_events:
@@ -702,12 +709,12 @@ class TrialRunner:
                 timeout = self._result_wait_time
                 if self.trial_executor.in_staging_grace_period():
                     timeout = 0.1
-                self._process_events(timeout=timeout)
+                await self._process_events(timeout=timeout)
             else:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials())
 
-        self._stop_experiment_if_needed()
+        await self._stop_experiment_if_needed()
 
         try:
             self.checkpoint()
@@ -717,7 +724,7 @@ class TrialRunner:
 
         if self._server:
             with warn_if_slow("server"):
-                self._process_stop_requests()
+                await self._process_stop_requests()
 
             if self.is_finished():
                 self._server.shutdown()
@@ -775,16 +782,16 @@ class TrialRunner:
         ]
         return delim.join(messages)
 
-    def _stop_experiment_if_needed(self):
+    async def _stop_experiment_if_needed(self):
         """Stops all trials."""
         fail_fast = self._fail_fast and self._has_errored
         if (self._stopper.stop_all() or fail_fast
                 or self._should_stop_experiment):
             self._search_alg.set_finished()
-            [
+            await asyncio.wait([
                 self.trial_executor.stop_trial(t) for t in self._trials
                 if t.status is not Trial.ERROR
-            ]
+            ])
 
     def _get_next_trial(self):
         """Replenishes queue.
@@ -812,7 +819,7 @@ class TrialRunner:
                 logger.debug("Running trial {}".format(trial))
         return trial
 
-    def _process_events(self, timeout: Optional[float] = None):
+    async def _process_events(self, timeout: Optional[float] = None):
         with warn_if_slow("get_next_failed_trial"):
             failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
@@ -825,13 +832,13 @@ class TrialRunner:
         else:
             # TODO(ujvl): Consider combining get_next_available_trial and
             #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial(
+            trial = await self.trial_executor.get_next_available_trial(
                 timeout=timeout)  # blocking
             if not trial:
                 return
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
-                    self._process_trial_restore(trial)
+                    await self._process_trial_restore(trial)
                 with warn_if_slow("callbacks.on_trial_restore"):
                     self._callbacks.on_trial_restore(
                         iteration=self._iteration,
@@ -863,7 +870,7 @@ class TrialRunner:
 
             else:
                 with warn_if_slow("process_trial"):
-                    self._process_trial(trial)
+                    await self._process_trial(trial)
 
             # `self._queued_trial_decisions` now contains a final decision
             # based on all results
@@ -871,9 +878,9 @@ class TrialRunner:
                 final_decision = self._queued_trial_decisions.pop(
                     trial.trial_id, None)
                 if final_decision:
-                    self._execute_action(trial, final_decision)
+                    await self._execute_action(trial, final_decision)
 
-    def _process_trial(self, trial):
+    async def _process_trial(self, trial):
         """Processes a trial result.
 
         Fetches the trial's latest result and makes a scheduling decision
@@ -898,7 +905,8 @@ class TrialRunner:
                     "reporting results less frequently to Ray Tune."):
                 for i, result in enumerate(results):
                     with warn_if_slow("process_trial_result"):
-                        decision = self._process_trial_result(trial, result)
+                        decision = await self._process_trial_result(
+                            trial, result)
                     if decision is None:
                         # If we didn't get a decision, this means a
                         # non-training future (e.g. a save) was scheduled.
@@ -927,7 +935,7 @@ class TrialRunner:
                 logger.exception(error_msg)
             self._process_trial_failure(trial, traceback.format_exc())
 
-    def _process_trial_result(self, trial, result):
+    async def _process_trial_result(self, trial, result):
         result.update(trial_id=trial.trial_id)
         is_duplicate = RESULT_DUPLICATE in result
         force_checkpoint = result.get(SHOULD_CHECKPOINT, False)
@@ -949,7 +957,7 @@ class TrialRunner:
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
-                decision = self._scheduler_alg.on_trial_result(
+                decision = await self._scheduler_alg.on_trial_result(
                     self, trial, flat_result)
         if decision == TrialScheduler.STOP:
             result.update(done=True)
@@ -975,7 +983,7 @@ class TrialRunner:
         # the scheduler decision is STOP or PAUSE. Note that
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
-        self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        await self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
@@ -1081,7 +1089,7 @@ class TrialRunner:
         if decision and checkpoint_value:
             self._queue_decision(trial, decision)
 
-    def _process_trial_restore(self, trial):
+    async def _process_trial_restore(self, trial):
         """Processes a trial restore.
 
         Args:
@@ -1093,15 +1101,15 @@ class TrialRunner:
             trial.on_restore()
             logger.debug("Trial %s: Restore processed successfully", trial)
             self.trial_executor.set_status(trial, Trial.RUNNING)
-            self.trial_executor.continue_training(trial)
+            await self.trial_executor.continue_training(trial)
             self._live_trials.add(trial)
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
             if self._fail_fast == TrialRunner.RAISE:
                 raise
-            self._process_trial_failure(trial, traceback.format_exc())
+            await self._process_trial_failure(trial, traceback.format_exc())
 
-    def _process_trial_failure(self, trial, error_msg):
+    async def _process_trial_failure(self, trial, error_msg):
         """Handle trial failure.
 
         Attempt trial recovery if possible, clean up state otherwise.
@@ -1113,15 +1121,15 @@ class TrialRunner:
         self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
-                self._try_recover(trial, error_msg)
+                await self._try_recover(trial, error_msg)
             else:
-                self._scheduler_alg.on_trial_error(self, trial)
+                await self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial)
-                self.trial_executor.stop_trial(
+                await self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
 
     def _queue_decision(self, trial, decision):
@@ -1139,7 +1147,7 @@ class TrialRunner:
         if decision is TrialScheduler.STOP or decision is TrialScheduler.PAUSE:
             self._queued_trial_decisions[trial.trial_id] = decision
 
-    def _execute_action(self, trial, decision):
+    async def _execute_action(self, trial, decision):
         """Executes action based on decision.
 
         Args:
@@ -1147,24 +1155,25 @@ class TrialRunner:
             decision (str): Scheduling decision to undertake.
         """
         if decision == TrialScheduler.CONTINUE:
-            self.trial_executor.continue_training(trial)
+            await self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
-            self.trial_executor.pause_trial(trial)
+            await self.trial_executor.pause_trial(trial)
         elif decision == TrialScheduler.STOP:
-            self.stop_trial(trial)
+            await self.stop_trial(trial)
         elif decision == TrialScheduler.NOOP:
             pass
         else:
             raise ValueError("Invalid decision: {}".format(decision))
 
-    def _checkpoint_trial_if_needed(self, trial, force=False):
+    async def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
+                await self.trial_executor.save(
+                    trial, storage=Checkpoint.PERSISTENT)
 
-    def _try_recover(self, trial, error_msg):
+    async def _try_recover(self, trial, error_msg):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
@@ -1176,7 +1185,7 @@ class TrialRunner:
         if trial.is_restoring:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
-        self.trial_executor.stop_trial(
+        await self.trial_executor.stop_trial(
             trial, error=error_msg is not None, error_msg=error_msg)
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
@@ -1192,8 +1201,8 @@ class TrialRunner:
                     trial)
                 if started:
                     # Clean up again if an actor was launched
-                    self.trial_executor.stop_trial(trial, error=True)
-                self._scheduler_alg.on_trial_error(self, trial)
+                    await self.trial_executor.stop_trial(trial, error=True)
+                await self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
                     iteration=self._iteration,
@@ -1207,16 +1216,16 @@ class TrialRunner:
         if requeue_trial:
             logger.debug("Trial %s: Notifying Scheduler and requeueing.",
                          trial)
-            self._requeue_trial(trial)
+            await self._requeue_trial(trial)
 
-    def _requeue_trial(self, trial):
+    async def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.
 
         This does not notify the SearchAlgorithm because the function
         evaluation is still in progress.
 
         """
-        self._scheduler_alg.on_trial_error(self, trial)
+        await self._scheduler_alg.on_trial_error(self, trial)
         self.trial_executor.set_status(trial, Trial.PENDING)
 
         # TODO(rliaw): Right now, this pushes the trial to the end of queue
@@ -1274,12 +1283,12 @@ class TrialRunner:
     def request_stop_experiment(self):
         self._should_stop_experiment = True
 
-    def _process_stop_requests(self):
+    async def _process_stop_requests(self):
         while self._stop_queue:
             t = self._stop_queue.pop()
-            self.stop_trial(t)
+            await self.stop_trial(t)
 
-    def stop_trial(self, trial):
+    async def stop_trial(self, trial):
         """The canonical implementation of stopping a trial.
 
         Trials may be in any external status when this function is called.
@@ -1294,32 +1303,32 @@ class TrialRunner:
             if trial.status in [Trial.ERROR, Trial.TERMINATED]:
                 return
             elif trial.status in [Trial.PENDING, Trial.PAUSED]:
-                self._scheduler_alg.on_trial_remove(self, trial)
+                await self._scheduler_alg.on_trial_remove(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id)
             elif trial.status is Trial.RUNNING:
                 # By this time trial.last_result should have been
                 # updated already.
-                self._scheduler_alg.on_trial_complete(
+                await self._scheduler_alg.on_trial_complete(
                     self, trial, flatten_dict(trial.last_result))
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flatten_dict(trial.last_result))
             self._callbacks.on_trial_complete(
                 iteration=self._iteration, trials=self._trials, trial=trial)
             self.trial_executor.export_trial_if_needed(trial)
-            self.trial_executor.stop_trial(trial)
+            await self.trial_executor.stop_trial(trial)
             self._live_trials.discard(trial)
         except Exception:
             logger.exception("Trial %s: Error stopping trial.", trial)
             if self._fail_fast == TrialRunner.RAISE:
                 raise
-            self._process_trial_failure(trial, traceback.format_exc())
+            await self._process_trial_failure(trial, traceback.format_exc())
 
-    def cleanup_trials(self):
-        self.trial_executor.cleanup(self.get_trials())
+    async def cleanup_trials(self):
+        await self.trial_executor.cleanup(self.get_trials())
 
-    def cleanup(self):
+    async def cleanup(self):
         """Cleanup trials and callbacks."""
-        self.cleanup_trials()
+        await self.cleanup_trials()
         self.end_experiment_callbacks()
 
     def _reconcile_live_trials(self):

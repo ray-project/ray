@@ -111,7 +111,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Continues the training of this trial."""
         pass
 
-    def pause_trial(self, trial: Trial) -> None:
+    async def pause_trial(self, trial: Trial) -> None:
         """Pauses the trial.
 
         We want to release resources (specifically GPUs) when pausing an
@@ -119,8 +119,8 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
-            self.stop_trial(trial)
+            await self.save(trial, Checkpoint.MEMORY)
+            await self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
             logger.exception("Error pausing runner.")
@@ -205,7 +205,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def restore(self, trial: Trial) -> None:
+    async def restore(self, trial: Trial) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -220,10 +220,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def save(self,
-             trial,
-             storage: str = Checkpoint.PERSISTENT,
-             result: Optional[Dict] = None) -> Checkpoint:
+    async def save(self,
+                   trial,
+                   storage: str = Checkpoint.PERSISTENT,
+                   result: Optional[Dict] = None) -> Checkpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
@@ -255,7 +255,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Returns True if GPUs are detected on the cluster."""
         return False
 
-    def cleanup(self, trials: List[Trial]) -> None:
+    async def cleanup(self, trials: List[Trial]) -> None:
         """Ensures that trials are cleaned up after stopping.
 
         Args:

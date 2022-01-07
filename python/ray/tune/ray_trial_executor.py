@@ -1,4 +1,5 @@
 # coding: utf-8
+import asyncio
 import copy
 import inspect
 from collections import deque
@@ -10,7 +11,6 @@ from queue import Queue
 import random
 import time
 import traceback
-from threading import Thread
 from typing import (
     Callable,
     Dict,
@@ -88,40 +88,6 @@ class _LocalWrapper:
         return self._result
 
 
-class TrialCleanupThread(Thread):
-
-    def __init__(self, queue: Queue):
-        super().__init__()
-        self._futures = {}
-        self._queue = queue
-        self._should_finish = False
-
-    def _process(self, item):
-        if not item:
-            self._should_finish = True
-            self._queue.task_done()
-            return
-        actor, pg = item
-        self._futures[actor.stop.remote()] = pg
-        del actor
-
-    def run(self):
-        while True:
-            if self._should_finish:
-                return
-            item = self._queue.get(block=len(self._futures) == 0)
-            self._process(item)
-            while not self._queue.empty():
-                item = self._queue.get()
-                self._process(item)
-
-            ready_futures, _ = ray.wait(list(self._futures.keys()), timeout=0.5)
-            for ready_future in ready_futures:
-                pg = self._futures.pop(ready_future)
-                remove_placement_group(pg)
-                self._queue.task_done()
-
-
 def noop_logger_creator(config, logdir):
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
@@ -141,13 +107,6 @@ class RayTrialExecutor(TrialExecutor):
                  wait_for_placement_group: Optional[float] = None):
         super(RayTrialExecutor, self).__init__()
         self._running = {}
-
-        force_trial_cleanup = int(
-            os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
-        # self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
-        self._cleanup_queue = Queue()
-        self._cleanup_thread = TrialCleanupThread(self._cleanup_queue)
-        self._cleanup_thread.start()
 
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
@@ -193,6 +152,8 @@ class RayTrialExecutor(TrialExecutor):
 
         if ray.is_initialized():
             self._update_avail_resources()
+
+        self._cleanup_queue = asyncio.Queue()
 
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
@@ -360,7 +321,7 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
 
-    def _train(self, trial):
+    async def _train(self, trial):
         """Start one iteration of training and save remote id."""
 
         if self._find_item(self._running, trial):
@@ -398,11 +359,12 @@ class RayTrialExecutor(TrialExecutor):
         if isinstance(remote, dict):
             remote = _LocalWrapper(remote)
 
-        self._running[remote] = trial
+        self._running[asyncio.ensure_future(
+            asyncio.wrap_future(remote.future()))] = trial
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial) -> bool:
+    async def _start_trial(self, trial) -> bool:
         """Starts trial and restores last result if trial was paused.
 
         Args:
@@ -419,14 +381,14 @@ class RayTrialExecutor(TrialExecutor):
             return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
-        self.restore(trial)
+        await self.restore(trial)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
 
         if not trial.is_restoring:
-            self._train(trial)
+            await self._train(trial)
         return True
 
     def _notify_trainable_of_new_resources_if_needed(self, trial: Trial):
@@ -444,7 +406,7 @@ class RayTrialExecutor(TrialExecutor):
                         logger.exception(
                             "Trial %s: updating resources timed out.", trial)
 
-    def _stop_trial(self, trial: Trial, error=False, error_msg=None):
+    async def _stop_trial(self, trial: Trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -489,7 +451,13 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     pg = self._pg_manager.return_pg(trial)
-                    self._cleanup_queue.put((trial.runner, pg))
+                    logger.info(
+                        f"before putting to clean up queue!!!======================== {trial.runner} {pg}"
+                    )
+                    await self._cleanup_queue.put((trial.runner, pg))
+                    logger.info(
+                        f"after putting to clean up queue!!!======================== {self._cleanup_queue.qsize()}"
+                    )
                     trial.runner = None
 
                 if trial in self._staged_trials:
@@ -501,7 +469,7 @@ class RayTrialExecutor(TrialExecutor):
         finally:
             trial.set_runner(None)
 
-    def start_trial(self, trial: Trial) -> bool:
+    async def start_trial(self, trial: Trial) -> bool:
         """Starts the trial.
 
         Will not return resources if trial repeatedly fails on start.
@@ -514,20 +482,20 @@ class RayTrialExecutor(TrialExecutor):
                 not started (e.g. because of lacking resources/pending PG).
         """
         try:
-            return self._start_trial(trial)
+            return await self._start_trial(trial)
         except AbortTrialExecution:
             logger.exception("Trial %s: Error starting runner, aborting!",
                              trial)
             time.sleep(2)
             error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            await self._stop_trial(trial, error=True, error_msg=error_msg)
             return False
         except Exception:
             logger.exception("Trial %s: Unexpected error starting runner.",
                              trial)
             time.sleep(2)
             error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            await self._stop_trial(trial, error=True, error_msg=error_msg)
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
             return False
@@ -539,21 +507,21 @@ class RayTrialExecutor(TrialExecutor):
         ) <= 1, "Expecting one future for any given trial at any given time."
         return out
 
-    def stop_trial(self,
-                   trial: Trial,
-                   error: bool = False,
-                   error_msg: Optional[str] = None) -> None:
+    async def stop_trial(self,
+                         trial: Trial,
+                         error: bool = False,
+                         error_msg: Optional[str] = None) -> None:
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        await self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_item(self._running, trial)
             for result_id in out:
                 self._running.pop(result_id)
 
-    def continue_training(self, trial: Trial) -> None:
+    async def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
-        self._train(trial)
+        await self._train(trial)
 
     def reset_trial(self,
                     trial: Trial,
@@ -632,7 +600,7 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(
+    async def get_next_available_trial(
             self, timeout: Optional[float] = None) -> Optional[Trial]:
         if not self._running:
             return None
@@ -644,10 +612,13 @@ class RayTrialExecutor(TrialExecutor):
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
         start = time.time()
-        ready, _ = ray.wait(shuffled_results, timeout=timeout)
+        ready, _ = await asyncio.wait(
+            shuffled_results,
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED)
         if not ready:
             return None
-        result_id = ready[0]
+        result_id = list(ready)[0]
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.time()
@@ -672,7 +643,7 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+            result = trial_future[0].result()
 
         # For local mode
         if isinstance(result, _LocalWrapper):
@@ -791,10 +762,18 @@ class RayTrialExecutor(TrialExecutor):
     def force_reconcilation_on_next_step_end(self) -> None:
         self.last_pg_recon = -float("inf")
 
-    def save(self,
-             trial,
-             storage=Checkpoint.PERSISTENT,
-             result: Optional[Dict] = None) -> Checkpoint:
+    def save_in_memory(self, trial,
+                       result: Optional[Dict] = None) -> Checkpoint:
+        result = result or trial.last_result
+        with self._change_working_directory(trial):
+            value = trial.runner.save_to_object.remote()
+            checkpoint = Checkpoint(Checkpoint.MEMORY, value, result)
+            trial.on_checkpoint(checkpoint)
+
+    async def save(self,
+                   trial,
+                   storage=Checkpoint.PERSISTENT,
+                   result: Optional[Dict] = None) -> Checkpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -817,10 +796,11 @@ class RayTrialExecutor(TrialExecutor):
                 value = trial.runner.save.remote()
                 checkpoint = Checkpoint(storage, value, result)
                 trial.saving_to = checkpoint
-                self._running[value] = trial
+                self._running[asyncio.ensure_future(
+                    asyncio.wrap_future(value.future()))] = trial
         return checkpoint
 
-    def restore(self, trial) -> None:
+    async def restore(self, trial) -> None:
         """Restores training state from a given model checkpoint.
 
         Args:
@@ -862,7 +842,8 @@ class RayTrialExecutor(TrialExecutor):
                     "restoration. Pass in an `upload_dir` for remote "
                     "storage-based restoration")
 
-            self._running[remote] = trial
+            self._running[asyncio.ensure_future(
+                asyncio.wrap_future(remote.future()))] = trial
             trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
@@ -883,14 +864,60 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self, trials: List[Trial]) -> None:
-        # Closing the channel between main thread and clean up thread.
-        self._cleanup_queue.put(None)
-        self._cleanup_queue.join()
-        self._cleanup_thread.join()
+    async def cleanup(self, trials: List[Trial]) -> None:
+        logger.info(f"==Finishing the cleanup queue.")
+        await self._cleanup_queue.put(None)
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
+
+    async def run_cleanup(self):
+        logger.info("Inside of run_cleanup!")
+        import asyncio
+        futures = {}
+        done = False
+        tasks = set()
+        tasks.add(asyncio.create_task(self._cleanup_queue.get()))
+        while True:
+            if done and len(futures) == 0:
+                logger.info("Finished cleanup!")
+                return
+            logger.info(
+                f"Block waiting! queue size = {self._cleanup_queue.qsize()}")
+
+            items, _ = await asyncio.wait(
+                tasks, timeout=1, return_when=asyncio.FIRST_COMPLETED)
+            logger.info(f"After waiting! items {items}")
+            for item in items:
+                tasks.remove(item)
+                if item in futures.keys():
+                    logger.info(
+                        "stop future finished----------------------------------!"
+                    )
+                    pg = futures.pop(item)
+                    remove_placement_group(pg)
+                    self._cleanup_queue.task_done()
+                else:
+                    logger.info(
+                        "Something through the queue----------------------------------!"
+                    )
+                    tasks.add(asyncio.create_task(self._cleanup_queue.get()))
+                    item_result = item.result()
+                    if item_result is None:
+                        logger.info(
+                            "queue is finished----------------------------------!"
+                        )
+                        done = True
+                    else:
+                        logger.info(
+                            "actor pg coming through----------------------------------!"
+                        )
+                        actor, pg = item_result
+                        stop_task = asyncio.ensure_future(
+                            asyncio.wrap_future(actor.stop.remote().future()))
+                        futures[stop_task] = pg
+                        tasks.add(stop_task)
+                        del actor
 
     @contextmanager
     def _change_working_directory(self, trial):

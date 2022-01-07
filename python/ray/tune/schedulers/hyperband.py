@@ -203,8 +203,8 @@ class HyperBandScheduler(FIFOScheduler):
         cur_band = self._hyperbands[self._state["band_idx"]]
         return len(cur_band) == self._s_max_1
 
-    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial, result: Dict):
+    async def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                              trial: Trial, result: Dict):
         """If bracket is finished, all trials will be stopped.
 
         If a given trial finishes and bracket iteration is not done,
@@ -220,13 +220,13 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
-        action = self._process_bracket(trial_runner, bracket)
+        action = await self._process_bracket(trial_runner, bracket)
         logger.debug(f"{action} for {trial} on "
                      f"{self._time_attr}={result.get(self._time_attr)}")
         return action
 
-    def _process_bracket(self, trial_runner: "trial_runner.TrialRunner",
-                         bracket: "Bracket") -> str:
+    async def _process_bracket(self, trial_runner: "trial_runner.TrialRunner",
+                               bracket: "Bracket") -> str:
         """This is called whenever a trial makes progress.
 
         When all live trials in the bracket have no more iterations left,
@@ -238,7 +238,7 @@ class HyperBandScheduler(FIFOScheduler):
         action = TrialScheduler.PAUSE
         if bracket.cur_iter_done():
             if bracket.finished():
-                bracket.cleanup_full(trial_runner)
+                await bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
             good, bad = bracket.successive_halving(self._metric,
@@ -247,7 +247,7 @@ class HyperBandScheduler(FIFOScheduler):
             self._num_stopped += len(bad)
             for t in bad:
                 if t.status == Trial.PAUSED:
-                    trial_runner.stop_trial(t)
+                    await trial_runner.stop_trial(t)
                 elif t.status == Trial.RUNNING:
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
@@ -267,8 +267,8 @@ class HyperBandScheduler(FIFOScheduler):
                         action = TrialScheduler.CONTINUE
         return action
 
-    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial):
+    async def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                              trial: Trial):
         """Notification when trial terminates.
 
         Trial info is removed from bracket. Triggers halving if bracket is
@@ -276,17 +276,17 @@ class HyperBandScheduler(FIFOScheduler):
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
         if not bracket.finished():
-            self._process_bracket(trial_runner, bracket)
+            await self._process_bracket(trial_runner, bracket)
 
-    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
-                          trial: Trial, result: Dict):
+    async def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                                trial: Trial, result: Dict):
         """Cleans up trial info from bracket if trial completed early."""
-        self.on_trial_remove(trial_runner, trial)
+        await self.on_trial_remove(trial_runner, trial)
 
-    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
-                       trial: Trial):
+    async def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
+                             trial: Trial):
         """Cleans up trial info from bracket if trial errored early."""
-        self.on_trial_remove(trial_runner, trial)
+        await self.on_trial_remove(trial_runner, trial)
 
     def choose_trial_to_run(
             self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
@@ -463,14 +463,14 @@ class Bracket:
         left in a bracket with a large max-iteration."""
         self._live_trials.pop(trial, None)
 
-    def cleanup_full(self, trial_runner: "trial_runner.TrialRunner"):
+    async def cleanup_full(self, trial_runner: "trial_runner.TrialRunner"):
         """Cleans up bracket after bracket is completely finished.
 
         Lets the last trial continue to run until termination condition
         kicks in."""
         for trial in self.current_trials():
             if (trial.status == Trial.PAUSED):
-                trial_runner.stop_trial(trial)
+                await trial_runner.stop_trial(trial)
 
     def completion_percentage(self) -> float:
         """Returns a progress metric.

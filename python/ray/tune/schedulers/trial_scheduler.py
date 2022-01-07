@@ -57,16 +57,16 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
-                       trial: Trial):
+    async def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
+                             trial: Trial):
         """Notification for the error of trial.
 
         This will only be called when the trial is in the RUNNING state."""
 
         raise NotImplementedError
 
-    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial, result: Dict) -> str:
+    async def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                              trial: Trial, result: Dict) -> str:
         """Called on each intermediate result returned by a trial.
 
         At this point, the trial scheduler can make a decision by returning
@@ -75,8 +75,8 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
-                          trial: Trial, result: Dict):
+    async def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                                trial: Trial, result: Dict):
         """Notification for the completion of trial.
 
         This will only be called when the trial is in the RUNNING state and
@@ -84,8 +84,8 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial):
+    async def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                              trial: Trial):
         """Called to remove trial.
 
         This is called when the trial is in PAUSED or PENDING state. Otherwise,
