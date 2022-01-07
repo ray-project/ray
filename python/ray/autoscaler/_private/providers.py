@@ -62,6 +62,12 @@ def _import_fake_multinode(provider_config):
     return FakeMultiNodeProvider
 
 
+def _import_fake_multinode_docker(provider_config):
+    from ray.autoscaler._private.fake_multi_node.node_provider import \
+        FakeMultiNodeDockerProvider
+    return FakeMultiNodeDockerProvider
+
+
 def _import_kubernetes(provider_config):
     from ray.autoscaler._private._kubernetes.node_provider import \
         KubernetesNodeProvider
@@ -80,7 +86,7 @@ def _import_aliyun(provider_config):
     return AliyunNodeProvider
 
 
-def _load_fake_multinode_defaults_config():
+def _load_fake_multinode_docker_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
     return os.path.join(
         os.path.dirname(ray_fake_multinode.__file__), "example_docker.yaml")
@@ -130,6 +136,7 @@ def _import_external(provider_config):
 _NODE_PROVIDERS = {
     "local": _import_local,
     "fake_multinode": _import_fake_multinode,
+    "fake_multinode_docker": _import_fake_multinode_docker,
     "readonly": _import_readonly,
     "aws": _import_aws,
     "gcp": _import_gcp,
@@ -143,6 +150,7 @@ _NODE_PROVIDERS = {
 _PROVIDER_PRETTY_NAMES = {
     "readonly": "Readonly (Manual Cluster Setup)",
     "fake_multinode": "Fake Multinode",
+    "fake_multinode_docker": "Fake Multinode Docker",
     "local": "Local",
     "aws": "AWS",
     "gcp": "GCP",
@@ -154,7 +162,7 @@ _PROVIDER_PRETTY_NAMES = {
 }
 
 _DEFAULT_CONFIGS = {
-    "fake_multinode": _load_fake_multinode_defaults_config,
+    "fake_multinode_docker": _load_fake_multinode_docker_defaults_config,
     "local": _load_local_defaults_config,
     "aws": _load_aws_defaults_config,
     "gcp": _load_gcp_defaults_config,

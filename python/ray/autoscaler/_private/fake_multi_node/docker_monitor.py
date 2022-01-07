@@ -174,12 +174,9 @@ def start_monitor(config_file: str):
     cluster_config = _read_yaml(config_file)
 
     provider_config = cluster_config["provider"]
-    assert provider_config["type"] == "fake_multinode", (
+    assert provider_config["type"] == "fake_multinode_docker", (
         f"The docker monitor only works with providers of type "
-        f"`fake-multinode`, got `{provider_config['type']}`")
-    assert provider_config.get("docker", False) is True, (
-        "The docker monitor only works with provider configs that set "
-        "`docker=True`")
+        f"`fake_multinode_docker`, got `{provider_config['type']}`")
 
     project_name = provider_config["project_name"]
 

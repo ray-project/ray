@@ -214,7 +214,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 "FakeMultiNodeProvider requires ray to be started with "
                 "RAY_FAKE_CLUSTER=1 ray start ...")
 
-        fake_head = {
+        self._nodes = {
             FAKE_HEAD_NODE_ID: {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
@@ -224,108 +224,193 @@ class FakeMultiNodeProvider(NodeProvider):
                 }
             },
         }
-
-        self._nodes = copy.deepcopy(fake_head)
         self._next_node_id = 0
-
-        self.uses_docker = provider_config.get("docker", False)
-
-        if self.uses_docker:
-            self._project_name = self.provider_config["project_name"]
-            self._docker_image = self.provider_config["image"]
-
-            self._host_gcs_port = self.provider_config.get(
-                "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT)
-            self._host_object_manager_port = self.provider_config.get(
-                "host_object_manager_port",
-                FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT)
-            self._host_client_port = self.provider_config.get(
-                "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
-
-            self._head_resources = self.provider_config["head_resources"]
-
-            # subdirs:
-            #  - ./shared (shared filesystem)
-            #  - ./nodes/<node_id> (node-specific mounted filesystem)
-            self._volume_dir = self.provider_config["shared_volume_dir"]
-            self._mounted_cluster_dir = os.path.join(self._volume_dir,
-                                                     "shared")
-
-            if not self.in_docker_container:
-                # Only needed on host
-                os.makedirs(
-                    self._mounted_cluster_dir, mode=0o755, exist_ok=True)
-
-            self._boostrap_config_path = os.path.join(self._volume_dir,
-                                                      "bootstrap_config.yaml")
-
-            self._private_key_path = os.path.join(self._volume_dir,
-                                                  "bootstrap_key.pem")
-            self._public_key_path = os.path.join(self._volume_dir,
-                                                 "bootstrap_key.pem.pub")
-
-            if not self.in_docker_container:
-                # Create private key
-                if not os.path.exists(self._private_key_path):
-                    subprocess.check_output(
-                        f"ssh-keygen -b 2048 -t rsa -q -N \"\" "
-                        f"-f {self._private_key_path}",
-                        shell=True)
-
-                # Create public key
-                if not os.path.exists(self._public_key_path):
-                    subprocess.check_output(
-                        f"ssh-keygen -y "
-                        f"-f {self._private_key_path} "
-                        f"> {self._public_key_path}",
-                        shell=True)
-
-            self._docker_compose_config_path = os.path.join(
-                self._volume_dir, "docker-compose.yaml")
-            self._docker_compose_config = None
-
-            self._node_state_path = os.path.join(self._volume_dir,
-                                                 "nodes.json")
-            self._docker_status_path = os.path.join(self._volume_dir,
-                                                    "status.json")
-
-            self._load_node_state()
-            if FAKE_HEAD_NODE_ID not in self._nodes:
-                # Reset
-                self._nodes = copy.deepcopy(fake_head)
-
-            self._nodes[FAKE_HEAD_NODE_ID][
-                "node_spec"] = self._create_node_spec_with_resources(
-                    head=True,
-                    node_id=FAKE_HEAD_NODE_ID,
-                    resources=self._head_resources)
-            self._possibly_terminated_nodes = dict()
-
-            self._cleanup_interval = provider_config.get(
-                "cleanup_interval", 9.5)
-
-            self._docker_status = {}
-
-            self._update_docker_compose_config()
-            self._update_docker_status()
-            self._save_node_state()
-
-    @property
-    def in_docker_container(self):
-        return os.path.exists(os.path.join(self._volume_dir, ".in_docker"))
 
     def _next_hex_node_id(self):
         self._next_node_id += 1
         base = "fffffffffffffffffffffffffffffffffffffffffffffffffff"
         return base + str(self._next_node_id).zfill(5)
 
-    def _has_head_node(self):
-        for node in self._nodes.values():
-            tags = node["tags"]
-            if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
-                return True
+    def non_terminated_nodes(self, tag_filters):
+        with self.lock:
+            nodes = []
+            for node_id in self._nodes:
+                tags = self.node_tags(node_id)
+                ok = True
+                for k, v in tag_filters.items():
+                    if tags.get(k) != v:
+                        ok = False
+                if ok:
+                    nodes.append(node_id)
 
-        return False
+            return nodes
+
+    def is_running(self, node_id):
+        with self.lock:
+            return node_id in self._nodes
+
+    def is_terminated(self, node_id):
+        with self.lock:
+            return node_id not in self._nodes
+
+    def node_tags(self, node_id):
+        with self.lock:
+            return self._nodes[node_id]["tags"]
+
+    def _get_ip(self, node_id: str) -> Optional[str]:
+        return node_id
+
+    def external_ip(self, node_id):
+        return self._get_ip(node_id)
+
+    def internal_ip(self, node_id):
+        return self._get_ip(node_id)
+
+    def set_node_tags(self, node_id, tags):
+        raise AssertionError("Readonly node provider cannot be updated")
+
+    def create_node_with_resources(self, node_config, tags, count, resources):
+        with self.lock:
+            node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            next_id = self._next_hex_node_id()
+            ray_params = ray._private.parameter.RayParams(
+                min_worker_port=0,
+                max_worker_port=0,
+                dashboard_port=None,
+                num_cpus=resources.pop("CPU", 0),
+                num_gpus=resources.pop("GPU", 0),
+                object_store_memory=resources.pop("object_store_memory", None),
+                resources=resources,
+                redis_address="{}:6379".format(
+                    ray._private.services.get_node_ip_address()),
+                gcs_address="{}:6379".format(
+                    ray._private.services.get_node_ip_address()),
+                env_vars={
+                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
+                    "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
+                })
+            node = ray.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=False,
+                spawn_reaper=False)
+            self._nodes[next_id] = {
+                "tags": {
+                    TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                    TAG_RAY_USER_NODE_TYPE: node_type,
+                    TAG_RAY_NODE_NAME: next_id,
+                    TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                },
+                "node": node
+            }
+
+    def terminate_node(self, node_id):
+        with self.lock:
+            try:
+                node = self._nodes.pop(node_id)
+            except Exception as e:
+                raise e
+
+            self._terminate_node(node)
+
+    def _terminate_node(self, node):
+        node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
+
+    @staticmethod
+    def bootstrap_config(cluster_config):
+        return cluster_config
+
+
+class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
+    """A node provider that implements multi-node on a single machine.
+
+    This is used for laptop mode testing of multi node functionality
+    where each node has their own FS and IP."""
+
+    def __init__(self, provider_config, cluster_name):
+        super(FakeMultiNodeDockerProvider, self).__init__(
+            provider_config, cluster_name)
+
+        fake_head = copy.deepcopy(self._nodes)
+
+        self._project_name = self.provider_config["project_name"]
+        self._docker_image = self.provider_config["image"]
+
+        self._host_gcs_port = self.provider_config.get(
+            "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT)
+        self._host_object_manager_port = self.provider_config.get(
+            "host_object_manager_port",
+            FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT)
+        self._host_client_port = self.provider_config.get(
+            "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT)
+
+        self._head_resources = self.provider_config["head_resources"]
+
+        # subdirs:
+        #  - ./shared (shared filesystem)
+        #  - ./nodes/<node_id> (node-specific mounted filesystem)
+        self._volume_dir = self.provider_config["shared_volume_dir"]
+        self._mounted_cluster_dir = os.path.join(self._volume_dir, "shared")
+
+        if not self.in_docker_container:
+            # Only needed on host
+            os.makedirs(self._mounted_cluster_dir, mode=0o755, exist_ok=True)
+
+        self._boostrap_config_path = os.path.join(self._volume_dir,
+                                                  "bootstrap_config.yaml")
+
+        self._private_key_path = os.path.join(self._volume_dir,
+                                              "bootstrap_key.pem")
+        self._public_key_path = os.path.join(self._volume_dir,
+                                             "bootstrap_key.pem.pub")
+
+        if not self.in_docker_container:
+            # Create private key
+            if not os.path.exists(self._private_key_path):
+                subprocess.check_output(
+                    f"ssh-keygen -b 2048 -t rsa -q -N \"\" "
+                    f"-f {self._private_key_path}",
+                    shell=True)
+
+            # Create public key
+            if not os.path.exists(self._public_key_path):
+                subprocess.check_output(
+                    f"ssh-keygen -y "
+                    f"-f {self._private_key_path} "
+                    f"> {self._public_key_path}",
+                    shell=True)
+
+        self._docker_compose_config_path = os.path.join(
+            self._volume_dir, "docker-compose.yaml")
+        self._docker_compose_config = None
+
+        self._node_state_path = os.path.join(self._volume_dir, "nodes.json")
+        self._docker_status_path = os.path.join(self._volume_dir,
+                                                "status.json")
+
+        self._load_node_state()
+        if FAKE_HEAD_NODE_ID not in self._nodes:
+            # Reset
+            self._nodes = copy.deepcopy(fake_head)
+
+        self._nodes[FAKE_HEAD_NODE_ID][
+            "node_spec"] = self._create_node_spec_with_resources(
+                head=True,
+                node_id=FAKE_HEAD_NODE_ID,
+                resources=self._head_resources)
+        self._possibly_terminated_nodes = dict()
+
+        self._cleanup_interval = provider_config.get("cleanup_interval", 9.5)
+
+        self._docker_status = {}
+
+        self._update_docker_compose_config()
+        self._update_docker_status()
+        self._save_node_state()
+
+    @property
+    def in_docker_container(self):
+        return os.path.exists(os.path.join(self._volume_dir, ".in_docker"))
 
     def _create_node_spec_with_resources(self, head: bool, node_id: str,
                                          resources: Dict[str, Any]):
@@ -395,14 +480,6 @@ class FakeMultiNodeProvider(NodeProvider):
         with open(self._docker_status_path, "rt") as f:
             self._docker_status = json.load(f)
 
-    def _is_docker_running(self, node_id):
-        if not self.uses_docker:
-            return True
-        self._update_docker_status()
-
-        return self._docker_status.get(node_id, {}).get("State",
-                                                        None) == "running"
-
     def _update_nodes(self):
         for node_id in list(self._nodes):
             if not self._is_docker_running(node_id):
@@ -434,6 +511,30 @@ class FakeMultiNodeProvider(NodeProvider):
 
         return node_status["Name"]
 
+    def _is_docker_running(self, node_id):
+        self._update_docker_status()
+
+        return self._docker_status.get(node_id, {}).get("State",
+                                                        None) == "running"
+
+    def non_terminated_nodes(self, tag_filters):
+        self._update_nodes()
+        return super(FakeMultiNodeDockerProvider,
+                     self).non_terminated_nodes(tag_filters)
+
+    def is_running(self, node_id):
+        with self.lock:
+            self._update_nodes()
+
+            return node_id in self._nodes and self._is_docker_running(node_id)
+
+    def is_terminated(self, node_id):
+        with self.lock:
+            self._update_nodes()
+
+            return node_id not in self._nodes and not self._is_docker_running(
+                node_id)
+
     def get_command_runner(self,
                            log_prefix: str,
                            node_id: str,
@@ -443,12 +544,12 @@ class FakeMultiNodeProvider(NodeProvider):
                            use_internal_ip: bool,
                            docker_config: Optional[Dict[str, Any]] = None
                            ) -> CommandRunnerInterface:
-        if not self.uses_docker or self.in_docker_container:
+        if self.in_docker_container:
             return super(FakeMultiNodeProvider, self).get_command_runner(
                 log_prefix, node_id, auth_config, cluster_name, process_runner,
                 use_internal_ip)
 
-        # Else, docker:
+        # Else, host command runner:
         common_args = {
             "log_prefix": log_prefix,
             "node_id": node_id,
@@ -464,43 +565,7 @@ class FakeMultiNodeProvider(NodeProvider):
 
         return FakeDockerCommandRunner(docker_config, **common_args)
 
-    def non_terminated_nodes(self, tag_filters):
-        with self.lock:
-            self._update_nodes()
-
-            nodes = []
-            for node_id in self._nodes:
-                tags = self.node_tags(node_id)
-                ok = True
-                for k, v in tag_filters.items():
-                    if tags.get(k) != v:
-                        ok = False
-                if ok:
-                    nodes.append(node_id)
-
-            return nodes
-
-    def is_running(self, node_id):
-        with self.lock:
-            self._update_nodes()
-
-            return node_id in self._nodes and self._is_docker_running(node_id)
-
-    def is_terminated(self, node_id):
-        with self.lock:
-            self._update_nodes()
-
-            return node_id not in self._nodes and not self._is_docker_running(
-                node_id)
-
-    def node_tags(self, node_id):
-        with self.lock:
-            return self._nodes[node_id]["tags"]
-
     def _get_ip(self, node_id: str) -> Optional[str]:
-        if not self.uses_docker:
-            return node_id
-
         for i in range(3):
             self._update_docker_status()
             ip = self._docker_status.get(node_id, {}).get("IP", None)
@@ -509,102 +574,36 @@ class FakeMultiNodeProvider(NodeProvider):
             time.sleep(3)
         return None
 
-    def external_ip(self, node_id):
-        if self.uses_docker:
-            return self._get_ip(node_id)
-        return node_id
-
-    def internal_ip(self, node_id):
-        if self.uses_docker:
-            return self._get_ip(node_id)
-        return node_id
-
     def set_node_tags(self, node_id, tags):
         assert node_id in self._nodes
         self._nodes[node_id]["tags"].update(tags)
 
     def create_node_with_resources(self, node_config, tags, count, resources):
         with self.lock:
-            if not self.uses_docker:
-                self._create_node_with_resources_core(node_config, tags, count,
-                                                      resources)
+            is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
+
+            if is_head:
+                next_id = FAKE_HEAD_NODE_ID
             else:
-                self._create_node_with_resources_docker(
-                    node_config, tags, count, resources)
+                next_id = self._next_hex_node_id()
+
+            self._nodes[next_id] = {
+                "tags": tags,
+                "node_spec": self._create_node_spec_with_resources(
+                    head=is_head, node_id=next_id, resources=resources)
+            }
+            self._update_docker_compose_config()
             self._save_node_state()
 
     def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
                     count: int) -> Optional[Dict[str, Any]]:
-        if self.uses_docker:
-            resources = self._head_resources
-            return self.create_node_with_resources(node_config, tags, count,
-                                                   resources)
-        else:
-            raise NotImplementedError
+        resources = self._head_resources
+        return self.create_node_with_resources(node_config, tags, count,
+                                               resources)
 
-    def _create_node_with_resources_core(self, node_config, tags, count,
-                                         resources):
-        node_type = tags[TAG_RAY_USER_NODE_TYPE]
-        next_id = self._next_hex_node_id()
-        ray_params = ray._private.parameter.RayParams(
-            min_worker_port=0,
-            max_worker_port=0,
-            dashboard_port=None,
-            num_cpus=resources.pop("CPU", 0),
-            num_gpus=resources.pop("GPU", 0),
-            object_store_memory=resources.pop("object_store_memory", None),
-            resources=resources,
-            redis_address="{}:6379".format(
-                ray._private.services.get_node_ip_address()),
-            gcs_address="{}:6379".format(
-                ray._private.services.get_node_ip_address()),
-            env_vars={
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-                "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
-            })
-        node = ray.node.Node(
-            ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False)
-        self._nodes[next_id] = {
-            "tags": {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_USER_NODE_TYPE: node_type,
-                TAG_RAY_NODE_NAME: next_id,
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-            },
-            "node": node
-        }
-
-    def _create_node_with_resources_docker(self, node_config, tags, count,
-                                           resources):
-        is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
-
-        if is_head:
-            next_id = FAKE_HEAD_NODE_ID
-        else:
-            next_id = self._next_hex_node_id()
-
-        self._nodes[next_id] = {
-            "tags": tags,
-            "node_spec": self._create_node_spec_with_resources(
-                head=is_head, node_id=next_id, resources=resources)
-        }
+    def _terminate_node(self, node):
         self._update_docker_compose_config()
-
-    def terminate_node(self, node_id):
-        with self.lock:
-            try:
-                node = self._nodes.pop(node_id)
-            except Exception as e:
-                raise e
-
-            if not self.uses_docker:
-                self._kill_ray_processes(node["node"])
-            else:
-                self._update_docker_compose_config()
-            self._save_node_state()
-
-    def _kill_ray_processes(self, node):
-        node.kill_all_processes(check_alive=False, allow_graceful=True)
+        self._save_node_state()
 
     @staticmethod
     def bootstrap_config(cluster_config):
