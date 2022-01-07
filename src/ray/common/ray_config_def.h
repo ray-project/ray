@@ -108,7 +108,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
 // If true, we place a soft cap on the numer of scheduling classes, see
 // `worker_cap_initial_backoff_delay_ms`.
-RAY_CONFIG(bool, worker_cap_enabled, false)
+RAY_CONFIG(bool, worker_cap_enabled, true)
 
 /// We place a soft cap on the number of tasks of a given scheduling class that
 /// can run at once to limit the total nubmer of worker processes. After the
@@ -323,9 +323,6 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
-/// Whether put small objects in the local memory store.
-RAY_CONFIG(bool, put_small_object_in_memory_store, false)
-
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -366,6 +363,10 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+/// The soft limit of the number of workers.
+/// -1 means using num_cpus instead.
+RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)

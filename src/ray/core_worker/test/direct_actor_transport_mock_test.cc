@@ -87,7 +87,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_))
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
@@ -111,7 +111,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   inline_obj_ref->set_object_id(ObjectID::ForActorHandle(actor_id).Binary());
   std::function<void(Status)> register_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
-              AsyncRegisterActor(creation_task_spec, ::testing::_))
+              AsyncRegisterActor(creation_task_spec, ::testing::_, ::testing::_))
       .WillOnce(::testing::DoAll(::testing::SaveArg<1>(&register_cb),
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());

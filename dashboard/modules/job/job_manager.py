@@ -206,10 +206,10 @@ class JobSupervisor:
                 "runtime_env": self._runtime_env,
                 "metadata": self._metadata,
             })
-            ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
-            )
-            os.environ[ray_constants.
-                       RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
+            # Set RAY_ADDRESS to local Ray address, if it is not set.
+            os.environ[
+                ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = \
+                ray._private.services.get_ray_address_from_environment()
 
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)

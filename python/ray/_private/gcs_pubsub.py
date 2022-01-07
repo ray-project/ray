@@ -377,6 +377,40 @@ class GcsFunctionKeySubscriber(_SyncSubscriber):
             return self._pop_function_key(self._queue)
 
 
+class GcsActorSubscriber(_SyncSubscriber):
+    """Subscriber to actor updates. Thread safe.
+
+    Usage example:
+        subscriber = GcsActorSubscriber()
+        # Subscribe to the actor channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            actor_data = subscriber.poll()
+            ......
+        # Unsubscribe from the channel.
+        subscriber.close()
+    """
+
+    def __init__(
+            self,
+            address: str = None,
+            channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.GCS_ACTOR_CHANNEL, address, channel)
+
+    def poll(self, timeout=None) -> Optional[bytes]:
+        """Polls for new actor messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
+        with self._lock:
+            self._poll_locked(timeout=timeout)
+            return self._pop_actor(self._queue)
+
+
 class GcsAioPublisher(_PublisherBase):
     """Publisher to GCS. Uses async io."""
 

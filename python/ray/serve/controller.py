@@ -214,12 +214,10 @@ class ServeController:
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
-            entry["ray_job_id"] = ("None"
-                                   if deployment_info.deployer_job_id is None
-                                   else deployment_info.deployer_job_id.hex())
+            entry["ray_job_id"] = deployment_info.deployer_job_id.hex()
             entry["class_name"] = (
                 deployment_info.replica_config.func_or_class_name)
-            entry["version"] = deployment_info.version or "None"
+            entry["version"] = deployment_info.version
             entry["http_route"] = route_prefix
             entry["start_time"] = deployment_info.start_time_ms
             entry["end_time"] = deployment_info.end_time_ms or 0
@@ -238,10 +236,9 @@ class ServeController:
                         continue
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
-                    replica_version = ("None"
-                                       if (replica.version is None
-                                           or replica.version.unversioned) else
-                                       replica.version.code_version)
+                    replica_version = (None if (replica.version is None
+                                                or replica.version.unversioned)
+                                       else replica.version.code_version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
@@ -277,15 +274,16 @@ class ServeController:
 
             return goal_ids
 
-    def deploy(self,
-               name: str,
-               deployment_config_proto_bytes: bytes,
-               replica_config: ReplicaConfig,
-               version: Optional[str],
-               prev_version: Optional[str],
-               route_prefix: Optional[str],
-               deployer_job_id: "Optional[ray._raylet.JobID]" = None
-               ) -> Tuple[Optional[GoalId], bool]:
+    def deploy(
+            self,
+            name: str,
+            deployment_config_proto_bytes: bytes,
+            replica_config: ReplicaConfig,
+            version: Optional[str],
+            prev_version: Optional[str],
+            route_prefix: Optional[str],
+            deployer_job_id: "ray._raylet.JobID",
+    ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 

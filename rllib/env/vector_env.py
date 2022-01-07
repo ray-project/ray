@@ -339,24 +339,3 @@ class VectorEnvWrapper(BaseEnv):
     @PublicAPI
     def action_space(self) -> gym.Space:
         return self._action_space
-
-    @staticmethod
-    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
-        """Check if the given space contains the observations of x.
-
-        Args:
-            space: The space to if x's observations are contained in.
-            x: The observations to check.
-
-        Note: With vector envs, we can process the raw observations
-            and ignore the agent ids and env ids, since vector envs'
-            sub environements are guaranteed to be the same
-
-        Returns:
-            True if the observations of x are contained in space.
-        """
-        for _, multi_agent_dict in x.items():
-            for _, element in multi_agent_dict.items():
-                if not space.contains(element):
-                    return False
-        return True

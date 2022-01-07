@@ -25,10 +25,10 @@ class DeploymentInfo:
                  deployment_config: DeploymentConfig,
                  replica_config: ReplicaConfig,
                  start_time_ms: int,
+                 deployer_job_id: "ray._raylet.JobID",
                  actor_name: Optional[str] = None,
                  serialized_deployment_def: Optional[bytes] = None,
                  version: Optional[str] = None,
-                 deployer_job_id: "Optional[ray._raylet.JobID]" = None,
                  end_time_ms: Optional[int] = None,
                  autoscaling_policy: Optional[AutoscalingPolicy] = None):
         self.deployment_config = deployment_config

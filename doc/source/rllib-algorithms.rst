@@ -887,3 +887,65 @@ Intrinsic rewards for each env-step are calculated by taking the euclidian dista
 ("forward" model).
 This allows the agent to explore areas of the environment, where the "forward" model still performs poorly (are not "understood" yet), whereas exploration to these areas will taper down after the agent has visited them
 often: The "forward" model will eventually get better at predicting these next latent vectors, which in turn will diminish the intrinsic rewards (decrease the euclidian distance between predicted and actual vectors).
+
+
+
+.. _RE3:
+
+RE3 (Random Encoders for Efficient Exploration)
+-----------------------------------------------
+
+|Tensorflow|
+`[paper] <https://arxiv.org/pdf/2102.09430.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/random_encoder.py>`__
+
+Examples:
+`LunarLanderContinuous-v2 <https://github.com/ray-project/ray/blob/master/rllib/examples/re3_exploration.py>`__ (use ``--env LunarLanderContinuous-v2`` command line option)
+`Test case with Pendulum-v1 example <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/tests/test_random_encoder.py>`__
+
+**Activating RE3**
+The RE3 plugin can be easily activated by specifying it as the Exploration class to-be-used
+in the main Trainer config and inheriting the `RE3UpdateCallbacks` as shown in this `example <https://github.com/ray-project/ray/blob/c9c3f0745a9291a4de0872bdfa69e4ffdfac3657/rllib/utils/exploration/tests/test_random_encoder.py#L35>`__. Most of its parameters usually do not have to be specified as the module uses the values from the paper by default. For example:
+
+.. code-block:: python
+
+    config = sac.DEFAULT_CONFIG.copy()
+    config["env"] = "Pendulum-v1"
+    config["seed"] = 12345
+    config["callbacks"] = RE3Callbacks
+    config["exploration_config"] = {
+    	"type": "RE3",
+         # the dimensionality of the observation embedding vectors in latent space.
+         "embeds_dim": 128, 
+         "rho": 0.1, # Beta decay factor, used for on-policy algorithm.
+         "k_nn": 50, # Number of neighbours to set for K-NN entropy estimation.
+         # Configuration for the encoder network, producing embedding vectors from observations.
+         # This can be used to configure fcnet- or conv_net setups to properly process any
+         # observation space. By default uses the Policy model configuration.
+         "encoder_net_config": {
+             "fcnet_hiddens": [],
+             "fcnet_activation": "relu",
+         },
+         # Hyperparameter to choose between exploration and exploitation. A higher value of beta adds
+         # more importance to the intrinsic reward, as per the following equation 
+         # `reward = r + beta * intrinsic_reward`
+         "beta": 0.2,
+         # Schedule to use for beta decay, one of constant" or "linear_decay".
+         "beta_schedule": 'constant', 
+         # Specify, which exploration sub-type to use (usually, the algo's "default"
+         # exploration, e.g. EpsilonGreedy for DQN, StochasticSampling for PG/SAC).
+         "sub_exploration": {
+             "type": "StochasticSampling",
+         }
+    }
+
+
+**Functionality**
+RLlib's RE3 is based on `"Random Encoders for Efficient Exploration" described in this paper here <https://arxiv.org/pdf/2102.09430.pdf>`__.
+RE3 quantifies exploration based on state entropy. The entropy of a state is calculated based on its distance from K nearest neighbor states present in the replay buffer in the latent space (With this implementation, KNN is implemented using training samples from the same batch). 
+The state entropy is considered as an intrinsic reward and for policy optimization added to the extrinsic reward when available.  If the extrinsic reward is not available then the state entropy is used as "intrinsic reward" for unsupervised pre-training of the RL agent. 
+RE3 further allows agents to learn in sparse-reward or even no-reward environments by
+using the state entropy as "intrinsic rewards".
+
+This exploration objective can be used with both model-free and model-based RL algorithms. 
+RE3 uses a randomly initialized encoder to get the state’s latent representation, thus taking away the complexity of training the representation learning method. The encoder weights are fixed during the entire duration of the training process. 

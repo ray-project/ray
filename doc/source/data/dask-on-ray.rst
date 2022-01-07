@@ -62,7 +62,7 @@ Here's an example:
   For execution on a Ray cluster, you should *not* use the
   `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
   client; simply use plain Dask and its collections, and pass ``ray_dask_get``
-  to ``.compute()`` calls or set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__. Follow the instructions for
+  to ``.compute()`` calls, set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__, or use our ``enable_dask_on_ray`` configuration helper. Follow the instructions for
   :ref:`using Ray on a cluster <using-ray-on-a-cluster>` to modify the
   ``ray.init()`` call.
 

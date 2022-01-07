@@ -270,6 +270,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
@@ -278,7 +279,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -301,6 +302,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             If key is None then the k column is omitted.
         """
 
+        stats = BlockExecStats.builder()
         key_fn = (lambda r: r[r._row.schema.names[0]]
                   ) if key is not None else (lambda r: 0)
 
@@ -365,7 +367,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":

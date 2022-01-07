@@ -37,9 +37,6 @@ using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
-using rpc::TaskLeaseData;
-using rpc::TaskReconstructionData;
-using rpc::TaskTableData;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
@@ -178,40 +175,6 @@ class GcsPlacementGroupTable
   }
 };
 
-class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
- public:
-  explicit GcsTaskTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK);
-  }
-
- private:
-  JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
-};
-
-class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
- public:
-  explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
-  }
-
- private:
-  JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
-};
-
-class GcsTaskReconstructionTable
-    : public GcsTableWithJobId<TaskID, TaskReconstructionData> {
- public:
-  explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
-  }
-
- private:
-  JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
-};
-
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
@@ -279,10 +242,6 @@ class GcsTableStorage {
     job_table_ = std::make_unique<GcsJobTable>(store_client_);
     actor_table_ = std::make_unique<GcsActorTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
-    task_table_ = std::make_unique<GcsTaskTable>(store_client_);
-    task_lease_table_ = std::make_unique<GcsTaskLeaseTable>(store_client_);
-    task_reconstruction_table_ =
-        std::make_unique<GcsTaskReconstructionTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
     placement_group_schedule_table_ =
@@ -307,21 +266,6 @@ class GcsTableStorage {
   GcsPlacementGroupTable &PlacementGroupTable() {
     RAY_CHECK(placement_group_table_ != nullptr);
     return *placement_group_table_;
-  }
-
-  GcsTaskTable &TaskTable() {
-    RAY_CHECK(task_table_ != nullptr);
-    return *task_table_;
-  }
-
-  GcsTaskLeaseTable &TaskLeaseTable() {
-    RAY_CHECK(task_lease_table_ != nullptr);
-    return *task_lease_table_;
-  }
-
-  GcsTaskReconstructionTable &TaskReconstructionTable() {
-    RAY_CHECK(task_reconstruction_table_ != nullptr);
-    return *task_reconstruction_table_;
   }
 
   GcsNodeTable &NodeTable() {
@@ -369,9 +313,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
-  std::unique_ptr<GcsTaskTable> task_table_;
-  std::unique_ptr<GcsTaskLeaseTable> task_lease_table_;
-  std::unique_ptr<GcsTaskReconstructionTable> task_reconstruction_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
