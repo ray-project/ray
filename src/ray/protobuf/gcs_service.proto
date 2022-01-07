@@ -478,6 +478,7 @@ message InternalKVDelRequest {
   bytes key = 1;
   // namespace of the key
   bytes ns = 2;
+  bool del_by_prefix = 3;
 }
 
 message InternalKVDelReply {

@@ -100,6 +100,10 @@ def test_internal_kv(ray_start_regular):
 
     assert set(kv._internal_kv_list("k",
                                     namespace="n")) == {b"k1", b"k2", b"k3"}
+    assert kv._internal_kv_del("k", del_by_prefix=True, namespace="n") == 3
+    assert kv._internal_kv_get("k1", namespace="n") is None
+    assert kv._internal_kv_get("k2", namespace="n") is None
+    assert kv._internal_kv_get("k3", namespace="n") is None
 
 
 if __name__ == "__main__":

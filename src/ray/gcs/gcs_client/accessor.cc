@@ -1185,7 +1185,7 @@ Status InternalKVAccessor::AsyncInternalKVExists(
 }
 
 Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
-                                              const std::string &key,
+                                              const std::string &key, bool del_by_prefix,
                                               const StatusCallback &callback) {
   rpc::InternalKVDelRequest req;
   req.set_ns(ns);
@@ -1254,10 +1254,12 @@ Status InternalKVAccessor::Get(const std::string &ns, const std::string &key,
   return ret_promise.get_future().get();
 }
 
-Status InternalKVAccessor::Del(const std::string &ns, const std::string &key) {
+Status InternalKVAccessor::Del(const std::string &ns, const std::string &key,
+                               bool del_by_prefix) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVDel(
-      ns, key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
+  RAY_CHECK_OK(AsyncInternalKVDel(ns, key, del_by_prefix, [&ret_promise](Status status) {
+    ret_promise.set_value(status);
+  }));
   return ret_promise.get_future().get();
 }
 

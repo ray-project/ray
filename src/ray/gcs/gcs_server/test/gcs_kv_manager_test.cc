@@ -107,7 +107,6 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
     mu.unlock();
   });
   mu.lock();
-
   kv_instance->Get("N2", "A_1", [&mu](auto b) {
     ASSERT_FALSE(b.has_value());
     mu.unlock();
@@ -115,6 +114,16 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   mu.lock();
   kv_instance->Get("N1", "A_1", [&mu](auto b) {
     ASSERT_TRUE(b.has_value());
+    mu.unlock();
+  });
+  mu.lock();
+  kv_instance->Del("N1", "A_", true, [&mu](auto b) {
+    ASSERT_EQ(3, b);
+    mu.unlock();
+  });
+  mu.lock();
+  kv_instance->Get("N1", "A_1", [&mu](auto b) {
+    ASSERT_FALSE(b.has_value());
     mu.unlock();
   });
 }
