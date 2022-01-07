@@ -13,9 +13,9 @@ import threading
 import time
 import traceback
 import warnings
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import (Any, Callable, Dict, Iterator, List, Optional, Tuple,
-                    Union, TYPE_CHECKING)
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -68,9 +68,6 @@ from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _initialize_internal_kv,
                                           _internal_kv_reset, _internal_kv_get)
 from ray._private.client_mode_hook import client_mode_hook
-
-if TYPE_CHECKING:
-    from ray.client_builder import ClientContext
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -583,8 +580,31 @@ def get_dashboard_url():
     return _global_node.webui_url
 
 
+class BaseContext(metaclass=ABCMeta):
+    """
+    Base class for RayContext and ClientContext
+    """
+
+    @abstractmethod
+    def disconnect(self):
+        """
+        If this context is for directly attaching a cluster, disconnect
+        will call ray.shutdown(). Otherwise, if the context is for a ray
+        client connection, the client will be disconnected.
+        """
+        pass
+
+    @abstractmethod
+    def __enter__(self):
+        pass
+
+    @abstractmethod
+    def __exit__(self):
+        pass
+
+
 @dataclass
-class RayContext(dict):
+class RayContext(BaseContext, dict):
     """
     Context manager for attached drivers.
     """
@@ -592,11 +612,11 @@ class RayContext(dict):
     python_version: str
     ray_version: str
     ray_commit: str
-    address_info: Dict[str, Optional[str]]
     protocol_version = Optional[str]
+    address_info: Dict[str, Optional[str]]
 
     def __init__(self, address_info: dict):
-        super().__init__(address_info)
+        dict.__init__(self, address_info)
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(
             sys.version_info[0], sys.version_info[1], sys.version_info[2])
@@ -614,7 +634,7 @@ class RayContext(dict):
                 f'Use ctx.address_info["{key}"] instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return super().__getitem__(key)
+        return dict.__getitem__(self, key)
 
     def get(self, key):
         if log_once("ray_context_get"):
@@ -623,7 +643,7 @@ class RayContext(dict):
                 f'deprecated. Use ctx.address_info.get("{key}") instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return super().get(key)
+        return dict.get(self, key)
 
     def __enter__(self) -> "RayContext":
         return self
@@ -680,7 +700,7 @@ def init(
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
-        **kwargs) -> Union[RayContext, "ClientContext"]:
+        **kwargs) -> BaseContext:
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
