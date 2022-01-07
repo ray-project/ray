@@ -56,7 +56,7 @@ def get_num_running_replicas(controller: ServeController,
 def running_replicas_bounded(controller: ServeController,
                              deployment_name: str,
                              min: int = -float("inf"),
-                             max: int = float("inf")) -> Callable[[], int]:
+                             max: int = float("inf")) -> bool:
 
     return min <= get_num_running_replicas(controller, deployment_name) <= max
 
