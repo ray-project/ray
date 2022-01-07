@@ -79,7 +79,7 @@ def test_actor_killing(shutdown_only):
     assert ray.get(worker_2.foo.remote()) is None
 
 
-@pytest.mark.skip(
+@pytest.mark.skipif(
     client_test_enabled(),
     reason="client api doesn't support namespace right now.")
 def test_internal_kv(ray_start_regular):
@@ -108,6 +108,15 @@ def test_internal_kv(ray_start_regular):
     assert kv._internal_kv_get("k1", namespace="n") is None
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
+
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_put("@namespace_", "x", True)
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_get("@namespace_", namespace="n")
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_del("@namespace_def", namespace="n")
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
 if __name__ == "__main__":
