@@ -938,7 +938,6 @@ def init(
     if not isinstance(_system_config, dict):
         raise TypeError("The _system_config must be a dict.")
 
-    global _global_node
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
         # Use a random port by not specifying Redis port / GCS server port.
