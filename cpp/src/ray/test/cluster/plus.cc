@@ -16,6 +16,11 @@
 
 #include <ray/api.h>
 
+#include <thread>
+#include <chrono>
+
+using namespace std::chrono_literals;
+
 int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
 int Plus1Remote(int x) {
@@ -29,7 +34,7 @@ int Plus(int x, int y) { return x + y; };
 
 int PlusPutWaitRemote(int x, int y) {
   auto y_ref = ray::Put(y);
-  assert (ray::Wait(y_ref)[0]);
+  ray::Wait(y_ref);
   return *ray::Get(ray::Task(Plus).Remote(x, y_ref));
 };
 
