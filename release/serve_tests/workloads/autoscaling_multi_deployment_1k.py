@@ -4,7 +4,7 @@ Benchmark test for multi deployment with autoscaling at up to 1k no-op replica
 scale.
 
 1) Start with a single head node.
-2) Start 1000 deployments each with up to 10 no-op replicas
+2) Start 10 deployments each with up to 100 no-op replicas
 3) Launch wrk in each running node to simulate load balanced request
 4) Recursively send queries to random deployments, up to depth=5
 5) Run a 10-minute wrk trial on each node, aggregate results.
@@ -50,8 +50,8 @@ from typing import Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1
-DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 4
-DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 1 replicas each
+DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 8
+DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
@@ -64,7 +64,7 @@ DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
 DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 100 replicas each
 
 # Experiment configs - wrk specific
-DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
+DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "15s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
