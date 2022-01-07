@@ -22,14 +22,15 @@ namespace ray {
 namespace core {
 
 inline std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                             size_t data_size) {
+                                                                    size_t data_size) {
   auto metadata = const_cast<uint8_t *>(data);
   auto meta_buffer =
       std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
   return meta_buffer;
 }
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(const std::string &str) {
+inline std::shared_ptr<ray::LocalMemoryBuffer> MakeLocalMemoryBufferFromString(
+    const std::string &str) {
   return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
 }
 
@@ -139,54 +140,41 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
 /// A mock manager that manages all test buffers. This mocks
 /// that memory pressure is able to be awared.
 class MockBufferManager {
-public:
-  
-  int64_t GetBuferPressureInBytes() const {
-    return buffer_pressure_in_bytes_;
-  }
+ public:
+  int64_t GetBuferPressureInBytes() const { return buffer_pressure_in_bytes_; }
 
-  void AcquireMemory(int64_t sz) {
-    buffer_pressure_in_bytes_ += sz;
-  }
+  void AcquireMemory(int64_t sz) { buffer_pressure_in_bytes_ += sz; }
 
- void ReleaseMemory(int64_t sz) {
-   buffer_pressure_in_bytes_ -= sz;
- }
+  void ReleaseMemory(int64_t sz) { buffer_pressure_in_bytes_ -= sz; }
 
-private:
+ private:
   int64_t buffer_pressure_in_bytes_ = 0;
 };
 
 class TestBuffer : public Buffer {
  public:
   explicit TestBuffer(MockBufferManager &manager, std::string data)
-   : manager_(manager), data_(std::move(data)) {}
+      : manager_(manager), data_(std::move(data)) {}
 
   uint8_t *Data() const override {
     return reinterpret_cast<uint8_t *>(const_cast<char *>(data_.data()));
   }
 
-  size_t Size() const override {
-    return data_.size();
-  }
+  size_t Size() const override { return data_.size(); }
 
-  bool OwnsData() const override {
-    return true;
-  }
+  bool OwnsData() const override { return true; }
 
-  bool IsPlasmaBuffer() const override {
-    return false;
-  }
+  bool IsPlasmaBuffer() const override { return false; }
 
  private:
   MockBufferManager &manager_;
-  std:: string data_;
+  std::string data_;
 };
 
 TEST(TestMemoryStore, TestObjectAllocator) {
   MockBufferManager mock_buffer_manager;
   auto my_object_allocator = [&mock_buffer_manager](const ray::RayObject &object,
-                                    const ObjectID &object_id) {
+                                                    const ObjectID &object_id) {
     auto buf = object.GetData();
     mock_buffer_manager.AcquireMemory(buf->Size());
     auto data_factory = [&mock_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
@@ -206,8 +194,9 @@ TEST(TestMemoryStore, TestObjectAllocator) {
   for (auto i = 0; i < max_rounds; ++i) {
     auto hello_buffer = MakeLocalMemoryBufferFromString(hello);
     std::vector<rpc::ObjectReference> nested_refs;
-    auto hello_object = std::make_shared<ray::RayObject>(hello_buffer, nullptr, nested_refs, true);
-    memory_store->Put(*hello_object, ObjectID::FromRandom()); 
+    auto hello_object =
+        std::make_shared<ray::RayObject>(hello_buffer, nullptr, nested_refs, true);
+    memory_store->Put(*hello_object, ObjectID::FromRandom());
   }
   ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
 }
