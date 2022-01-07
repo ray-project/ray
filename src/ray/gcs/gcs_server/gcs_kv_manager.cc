@@ -32,14 +32,19 @@ std::string MakeKey(const std::string &ns, const std::string &key) {
   return absl::StrCat(kNamespacePrefix, ns, ":", key);
 }
 
+Status ValidateKey(const std::string &key) {
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    return Staus::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
+  }
+  return Status::OK();
+}
+
 std::string ExtractKey(const std::string &key) {
   if (absl::StartsWith(key, kNamespacePrefix)) {
     std::vector<std::string> parts =
         absl::StrSplit(key, absl::MaxSplits(kNamespaceSep, 1));
-    if (parts.size() != 2) {
-      RAY_LOG(ERROR) << "Invalid key: " << key;
-      return "";
-    }
+    RAY_CHECK(parts.size() == 2) << "Invalid key: " << key;
+
     return parts[1];
   }
   return key;
@@ -209,44 +214,65 @@ void GcsInternalKVManager::HandleInternalKVGet(
 void GcsInternalKVManager::HandleInternalKVPut(
     const rpc::InternalKVPutRequest &request, rpc::InternalKVPutReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](bool newly_added) {
-    reply->set_added_num(newly_added ? 1 : 0);
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  kv_instance_->Put(request.namespace_(), request.key(), request.value(),
-                    request.overwrite(), std::move(callback));
+  auto status = ValidateKey(request.key());
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else {
+    auto callback = [reply, send_reply_callback](bool newly_added) {
+      reply->set_added_num(newly_added ? 1 : 0);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    };
+    kv_instance_->Put(request.namespace_(), request.key(), request.value(),
+                      request.overwrite(), std::move(callback));
+  }
 }
 
 void GcsInternalKVManager::HandleInternalKVDel(
     const rpc::InternalKVDelRequest &request, rpc::InternalKVDelReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](int64_t del_num) {
-    reply->set_deleted_num(del_num);
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  kv_instance_->Del(request.namespace_(), request.key(), std::move(callback));
+  auto status = ValidateKey(request.key());
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else {
+    auto callback = [reply, send_reply_callback](int64_t del_num) {
+      reply->set_deleted_num(del_num);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    };
+    kv_instance_->Del(request.namespace_(), request.key(), std::move(callback));
+  }
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(
     const rpc::InternalKVExistsRequest &request, rpc::InternalKVExistsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](bool exists) {
-    reply->set_exists(exists);
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  kv_instance_->Exists(request.namespace_(), request.key(), std::move(callback));
+  auto status = ValidateKey(request.key());
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  }
+  {
+    auto callback = [reply, send_reply_callback](bool exists) {
+      reply->set_exists(exists);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    };
+    kv_instance_->Exists(request.namespace_(), request.key(), std::move(callback));
+  }
 }
 
 void GcsInternalKVManager::HandleInternalKVKeys(
     const rpc::InternalKVKeysRequest &request, rpc::InternalKVKeysReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto callback = [reply, send_reply_callback](std::vector<std::string> keys) {
-    for (auto &result : keys) {
-      reply->add_results(std::move(result));
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  };
-  kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
+  auto status = ValidateKey(request.prefix());
+  if (!status.ok()) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else {
+    auto callback = [reply, send_reply_callback](std::vector<std::string> keys) {
+      for (auto &result : keys) {
+        reply->add_results(std::move(result));
+      }
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    };
+    kv_instance_->Keys(request.namespace_(), request.prefix(), std::move(callback));
+  }
 }
 
 }  // namespace gcs
