@@ -200,7 +200,7 @@ TaskID TaskID::ForExecution(const TaskID &task_id, uint64_t execution_counter) {
   static_assert(TaskID::kUniqueBytesLength >= 8, "TaskID must have at least 64 bits");
   auto data = reinterpret_cast<uint64_t *>(data_str.data());
   // Zero out the low byte for readability.
-  (* reinterpret_cast<uint8_t *>(data)) = 0;
+  (*reinterpret_cast<uint8_t *>(data)) = 0;
   // Add execution_counter to the task ID unique bytes.
   (*data) += execution_counter;
   return TaskID::FromBinary(data_str);
