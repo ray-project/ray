@@ -371,6 +371,7 @@ class Dataset(Generic[T]):
                            stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
+        stage_info = {}
         count = self.count()
         indices = []
         cur_idx = 0
@@ -383,6 +384,8 @@ class Dataset(Generic[T]):
             # TODO this saves memory: self._blocks.clear()
         else:
             splits = [self]
+        # TODO(ekl) include stats for the split tasks. We may also want to
+        # consider combining the split and coalesce tasks as an optimization.
 
         # Coalesce each split into a single block.
         reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
@@ -410,16 +413,15 @@ class Dataset(Generic[T]):
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO)
+                input_files=None, exec_stats=None)  # No stats for empty block.
             empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
                                                   empty_meta)
                                                  for _ in range(num_empties)])
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
-        return Dataset(
-            BlockList(new_blocks, new_metadata), self._epoch,
-            self._stats.child_TODO("repartition"))
+        blocks = BlockList(new_blocks, new_metadata)
+        return Dataset(blocks, self._epoch, stats.build(blocks))
 
     def random_shuffle(
             self,
@@ -814,6 +816,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        start_time = time.perf_counter()
         context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
@@ -848,9 +851,12 @@ class Dataset(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
+        dataset_stats = DatasetStats(
+            stages={"union": []}, parent=[d._stats for d in datasets])
+        dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.child_TODO("union"))
+            dataset_stats)
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -1341,9 +1347,10 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(
-            sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.child_TODO("sort"))
+        stats_builder = self._stats.child_builder("sort")
+        blocks, stage_info = sort_impl(self._blocks, key, descending)
+        return Dataset(blocks, self._epoch,
+                       stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1368,6 +1375,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
+        stats_builder = self._stats.child_builder("zip")
         blocks1 = self.get_internal_block_refs()
         blocks2 = other.get_internal_block_refs()
 
@@ -1378,11 +1386,12 @@ class Dataset(Generic[T]):
                     len(blocks1), len(blocks2)))
 
         def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            stats = BlockExecStats.builder()
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
             return result, br.get_metadata(
-                input_files=[], exec_stats=BlockExecStats.TODO)
+                input_files=[], exec_stats=stats.build())
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
@@ -1395,9 +1404,8 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(
-            BlockList(blocks, metadata), self._epoch,
-            self._stats.child_TODO("zip"))
+        blocks = BlockList(blocks, metadata)
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -2662,6 +2670,7 @@ def _sliding_window(iterable: Iterable, n: int):
 def _split_block(
         block: Block, meta: BlockMetadata, count: int, return_right_half: bool
 ) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
+    stats = BlockExecStats.builder()
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
     b0 = block.slice(0, count, copy=True)
@@ -2671,7 +2680,7 @@ def _split_block(
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files,
-        exec_stats=BlockExecStats.TODO)
+        exec_stats=stats.build())
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
         a1 = BlockAccessor.for_block(b1)
@@ -2680,7 +2689,7 @@ def _split_block(
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
-            exec_stats=BlockExecStats.TODO)
+            exec_stats=stats.build())
     else:
         b1 = None
         m1 = None
