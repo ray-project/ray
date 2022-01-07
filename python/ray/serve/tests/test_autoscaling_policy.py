@@ -1,4 +1,5 @@
 import sys
+import time
 
 import pytest
 from unittest import mock
@@ -489,8 +490,6 @@ def test_e2e_bursty(serve_instance):
     num_replicas = get_num_running_replicas(controller, A)
     signal.send.remote()
 
-    import time
-
     # Execute a bursty workload that issues 100 requests every 0.05 seconds
     for _ in range(5):
         time.sleep(0.05)
@@ -602,7 +601,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     assert get_num_running_replicas(controller, A) < 20
 
     [handle.remote() for _ in range(458)]
-    import time
     time.sleep(3)
     print("Issued 458 requests. Request routing in-progress.")
 
@@ -668,7 +666,6 @@ def test_e2e_raise_min_replicas(serve_instance):
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
-    import time
     time.sleep(2)
     assert get_num_running_replicas(controller, A) == 1
     print("Stayed at 1 replica.")
