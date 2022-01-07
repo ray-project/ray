@@ -54,8 +54,8 @@ class FakeDockerCommandRunner(CommandRunnerInterface):
         pass
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} -- bash".format(self.docker_cmd,
-                                               self.container_name)
+        return "{} exec -it {} bash".format(self.docker_cmd,
+                                            self.container_name)
 
     def run_rsync_down(self, source, target, options=None):
         docker_dir = os.path.dirname(self._docker_expand_user(source))

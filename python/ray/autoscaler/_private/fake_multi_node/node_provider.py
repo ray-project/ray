@@ -60,7 +60,7 @@ DOCKER_HEAD_CMD = (
     "((sudo apt update && sudo apt install -y openssh-server && "
     "sudo service ssh start) || true) && "
     "sleep 1 && "
-    "{CMD_ENV}RAY_FAKE_CLUSTER=1 ray start --head "
+    "RAY_FAKE_CLUSTER=1 ray start --head "
     "--autoscaling-config=~/ray_bootstrap_config.yaml "
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
@@ -131,12 +131,13 @@ def create_node_spec(head: bool,
     resources = resources or {}
 
     cmd_kwargs = dict(
-        CMD_ENV="",
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container)
+
+    env_vars = env_vars or {}
 
     # Set to "auto" to mount current autoscaler directory to nodes for dev
     fake_cluster_dev_dir = os.environ.get("FAKE_CLUSTER_DEV", "")
@@ -150,8 +151,7 @@ def create_node_spec(head: bool,
         node_spec["volumes"] += [
             f"{local_ray_dir}/autoscaler:{docker_ray_dir}/autoscaler:ro",
         ]
-
-        cmd_kwargs["CMD_ENV"] = f"FAKE_CLUSTER_DEV={fake_cluster_dev_dir} "
+        env_vars["FAKE_CLUSTER_DEV"] = local_ray_dir
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
@@ -188,8 +188,6 @@ def create_node_spec(head: bool,
         f"{host_dir(mounted_node_dir)}:/cluster/node",
         f"{host_dir(public_key_path)}:/home/ray/.ssh/authorized_keys",
     ]
-
-    env_vars = env_vars or {}
 
     # Pass these environment variables (to the head node)
     # These variables are propagated by the `docker compose` command.
