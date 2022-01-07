@@ -567,6 +567,8 @@ def test_e2e_intermediate_downscaling(serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skip(reason="Currently failing with undefined behavior")
 def test_e2e_update_autoscaling_deployment(serve_instance):
+    # See https://github.com/ray-project/ray/issues/21017 for details
+
     signal = SignalActor.remote()
 
     @serve.deployment(
