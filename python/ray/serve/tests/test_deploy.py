@@ -287,7 +287,6 @@ def test_reconfigure_with_exception(serve_instance):
     wait_for_condition(rolled_back)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
     # Tests that redeploying a deployment with a single replica waits for the
@@ -338,7 +337,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # ref2 will block until the signal is sent.
     ref2 = call.remote(block=True)
-    assert len(ray.wait([ref2], timeout=0.1)[0]) == 0
+    assert len(ray.wait([ref2], timeout=2.1)[0]) == 0
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.

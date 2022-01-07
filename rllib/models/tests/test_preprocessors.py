@@ -24,7 +24,7 @@ class TestPreprocessors(unittest.TestCase):
 
     def test_preprocessing_disabled(self):
         config = ppo.DEFAULT_CONFIG.copy()
-
+        config["seed"] = 42
         config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
         config["env_config"] = {
             "config": {

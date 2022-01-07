@@ -34,6 +34,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -655,6 +656,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
 
+  /// A manager for wait requests.
+  WaitManager wait_manager_;
+
   std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
@@ -756,4 +760,4 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
 }  // namespace raylet
 
-}  // end namespace ray
+}  // namespace ray

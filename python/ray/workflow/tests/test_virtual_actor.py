@@ -48,7 +48,9 @@ def init_virtual_actor(x):
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [{
-        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
+        # We need more CPUs, otherwise 'create()' blocks 'get()', and task
+        # execution suffers from worker capping.
+        "num_cpus": 16
     }],
     indirect=True)
 def test_readonly_actor(workflow_start_regular):
@@ -73,7 +75,7 @@ def test_readonly_actor(workflow_start_regular):
     start = time.time()
     ray.get([readonly_actor.readonly_workload.run_async() for _ in range(10)])
     end = time.time()
-    assert end - start < 5
+    assert end - start < 5, f"Took too long, {end-start}"
 
 
 @workflow.virtual_actor
