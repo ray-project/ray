@@ -12,14 +12,11 @@ Benchmark test for autoscaling a single deployment at 1k no-op replica scale.
 import click
 import math
 import os
-import time
-import requests
 
 import ray
 from ray import serve
 from ray.serve.utils import logger
 from serve_test_utils import (
-    run_wrk_on_all_nodes,
     save_test_results,
 )
 from serve_test_cluster_utils import (
@@ -37,7 +34,7 @@ from typing import Optional
 DEFAULT_SMOKE_TEST_MIN_REPLICA = 1
 DEFAULT_FULL_TEST_MIN_REPLICA = 1
 DEFAULT_SMOKE_TEST_MAX_REPLICA = 4
-DEFAULT_FULL_TEST_MAX_REPLICA = 100
+DEFAULT_FULL_TEST_MAX_REPLICA = 1000
 
 
 def get_num_running_replicas(controller: ServeController,
@@ -125,7 +122,9 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    handle = deploy_replicas(min_replicas, max_replicas, signal,
+    handle = deploy_replicas(min_replicas,
+                             max_replicas,
+                             signal,
                              deployment_name)
 
     logger.info("Warming up cluster ....\n")
@@ -142,31 +141,38 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
 
     for _ in range(2):
 
-        ray.get(signal.send.remote(clear=True))
+        signal.send.remote(clear=True)
 
-        trial_length = 30  # Number of seconds to send requests
-        sleep_interval = 0.0003  # Time between requests (30/.0003 = 100k reqs)
-        start_time = time.time()
-        while time.time() < start_time + trial_length:
-            handle.remote()
-            time.sleep(sleep_interval)
+        # trial_length = 30  # Number of seconds to send requests
+        # sleep_interval = 0.003  # Time between requests (30/.0003 = 100k reqs)
+        # start_time = time.time()
+        # while time.time() < start_time + trial_length:
+        #     handle.remote()
+        #     time.sleep(sleep_interval)
+
+        [handle.remote() for _ in range(100000)]
 
         # Check that deployments upscaled to max_replicas
-        num_wrk_replicas = get_num_running_replicas(controller,
-                                                    deployment_name)
-        print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
+        # start = time.time()
+        # while time.time() - start < 30:
+        #     num_wrk_replicas = get_num_running_replicas(controller,
+        #                                                 deployment_name)
+        #     print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
+        #     time.sleep(5)
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
-                                                            min=max_replicas))
+                                                            min=max_replicas),
+                           timeout=50)
         print("Deployments scaled up to max replicas ....\n")
 
-        ray.get(signal.send.remote())
+        signal.send.remote()
         print("Clearing all requests ....\n")
 
         # Check that deployments scale back to min_replicas
         wait_for_condition(lambda: running_replicas_bounded(controller,
                                                             deployment_name,
-                                                            max=min_replicas))
+                                                            max=min_replicas),
+                           timeout=50)
         print("Deployments scaled down to min replicas ....\n")
 
     save_test_results(
