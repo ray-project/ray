@@ -33,9 +33,10 @@ int Plus1Remote(int x) {
 int Plus(int x, int y) { return x + y; };
 
 int PlusPutWaitRemote(int x, int y) {
-  auto y_ref = ray::Put(y);
-  ray::Wait(y_ref);
-  return *ray::Get(ray::Task(Plus).Remote(x, y_ref));
+  auto y_obj = ray::Put(y);
+  // ray::ObjectRef<int>& y_ref = y_obj;
+  // ray::Wait(y_ref);
+  return *ray::Get(ray::Task(Plus).Remote(x, y_obj));
 };
 
 void ThrowTask() { throw std::logic_error("error"); }
