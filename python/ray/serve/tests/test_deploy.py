@@ -388,15 +388,24 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     def call(block=False):
         if use_handle:
             handle = serve.get_deployment(name).get_handle()
-            ret = ray.get(handle.handler.remote(block))
+            ret = ray.get(handle.handler.remote(block)).split("|")
         else:
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={
                     "block": block
-                }).text
+                })
 
-        rets = {key: value for key, value in enumerate(ret.split("|"))}
-        return rets.get(0, "<NULL>"), rets.get(1, "<NULL>")
+            ret_candidate = ret.text.split("|")
+
+            # Set return value to (None, None)
+            # if status_code is 404 or if there are
+            # not enough values to return
+            if ret.status_code == 404 or len(ret_candidate) != 2:
+                ret = (None, None)
+            else:
+                ret = ret_candidate
+
+        return ret[0], ret[1]
 
     signal_name = f"signal-{get_random_letters()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -431,7 +440,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
-                if val != "<NULL>" and pid != "<NULL>":
+                if val is not None and pid is not None:
                     responses[val].add(pid)
             for ref in not_ready:
                 blocking.extend(not_ready)
