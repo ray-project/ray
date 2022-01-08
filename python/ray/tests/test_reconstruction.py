@@ -642,6 +642,62 @@ def test_reconstruction_stress(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconstruction_stress_spill(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(
+        num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**6, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(3):
+        obj = large_object.options(resources={"node1": 1}).remote()
+        ray.get(dependent_task.options(resources={"node2": 1}).remote(obj))
+
+        outputs = [
+            large_object.options(resources={
+                "node1": 1
+            }).remote() for _ in range(1000)
+        ]
+        outputs = [
+            dependent_task.options(resources={
+                "node2": 1
+            }).remote(obj) for obj in outputs
+        ]
+
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+
+        i = 0
+        while outputs:
+            ref = outputs.pop(0)
+            print(i, ref)
+            ray.get(ref)
+            i += 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
     config = {
