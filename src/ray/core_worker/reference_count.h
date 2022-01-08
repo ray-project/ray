@@ -352,10 +352,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                      NodeID *pinned_at, bool *spilled) const
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get and reset the objects that were pinned on the given node.  This
-  /// method should be called upon a node failure, to determine which plasma
-  /// objects were lost. If a deletion callback was set for a lost object, it
-  /// will be invoked and reset.
+  /// Get and reset the objects that were pinned or spilled on the given node.
+  /// This method should be called upon a node failure, to trigger
+  /// reconstruction for any lost objects that are still in scope.
+  ///
+  /// If a deletion callback was set for a lost object, it will be invoked and
+  /// reset.
   ///
   /// \param[in] node_id The node whose object store has been removed.
   /// \return The set of objects that were pinned on the given node.
@@ -880,12 +882,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
       reconstructable_owned_objects_index_ GUARDED_BY(mutex_);
 
-  /// Called to check whether a raylet is still alive. This is
-  /// used when adding the primary or spilled location of an
-  /// object. If the node is dead, then the object will be
-  /// reconstructed.
+  /// Called to check whether a raylet is still alive. This is used when adding
+  /// the primary or spilled location of an object. If the node is dead, then
+  /// the object will be added to the buffer objects to recover.
   const std::function<bool(const NodeID &node_id)> check_node_alive_;
 
+  /// A buffer of the objects whose primary or spilled locations have been lost
+  /// due to node failure. These objects are still in scope and need to be
+  /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
 };
 

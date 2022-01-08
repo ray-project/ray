@@ -643,8 +643,10 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      objects_to_recover_.push_back(object_id);
       ReleasePlasmaObject(it);
+      if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+        objects_to_recover_.push_back(object_id);
+      }
     }
   }
 }
@@ -682,6 +684,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
         // We eagerly add the pinned location to the set of object locations.
         AddObjectLocationInternal(it, raylet_id);
       } else {
+        ReleasePlasmaObject(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1211,6 +1214,8 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     }
     PushToLocationSubscribers(it);
   } else {
+    RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node " << spilled_node_id;
+    ReleasePlasmaObject(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;
