@@ -1,22 +1,22 @@
 #![feature(fn_traits, unboxed_closures, min_specialization)]
 
-#[cxx::bridge(namespace = "ray::core")]
-mod ray_ffi {
-    unsafe extern "C++" {
-        include!("ray/core_worker/core_worker.h");
-        include!("ray/core_worker/core_worker_options.h");
-        include!("ray/common/id.h");
-
-        type CoreWorker;
-        type CoreWorkerOptions;
-        #[namespace = "ray"]
-        type WorkerID;
-
-        fn ConnectToRaylet(self: Pin<&mut CoreWorker>);
-        fn Shutdown(self: Pin<&mut CoreWorker>);
-        fn GetWorkerID(self: &CoreWorker) -> &WorkerID;
-    }
-}
+// #[cxx::bridge(namespace = "ray::core")]
+// mod ray_ffi {
+//     unsafe extern "C++" {
+//         include!("ray/core_worker/core_worker.h");
+//         include!("ray/core_worker/core_worker_options.h");
+//         include!("ray/common/id.h");
+//
+//         type CoreWorker;
+//         type CoreWorkerOptions;
+//         #[namespace = "ray"]
+//         type WorkerID;
+//
+//         fn ConnectToRaylet(self: Pin<&mut CoreWorker>);
+//         fn Shutdown(self: Pin<&mut CoreWorker>);
+//         fn GetWorkerID(self: &CoreWorker) -> &WorkerID;
+//     }
+// }
 
 use paste::paste;
 use uniffi::ffi::RustBuffer;
@@ -256,7 +256,7 @@ pub mod ray_api_ffi {
     }
 
     unsafe extern "C++" {
-        include!("ray/api.h");
+        include!("rust/ray-rs-sys/cpp/api.h");
         include!("rust/ray-rs-sys/cpp/wrapper.h");
 
         fn LogDebug(str: &str);
@@ -264,25 +264,25 @@ pub mod ray_api_ffi {
 
         fn GetRaw(id: UniquePtr<ObjectID>) -> Vec<u8>;
         fn PutRaw(data: Vec<u8>) -> UniquePtr<ObjectID>;
-
-        type Uint64ObjectRef;
-        type StringObjectRef;
-
-        fn InitAsLocal();
-        fn Init();
+        //
+        // type Uint64ObjectRef;
+        // type StringObjectRef;
+        //
+        // fn InitAsLocal();
+        // fn Init();
         fn IsInitialized() -> bool;
         fn Shutdown();
+        //
+        // fn PutUint64(obj: u64) -> UniquePtr<Uint64ObjectRef>;
+        // fn GetUint64(obj_ref: UniquePtr<Uint64ObjectRef>) -> SharedPtr<u64>;
+        //
+        // fn PutString(obj: &CxxString) -> UniquePtr<StringObjectRef>;
+        // fn GetString(obj_ref: UniquePtr<StringObjectRef>) -> SharedPtr<CxxString>;
+        //
+        // fn PutAndGetConfig();
 
-        fn PutUint64(obj: u64) -> UniquePtr<Uint64ObjectRef>;
-        fn GetUint64(obj_ref: UniquePtr<Uint64ObjectRef>) -> SharedPtr<u64>;
-
-        fn PutString(obj: &CxxString) -> UniquePtr<StringObjectRef>;
-        fn GetString(obj_ref: UniquePtr<StringObjectRef>) -> SharedPtr<CxxString>;
-
-        fn PutAndGetConfig();
-
-        fn ID(self: &Uint64ObjectRef) -> &CxxString;
-        fn ID(self: &StringObjectRef) -> &CxxString;
+        // fn ID(self: &Uint64ObjectRef) -> &CxxString;
+        // fn ID(self: &StringObjectRef) -> &CxxString;
     }
 
     #[namespace = "ray::core"]

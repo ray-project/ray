@@ -297,22 +297,31 @@ std::string GlobalStateAccessor::GetSystemConfig() {
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     const std::string &node_ip_address, std::string *node_to_connect) {
   auto start_ms = current_time_ms();
+  RAY_LOG(INFO) << "WTF 1";
   while (true) {
+  RAY_LOG(INFO) << "WTF 2";
     std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
     {
+
+      RAY_LOG(INFO) << "WTF 2.1";
       absl::ReaderMutexLock lock(&mutex_);
+
+      RAY_LOG(INFO) << "WTF 2.2";
       RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
           [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
             promise.set_value(
                 std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
           }));
     }
+
+    RAY_LOG(INFO) << "WTF 3";
     auto result = promise.get_future().get();
     auto status = result.first;
     if (!status.ok()) {
       return status;
     }
 
+    RAY_LOG(INFO) << "WTF 4";
     // Deal with alive nodes only
     std::vector<rpc::GcsNodeInfo> nodes;
     std::copy_if(result.second.begin(), result.second.end(), std::back_inserter(nodes),
@@ -320,9 +329,12 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                    return node.state() == rpc::GcsNodeInfo::ALIVE;
                  });
 
+                 RAY_LOG(INFO) << "WTF 5";
     if (nodes.empty()) {
+    RAY_LOG(INFO) << "WTF 6";
       status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {
+    RAY_LOG(INFO) << "WTF 7";
       int relevant_client_index = -1;
       int head_node_client_index = -1;
       std::pair<std::string, int> gcs_address;

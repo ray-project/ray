@@ -1,7 +1,8 @@
 
-#include <ray/api/common_types.h>
+// #include <ray/api/common_types.h>
 
-#include "ray/api.h"
+#include "tasks.h"
+#include "./api.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
 #include "ray/util/event.h"
@@ -204,7 +205,7 @@ void InitRust(rust::Str str) {
   ray::Init(config, internal::ExecuteTask, 2, result);
   // RAY_CHECK(CoreWorkerProcess::IsInitialized());
 
-  // TODO: remove this
+  // TODO (jon-chuang): remove this
   // ray::core::InitializeFromExisting(ray::core::GetCoreWorkerProcess());
   delete[] result;
 }

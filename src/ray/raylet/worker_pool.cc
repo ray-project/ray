@@ -367,7 +367,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
-  if (language == Language::CPP) {
+  if (language == Language::CPP || language == Language::RUST) {
     // Set native library path for shared library search.
     if (!native_library_path_.empty() || !code_search_path.empty()) {
 #if defined(__APPLE__) || defined(__linux__) || defined(_WIN32)
@@ -442,6 +442,15 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
+
+  RAY_LOG(INFO) << "Started worker process cmd ";
+  for (auto const &it: worker_command_args) {
+    RAY_LOG(INFO) << it;
+  }
+  RAY_LOG(INFO) << "env ";
+  for (auto const &it: env) {
+    RAY_LOG(INFO) << it.first << "=" << it.second << "; ";
+  }
   Process proc = StartProcess(worker_command_args, env);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);

@@ -62,7 +62,7 @@ DEFAULT_RUST_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
                                               "rust/rust_worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib") + ":" + os.path.join(RAY_PATH, "rust/lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
