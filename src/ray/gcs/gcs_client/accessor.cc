@@ -1133,9 +1133,11 @@ InternalKVAccessor::InternalKVAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
 Status InternalKVAccessor::AsyncInternalKVGet(
-    const std::string &key, const OptionalItemCallback<std::string> &callback) {
+    const std::string &ns, const std::string &key,
+    const OptionalItemCallback<std::string> &callback) {
   rpc::InternalKVGetRequest req;
   req.set_key(key);
+  req.set_namespace_(ns);
   client_impl_->GetGcsRpcClient().InternalKVGet(
       req,
       [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
@@ -1149,10 +1151,12 @@ Status InternalKVAccessor::AsyncInternalKVGet(
   return Status::OK();
 }
 
-Status InternalKVAccessor::AsyncInternalKVPut(const std::string &key,
+Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
+                                              const std::string &key,
                                               const std::string &value, bool overwrite,
                                               const OptionalItemCallback<int> &callback) {
   rpc::InternalKVPutRequest req;
+  req.set_namespace_(ns);
   req.set_key(key);
   req.set_value(value);
   req.set_overwrite(overwrite);
@@ -1166,8 +1170,10 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &key,
 }
 
 Status InternalKVAccessor::AsyncInternalKVExists(
-    const std::string &key, const OptionalItemCallback<bool> &callback) {
+    const std::string &ns, const std::string &key,
+    const OptionalItemCallback<bool> &callback) {
   rpc::InternalKVExistsRequest req;
+  req.set_namespace_(ns);
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVExists(
       req,
@@ -1178,9 +1184,11 @@ Status InternalKVAccessor::AsyncInternalKVExists(
   return Status::OK();
 }
 
-Status InternalKVAccessor::AsyncInternalKVDel(const std::string &key,
+Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
+                                              const std::string &key,
                                               const StatusCallback &callback) {
   rpc::InternalKVDelRequest req;
+  req.set_namespace_(ns);
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVDel(
       req,
@@ -1192,9 +1200,10 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &key,
 }
 
 Status InternalKVAccessor::AsyncInternalKVKeys(
-    const std::string &prefix,
+    const std::string &ns, const std::string &prefix,
     const OptionalItemCallback<std::vector<std::string>> &callback) {
   rpc::InternalKVKeysRequest req;
+  req.set_namespace_(ns);
   req.set_prefix(prefix);
   client_impl_->GetGcsRpcClient().InternalKVKeys(
       req,
@@ -1209,11 +1218,11 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
   return Status::OK();
 }
 
-Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
-                               bool overwrite, bool &added) {
+Status InternalKVAccessor::Put(const std::string &ns, const std::string &key,
+                               const std::string &value, bool overwrite, bool &added) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVPut(
-      key, value, overwrite,
+      ns, key, value, overwrite,
       [&ret_promise, &added](Status status, boost::optional<int> added_num) {
         added = static_cast<bool>(added_num.value_or(0));
         ret_promise.set_value(status);
@@ -1221,39 +1230,42 @@ Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
   return ret_promise.get_future().get();
 }
 
-Status InternalKVAccessor::Keys(const std::string &prefix,
+Status InternalKVAccessor::Keys(const std::string &ns, const std::string &prefix,
                                 std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
+  RAY_CHECK_OK(AsyncInternalKVKeys(ns, prefix,
+                                   [&ret_promise, &value](Status status, auto &values) {
+                                     value = values.value_or(std::vector<std::string>());
+                                     ret_promise.set_value(status);
+                                   }));
+  return ret_promise.get_future().get();
+}
+
+Status InternalKVAccessor::Get(const std::string &ns, const std::string &key,
+                               std::string &value) {
+  std::promise<Status> ret_promise;
   RAY_CHECK_OK(
-      AsyncInternalKVKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
-        value = values.value_or(std::vector<std::string>());
+      AsyncInternalKVGet(ns, key, [&ret_promise, &value](Status status, auto &v) {
+        if (v) {
+          value = *v;
+        }
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
 }
 
-Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
-  std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVGet(key, [&ret_promise, &value](Status status, auto &v) {
-    if (v) {
-      value = *v;
-    }
-    ret_promise.set_value(status);
-  }));
-  return ret_promise.get_future().get();
-}
-
-Status InternalKVAccessor::Del(const std::string &key) {
+Status InternalKVAccessor::Del(const std::string &ns, const std::string &key) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVDel(
-      key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
+      ns, key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
   return ret_promise.get_future().get();
 }
 
-Status InternalKVAccessor::Exists(const std::string &key, bool &exist) {
+Status InternalKVAccessor::Exists(const std::string &ns, const std::string &key,
+                                  bool &exist) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVExists(
-      key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
+      ns, key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
         if (value) {
           exist = *value;
         }
