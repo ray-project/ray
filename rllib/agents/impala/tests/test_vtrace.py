@@ -332,7 +332,7 @@ class VtraceTest(unittest.TestCase):
                     "bootstrap_value": Box(-1.0, 1.0, (7, )).sample()
                 }
             with self.assertRaisesRegex((ValueError, AssertionError),
-                                         "must have rank 2"):
+                                        "must have rank 2"):
                 vtrace.from_importance_weights(**inputs_)
 
 

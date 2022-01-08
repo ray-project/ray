@@ -260,8 +260,7 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
             all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
         self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
         self.assertEqual(ea.best_result["res"], 309)
-        self.assertEqual(ea.best_result_df.loc[trials[2].trial_id, "res"],
-                          309)
+        self.assertEqual(ea.best_result_df.loc[trials[2].trial_id, "res"], 309)
 
     def testDataframeBestResult(self):
         def train(config):
