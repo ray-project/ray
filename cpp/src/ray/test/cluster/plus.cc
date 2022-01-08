@@ -36,6 +36,13 @@ int PlusPutWaitRemote(int x, int y) {
   auto y_obj = ray::Put(y);
   // ray::ObjectRef<int>& y_ref = y_obj;
   // ray::Wait(y_ref);
+  // if (y != *ray::Get(y_obj)) {
+  //   throw std::logic_error("y != y_obj");
+  // }
+  //
+  // if (x + y != *ray::Get(ray::Task(Plus).Remote(x, y_obj))) {
+  //   throw std::logic_error("y != y_obj");
+  // }
   return *ray::Get(ray::Task(Plus).Remote(x, y_obj));
 };
 
