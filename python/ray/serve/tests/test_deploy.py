@@ -391,9 +391,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ret = ray.get(handle.handler.remote(block)).split("|")
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                })
+                f"http://localhost:8000/{name}", params={"block": block})
 
             ret_candidate = ret.text.split("|")
 
