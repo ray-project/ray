@@ -1214,7 +1214,8 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     }
     PushToLocationSubscribers(it);
   } else {
-    RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node " << spilled_node_id;
+    RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node "
+                   << spilled_node_id;
     ReleasePlasmaObject(it);
     objects_to_recover_.push_back(object_id);
   }

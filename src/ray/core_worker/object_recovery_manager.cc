@@ -65,7 +65,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   } else if (requires_recovery) {
     RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
   } else {
-    RAY_LOG(DEBUG) << "Object " << object_id << " has a pinned or spilled location, skipping recovery";
+    RAY_LOG(DEBUG) << "Object " << object_id
+                   << " has a pinned or spilled location, skipping recovery";
   }
   return true;
 }
