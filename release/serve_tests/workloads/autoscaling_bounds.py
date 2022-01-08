@@ -17,8 +17,7 @@ import ray
 from ray import serve
 from ray.serve.utils import logger
 from serve_test_utils import (
-    save_test_results,
-)
+    save_test_results, )
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -122,9 +121,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
     deployment_name = "echo"
 
     logger.info(f"Deploying with {min_replicas} replicas ....\n")
-    handle = deploy_replicas(min_replicas,
-                             max_replicas,
-                             signal,
+    handle = deploy_replicas(min_replicas, max_replicas, signal,
                              deployment_name)
 
     logger.info("Warming up cluster ....\n")
