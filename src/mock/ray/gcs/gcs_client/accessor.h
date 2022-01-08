@@ -275,7 +275,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status, AsyncInternalKVDel,
-              (const std::string &ns, const std::string &key,
+              (const std::string &ns, const std::string &key, bool del_by_prefix,
                const StatusCallback &callback),
               (override));
 };

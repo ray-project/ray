@@ -475,6 +475,7 @@ message InternalKVPutReply {
 message InternalKVDelRequest {
   bytes key = 1;
   bytes namespace = 2;
+  bool del_by_prefix = 3;
 }
 
 message InternalKVDelReply {

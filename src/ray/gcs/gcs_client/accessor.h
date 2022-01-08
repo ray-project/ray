@@ -772,10 +772,11 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to delete from.
   /// \param key The key to delete.
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
   virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
-                                    const StatusCallback &callback);
+                                    bool del_by_prefix, const StatusCallback &callback);
 
   // These are sync functions of the async above
 
@@ -821,8 +822,9 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to delete from.
   /// \param key The key to delete
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \return Status
-  virtual Status Del(const std::string &ns, const std::string &key);
+  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
 
   /// Check existence of a key in the store
   ///

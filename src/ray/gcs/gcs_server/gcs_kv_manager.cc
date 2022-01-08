@@ -89,13 +89,30 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
 }
 
 void RedisInternalKV::Del(const std::string &ns, const std::string &key,
-                          std::function<void(int64_t)> callback) {
+                          bool del_by_prefix, std::function<void(int64_t)> callback) {
   auto true_key = MakeKey(ns, key);
-  std::vector<std::string> cmd = {"HDEL", true_key, "value"};
-  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [callback = std::move(callback)](auto redis_reply) {
-        callback(redis_reply->ReadAsInteger() != 0);
-      }));
+  if (del_by_prefix) {
+    std::vector<std::string> cmd = {"KEYS", true_key + "*"};
+    RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+        cmd, [this, callback = std::move(callback)](auto redis_reply) {
+          const auto &reply = redis_reply->ReadAsStringArray();
+          std::vector<std::string> del_cmd = {"DEL"};
+          for (const auto &r : reply) {
+            RAY_CHECK(r.has_value());
+            del_cmd.emplace_back(*r);
+          }
+          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+              del_cmd, [callback = std::move(callback)](auto redis_reply) {
+                callback(redis_reply->ReadAsInteger());
+              }));
+        }));
+  } else {
+    std::vector<std::string> cmd = {"DEL", true_key};
+    RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+        cmd, [callback = std::move(callback)](auto redis_reply) {
+          callback(redis_reply->ReadAsInteger());
+        }));
+  }
 }
 
 void RedisInternalKV::Exists(const std::string &ns, const std::string &key,
@@ -157,15 +174,28 @@ void MemoryInternalKV::Put(const std::string &ns, const std::string &key,
 }
 
 void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
-                           std::function<void(int64_t)> callback) {
+                           bool del_by_prefix, std::function<void(int64_t)> callback) {
   absl::WriterMutexLock _(&mu_);
   auto true_key = MakeKey(ns, key);
-  auto it = map_.find(true_key);
+  auto it = map_.lower_bound(true_key);
   int64_t del_num = 0;
-  if (it != map_.end()) {
-    map_.erase(it);
-    del_num += 1;
+  while (it != map_.end()) {
+    if (!del_by_prefix) {
+      if (it->first == true_key) {
+        map_.erase(it);
+        ++del_num;
+      }
+      break;
+    }
+
+    if (absl::StartsWith(it->first, true_key)) {
+      it = map_.erase(it);
+      ++del_num;
+    } else {
+      break;
+    }
   }
+
   if (callback != nullptr) {
     io_context_.post(std::bind(std::move(callback), del_num));
   }
@@ -243,7 +273,8 @@ void GcsInternalKVManager::HandleInternalKVDel(
       reply->set_deleted_num(del_num);
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     };
-    kv_instance_->Del(request.namespace_(), request.key(), std::move(callback));
+    kv_instance_->Del(request.namespace_(), request.key(), request.del_by_prefix(),
+                      std::move(callback));
   }
 }
 
