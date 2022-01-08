@@ -88,7 +88,6 @@ def test_basic_class(execution_mode, shared_ray_instance):
     assert greeter.call("Theodore") == "Top of the morning Theodore!"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File handling.")
 @pytest.mark.parametrize("execution_mode", ALL_EXECUTION_MODES)
 @enable_local_execution_mode_only
 def test_class_constructor_not_called_until_deployed(execution_mode,
@@ -96,6 +95,9 @@ def test_class_constructor_not_called_until_deployed(execution_mode,
     """Constructor should only be called after .deploy()."""
 
     with tempfile.NamedTemporaryFile("w") as tmp:
+
+        tmp_name = tmp.name + ".tmp"
+        open(tmp_name, "w+").close()
 
         @pipeline.step(execution_mode=execution_mode)
         class FileWriter:
@@ -110,10 +112,10 @@ def test_class_constructor_not_called_until_deployed(execution_mode,
         msg = "hello"
 
         def constructor_called():
-            with open(tmp.name, "r") as f:
+            with open(tmp_name, "r") as f:
                 return f.read() == msg
 
-        file_writer = FileWriter(tmp.name, msg)
+        file_writer = FileWriter(tmp_name, msg)
         assert not constructor_called()
 
         writer_pipeline = file_writer(pipeline.INPUT)
