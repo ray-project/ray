@@ -124,6 +124,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 
   RAY_LOG(INFO) << "I am a plasma store " << store_client_.DebugString();
                                                  RAY_LOG(INFO) << "Creating Object in PS 1 " << object_id;
+  // auto is_null = store_client_ == nullptr;
+  // RAY_LOG(INFO) << "I am a plasma store. I'm null: " << std::string(is_null);
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "rust/ray-rs-sys/cpp/api.h"
-#include "rust/ray-rs-sys/cpp/tasks.h"
+#include "api.h"
+#include "rust/ray-rs-sys/cpp/bridge/tasks.h"
 #include "rust/ray-rs-sys/src/lib.rs.h"
 
 int main(int argc, char **argv) {
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
   ray::RayConfig config;
   ray::Init(config, ray::internal::ExecuteTask, argc, argv);
   RAY_CHECK(::ray::core::CoreWorkerProcess::IsInitialized());
-  // ray::initialize_library_core_workers_from_outer(::ray::core::GetCoreWorkerProcess());
+  ray::initialize_library_core_workers_from_outer(::ray::core::GetCoreWorkerProcess());
   ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
   return 0;
 }

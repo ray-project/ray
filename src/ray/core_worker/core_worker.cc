@@ -818,6 +818,8 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
                                          const ObjectID &object_id, bool pin_object) {
   bool object_exists;
       RAY_LOG(INFO) << "Putting Object From CoreWorker6 " << object_id;
+      auto is_null = plasma_store_provider_ == nullptr;
+      RAY_LOG(INFO) << "plasma_store_provider_ is null " << is_null;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
       object, object_id, /* owner_address = */ rpc_address_, &object_exists));
           RAY_LOG(INFO) << "Putting Object From CoreWorker7 " << object_id;

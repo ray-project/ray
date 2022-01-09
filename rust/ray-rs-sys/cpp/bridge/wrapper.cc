@@ -1,0 +1,139 @@
+
+#include <msgpack.hpp>
+
+#include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/core_worker_options.h"
+#include "ray/core_worker/core_worker_process.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
+#include "rust/cxx.h"
+
+namespace ray {
+
+rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id) {
+  RAY_LOG(INFO) << "GETTING RAW" << (*id).Hex();
+  core::CoreWorker &core_worker = core::CoreWorkerProcess::GetCoreWorker();
+  std::vector<std::shared_ptr<::ray::RayObject>> results;
+  std::vector<ObjectID> ids;
+  std::vector<bool> res;
+  ids.push_back(*id);
+  ::ray::Status status1 = core_worker.Wait(ids, 1, 6000, &res, false);
+  RAY_LOG(INFO) << "GOT IT!" << (*id).Hex();
+  ::ray::Status status = core_worker.Get(ids, 6000, &results);
+
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Get object error: " << status.ToString();
+  }
+
+  rust::Vec<uint8_t> buf;
+  size_t size = results[0]->GetData()->Size();
+
+  RAY_LOG(INFO) << "Get Size" << size;
+  buf.reserve(size);
+
+  // Unfortunately, we can't resize the vector and do a memcpy...
+  // memcpy(buf.data(), results[0]->GetData()->Data(), size);
+
+  uint8_t *ray_buf = results[0]->GetData()->Data();
+
+  size_t i;
+  for (i = 0; i < size; i++) {
+    buf.push_back(ray_buf[i]);
+  }
+  return buf;
+}
+
+
+std::unique_ptr<ObjectID> PutRaw(rust::Vec<uint8_t> data) {
+  RAY_LOG(INFO) << "Putting";
+  auto &core_worker = core::CoreWorkerProcess::GetCoreWorker();
+  ObjectID object_id;
+  RAY_LOG(INFO) << "worker RPC" << core_worker.GetRpcAddress().DebugString();
+  RAY_LOG(INFO) << "Putting" << object_id.Hex();
+  auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
+      reinterpret_cast<uint8_t *>(data.data()), data.size(), true);
+
+  RAY_LOG(INFO) << "Putting2" << object_id.Hex();
+  auto status = core_worker.Put(
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      &object_id);
+  if (!status.ok()) {
+    RAY_LOG(INFO) << "Put object error: " << status.ToString();
+  } else {
+    RAY_LOG(INFO) << "Put object success: " << status.ToString();
+  }
+  return std::make_unique<ObjectID>(object_id);
+}
+
+
+
+struct Config {
+  std::string my_string;
+  uint64_t my_int;
+  MSGPACK_DEFINE(my_string, my_int);
+};
+
+void LogDebug(rust::Str str) { RAY_LOG(DEBUG) << static_cast<std::string>(str); }
+
+void LogInfo(rust::Str str) { RAY_LOG(INFO) << static_cast<std::string>(str); }
+
+std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id) {
+  return std::make_unique<std::string>((*id).Binary());
+}
+
+std::unique_ptr<ObjectID> StringObjectID(const std::string &string) {
+  return std::make_unique<ObjectID>(ObjectID::FromBinary(string));
+}
+
+
+
+
+// bool IsInitialized() { return is_init_; }
+//
+// void Shutdown() {
+//   // TODO(SongGuyang): Clean the ray runtime.
+//   if (internal::ConfigInternal::Instance().run_mode == internal::RunMode::CLUSTER) {
+//     internal::ProcessHelper::GetInstance().RayStop();
+//   }
+//   is_init_ = false;
+// }
+
+// void InitAsLocal() {
+//   ray::RayConfig config;
+//   config.local_mode = true;
+//   ray::Init(config);
+// }
+// using Uint64ObjectRef = ray::ObjectRef<uint64_t>;
+//
+// std::unique_ptr<Uint64ObjectRef> PutUint64(const uint64_t obj) {
+//   auto ref = Put<uint64_t>(obj);
+//   ray::internal::GetRayRuntime()->AddLocalReference(ref.ID());
+//   // this actually requires `UniquePtr` with custom destructor that Rust-side
+//   // is knowledgeable about;
+//   // In reality, for the Rust ObjectRef, we can implement all the ref counting in Rust.
+//   return std::make_unique<Uint64ObjectRef>(ref);
+// }
+//
+// std::shared_ptr<uint64_t> GetUint64(const std::unique_ptr<Uint64ObjectRef> obj_ref) {
+//   return Get<uint64_t>(*obj_ref);
+// }
+//
+// using StringObjectRef = ray::ObjectRef<std::string>;
+//
+// std::unique_ptr<StringObjectRef> PutString(const std::string &obj) {
+//   auto ref = Put<std::string>(obj);
+//   ray::internal::GetRayRuntime()->AddLocalReference(ref.ID());
+//   return std::make_unique<StringObjectRef>(ref);
+// }
+//
+// std::shared_ptr<std::string> GetString(const std::unique_ptr<StringObjectRef> obj_ref) {
+//   return Get<std::string>(*obj_ref);
+// }
+//
+//
+// void PutAndGetConfig() {
+//   Config config = {"hello", 42ULL};
+//   auto ref = Put(config);
+//   Get(ref);
+// }
+}  // namespace ray

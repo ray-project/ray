@@ -1,6 +1,5 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library","rust_shared_library", "rust_test")
 load("@ray-rs-toml//:defs.bzl", "crates_from", "crate")
 load("//bazel:ray.bzl", "COPTS")
@@ -13,10 +12,10 @@ rust_test(
       ":ray_rs_sys",
       "@cxx.rs//:cxx",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
-    data = [":ray_rs_sys_shared"],
+    data = [":remote_lib"],
     env = {
       "RUST_TEST_NOCAPTURE": "1",
-      "RAY_RUST_LIBRARY_PATHS": "--ray_code_search_path=$(rootpath ray_rs_sys_shared)"
+      "RAY_RUST_LIBRARY_PATHS": "--ray_code_search_path=$(rootpath remote_lib)"
     },
 )
 
@@ -27,8 +26,21 @@ rust_library(
     deps = [
         ":bridge",
         "@cxx.rs//:cxx",
-        ":ray_rs_c",
+        ":ray_rs_bridge_c",
+        "ray_rs_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
+    visibility = ["//visibility:public"],
+)
+
+rust_shared_library(
+    name = "remote_lib",
+    srcs = glob(["tests/remote_lib.rs"]),
+    proc_macro_deps = [crate("paste")],
+    deps = [
+        "ray_rs_sys",
+    ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
+    # rustc_flags = ["-C", "link-args=-rdynamic"],
+    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
     visibility = ["//visibility:public"],
 )
 
@@ -41,26 +53,43 @@ rust_shared_library(
         ":bridge",
         "@cxx.rs//:cxx",
         ":ray_rs_c",
+        ":ray_rs_bridge_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
-    # rustc_flags = ["-C", "link-args=-rdynamic"],
-    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "ray_rs_c",
-    srcs = glob(["cpp/*.cc"]),
+    srcs = glob(["cpp/standalone/*.cc"]) + glob(["cpp/standalone/*.h"]),
+    hdrs = ["cpp/standalone/api.h"],
     copts = COPTS,
+    linkopts = ["-ldl"],
+    linkstatic = True,
+    strip_include_prefix = "cpp/standalone",
     deps = [
-        ":bridge/include",
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
-        "@cxx.rs//:core",
-        ":ray_rs_include",
+        "//:ray_common",
+        "//:ray_util",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@boost//:filesystem",
         "@boost//:optional",
+        "@cxx.rs//:core",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "ray_rs_bridge_c",
+    srcs = glob(["cpp/bridge/*.cc"]),
+    copts = COPTS,
+    deps = [
+        ":bridge/include",
+        "//:core_worker_lib",
+        "@cxx.rs//:core",
+        ":ray_rs_include_bridge",
+        "ray_rs_c",
     ],
 )
 
@@ -68,15 +97,15 @@ rust_cxx_bridge(
     name = "bridge",
     src = "src/lib.rs",
     deps = [
-      ":ray_rs_include",
+      "ray_rs_c",
+      ":ray_rs_include_bridge",
       "//:core_worker_lib",
-      "//:global_state_accessor_lib",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
 )
 
 cc_library(
-    name = "ray_rs_include",
+    name = "ray_rs_include_bridge",
     copts = COPTS,
-    hdrs = glob(["cpp/*.h"]),
+    hdrs = glob(["cpp/bridge/*.h"]),
     deps = ["@cxx.rs//:core"],
 )

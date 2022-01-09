@@ -384,6 +384,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
         status = Status::NotFound(oss.str());
       } else {
         *node_to_connect = nodes[relevant_client_index].SerializeAsString();
+          RAY_LOG(INFO) << "WTF 8" << node_to_connect;
         return Status::OK();
       }
     }

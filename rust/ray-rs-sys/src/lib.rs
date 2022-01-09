@@ -25,12 +25,7 @@ use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 pub mod remote_functions;
 pub use remote_functions::{
-    add_two_vecs,
-    add_three_vecs,
-    add_two_vecs_nested,
-    add_two_vecs_nested_remote_outer_get,
     get, put,
-    put_and_get_nested
 };
 
 pub struct RustTaskArg {
@@ -245,25 +240,26 @@ pub mod ray_api_ffi {
     // }
 
     unsafe extern "C++" {
-        include!("rust/ray-rs-sys/cpp/tasks.h");
+        include!("rust/ray-rs-sys/cpp/bridge/tasks.h");
 
         type ObjectID;
         fn ObjectIDString(id: UniquePtr<ObjectID>) -> UniquePtr<CxxString>;
         fn StringObjectID(string: &CxxString) -> UniquePtr<ObjectID>;
 
         fn Submit(name: &str, args: &Vec<RustTaskArg>) -> UniquePtr<ObjectID>;
-        fn InitRust(arg_str: &str);
     }
 
     unsafe extern "C++" {
-        include!("rust/ray-rs-sys/cpp/api.h");
-        include!("rust/ray-rs-sys/cpp/wrapper.h");
+        // include!("rust/ray-rs-sys/cpp/standalone/api.h");
+        include!("rust/ray-rs-sys/cpp/bridge/wrapper.h");
 
         fn LogDebug(str: &str);
         fn LogInfo(str: &str);
 
         fn GetRaw(id: UniquePtr<ObjectID>) -> Vec<u8>;
         fn PutRaw(data: Vec<u8>) -> UniquePtr<ObjectID>;
+
+        fn InitRust(arg_str: &str);
         //
         // type Uint64ObjectRef;
         // type StringObjectRef;
