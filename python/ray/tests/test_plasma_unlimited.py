@@ -250,21 +250,15 @@ def test_fallback_allocation_failure(shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() != "Linux",
-    reason="Only Linux handles fallback allocation disk full error.")
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
 def test_plasma_allocate(shutdown_only):
-    tmp_dir = "/tmp/for_test_plasma_allocate"
-    if os.path.exists(tmp_dir):
-        os.removedirs(tmp_dir)
-    os.mkdir(tmp_dir)
-
-    ray.init(
+    address = ray.init(
         object_store_memory=300 * 1024**2,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
         },
-        _temp_dir=tmp_dir)
+        _temp_dir="/tmp/for_test_plasma_allocate")
     res = []
     data = np.random.randint(
         low=0, high=256, size=(90 * 1024**2, ), dtype=np.uint8)
@@ -276,9 +270,7 @@ def test_plasma_allocate(shutdown_only):
     __ = ray.put(data)  # noqa
 
     # Check fourth object allocate in memory.
-    object_num = shutil.disk_usage(tmp_dir).total / (90 * 1024**2)
-    print("object_num: ", shutil.disk_usage(tmp_dir).total / (90 * 1024**2))
-    assert object_num < 4
+    _check_spilled_mb(address, spilled=180)
 
 
 if __name__ == "__main__":
