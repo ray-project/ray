@@ -17,16 +17,17 @@
 //         fn GetWorkerID(self: &CoreWorker) -> &WorkerID;
 //     }
 // }
-
-use paste::paste;
-use uniffi::ffi::RustBuffer;
+#[macro_use]
+pub use paste::paste;
+#[macro_use]
+pub use lazy_static::lazy_static;
+pub use rmp_serde;
+pub use uniffi::ffi::RustBuffer;
 use core::pin::Pin;
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr, CxxVector};
 
 pub mod remote_functions;
-pub use remote_functions::{
-    get, put,
-};
+pub use remote_functions::*;
 
 pub struct RustTaskArg {
     buf: Vec<u8>,
@@ -229,7 +230,7 @@ pub mod ray_api_ffi {
     }
 
     extern "Rust" {
-        fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
+        pub fn get_execute_result(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8>;
         unsafe fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char);
         fn initialize_library_core_workers();
         fn initialize_library_core_workers_from_outer(outer: SharedPtr<CoreWorkerProcessImpl>);
@@ -250,8 +251,8 @@ pub mod ray_api_ffi {
     }
 
     unsafe extern "C++" {
-        // include!("rust/ray-rs-sys/cpp/standalone/api.h");
-        include!("rust/ray-rs-sys/cpp/bridge/wrapper.h");
+        include!("rust/ray-rs-sys/cpp/standalone/api.h");
+        // include!("rust/ray-rs-sys/cpp/bridge/wrapper.h");
 
         fn LogDebug(str: &str);
         fn LogInfo(str: &str);

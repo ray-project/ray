@@ -20,7 +20,7 @@ macro_rules! impl_ray_function {
             }
 
             impl<$($argp: serde::Serialize,)* R> [<RayFunction $n>]<$($argp,)* R> {
-                fn new(
+                pub fn new(
                     raw_fn: fn($($argty),*) -> R,
                     wrapped_fn: InvokerFunction,
                     ffi_lookup_name: String
@@ -92,11 +92,13 @@ impl_ray_function!([2], a0: T0 [T0], a1: T1 [T1]);
 impl_ray_function!([3], a0: T0 [T0], a1: T1 [T1], a2: T2 [T2]);
 // impl_ray_function!(a0: T0, a1: T1, a2: T2, a3: T3);
 
+#[macro_export]
 macro_rules! count {
     () => (0usize);
     ( $x:tt $($xs:tt)* ) => (1usize + count!($($xs)*));
 }
 
+#[macro_export]
 macro_rules! deserialize {
     ($ptrs:ident, $sizes:ident) => {};
     ($ptrs:ident, $sizes:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
@@ -109,6 +111,7 @@ macro_rules! deserialize {
     };
 }
 
+#[macro_export]
 macro_rules! serialize {
     ($ptrs:ident) => {};
     ($ptrs:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
@@ -143,7 +146,7 @@ macro_rules! remote_internal {
             }
 
             #[allow(non_upper_case_globals)]
-            lazy_static::lazy_static! {
+            lazy_static! {
                 pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
                     = [<RayFunction $lit_n>]::new(
                         [<ray_rust_private_ $name>],
@@ -160,6 +163,7 @@ macro_rules! remote_internal {
     };
 }
 
+#[macro_export]
 macro_rules! match_remote {
     ([$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(0, $name ($($arg: $argty),*) -> $ret $body); };
     ($x:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(1, $name ($($arg: $argty),*) -> $ret $body); };

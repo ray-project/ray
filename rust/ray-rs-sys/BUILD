@@ -7,10 +7,11 @@ load("//bazel:ray_cxx.bzl", "rust_cxx_bridge")
 
 rust_test(
     name = "test",
-    srcs = ["src/test.rs"],
+    srcs = ["tests/test.rs"],
     deps = [
       ":ray_rs_sys",
       "@cxx.rs//:cxx",
+      ":remote_rlib",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
     data = [":remote_lib"],
     env = {
@@ -33,18 +34,6 @@ rust_library(
 )
 
 rust_shared_library(
-    name = "remote_lib",
-    srcs = glob(["tests/remote_lib.rs"]),
-    proc_macro_deps = [crate("paste")],
-    deps = [
-        "ray_rs_sys",
-    ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
-    # rustc_flags = ["-C", "link-args=-rdynamic"],
-    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
-    visibility = ["//visibility:public"],
-)
-
-rust_shared_library(
     name = "ray_rs_sys_shared",
     crate_name = "ray_rs_sys",
     srcs = glob(["src/**/*.rs"]),
@@ -52,9 +41,30 @@ rust_shared_library(
     deps = [
         ":bridge",
         "@cxx.rs//:cxx",
-        ":ray_rs_c",
-        ":ray_rs_bridge_c",
+        # ":ray_rs_bridge_c",
+        # "ray_rs_c",
     ] + crates_from("//rust/ray-rs-sys:Cargo.toml"),
+    visibility = ["//visibility:public"],
+)
+
+rust_library(
+    name = "remote_rlib",
+    crate_name = "remote_lib",
+    srcs = glob(["tests/remote_lib.rs"]),
+    deps = [
+        "ray_rs_sys",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+rust_shared_library(
+    name = "remote_lib",
+    srcs = glob(["tests/remote_lib.rs"]),
+    deps = [
+        "ray_rs_sys",
+    ],
+    # rustc_flags = ["-C", "link-args=-rdynamic"],
+    rustc_flags = ["-C", "link-args=-Wl,-export-dynamic"],
     visibility = ["//visibility:public"],
 )
 
@@ -63,8 +73,8 @@ cc_library(
     srcs = glob(["cpp/standalone/*.cc"]) + glob(["cpp/standalone/*.h"]),
     hdrs = ["cpp/standalone/api.h"],
     copts = COPTS,
-    linkopts = ["-ldl"],
-    linkstatic = True,
+    # linkopts = ["-shared"],
+    # linkstatic = True,
     strip_include_prefix = "cpp/standalone",
     deps = [
         "//:core_worker_lib",
@@ -77,15 +87,16 @@ cc_library(
         "@boost//:optional",
         "@cxx.rs//:core",
     ],
-    alwayslink = True,
 )
 
 cc_library(
     name = "ray_rs_bridge_c",
     srcs = glob(["cpp/bridge/*.cc"]),
     copts = COPTS,
+    # linkstatic = True,
     deps = [
         ":bridge/include",
+        ":bridge",
         "//:core_worker_lib",
         "@cxx.rs//:core",
         ":ray_rs_include_bridge",

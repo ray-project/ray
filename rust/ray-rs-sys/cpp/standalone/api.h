@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ray/core_worker/core_worker_options.h"
-// #include "rust/cxx.h"
+#include "rust/cxx.h"
 
 namespace ray {
 
@@ -55,5 +55,17 @@ bool IsInitialized();
 
 /// Shutdown Ray runtime.
 void Shutdown();
+
+rust::Vec<uint8_t> GetRaw(std::unique_ptr<ObjectID> id);
+
+std::unique_ptr<ObjectID> PutRaw(rust::Vec<uint8_t> data);
+
+void LogDebug(rust::Str str);
+
+void LogInfo(rust::Str str);
+
+std::unique_ptr<std::string> ObjectIDString(std::unique_ptr<ObjectID> id);
+
+std::unique_ptr<ObjectID> StringObjectID(const std::string &string);
 
 }

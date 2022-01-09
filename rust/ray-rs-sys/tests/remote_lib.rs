@@ -34,12 +34,12 @@ pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
 }
 }
 
-remote! {
-pub fn add_two_vecs_nested_remote_outer_get(a: Vec<u64>, b: Vec<u64>) -> Vec<u8> {
-    let objr = add_two_vecs.remote(&a, &b);
-    object_id_to_byte_vec(objr)
-}
-}
+// remote! {
+// pub fn add_two_vecs_nested_remote_outer_get(a: Vec<u64>, b: Vec<u64>) -> Vec<u8> {
+//     let objr = add_two_vecs.remote(&a, &b);
+//     object_id_to_byte_vec(objr)
+// }
+// }
 
 remote! {
 pub fn add_three_vecs(a: Vec<u64>, b: Vec<u64>, c: Vec<u64>) -> Vec<u64> {
