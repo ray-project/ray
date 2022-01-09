@@ -6,5 +6,4 @@ public class ExampleImpl implements ExampleInterface {
   public String echo(String str) {
     return str;
   }
-
 }
