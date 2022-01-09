@@ -1,6 +1,7 @@
 import logging
 import gym
 from typing import Optional, Dict
+import sys
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
@@ -96,10 +97,11 @@ class MARWILLoss:
     def __init__(self, policy: Policy, value_estimates: TensorType,
                  action_dist: ActionDistribution, train_batch: SampleBatch,
                  vf_loss_coeff: float, beta: float):
-
         # L = - A * log\pi_\theta(a|s)
         logprobs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
-
+        logstds = tf.reduce_sum(action_dist.log_std, axis=1)
+        mean_loss = tf.keras.metrics.mean_squared_error(action_dist.deterministic_sample(),
+                                                        train_batch[SampleBatch.ACTIONS])
         if beta != 0.0:
             cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
             # Advantage Estimation.
@@ -110,6 +112,7 @@ class MARWILLoss:
 
             # Perform moving averaging of advantage^2.
             rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
+            logstd_coeff = policy.config["logstd_coeff"]
 
             # Update averaged advantage norm.
             # Eager.
@@ -143,7 +146,10 @@ class MARWILLoss:
             self.v_loss = tf.constant(0.0)
             exp_advs = 1.0
 
-        self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
+        print_op = tf.print("-----\n", logprobs, "\n", logstds, "\n", mean_loss,
+                            output_stream=sys.stdout)
+        with tf.control_dependencies([print_op]):
+            self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs + logstd_coeff * logstds)
 
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
 
