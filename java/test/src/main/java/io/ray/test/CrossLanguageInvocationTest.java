@@ -405,7 +405,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
                     "py_func_call_java_overrided_method_with_default_keyword",
                     Object.class))
             .remote();
-    System.out.println(res.get());
-    Assert.assertEquals("hi".getBytes(StandardCharsets.UTF_8), res.get());
+    Assert.assertEquals("hi", res.get());
   }
 }
