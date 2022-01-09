@@ -149,7 +149,7 @@ class MARWILLoss:
         print_op = tf.print("-----\n", logprobs, "\n", logstds, "\n", mean_loss,
                             output_stream=sys.stdout)
         with tf.control_dependencies([print_op]):
-            self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs + logstd_coeff * logstds)
+            self.p_loss = -1.0 * tf.reduce_mean(exp_advs * (logprobs + logstd_coeff * logstds))
 
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
 
