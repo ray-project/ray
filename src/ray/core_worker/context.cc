@@ -22,7 +22,9 @@ namespace core {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(TaskID::FromRandom(job_id)), task_index_(0), put_counter_(0) {}
+      : current_task_id_(), task_index_(0), put_counter_(0) {
+        SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
+      }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
@@ -49,7 +51,15 @@ struct WorkerThreadContext {
     return current_task_;
   }
 
-  void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
+    current_task_id_ = task_id;
+    if (!current_task_id_.IsNil()) {
+      current_internal_task_id_ =
+          TaskID::ForExecutionAttempt(task_id, attempt_number);
+    } else {
+      current_internal_task_id_ = TaskID::Nil();
+    }
+  }
 
   const TaskID &GetCurrentInternalTaskId() const { return current_internal_task_id_; }
 
@@ -72,17 +82,14 @@ struct WorkerThreadContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
-    SetCurrentTaskId(task_spec.TaskId());
-    current_internal_task_id_ =
-        TaskID::ForExecutionAttempt(task_spec.TaskId(), task_spec.AttemptNumber());
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
   void ResetCurrentTask() {
-    SetCurrentTaskId(TaskID::Nil());
-    current_internal_task_id_ = TaskID::Nil();
+    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0);
     task_index_ = 0;
     put_counter_ = 0;
   }
@@ -143,7 +150,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
   // (For other threads it's set to random ID via GetThreadContext).
   GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
                                           ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil());
+                                          : TaskID::Nil(), /*attempt_number=*/0);
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -206,8 +213,8 @@ std::shared_ptr<rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
   return runtime_env_;
 }
 
-void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
-  GetThreadContext().SetCurrentTaskId(task_id);
+void WorkerContext::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
+  GetThreadContext().SetCurrentTaskId(task_id, attempt_number);
 }
 
 void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {

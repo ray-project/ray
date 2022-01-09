@@ -327,7 +327,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    SetCurrentTaskId(task_id);
+    // Drivers are never re-executed.
+    SetCurrentTaskId(task_id, /*attempt_number=*/0);
   }
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
@@ -627,8 +628,8 @@ void CoreWorker::WaitForShutdown() {
 
 const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWorkerID(); }
 
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
-  worker_context_.SetCurrentTaskId(task_id);
+void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
+  worker_context_.SetCurrentTaskId(task_id, attempt_number);
   {
     absl::MutexLock lock(&mutex_);
     main_thread_task_id_ = task_id;
@@ -2075,7 +2076,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   if (!options_.is_local_mode) {
     worker_context_.SetCurrentTask(task_spec);
-    SetCurrentTaskId(task_spec.TaskId());
+    SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber());
   }
   {
     absl::MutexLock lock(&mutex_);
@@ -2167,7 +2168,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   if (!options_.is_local_mode) {
-    SetCurrentTaskId(TaskID::Nil());
+    SetCurrentTaskId(TaskID::Nil(), /*attempt_number=*/0);
     worker_context_.ResetCurrentTask();
   }
   {
