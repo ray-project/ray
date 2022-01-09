@@ -141,17 +141,12 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
-      -python/ray/tests:test_actor_advanced # timeout
-      -python/ray/tests:test_actor_failures # flaky
+      -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_component_failures
-      -python/ray/tests:test_component_failures_3 # timeout
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_failure
-      -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
