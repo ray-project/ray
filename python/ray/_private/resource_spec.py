@@ -171,7 +171,7 @@ class ResourceSpec(
             # to avoid degraded performance.
             # (https://github.com/ray-project/ray/issues/20388)
             if sys.platform == "darwin":
-                object_store_memory = max(
+                object_store_memory = min(
                     object_store_memory,
                     ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT)
 
