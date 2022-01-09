@@ -250,15 +250,21 @@ def test_fallback_allocation_failure(shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux",
+    reason="Only Linux handles fallback allocation disk full error.")
 def test_plasma_allocate(shutdown_only):
+    tmp_dir = "/tmp/for_test_plasma_allocate"
+    if os.path.exists(tmp_dir):
+        os.removedirs(tmp_dir)
+    os.mkdir(tmp_dir)
+
     ray.init(
         object_store_memory=300 * 1024**2,
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
         },
-        _temp_dir="/tmp/ray/test_tmp_dir")
+        _temp_dir=tmp_dir)
     res = []
     data = np.random.randint(
         low=0, high=256, size=(90 * 1024**2, ), dtype=np.uint8)
@@ -269,11 +275,10 @@ def test_plasma_allocate(shutdown_only):
     # keep reference for fourth object, avoid released by plasma GC.
     __ = ray.put(data)  # noqa
 
-    # Check fourth object whether allocate to disk
-    cmd = "lsof | grep \"/tmp/ray/test_tmp_dir/plasma\" | wc -l"
-    out = subprocess.check_output(
-        cmd, shell=True).decode("utf-8").split("\n")[0]
-    assert int(out) == 0
+    # Check fourth object allocate in memory.
+    object_num = shutil.disk_usage(tmp_dir).total / (90 * 1024**2)
+    print("object_num: ", shutil.disk_usage(tmp_dir).total / (90 * 1024**2))
+    assert object_num < 4
 
 
 if __name__ == "__main__":
