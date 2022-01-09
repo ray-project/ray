@@ -133,8 +133,7 @@ def py_func_get_and_invoke_named_actor():
     return b"true"
 
 @ray.remote
-def py_func_f():
+def py_func_call_java_overrided_method_with_default_keyword():
     cls = ray.java_actor_class("io.ray.test.ExampleImpl")
     handle = cls.remote()
-    print(ray.get(handle.echo.remote("hi")))
-    return b"ok"
+    return ray.get(handle.echo.remote("hi"))

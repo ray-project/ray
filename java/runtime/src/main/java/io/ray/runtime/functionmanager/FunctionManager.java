@@ -211,17 +211,9 @@ public class FunctionManager {
           clz = clz.getSuperclass();
         }
 
-        for (Executable e : executables) {
-          LOGGER.info("111=========methodName={}", e.getName());
-        }
-
         // Put interface methods ahead, so that in can be override by subclass methods in `map.put`
         for (Class baseInterface : clazz.getInterfaces()) {
           for (Method method : baseInterface.getDeclaredMethods()) {
-            LOGGER.info(
-                "222=================methodName={}, is_default={}",
-                method.getName(),
-                method.isDefault());
             if (method.isDefault()) {
               executables.add(method);
             }
@@ -239,31 +231,16 @@ public class FunctionManager {
               new RayFunction(
                   e, classLoader, new JavaFunctionDescriptor(className, methodName, signature));
           final boolean isDefault = e instanceof Method && ((Method) e).isDefault();
-          LOGGER.info(
-              "=============className={}, methodname={}, signature={}",
-              className,
-              methodName,
-              signature);
           map.put(
               ImmutablePair.of(methodName, signature), ImmutablePair.of(rayFunction, isDefault));
           // For cross language call java function without signature
           final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
           /// default method is not overloaded, so we should filter it.
           if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
-            LOGGER.info(
-                "Mark this as overloaded =============className={}, methodname={}, signature={}",
-                className,
-                methodName,
-                signature);
             map.put(
                 emptyDescriptor,
                 ImmutablePair.of(null, false)); // Mark this function as overloaded.
           } else {
-            LOGGER.info(
-                "Not Mark this as overloaded =============className={}, methodname={}, signature={}",
-                className,
-                methodName,
-                signature);
             map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
           }
         }
