@@ -620,7 +620,7 @@ class SampleBatch(dict):
                     or path[0] == SampleBatch.SEQ_LENS:
                 return
             # Generate zero-filled primer of len=max_seq_len.
-            if value.dtype == np.object or value.dtype.type is np.str_:
+            if value.dtype == object or value.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.
@@ -651,13 +651,13 @@ class SampleBatch(dict):
 
         return self
 
-    # Experimental method.
+    @ExperimentalAPI
     def to_device(self, device, framework="torch"):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != np.object:
+                if isinstance(v, np.ndarray) and v.dtype != object:
                     self[k] = torch.from_numpy(v).to(device)
         else:
             raise NotImplementedError

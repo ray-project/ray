@@ -159,13 +159,15 @@ class WorkerSet:
         if self.remote_workers() or from_worker is not None:
             weights = (from_worker
                        or self.local_worker()).get_weights(policies)
+            # Put weights only once into object store and use same object
+            # ref to synch to all workers.
             weights_ref = ray.put(weights)
             # Sync to all remote workers in this WorkerSet.
             for to_worker in self.remote_workers():
                 to_worker.set_weights.remote(weights_ref)
 
-            # If from_worker is provided, also sync to this WorkerSet's local
-            # worker.
+            # If `from_worker` is provided, also sync to this WorkerSet's
+            # local worker.
             if from_worker is not None and self.local_worker() is not None:
                 self.local_worker().set_weights(weights)
 
