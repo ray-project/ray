@@ -295,7 +295,11 @@ class HEBOSearch(Searcher):
             logger.warning("HEBO doesn't use intermediate_values. Ignoring.")
         if not error and not pruned:
             self._opt.observe(
-                pd.DataFrame([parameters]),
+                pd.DataFrame([{
+                    k: v
+                    for k, v in parameters.items()
+                    if k in self._opt.space.para_names
+                }]),
                 np.array([value]) * self._metric_op)
         else:
             logger.warning("Only non errored and non pruned points"
