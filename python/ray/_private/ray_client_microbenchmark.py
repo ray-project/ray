@@ -94,12 +94,7 @@ def benchmark_simple_actor(ray, results):
 def main(results=None):
     results = results or []
 
-    ray_config = {
-        "_system_config": {
-            "put_small_object_in_memory_store": True
-        },
-        "logging_level": logging.WARNING
-    }
+    ray_config = {"logging_level": logging.WARNING}
 
     def ray_connect_handler(job_config=None, **ray_init_kwargs):
         from ray._private.client_mode_hook import disable_client_hook

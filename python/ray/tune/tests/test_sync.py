@@ -428,11 +428,11 @@ class TestSyncFunctionality(unittest.TestCase):
         self.assertTrue(isinstance(syncer_callback, SyncerCallback))
 
         # Sync function should be false (no sync to driver)
-        self.assertEquals(syncer_callback._sync_function, False)
+        self.assertEqual(syncer_callback._sync_function, False)
 
         # Sync to driver is disabled, so this should be no-op
         trial_syncer = syncer_callback._get_trial_syncer(trial)
-        self.assertEquals(trial_syncer.sync_client, NOOP)
+        self.assertEqual(trial_syncer.sync_client, NOOP)
 
 
 if __name__ == "__main__":

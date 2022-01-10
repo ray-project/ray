@@ -581,34 +581,6 @@ class PlacementGroupManager:
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
 
-    def return_or_clean_cached_pg(self, pg: PlacementGroup):
-        """Return cached pg, making it available for other trials to use.
-
-        This will try to replace another staged placement group. If this
-        is unsuccessful, destroy the placement group instead.
-
-        Args:
-            pg (PlacementGroup): Return this cached placement group.
-
-        Returns:
-            Boolean indicating if the placement group was returned (True)
-                or destroyed (False)
-        """
-        pgf = self._cached_pgs.pop(pg)
-
-        # Replace staged placement group
-        staged_pg = self._unstage_unused_pg(pgf)
-
-        # Could not replace
-        if not staged_pg:
-            self.remove_pg(pg)
-            return False
-
-        # Replace successful
-        self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-        return True
-
     def return_pg(self, trial: "Trial"):
         """Return pg back to Core scheduling.
 

@@ -269,9 +269,7 @@ class StandardizeFields:
         wrapped = False
 
         if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({
-                DEFAULT_POLICY_ID: samples
-            }, samples.count)
+            samples = samples.as_multi_agent()
             wrapped = True
 
         for policy_id in samples.policy_batches:

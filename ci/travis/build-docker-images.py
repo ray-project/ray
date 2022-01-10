@@ -403,7 +403,7 @@ def push_and_tag_images(py_versions: List[str],
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
-        release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
+        release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*",
                                  _get_branch()).group(0)
         date_tag = release_name
         sha_tag = release_name
