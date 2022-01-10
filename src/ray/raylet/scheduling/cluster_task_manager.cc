@@ -155,7 +155,6 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     const TaskID &task_id, SchedulingClass scheduling_class,
     const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
     const rpc::Address &owner_address) {
-  RAY_LOG(INFO) << "PoppedWorkerHandler " << task_id;
   const auto &reply = work->reply;
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
@@ -273,6 +272,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  RAY_LOG(INFO) << "DispatchScheduledTasksToWorkers";
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -392,6 +392,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
+      RAY_LOG(INFO) << "jjyao";
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
@@ -477,7 +478,7 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Queuing and scheduling task "
+  RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,
