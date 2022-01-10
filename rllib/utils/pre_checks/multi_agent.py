@@ -19,9 +19,10 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
 
     Raises:
         KeyError: If `config` does not contain a "multiagent" key or if there
-        is an invalid key inside the "multiagent" config.
-        KeyError: If any policy has a non-str ID.
-        ValueError: If
+            is an invalid key inside the "multiagent" config or if any policy
+            in the "policies" dict has a non-str ID (key).
+        ValueError: If any subkey of the "multiagent" dict has an invalid
+            value.
     """
     if "multiagent" not in config:
         raise KeyError(
@@ -53,12 +54,30 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
         }
 
     # Check each defined policy ID and spec.
-    for pid, spec in policies.items():
+    for pid, policy_spec in policies.copy().items():
         # Policy IDs must be strings.
         if not isinstance(pid, str):
             raise KeyError(
                 f"Policy IDs must always be of type `str`, got {type(pid)}")
-        # Spec must be valid.
+        # Convert to PolicySpec if plain list/tuple.
+        if not isinstance(policy_spec, PolicySpec):
+            # Values must be lists/tuples of len 4.
+            if not isinstance(policy_spec, (list, tuple)) or \
+                    len(policy_spec) != 4:
+                raise ValueError(
+                    "Policy specs must be tuples/lists of "
+                    "(cls or None, obs_space, action_space, config), "
+                    f"got {policy_spec}")
+            policies[pid] = PolicySpec(*policy_spec)
+
+        # Config is None -> Set to {}.
+        if policies[pid].config is None:
+            policies[pid] = policies[pid]._replace(config={})
+        # Config not a dict.
+        elif not isinstance(policies[pid].config, dict):
+            raise ValueError(
+                f"Multiagent policy config for {pid} must be a dict, "
+                f"but got {type(policies[pid].config)}!")
 
     # Check other "multiagent" sub-keys' values.
     if multiagent_config.get("count_steps_by", "env_steps") not in \

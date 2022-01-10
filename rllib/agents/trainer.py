@@ -34,7 +34,7 @@ from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
     train_one_step, multi_gpu_train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
@@ -2099,29 +2099,9 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
-        # Loop through all policy definitions in multi-agent policies.
+        # Validate "multiagent" sub-dict and convert policy 4-tuples to
+        # PolicySpec objects.
         policies, is_multi_agent = check_multi_agent(config)
-
-        for pid, policy_spec in policies.copy().items():
-            # Convert to PolicySpec if plain list/tuple.
-            if not isinstance(policy_spec, PolicySpec):
-                # Values must be lists/tuples of len 4.
-                if not isinstance(policy_spec, (list, tuple)) or \
-                        len(policy_spec) != 4:
-                    raise ValueError(
-                        "Policy specs must be tuples/lists of "
-                        "(cls or None, obs_space, action_space, config), "
-                        f"got {policy_spec}")
-                policies[pid] = PolicySpec(*policy_spec)
-
-            # Config is None -> Set to {}.
-            if policies[pid].config is None:
-                policies[pid] = policies[pid]._replace(config={})
-            # Config not a dict.
-            elif not isinstance(policies[pid].config, dict):
-                raise ValueError(
-                    f"Multiagent policy config for {pid} must be a dict, "
-                    f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
