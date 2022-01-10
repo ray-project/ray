@@ -66,9 +66,22 @@ message PluginRuntimeEnv {
   repeated Plugin plugins = 1;
 }
 
-/// The jars type runtime env.
-message JarsRuntimeEnv {
-  /// TODO(SongGuyang)
+message PythonRuntimeEnv {
+  /// List of URIs (either in the GCS or external
+  /// storage), each of which is a zip file that will be unpacked and
+  /// inserted into the PYTHONPATH of the workers.
+  repeated string py_modules = 1;
+  /// One of typed runtime env of python
+  oneof python_runtime_env {
+    /// pip runtime env
+    PipRuntimeEnv pip_runtime_env = 2;
+    /// conda runtime env
+    CondaRuntimeEnv conda_runtime_env = 3;
+    /// container runtime env
+    ContainerRuntimeEnv container_runtime_env = 4;
+    /// plugin runtime env
+    PluginRuntimeEnv plugin_runtime_env = 5;
+  }
 }
 
 /// The maven type runtime env.
@@ -76,64 +89,55 @@ message MavenRuntimeEnv {
   /// TODO(SongGuyang)
 }
 
-message RuntimeEnvUris {
-  /// working dir uri
-  string working_dir_uri = 1;
-  /// python modules uris
-  repeated string py_modules_uris = 2;
-  /// conda uri
-  string conda_uri = 3;
-  /// pip uri
-  string pip_uri = 4;
-  /// plugin uris
-  repeated string plugin_uris = 5;
+message JavaRuntimeEnv {
+  /// List of URIs, each of which is a zip file that will be unpacked
+  /// and inserted into the CLASSPATH of the java workers.
+  repeated string jars = 1;
+  /// One of typed runtime env of java
+  oneof java_runtime_env {
+    /// maven runtime env
+    MavenRuntimeEnv maven_runtime_env = 2;
+    /// container runtime env
+    ContainerRuntimeEnv container_runtime_env = 3;
+    /// plugin runtime env
+    PluginRuntimeEnv plugin_runtime_env = 4;
+  }
+}
+
+message CppRuntimeEnv {
+  /// List of URIs, each of which is a zip file that will be unpacked
+  /// and inserted into the LD_LIBRARY_PATH of the C++ workers.
+  repeated string dynamic_library = 1;
+  /// One of typed runtime env of C++
+  oneof cpp_runtime_env {
+    /// container runtime env
+    ContainerRuntimeEnv container_runtime_env = 2;
+    /// plugin runtime env
+    PluginRuntimeEnv plugin_runtime_env = 3;
+  }
 }
 
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
-  /// List of URIs (either in the GCS or external
-  /// storage), each of which is a zip file that will be unpacked and
-  /// inserted into the PYTHONPATH of the workers.
-  repeated string py_modules = 1;
   /// Specifies the working directory of the worker.
-  string working_dir = 2;
-  /// Runtime env uris of different types.
-  RuntimeEnvUris uris = 3;
+  string working_dir = 1;
   /// Environment variables to set.
-  map<string, string> env_vars = 4;
+  map<string, string> env_vars = 2;
   /// The extension fields.
-  map<string, string> extensions = 5;
-  /// One of typed runtime env of python
-  oneof python_runtime_env {
-    /// pip runtime env
-    PipRuntimeEnv pip_runtime_env = 6;
-    /// conda runtime env
-    CondaRuntimeEnv conda_runtime_env = 7;
-    /// container runtime env
-    ContainerRuntimeEnv py_container_runtime_env = 8;
-    /// plugin runtime env
-    PluginRuntimeEnv py_plugin_runtime_env = 9;
-  }
-  /// One of typed runtime env of java
-  oneof java_runtime_env {
-    /// jars runtime env
-    JarsRuntimeEnv jars_runtime_env = 10;
-    /// maven runtime env
-    MavenRuntimeEnv maven_runtime_env = 11;
-    /// container runtime env
-    ContainerRuntimeEnv java_container_runtime_env = 12;
-    /// plugin runtime env
-    PluginRuntimeEnv java_plugin_runtime_env = 13;
-  }
+  map<string, string> extensions = 3;
+  /// python runtime env
+  PythonRuntimeEnv python_runtime_env = 4;
+  /// java runtime env
+  JavaRuntimeEnv java_runtime_env = 5;
+  /// cpp runtime env
+  CppRuntimeEnv cpp_runtime_env = 6;
 }
 
 /// The runtime env information which is transfered between ray core processes.
 message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;
-  /// URIs used in this runtime env. These will be used for reference counting.
-  repeated string uris = 2;
   /// Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 3;
+  bool runtime_env_eager_install = 2;
 }
