@@ -20,8 +20,8 @@
 #include <iostream>
 #include <utility>
 
-#include "ray/common/stats/metric_defs.h"
 #include "ray/stats/metric.h"
+#include "ray/stats/metric_defs.h"
 
 namespace {
 

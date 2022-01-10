@@ -28,9 +28,9 @@ void instrumented_io_context::post(std::function<void()> handler,
     // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
     // handler stats it->second from multiple threads without acquiring a table-level
     // readers lock in the callback.
-    const auto stats_handle = RecordStart(name);
+    const auto stats_handle = event_stats_.RecordStart(name);
     handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-      RecordExecution(handler, std::move(stats_handle));
+      EventStats::RecordExecution(handler, std::move(stats_handle));
     };
   }
   auto defer_us = ray::asio::testing::get_delay_us(name);
@@ -40,16 +40,6 @@ void instrumented_io_context::post(std::function<void()> handler,
     RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
     execute_after_us(*this, std::move(handler), defer_us);
   }
-  const auto stats_handle = event_stats_->RecordStart(name);
-  // References are only invalidated upon deletion of the corresponding item from the
-  // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
-  // handler stats it->second from multiple threads without acquiring a table-level
-  // readers lock in the callback.
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        EventStats::RecordExecution(handler, std::move(stats_handle));
-      });
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
@@ -64,7 +54,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     // TODO(ekl) it would be nice to track this delay too,.
     stats_handle->ZeroAccumulatedQueuingDelay();
     handler = [handler = std::move(handler), stats_handle = stats_handle]() {
-      RecordExecution(handler, std::move(stats_handle));
+      EventStats::RecordExecution(handler, std::move(stats_handle));
     };
   }
   if (defer_us == 0) {
@@ -74,14 +64,6 @@ void instrumented_io_context::post(std::function<void()> handler,
                    << "us";
     execute_after_us(*this, std::move(handler), defer_us);
   }
-  // Reset the handle start time, so that we effectively measure the queueing
-  // time only and not the time delay from RecordStart().
-  // TODO(ekl) it would be nice to track this delay too,.
-  stats_handle->ZeroAccumulatedQueuingDelay();
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        EventStats::RecordExecution(handler, std::move(stats_handle));
-      });
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,

@@ -3149,24 +3149,26 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<Status> ret;
   int counter = 0;
   // Post to service pool to avoid mutex
-  io_service_.post([&, this]() {
-    for (const auto &id : actor_ids) {
-      if (actor_creator_->IsActorInRegistering(id)) {
-        ++counter;
-        actor_creator_->AsyncWaitForActorRegisterFinish(
-            id, [&counter, &promise, &ret](Status status) {
-              ret.push_back(status);
-              --counter;
-              if (counter == 0) {
-                promise.set_value();
-              }
-            });
-      }
-    }
-    if (counter == 0) {
-      promise.set_value();
-    }
-  }, "CoreWorker.WaitForActorRegistered");
+  io_service_.post(
+      [&, this]() {
+        for (const auto &id : actor_ids) {
+          if (actor_creator_->IsActorInRegistering(id)) {
+            ++counter;
+            actor_creator_->AsyncWaitForActorRegisterFinish(
+                id, [&counter, &promise, &ret](Status status) {
+                  ret.push_back(status);
+                  --counter;
+                  if (counter == 0) {
+                    promise.set_value();
+                  }
+                });
+          }
+        }
+        if (counter == 0) {
+          promise.set_value();
+        }
+      },
+      "CoreWorker.WaitForActorRegistered");
   future.wait();
   for (const auto &s : ret) {
     if (!s.ok()) {
