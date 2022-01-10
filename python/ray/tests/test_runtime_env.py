@@ -43,8 +43,6 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_task(start_cluster):
     cluster, address = start_cluster
     ray.init(address)
@@ -56,8 +54,6 @@ def test_decorator_task(start_cluster):
     assert ray.get(f.remote()) == "bar"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_actor(start_cluster):
     cluster, address = start_cluster
     ray.init(address)
@@ -71,8 +67,6 @@ def test_decorator_actor(start_cluster):
     assert ray.get(a.g.remote()) == "bar"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_complex(start_cluster):
     cluster, address = start_cluster
     ray.init(address, runtime_env={"env_vars": {"foo": "job"}})
@@ -127,7 +121,8 @@ def test_container_option_serialize():
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+    sys.platform == "win32",
+    reason="conda in runtime_env unsupported on Windows.")
 def test_invalid_conda_env(shutdown_only):
     ray.init()
 
@@ -230,8 +225,7 @@ def runtime_env_local_dev_env_var():
     del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
 def test_runtime_env_no_spurious_resource_deadlock_msg(
         runtime_env_local_dev_env_var, ray_start_regular, error_pubsub):
     p = error_pubsub

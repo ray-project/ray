@@ -159,9 +159,11 @@ class GlobalStateAccessor {
 
   /// Get value of the key from GCS Service.
   ///
+  /// \param ns namespace to get.
   /// \param key key to get.
   /// \return Value of the key.
-  std::unique_ptr<std::string> GetInternalKV(const std::string &key)
+  std::unique_ptr<std::string> GetInternalKV(const std::string &ns,
+                                             const std::string &key)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the serialized system config from GCS.

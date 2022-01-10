@@ -8,7 +8,6 @@ import ray
 from ray import serve
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_consistent_constructor_failure(serve_instance):
     # # Test failed to deploy with total of 1 replica
     @serve.deployment(num_replicas=1)
@@ -47,7 +46,6 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     assert deployment_dict["ConstructorFailureDeploymentTwoReplicas"] == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_partial_constructor_failure(serve_instance):
     # Test deploy with 2 replicas but one of them failed all
     # attempts
@@ -85,7 +83,6 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     assert len(deployment_dict["PartialConstructorFailureDeployment"]) == 2
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_transient_constructor_failure(serve_instance):
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.

@@ -120,6 +120,7 @@ class SimpleQTrainer(Trainer):
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings.
         """
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["exploration_config"]["type"] == "ParameterNoise":

@@ -594,11 +594,12 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 }
 
 void CoreWorker::WaitForShutdown() {
-  if (io_thread_.joinable()) {
-    io_thread_.join();
-  }
+  // Stop gcs client first since it runs in io_thread_
   if (gcs_client_) {
     gcs_client_->Disconnect();
+  }
+  if (io_thread_.joinable()) {
+    io_thread_.join();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());

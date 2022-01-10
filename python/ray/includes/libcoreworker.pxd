@@ -21,9 +21,6 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
-
-
 from ray.includes.common cimport (
     CAddress,
     CObjectReference,
@@ -254,8 +251,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const CNodeID &client_Id)
 
         CJobConfig GetJobConfig()
-
-        shared_ptr[CGcsClient] GetGcsClient() const
 
         c_bool IsExiting() const
 
