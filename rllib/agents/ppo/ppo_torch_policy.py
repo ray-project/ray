@@ -112,7 +112,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = reduce_mean_valid(action_kl)
         else:
-            mean_kl_loss = 0.0
+            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
         curr_entropy = curr_action_dist.entropy()
         mean_entropy = reduce_mean_valid(curr_entropy)
