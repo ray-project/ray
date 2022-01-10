@@ -175,7 +175,7 @@ void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post([this, callback, worker,
                      status]() { PopWorkerCallbackInternal(callback, worker, status); },
-                    "WorkerPool::PopWorkerCallback");
+                    "WorkerPool.PopWorkerCallback");
 }
 
 void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,

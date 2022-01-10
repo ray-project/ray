@@ -47,7 +47,7 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
             DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), *timer);
           }
         },
-        "PeriodicalRunner::ScheduleRunFn");
+        "PeriodicalRunner.RunFnPeriodically");
   }
 }
 
@@ -79,7 +79,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // NOTE: We add the timer period to the enqueue time in order only measure the time in
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
-  auto stats_handle = io_service_.RecordStart(name, period.total_nanoseconds());
+  auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
   timer.async_wait([this, fn = std::move(fn), period, &timer,
                     stats_handle = std::move(stats_handle),
                     name](const boost::system::error_code &error) {

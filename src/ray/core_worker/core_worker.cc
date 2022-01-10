@@ -3166,7 +3166,7 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     if (counter == 0) {
       promise.set_value();
     }
-  });
+  }, "CoreWorker.WaitForActorRegistered");
   future.wait();
   for (const auto &s : ret) {
     if (!s.ok()) {
