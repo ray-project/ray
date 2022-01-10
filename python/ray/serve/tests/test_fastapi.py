@@ -1,4 +1,3 @@
-import sys
 import time
 from typing import Any, List, Optional
 import tempfile
@@ -410,7 +409,6 @@ def test_asgi_compatible(serve_instance):
     assert resp.json() == {"hello": "world"}
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [DEFAULT.VALUE, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
     app = FastAPI()
@@ -553,7 +551,6 @@ def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
     assert resp.json()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fastapi_shutdown_hook(serve_instance):
     # https://github.com/ray-project/ray/issues/18349
     shutdown_signal = SignalActor.remote()

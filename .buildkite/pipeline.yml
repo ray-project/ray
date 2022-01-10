@@ -331,7 +331,7 @@
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
-      -- python/ray/serve/... -//python/ray/serve:test_standalone
+      -- python/ray/serve/...
     # Re-enable after fixing.
     #- bazel test --config=ci $(./scripts/bazel_export_options)
     #  --test_tag_filters=team:serve
@@ -364,9 +364,9 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_client_multi -//python/ray/tests:test_healthcheck
+      -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
+      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
       -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
-      -//python/ray/tests:test_gcs_fault_tolerance
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -377,7 +377,9 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_ray_debugger -//python/ray/tests:test_multi_node
+      -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
+      -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
+      -//python/ray/tests:test_multi_node -//python/ray/tests:test_multi_node_3
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
