@@ -20,6 +20,9 @@
 #include <iostream>
 #include <utility>
 
+#include "ray/common/asio/asio_chaos.h"
+#include "ray/common/asio/asio_util.h"
+
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
   if (RayConfig::instance().event_stats()) {
@@ -30,7 +33,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     // readers lock in the callback.
     const auto stats_handle = event_stats_->RecordStart(name);
     handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-      EventStats::RecordExecution(handler, std::move(stats_handle));
+      EventTracker::RecordExecution(handler, std::move(stats_handle));
     };
   }
   auto defer_us = ray::asio::testing::get_delay_us(name);
@@ -46,7 +49,7 @@ void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
   size_t defer_us = 0;
   if (stats_handle) {
-    defer_us = ray::asio::testing::get_delay_us(stats_handle->handler_name);
+    defer_us = ray::asio::testing::get_delay_us(stats_handle->event_name);
   }
   if (RayConfig::instance().event_stats()) {
     // Reset the handle start time, so that we effectively measure the queueing
@@ -54,13 +57,13 @@ void instrumented_io_context::post(std::function<void()> handler,
     // TODO(ekl) it would be nice to track this delay too,.
     stats_handle->ZeroAccumulatedQueuingDelay();
     handler = [handler = std::move(handler), stats_handle = stats_handle]() {
-      EventStats::RecordExecution(handler, std::move(stats_handle));
+      EventTracker::RecordExecution(handler, std::move(stats_handle));
     };
   }
   if (defer_us == 0) {
     return boost::asio::io_context::post(std::move(handler));
   } else {
-    RAY_LOG(DEBUG) << "Deferring " << stats_handle->handler_name << " by " << defer_us
+    RAY_LOG(DEBUG) << "Deferring " << stats_handle->event_name << " by " << defer_us
                    << "us";
     execute_after_us(*this, std::move(handler), defer_us);
   }
@@ -79,6 +82,6 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
   // readers lock in the callback.
   boost::asio::io_context::dispatch(
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        EventStats::RecordExecution(handler, std::move(stats_handle));
+        EventTracker::RecordExecution(handler, std::move(stats_handle));
       });
 }
