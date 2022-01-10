@@ -102,6 +102,7 @@ class MARWILLoss:
         logstds = tf.reduce_sum(action_dist.log_std, axis=1)
         mean_loss = tf.keras.metrics.mean_squared_error(action_dist.deterministic_sample(),
                                                         train_batch[SampleBatch.ACTIONS])
+        logstd_coeff = policy.config["logstd_coeff"]
         if beta != 0.0:
             cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
             # Advantage Estimation.
@@ -112,7 +113,6 @@ class MARWILLoss:
 
             # Perform moving averaging of advantage^2.
             rate = policy.config["moving_average_sqd_adv_norm_update_rate"]
-            logstd_coeff = policy.config["logstd_coeff"]
 
             # Update averaged advantage norm.
             # Eager.
