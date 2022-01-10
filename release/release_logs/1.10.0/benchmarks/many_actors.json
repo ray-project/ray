@@ -1,10 +1,12 @@
 {
-  "actors_per_second": 234.49773688626482,
+  "actors_per_second": 308.7800075475559,
   "num_actors": 10000,
-  "time": 42.64433479309082,
+  "time": 32.38551640510559,
   "success": "1",
-  "_runtime": 54.7690749168396,
-  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_UAgxttEXyC87USWm4fMJZRez",
-  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.9.0/ebd189758eec941abe202b55040d349e8f3e36e6/ray-1.9.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_peak_memory": 5.15,
+  "_peak_process_memory": "PID\tMEM\tCOMMAND\n178\t1.13GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --redis_address=172.\n9187\t0.85GiB\tpython distributed/test_many_actors.py\n168\t0.33GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/thirdparty/redis/src/redis-server *\n202\t0.15GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dash\n278\t0.11GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n90\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n437\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session auth_start\n9225\t0.05GiB\tray::MemoryMonitorActor.run()\n395\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=193a3cdf\n91\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=193a3cdf",
+  "_runtime": 48.71066999435425,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_9QfALDYMTUaAwR5pJz6etEeb",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.10.0/1583379dce891e96e9721bb958e80d485753aed7/ray-1.10.0-cp37-cp37m-manylinux2014_x86_64.whl",
   "_stable": true
 }
