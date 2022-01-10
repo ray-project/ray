@@ -14,7 +14,8 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import (Cluster, AutoscalingCluster,
                                cluster_not_supported)
-from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance, \
+    wait_for_redis_to_start
 from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
                                      setup_tls, teardown_tls,
                                      get_and_run_node_killer)
@@ -61,12 +62,14 @@ def external_redis(request, monkeypatch):
     processes = []
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _, proc = _start_redis_instance(
+        port, proc = _start_redis_instance(
             REDIS_EXECUTABLE,
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD)
         processes.append(proc)
+        wait_for_redis_to_start("127.0.0.1", port,
+                                ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(
         map(lambda x: f"localhost:{x}", external_redis_ports))
     monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)

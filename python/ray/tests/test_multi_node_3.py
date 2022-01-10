@@ -5,6 +5,7 @@ import sys
 
 import ray
 import ray.ray_constants as ray_constants
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
@@ -85,16 +86,17 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     check_call_ray(["stop"])
 
-    # Test starting Ray with --address flag (deprecated).
-    temp_dir = ray._private.utils.get_ray_temp_dir()
-    _, proc = _start_redis_instance(
-        REDIS_EXECUTABLE,
-        temp_dir,
-        7777,
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    check_call_ray(["start", "--head", "--address", "127.0.0.1:7777"])
-    check_call_ray(["stop"])
-    proc.process.terminate()
+    if not use_gcs_for_bootstrap():
+        # Test starting Ray with --address flag (deprecated).
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        _, proc = _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            7777,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        check_call_ray(["start", "--head", "--address", "127.0.0.1:7777"])
+        check_call_ray(["stop"])
+        proc.process.terminate()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
     _, proc = _start_redis_instance(
