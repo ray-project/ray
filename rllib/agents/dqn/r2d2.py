@@ -111,6 +111,7 @@ class R2D2Trainer(DQNTrainer):
         Rewrites rollout_fragment_length to take into account burn-in and
         max_seq_len truncation.
         """
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["replay_sequence_length"] != -1:

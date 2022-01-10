@@ -248,7 +248,8 @@ def unsquash_action(action, action_space_struct):
 
     def map_(a, s):
         if isinstance(s, gym.spaces.Box) and \
-                (s.dtype == np.float32 or s.dtype == np.float64):
+                (s.dtype == np.float32 or s.dtype == np.float64) and \
+                np.all(s.bounded_below) and np.all(s.bounded_above):
             # Assuming values are roughly between -1.0 and 1.0 ->
             # unsquash them to the given bounds.
             a = s.low + (a + 1.0) * (s.high - s.low) / 2.0

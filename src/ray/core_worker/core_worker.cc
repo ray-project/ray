@@ -594,11 +594,12 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 }
 
 void CoreWorker::WaitForShutdown() {
-  if (io_thread_.joinable()) {
-    io_thread_.join();
-  }
+  // Stop gcs client first since it runs in io_thread_
   if (gcs_client_) {
     gcs_client_->Disconnect();
+  }
+  if (io_thread_.joinable()) {
+    io_thread_.join();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());
@@ -841,9 +842,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
-  if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
+  if (options_.is_local_mode) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
@@ -904,10 +903,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     status = status_promise.get_future().get();
   }
 
-  if ((options_.is_local_mode ||
-       (RayConfig::instance().put_small_object_in_memory_store() &&
-        static_cast<int64_t>(data_size) < max_direct_call_object_size_)) &&
-      owned_by_us && inline_small_object) {
+  if (options_.is_local_mode && owned_by_us && inline_small_object) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     if (status.ok()) {

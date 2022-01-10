@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray.cluster_utils
+from ray._private.test_utils import client_test_enabled
 from ray._private.test_utils import wait_for_pid_to_exit
 
 import ray
@@ -76,6 +77,46 @@ def test_actor_killing(shutdown_only):
     ray.kill(worker_1, no_restart=False)
     worker_2 = Actor.remote()
     assert ray.get(worker_2.foo.remote()) is None
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="client api doesn't support namespace right now.")
+def test_internal_kv(ray_start_regular):
+    import ray.experimental.internal_kv as kv
+    assert kv._internal_kv_get("k1") is None
+    assert kv._internal_kv_put("k1", "v1") is False
+    assert kv._internal_kv_put("k1", "v1") is True
+    assert kv._internal_kv_get("k1") == b"v1"
+
+    assert kv._internal_kv_get("k1", namespace="n") is None
+    assert kv._internal_kv_put("k1", "v1", namespace="n") is False
+    assert kv._internal_kv_put("k1", "v1", namespace="n") is True
+    assert kv._internal_kv_put("k1", "v2", True, namespace="n") is True
+    assert kv._internal_kv_get("k1", namespace="n") == b"v2"
+
+    assert kv._internal_kv_del("k1") == 1
+    assert kv._internal_kv_del("k1") == 0
+    assert kv._internal_kv_get("k1") is None
+
+    assert kv._internal_kv_put("k2", "v2", namespace="n") is False
+    assert kv._internal_kv_put("k3", "v3", namespace="n") is False
+
+    assert set(kv._internal_kv_list("k",
+                                    namespace="n")) == {b"k1", b"k2", b"k3"}
+    assert kv._internal_kv_del("k", del_by_prefix=True, namespace="n") == 3
+    assert kv._internal_kv_get("k1", namespace="n") is None
+    assert kv._internal_kv_get("k2", namespace="n") is None
+    assert kv._internal_kv_get("k3", namespace="n") is None
+
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_put("@namespace_", "x", True)
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_get("@namespace_", namespace="n")
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_del("@namespace_def", namespace="n")
+    with pytest.raises(RuntimeError):
+        kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
 if __name__ == "__main__":
