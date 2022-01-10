@@ -133,7 +133,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work>
     bool args_ready =
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {
-      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
+      RAY_LOG(INFO) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
@@ -143,7 +143,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work>
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
-    RAY_LOG(DEBUG) << "No args, task can be dispatched "
+    RAY_LOG(INFO) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].push_back(work);
   }
@@ -155,6 +155,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     const TaskID &task_id, SchedulingClass scheduling_class,
     const std::shared_ptr<internal::Work> &work, bool is_detached_actor,
     const rpc::Address &owner_address) {
+  RAY_LOG(INFO) << "PoppedWorkerHandler " << task_id;
   const auto &reply = work->reply;
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
@@ -253,7 +254,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
-    RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
+    RAY_LOG(INFO) << "Dispatching task " << task_id << " to worker "
                    << worker->WorkerId();
 
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
@@ -432,6 +433,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
+        RAY_LOG(INFO) << "PopWorker for " << task_id;
         worker_pool_.PopWorker(
             spec,
             [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
@@ -475,7 +477,7 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Queuing and scheduling task "
+  RAY_LOG(INFO) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,

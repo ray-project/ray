@@ -1677,6 +1677,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
+  RAY_LOG(INFO) << "HandleReturnWorker " << worker_id;
 
   Status status;
   leased_workers_.erase(worker_id);
