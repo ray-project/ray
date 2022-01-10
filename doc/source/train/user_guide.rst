@@ -182,6 +182,9 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="torch", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
+
 
   .. group-tab:: TensorFlow
 
@@ -190,12 +193,18 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="tensorflow", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
+
   .. group-tab:: Horovod
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="horovod", num_workers=2)
+
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="horovod", num_workers=2, use_gpu=True)
 
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
@@ -410,9 +419,10 @@ Built-in Callbacks
 
 The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
 
-1. :ref:`train-api-json-logger-callback`
-2. :ref:`train-api-tbx-logger-callback`
-3. :ref:`train-api-mlflow-logger-callback`
+1. :ref:`train-api-print-callback`
+2. :ref:`train-api-json-logger-callback`
+3. :ref:`train-api-tbx-logger-callback`
+4. :ref:`train-api-mlflow-logger-callback`
 
 Example: Logging to MLflow and Tensorboard
 ++++++++++++++++++++++++++++++++++++++++++

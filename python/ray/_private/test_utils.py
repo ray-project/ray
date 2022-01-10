@@ -548,7 +548,7 @@ def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsErrorSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -590,7 +590,7 @@ def init_log_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsLogSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -678,10 +678,6 @@ def format_web_url(url):
     if not url.startswith("http://"):
         return "http://" + url
     return url
-
-
-def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
 
 
 def client_test_enabled() -> bool:

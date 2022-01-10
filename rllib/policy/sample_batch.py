@@ -76,7 +76,7 @@ class SampleBatch(dict):
             _time_major (Optional[bool]): Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[bool]): The max sequence chunk length
+            _max_seq_len (Optional[int]): The max sequence chunk length
                 if the data contains sequences.
             _zero_padded (Optional[bool]): Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
@@ -455,7 +455,7 @@ class SampleBatch(dict):
                 }
             else:
                 data = {
-                    k: v[start:end]
+                    k: tree.map_structure(lambda s: s[start:end], v)
                     for k, v in self.items() if k != SampleBatch.SEQ_LENS
                     and not k.startswith("state_in_")
                 }

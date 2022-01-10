@@ -4,7 +4,7 @@ from ray.rllib.env.multi_agent_env import MultiAgentEnv
 class PettingZooEnv(MultiAgentEnv):
     """An interface to the PettingZoo MARL environment library.
 
-    See: https://github.com/PettingZoo-Team/PettingZoo
+    See: https://github.com/Farama-Foundation/PettingZoo
 
     Inherits from MultiAgentEnv and exposes a given AEC
     (actor-environment-cycle) game from the PettingZoo project via the
@@ -15,7 +15,7 @@ class PettingZooEnv(MultiAgentEnv):
     1. All agents have the same action_spaces and observation_spaces.
        Note: If, within your aec game, agents do not have homogeneous action /
        observation spaces, apply SuperSuit wrappers
-       to apply padding functionality: https://github.com/PettingZoo-Team/
+       to apply padding functionality: https://github.com/Farama-Foundation/
        SuperSuit#built-in-multi-agent-only-functions
     2. Environments are positive sum games (-> Agents are expected to cooperate
        to maximize reward). This isn't a hard restriction, it just that
@@ -23,8 +23,8 @@ class PettingZooEnv(MultiAgentEnv):
        games.
 
     Examples:
-        >>> from pettingzoo.butterfly import prison_v2
-        >>> env = PettingZooEnv(prison_v2.env())
+        >>> from pettingzoo.butterfly import prison_v3
+        >>> env = PettingZooEnv(prison_v3.env())
         >>> obs = env.reset()
         >>> print(obs)
         # only returns the observation for the agent which should be stepping
@@ -68,33 +68,25 @@ class PettingZooEnv(MultiAgentEnv):
 
     def __init__(self, env):
         self.env = env
-        # agent idx list
-        self.agents = self.env.possible_agents
-
-        # Get dictionaries of obs_spaces and act_spaces
-        self.observation_spaces = self.env.observation_spaces
-        self.action_spaces = self.env.action_spaces
+        env.reset()
 
         # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.observation_spaces[self.agents[0]]
+        self.observation_space = self.env.observation_space(self.env.agents[0])
 
         # Get first action space, assuming all agents have equal space
-        self.action_space = self.action_spaces[self.agents[0]]
+        self.action_space = self.env.action_space(self.env.agents[0])
 
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.env.observation_spaces.values()), \
+        assert all(self.env.observation_space(agent) == self.observation_space
+                   for agent in self.env.agents), \
             "Observation spaces for all agents must be identical. Perhaps " \
             "SuperSuit's pad_observations wrapper can help (useage: " \
             "`supersuit.aec_wrappers.pad_observations(env)`"
 
-        assert all(act_space == self.action_space
-                   for act_space in self.env.action_spaces.values()), \
+        assert all(self.env.action_space(agent) == self.action_space
+                   for agent in self.env.agents), \
             "Action spaces for all agents must be identical. Perhaps " \
-            "SuperSuit's pad_action_space wrapper can help (useage: " \
+            "SuperSuit's pad_action_space wrapper can help (usage: " \
             "`supersuit.aec_wrappers.pad_action_space(env)`"
-
-        self.reset()
 
     def reset(self):
         self.env.reset()
@@ -135,37 +127,35 @@ class PettingZooEnv(MultiAgentEnv):
     def render(self, mode="human"):
         return self.env.render(mode)
 
+    @property
+    def get_sub_environments(self):
+        return self.env.unwrapped
+
 
 class ParallelPettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
         self.par_env = env
-        # agent idx list
-        self.agents = self.par_env.possible_agents
-
-        # Get dictionaries of obs_spaces and act_spaces
-        self.observation_spaces = self.par_env.observation_spaces
-        self.action_spaces = self.par_env.action_spaces
+        self.par_env.reset()
 
         # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.observation_spaces[self.agents[0]]
+        self.observation_space = self.par_env.observation_space(
+            self.par_env.agents[0])
 
         # Get first action space, assuming all agents have equal space
-        self.action_space = self.action_spaces[self.agents[0]]
+        self.action_space = self.par_env.action_space(self.par_env.agents[0])
 
-        assert all(obs_space == self.observation_space
-                   for obs_space
-                   in self.par_env.observation_spaces.values()), \
+        assert all(
+            self.par_env.observation_space(agent) == self.observation_space
+            for agent in self.par_env.agents), \
             "Observation spaces for all agents must be identical. Perhaps " \
             "SuperSuit's pad_observations wrapper can help (useage: " \
             "`supersuit.aec_wrappers.pad_observations(env)`"
 
-        assert all(act_space == self.action_space
-                   for act_space in self.par_env.action_spaces.values()), \
+        assert all(self.par_env.action_space(agent) == self.action_space
+                   for agent in self.par_env.agents), \
             "Action spaces for all agents must be identical. Perhaps " \
             "SuperSuit's pad_action_space wrapper can help (useage: " \
             "`supersuit.aec_wrappers.pad_action_space(env)`"
-
-        self.reset()
 
     def reset(self):
         return self.par_env.reset()
@@ -183,3 +173,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
 
     def render(self, mode="human"):
         return self.par_env.render(mode)
+
+    @property
+    def unwrapped(self):
+        return self.par_env.unwrapped
