@@ -4,15 +4,16 @@
 #![allow(deref_nullptr)]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+use std::os::raw::*;
 
 #[cfg(test)]
 mod test {
-    use std::os::raw::*;
     use super::*;
+    use std::ffi::CString;
     #[test]
     fn test_allocate_data() {
-        let mut data_vec = vec![1, 2];
-        let mut meta_vec = vec![3, 4];
+        let mut data_vec = vec![1u8, 2];
+        let mut meta_vec = vec![3u8, 4];
         unsafe {
             let data =
                 c_worker_AllocateDataValue(
@@ -42,6 +43,71 @@ mod test {
         }
         // c_worker_Initialize();
     }
+
+    // #[test]
+    // fn test_init_and_shutdown() {
+    //     unsafe {
+    //         c_worker_RegisterCallback(Some(c_worker_execute));
+    //         let mut code_search_path = CString::new("").unwrap();
+    //         let mut head_args = CString::new("").unwrap();
+    //         c_worker_InitConfig(
+    //             1, 3, 1,
+    //             code_search_path.as_ptr() as *mut c_char,
+    //             head_args.as_ptr() as *mut c_char,
+    //             0, std::ptr::null_mut()
+    //         );
+    //         c_worker_Initialize();
+    //         c_worker_Shutdown();
+    //     }
+    // }
+
+    #[test]
+    fn test_put_get() {
+        unsafe {
+            let mut code_search_path = CString::new("").unwrap();
+            let mut head_args = CString::new("").unwrap();
+
+            c_worker_RegisterCallback(Some(c_worker_execute));
+
+            c_worker_InitConfig(
+                1, 3, 1,
+                code_search_path.as_ptr() as *mut c_char,
+                head_args.as_ptr() as *mut c_char,
+                0, std::ptr::null_mut()
+            );
+            c_worker_Initialize();
+
+            // Create data
+            let mut data_vec = vec![1u8, 2];
+            let mut meta_vec = vec![3u8, 4];
+            let mut data = vec![
+                c_worker_AllocateDataValue(
+                    data_vec.as_mut_ptr() as *mut c_void,
+                    data_vec.len() as u64,
+                    meta_vec.as_mut_ptr() as *mut c_void,
+                    meta_vec.len() as u64,
+                )
+            ];
+
+            let mut obj_ids = Vec::<*mut c_char>::new();
+            obj_ids.push(std::ptr::null_mut() as *mut c_char);
+            c_worker_Put(
+                obj_ids.as_mut_ptr() as *mut *mut c_char,
+                -1, data.as_mut_ptr(), data.len() as i32,
+            );
+            let c_str_id = CString::from_raw(obj_ids[0]);
+            println!("{:x?}", c_str_id);
+
+            let mut get_data: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
+            c_worker_Get(obj_ids.as_mut_ptr() as *mut *mut c_void, 1, -1, get_data.as_mut_ptr() as *mut *mut c_void);
+            let slice = std::slice::from_raw_parts_mut::<u8>(
+                (*(*get_data[0]).data).p as *mut u8,
+                (*(*get_data[0]).data).size as usize,
+            );
+            assert_eq!(slice, &data_vec);
+            c_worker_Shutdown();
+        }
+    }
 }
 
 #[no_mangle]
@@ -53,6 +119,17 @@ pub extern "C" fn c_worker_execute(
 ) {
 }
 
+macro_rules! apply_argc_argv {
+    ($f:ident) => {
+        // create a vector of zero terminated strings
+        let args = std::env::args().map(|arg| CString::new(arg).unwrap() ).collect::<Vec<CString>>();
+        // convert the strings to raw pointers
+        let c_args = args.iter().map(|arg| arg.as_ptr()).collect::<Vec<*const c_char>>();
+        // unsafe {
+        // pass the pointer of the vector's internal buffer to a C function
+        $f(c_args.len() as c_int, c_args.as_ptr())
+    }
+}
 // func (or *ObjectRef) Get() ([]interface{}, error) {
 //     util.Logger.Debugf("get result returObjectIdArrayPointer:%v ,return object num:%d", or.returnObjectIds, or.returnObjectNum)
 //     if or.returnObjectNum == 0 {

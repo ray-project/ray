@@ -36,11 +36,11 @@ int c_worker_RegisterCallback(execute_callback callback);
 // Why not char instead of void ptr?
 DataValue *c_worker_AllocateDataValue(void *data_ptr, size_t data_size, void *meta_ptr, size_t meta_size);
 
-void c_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
-                          char *log_dir, char *node_ip_address, int node_manager_port,
-                          char *raylet_ip_address, char *driver_name, int jobId,
-                          char *redis_address, int redis_port, char *redis_password,
-                          char *serialized_job_config);
+void c_worker_InitConfig(int workerMode, int language, int num_workers,
+                                    char *code_search_path, char *head_args,
+                                    int argc, char** argv);
+
+void c_worker_Initialize();
 
 // void c_worker_Run();
 //
@@ -61,10 +61,11 @@ void c_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket
 //                               DataValue **input_values, int num_input_value,
 //                               int num_returns, void **object_ids);
 //
-// int c_worker_Get(void **object_ids, int object_ids_size, int timeout, void **objects);
-//
-//
-// void c_worker_Shutdown();
+int c_worker_Get(void **object_ids, int object_ids_size, int timeout, void **objects);
+
+int c_worker_Put(char **object_ids, int timeout, DataValue **objects, int objects_size);
+
+void c_worker_Shutdown();
 
 #ifdef __cplusplus
 }

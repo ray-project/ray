@@ -31,8 +31,6 @@ struct WorkerThreadContext {
   /// conflicting with return object indices. 1 <= idx <= NumReturns() is reserved for
   /// return objects, while idx > NumReturns is available for put objects.
   ObjectIDIndexType GetNextPutIndex() {
-    RAY_LOG(INFO) << "HERE GET NEXT THREAD";
-      RAY_LOG(INFO) << "HERE GET NEXT THREAD0";
     // If current_task_ is nullptr, we assume that we're in the event loop thread and
     // are executing async tasks; in this case, we're using a fake, random task ID
     // for put objects, so there's no risk of creating put object IDs that conflict with
@@ -42,13 +40,10 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     ObjectIDIndexType num_returns = 0;
-      RAY_LOG(INFO) << "HERE GET NEXT THREAD1";
-     // if (current_task_ != nullptr) {
-     //   RAY_LOG(INFO) << "HERE GET NEXT THREAD1.1";
-     //   // num_returns = current_task_->NumReturns();
-     // };
-    RAY_LOG(INFO) << "HERE GET NEXT THREAD2";
-    return num_returns; // + ++put_counter_;
+     if (current_task_ != nullptr) {
+       num_returns = current_task_->NumReturns();
+     };
+    return num_returns + ++put_counter_;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
@@ -151,7 +146,6 @@ uint64_t WorkerContext::GetNextTaskIndex() {
 }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
-  RAY_LOG(INFO) << "HERE GET NEXT";
   return GetThreadContext().GetNextPutIndex();
 }
 
@@ -300,15 +294,10 @@ bool WorkerContext::CurrentActorDetached() const {
 }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
-  RAY_LOG(INFO) << "HERE GET THREAD";
-    absl::ReaderMutexLock lock(&mutex_);
-      RAY_LOG(INFO) << "HERE GET THREAD0";
-  // if (thread_context_ == nullptr) {
-  //   RAY_LOG(INFO) << "HERE GET THREAD 2";
+  if (thread_context_ == nullptr) {
     thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
-  // }
+  }
 
-    RAY_LOG(INFO) << "HERE GET THREAD 3";
   return *thread_context_;
 }
 

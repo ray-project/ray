@@ -2494,9 +2494,10 @@ genrule(
     local = 1,
 )
 
-# Core worker harness as shared object file with C API/ABI.
-# For ease of language worker implementation
-# and stable ABI across non-breaking ray versions &
+# Core worker harness in the form of shared object file with C API/ABI.
+#
+# Ease of language worker implementation via lingua-franca
+# C interface; stable ABI across non-breaking ray versions &
 # diverse compilation setups
 
 cc_binary(
@@ -2519,13 +2520,17 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//rust:__subpackages__"],
-    # visibility =   ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
+        "//:ray_util",
         "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@boost//:asio",
+        # "@boost//:algorithm",
     ],
 )
 
