@@ -138,7 +138,8 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
                         << ": " << status.ToString();
         }
-        polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
+        polling_service_.post([this, state]() { NodeResourceReportReceived(state); },
+                              "GcsResourceReportPoller::PullResourceReport");
       });
 }
 
