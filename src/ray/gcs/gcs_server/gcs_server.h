@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
@@ -121,6 +122,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initialize function manager.
+  void InitFunctionManager();
+
   /// Initializes PubSub handler.
   void InitPubSubHandler();
 
@@ -193,6 +197,8 @@ class GcsServer {
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service.
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
+  /// Function table manager.
+  std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.

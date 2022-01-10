@@ -135,6 +135,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init KV Manager
   InitKVManager();
 
+  // Init function manager
+  InitFunctionManager();
+
   // Init Pub/Sub handler
   InitPubSubHandler();
 
@@ -274,7 +277,8 @@ void GcsServer::InitGcsResourceScheduler() {
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_publisher_,
-                                                     *runtime_env_manager_);
+                                                     *runtime_env_manager_,
+                                                     *function_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -414,6 +418,10 @@ void GcsServer::InitStatsHandler() {
   // Register service.
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
   rpc_server_.RegisterService(*stats_service_);
+}
+
+void GcsServer::InitFunctionManager() {
+  function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
 }
 
 void GcsServer::InitKVManager() {
