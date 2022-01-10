@@ -132,6 +132,7 @@ def py_func_get_and_invoke_named_actor():
     assert ray.get(java_named_actor.concat.remote(b"world")) == b"helloworld"
     return b"true"
 
+
 @ray.remote
 def py_func_call_java_overrided_method_with_default_keyword():
     cls = ray.java_actor_class("io.ray.test.ExampleImpl")
