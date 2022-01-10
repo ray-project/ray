@@ -19,25 +19,23 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
-#include "ray/stats/event_stats.h"
 #include "ray/util/logging.h"
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
 class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
-  instrumented_io_context(std::shared_ptr<EventStats> event_stats)
-      : event_stats_(event_stats) {}
+  instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
-  /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
-      LOCKS_EXCLUDED(mutex_);
+  /// for the provided handler.
+  void post(std::function<void()> handler, const std::string name) LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function where the operation start is manually recorded. For example,
   /// this is useful for tracking the number of active outbound RPC calls.
@@ -52,11 +50,13 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
-  /// for the provided handler. Defaults to UNKNOWN.
-  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
+  /// for the provided handler.
+  void dispatch(std::function<void()> handler, const std::string name)
       LOCKS_EXCLUDED(mutex_);
+
+  EventTracker &stats() const { return *event_stats_; };
 
  private:
   /// The event stats tracker to use to record asio handler stats to.
-  std::shared_ptr<EventStats> event_stats_;
+  std::shared_ptr<EventTracker> event_stats_;
 };

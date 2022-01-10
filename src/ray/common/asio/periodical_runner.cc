@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_config.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -46,7 +46,8 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
           } else {
             DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), *timer);
           }
-        });
+        },
+        "PeriodicalRunner::ScheduleRunFn");
   }
 }
 
