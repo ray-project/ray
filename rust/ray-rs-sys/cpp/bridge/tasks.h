@@ -1,7 +1,7 @@
 #pragma once
 
 // #include <ray/api.h>
-#include "api.h"
+#include "rust/ray-rs-sys/cpp/standalone/api.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/core_worker_options.h"

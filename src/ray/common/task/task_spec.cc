@@ -183,7 +183,10 @@ const SchedulingClass TaskSpecification::GetSchedulingClass() const {
 
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
-size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
+size_t TaskSpecification::NumReturns() const {
+  RAY_LOG(INFO) << "NUM RETURNS";
+  return message_->num_returns();
+}
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
