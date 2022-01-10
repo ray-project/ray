@@ -1,5 +1,4 @@
 import os
-import sys
 import tempfile
 from typing import Optional
 
@@ -128,7 +127,6 @@ class MyCustomStorageCls(KVStoreBase):
         return super().put(key, val)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Using tmp dir.")
 def test_make_kv_store(serve_instance):
     namespace = "ns"
     assert isinstance(
