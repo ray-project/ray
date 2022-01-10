@@ -14,6 +14,7 @@ import time
 import traceback
 import warnings
 from abc import ABCMeta, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -604,7 +605,7 @@ class BaseContext(metaclass=ABCMeta):
 
 
 @dataclass
-class RayContext(BaseContext, dict):
+class RayContext(BaseContext, Mapping):
     """
     Context manager for attached drivers.
     """
@@ -616,7 +617,6 @@ class RayContext(BaseContext, dict):
     address_info: Dict[str, Optional[str]]
 
     def __init__(self, address_info: dict):
-        dict.__init__(self, address_info)
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(
             sys.version_info[0], sys.version_info[1], sys.version_info[2])
@@ -634,16 +634,19 @@ class RayContext(BaseContext, dict):
                 f'Use ctx.address_info["{key}"] instead.',
                 DeprecationWarning,
                 stacklevel=2)
-        return dict.__getitem__(self, key)
+        return self.address_info[key]
 
-    def get(self, key):
-        if log_once("ray_context_get"):
+    def __len__(self):
+        if log_once("ray_context_len"):
             warnings.warn(
-                f'Accessing values through ctx.get("{key}") is '
-                f'deprecated. Use ctx.address_info.get("{key}") instead.',
-                DeprecationWarning,
-                stacklevel=2)
-        return dict.get(self, key)
+                "len(ctx) is deprecated. Use len(ctx.address_info) instead.")
+        return len(self.address_info)
+
+    def __iter__(self):
+        if log_once("ray_context_len"):
+            warnings.warn(
+                "iter(ctx) is deprecated. Use iter(ctx.address_info) instead.")
+        return iter(self.address_info)
 
     def __enter__(self) -> "RayContext":
         return self
