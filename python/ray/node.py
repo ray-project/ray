@@ -1059,6 +1059,8 @@ class Node:
             # This only configures external Redis and does not start local
             # Redis, when external Redis address is specified.
             self.start_or_configure_redis()
+            # Wait for Redis to become available.
+            self.create_redis_client()
 
         self.start_gcs_server()
         assert self._gcs_client is not None
