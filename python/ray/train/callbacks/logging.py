@@ -46,7 +46,7 @@ class TrainCallbackLogdirManager():
 
     def __init__(self,
                  logdir: Optional[Union[str, Path]] = None,
-                 create_logdir=True):
+                 create_logdir: bool = True):
         self._default_logdir = None
         self._logdir = Path(logdir) if logdir else None
         self._create_logdir = create_logdir
