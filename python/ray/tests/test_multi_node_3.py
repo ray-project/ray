@@ -86,9 +86,9 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     check_call_ray(["stop"])
 
+    temp_dir = ray._private.utils.get_ray_temp_dir()
     if not use_gcs_for_bootstrap():
         # Test starting Ray with --address flag (deprecated).
-        temp_dir = ray._private.utils.get_ray_temp_dir()
         _, proc = _start_redis_instance(
             REDIS_EXECUTABLE,
             temp_dir,
