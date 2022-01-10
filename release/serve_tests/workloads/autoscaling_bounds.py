@@ -147,6 +147,13 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         #     handle.remote()
         #     time.sleep(sleep_interval)
 
+        [handle.remote() for _ in range(50)]
+        import time
+        time.sleep(10)
+        [handle.remote() for _ in range(500)]
+        time.sleep(10)
+        [handle.remote() for _ in range(1000)]
+        time.sleep(10)
         [handle.remote() for _ in range(10000)]
 
         # Check that deployments upscaled to max_replicas
