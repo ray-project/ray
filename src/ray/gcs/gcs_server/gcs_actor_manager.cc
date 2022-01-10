@@ -194,6 +194,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+    GcsFunctionManager& function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -207,6 +208,7 @@ GcsActorManager::GcsActorManager(
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       get_job_config_(get_job_config),
       runtime_env_manager_(runtime_env_manager),
+      function_manager_(function_manager),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
@@ -238,6 +240,9 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                               actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
+        if(actor->IsDetached()) {
+          function_manager_.AddJobReference(actor_id.JobId());
+        }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
@@ -722,7 +727,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   } else {
-    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
+    runtime_env_manager_.RemoveURIReference(actor_id.JobId().Hex());
+    function_manager_.RemoveJobReference(actor_id.JobId());
   }
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
