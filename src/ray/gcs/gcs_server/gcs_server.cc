@@ -47,8 +47,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
-  // Init gcs table storage.
-  RAY_LOG(INFO) << "GCS Storage is set to " << storage_type_;
+  // Init GCS table storage.
+  RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   RAY_LOG(INFO) << "gRPC based pubsub is"
                 << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
                 << "enabled";

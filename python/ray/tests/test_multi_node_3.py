@@ -97,6 +97,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
+    temp_dir = ray._private.utils.get_ray_temp_dir()
     _start_redis_instance(
         REDIS_EXECUTABLE,
         temp_dir,
