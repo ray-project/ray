@@ -5,7 +5,6 @@ import os
 import shutil
 import platform
 import pytest
-import subprocess
 
 import ray
 from ray._private.test_utils import wait_for_condition
