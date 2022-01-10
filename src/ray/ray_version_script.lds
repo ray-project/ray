@@ -39,6 +39,6 @@ VERSION_1.0 {
         *ray*streaming*;
         *aligned_free*;
         *aligned_malloc*;
-        *rust_worker*;
+        *c_worker*;
     local: *;
 };

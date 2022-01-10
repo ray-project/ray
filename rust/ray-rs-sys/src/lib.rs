@@ -5,22 +5,52 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 
-#[test]
-fn test_allocate_data() {
+#[cfg(test)]
+mod test {
     use std::os::raw::*;
-    let mut data_vec = vec![1, 2];
-    let mut meta_vec = vec![3, 4];
-    unsafe {
-        let data =
-            rust_worker_AllocateDataValue(
-                data_vec.as_mut_ptr() as *mut c_void,
-                data_vec.len() as u64,
-                meta_vec.as_mut_ptr() as *mut c_void,
-                meta_vec.len() as u64,
-            );
-        assert_eq!((*(*data).data).p, data_vec.as_mut_ptr() as *mut c_void);
-        assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr() as *mut c_void);
+    use super::*;
+    #[test]
+    fn test_allocate_data() {
+        let mut data_vec = vec![1, 2];
+        let mut meta_vec = vec![3, 4];
+        unsafe {
+            let data =
+                c_worker_AllocateDataValue(
+                    data_vec.as_mut_ptr() as *mut c_void,
+                    data_vec.len() as u64,
+                    meta_vec.as_mut_ptr() as *mut c_void,
+                    meta_vec.len() as u64,
+                );
+            assert_eq!((*(*data).data).p, data_vec.as_mut_ptr() as *mut c_void);
+            assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr() as *mut c_void);
+            assert_eq!((*(*data).data).size, data_vec.len() as u64);
+            assert_eq!((*(*data).meta).size, data_vec.len() as u64);
+
+        }
     }
+
+    #[test]
+    fn test_register_callback() {
+        unsafe {
+            assert_eq!(
+                c_worker_RegisterCallback(
+                    Some(c_worker_execute)
+                ),
+                1,
+                "Failed to register execute callback"
+            );
+        }
+        // c_worker_Initialize();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn c_worker_execute(
+    task_type: RayInt,
+    ray_function_info: RaySlice,
+    args: RaySlice,
+    return_values: RaySlice,
+) {
 }
 
 // func (or *ObjectRef) Get() ([]interface{}, error) {
@@ -47,7 +77,7 @@ fn test_allocate_data() {
 
 
 // #[no_mangle]
-// pub extern "C" fn rust_worker_execute(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
+// pub extern "C" fn c_worker_execute(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
 //     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
 //     // Check if we get a cache hit
 //     let libs = LIBRARIES.lock().unwrap();

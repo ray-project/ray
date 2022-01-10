@@ -10,6 +10,16 @@
 
 using namespace std;
 
+// Use anonymous namespace to enforce Rule of One Definition
+namespace {
+static execute_callback rust_worker_execute;
+}
+
+int rust_worker_RegisterCallback(execute_callback callback) {
+    rust_worker_execute = callback;
+    return 1;
+}
+
 template <typename ID>
 inline ID ByteArrayToId(char *bytes) {
   std::string id_str(ID::Size(), 0);
@@ -32,86 +42,95 @@ RAY_EXPORT DataValue* rust_worker_AllocateDataValue(void *data_ptr, size_t data_
   dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
   return dv;
 }
-//
-RAY_EXPORT void rust_worker_Initialize(int workerMode, char *store_socket,
+
+ray::core::CoreWorkerOptions::TaskExecutionCallback ExecutionCallback(
+  ray::rpc::TaskType task_type, const std::string task_name,
+  const ray::core::RayFunction &ray_function,
+  const std::unordered_map<std::string, double> &required_resources,
+  const std::vector<std::shared_ptr<ray::RayObject>> &args,
+  const std::vector<ray::rpc::ObjectReference> &arg_refs,
+  const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
+  std::vector<std::shared_ptr<ray::RayObject>> *results,
+  std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb,
+  bool *is_application_level_error,
+  const std::vector<ray::ConcurrencyGroup> &defined_concurrency_groups,
+  const std::string name_of_concurrency_group_to_execute
+) {
+  // convert RayFunction
+  auto function_descriptor = ray_function.GetFunctionDescriptor();
+  auto typed_descriptor = function_descriptor->As<ray::RustFunctionDescriptor>();
+
+  char *fd_data[1];
+  fd_data[0] = const_cast<char *>(typed_descriptor->FunctionName().c_str());
+  RaySlice fd_list;
+  fd_list.data = fd_data;
+  fd_list.len = 1;
+  fd_list.cap = 1;
+
+  std::vector<DataValue *> args_array_list;
+  for (auto &it : args) {
+    auto data = it->GetData();
+    auto meta = it->GetMetadata();
+    args_array_list.push_back(rust_worker_AllocateDataValue(
+        data->Data(), data->Size(), meta->Data(), meta->Size()));
+  }
+
+  RaySlice args_go;
+  args_go.data = &args_array_list[0];
+  args_go.len = args_array_list.size();
+  args_go.cap = args_array_list.size();
+
+  std::vector<std::shared_ptr<DataValue>> return_value_list;
+  for (size_t i = 0; i < return_ids.size(); i++) {
+    return_value_list.push_back(make_shared<DataValue>());
+  }
+  RaySlice return_value_list_go;
+  return_value_list_go.data = &return_value_list[0];
+  return_value_list_go.cap = return_ids.size();
+  return_value_list_go.len = return_ids.size();
+
+  // invoke RUST method
+  if (rust_worker_execute == nullptr) {
+    // TODO (jon-chuang): RAY_THROW.
+    assert (false);
+  }
+  rust_worker_execute(task_type, fd_list, args_go, return_value_list_go);
+  results->clear();
+  for (size_t i = 0; i < return_value_list.size(); i++) {
+    auto &result_id = return_ids[i];
+    auto &return_value = return_value_list[i];
+    std::shared_ptr<ray::Buffer> data_buffer =
+        std::make_shared<ray::LocalMemoryBuffer>(
+            reinterpret_cast<uint8_t *>(return_value->data->p),
+            return_value->data->size, false);
+    std::shared_ptr<ray::Buffer> meta_buffer =
+        std::make_shared<ray::LocalMemoryBuffer>(
+            reinterpret_cast<uint8_t *>(return_value->meta->p),
+            return_value->meta->size, false);
+    std::vector<ray::ObjectID> contained_object_ids;
+    auto contained_object_refs =
+        ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
+            contained_object_ids);
+    auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
+                                                  contained_object_refs);
+    results->emplace_back(value);
+    int64_t task_output_inlined_bytes = 0;
+    RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+        result_id, value->GetData()->Size(), value->GetMetadata(),
+        contained_object_ids, &task_output_inlined_bytes, &value));
+    RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+        result_id, value));
+  }
+  return ray::Status::OK();
+};
+
+// A few notes on the parameters
+RAY_EXPORT void rust_worker_Initialize(int workerMode, int language, char *store_socket,
                                      char *raylet_socket, char *log_dir,
                                      char *node_ip_address, int node_manager_port,
                                      char *raylet_ip_address, char *driver_name,
                                      int jobId, char *redis_address, int redis_port,
                                      char *redis_password, char *serialized_job_config) {
-  auto task_execution_callback =
-      [](ray::TaskType task_type, const std::string task_name,
-         const ray::core::RayFunction &ray_function,
-         const std::unordered_map<std::string, double> &required_resources,
-         const std::vector<std::shared_ptr<ray::RayObject>> &args,
-         const std::vector<ObjectID> &arg_reference_ids,
-         const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-         std::vector<std::shared_ptr<ray::RayObject>> *results,
-         std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb) {
-        // convert RayFunction
-        auto function_descriptor = ray_function.GetFunctionDescriptor();
-        auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
-
-        char *fd_data[1];
-        fd_data[0] = const_cast<char *>(typed_descriptor->FunctionName().c_str());
-        RaySlice fd_list;
-        fd_list.data = fd_data;
-        fd_list.len = 1;
-        fd_list.cap = 1;
-
-        std::vector<DataValue *> args_array_list;
-        for (auto &it : args) {
-          auto data = it->GetData();
-          auto meta = it->GetMetadata();
-          args_array_list.push_back(rust_worker_AllocateDataValue(
-              data->Data(), data->Size(), meta->Data(), meta->Size()));
-        }
-
-        RaySlice args_go;
-        args_go.data = &args_array_list[0];
-        args_go.len = args_array_list.size();
-        args_go.cap = args_array_list.size();
-
-        std::vector<std::shared_ptr<DataValue>> return_value_list;
-        for (size_t i = 0; i < return_ids.size(); i++) {
-          return_value_list.push_back(make_shared<DataValue>());
-        }
-        RaySlice return_value_list_go;
-        return_value_list_go.data = &return_value_list[0];
-        return_value_list_go.cap = return_ids.size();
-        return_value_list_go.len = return_ids.size();
-
-        // invoke golang method
-        rust_worker_execute(task_type, fd_list, args_go, return_value_list_go);
-        results->clear();
-        for (size_t i = 0; i < return_value_list.size(); i++) {
-          auto &result_id = return_ids[i];
-          auto &return_value = return_value_list[i];
-          std::shared_ptr<ray::Buffer> data_buffer =
-              std::make_shared<ray::LocalMemoryBuffer>(
-                  reinterpret_cast<uint8_t *>(return_value->data->p),
-                  return_value->data->size, false);
-          std::shared_ptr<ray::Buffer> meta_buffer =
-              std::make_shared<ray::LocalMemoryBuffer>(
-                  reinterpret_cast<uint8_t *>(return_value->meta->p),
-                  return_value->meta->size, false);
-          std::vector<ray::ObjectID> contained_object_ids;
-          auto contained_object_refs =
-              ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
-                  contained_object_ids);
-          auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
-                                                        contained_object_refs);
-          results->emplace_back(value);
-          int64_t task_output_inlined_bytes = 0;
-          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-              result_id, value->GetData()->Size(), value->GetMetadata(),
-              contained_object_ids, &task_output_inlined_bytes, &value));
-          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-              result_id, value));
-        }
-        return ray::Status::OK();
-      };
-
   ray::core::CoreWorkerOptions options;
   options.worker_type = static_cast<ray::core::WorkerType>(workerMode);
   options.language = ray::Language::RUST;
@@ -131,7 +150,7 @@ RAY_EXPORT void rust_worker_Initialize(int workerMode, char *store_socket,
   options.node_manager_port = node_manager_port;
   options.raylet_ip_address = raylet_ip_address;
   options.driver_name = driver_name;
-  options.task_execution_callback = task_execution_callback;
+  options.task_execution_callback = ExecutionCallback;
   //  options.on_worker_shutdown = on_worker_shutdown;
   //  options.gc_collect = gc_collect;
   options.num_workers = 1;
@@ -197,11 +216,11 @@ RAY_EXPORT void rust_worker_Initialize(int workerMode, char *store_socket,
 // RAY_EXPORT int rust_worker_CreateActor(char *type_name, char **result) {
 //   std::vector<std::string> function_descriptor_list = {type_name};
 //   ray::FunctionDescriptor function_descriptor =
-//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
+//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
 //                                                  function_descriptor_list);
 //   ActorID actor_id;
 //   ray::core::RayFunction ray_function =
-//       ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
+//       ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
 //   // TODO
 //   std::string full_name = "";
 //   std::string ray_namespace = "";
@@ -215,7 +234,7 @@ RAY_EXPORT void rust_worker_Initialize(int workerMode, char *store_socket,
 //                                                          full_name,
 //                                                          ray_namespace,
 //                                                          /*is_asyncio=*/false};
-//   // Golang struct constructor's args is always empty.
+//   // RUST struct constructor's args is always empty.
 //   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
 //       ray_function, {}, actor_creation_options,
 //       /*extension_data*/ "", &actor_id);
@@ -250,10 +269,10 @@ RAY_EXPORT void rust_worker_Initialize(int workerMode, char *store_socket,
 //   auto actor_id_obj = ByteArrayToId<ray::ActorID>((char *)actor_id);
 //   std::vector<std::string> function_descriptor_list = {method_name};
 //   ray::FunctionDescriptor function_descriptor =
-//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
+//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
 //                                                  function_descriptor_list);
 //   ray::core::RayFunction ray_function =
-//       ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
+//       ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
 //   std::string name = "";
 //   std::unordered_map<std::string, double> resources;
 //   ray::core::TaskOptions task_options{name, num_returns, resources};

@@ -2494,17 +2494,21 @@ genrule(
     local = 1,
 )
 
-# Rust core worker shared object bindings
+# Core worker harness as shared object file with C API/ABI.
+# For ease of language worker implementation
+# and stable ABI across non-breaking ray versions &
+# diverse compilation setups
+
 cc_binary(
-    name = "libcore_worker_library_rust.so",
+    name = "libcore_worker_library_c.so",
     srcs = glob([
-        "src/ray/core_worker/lib/rust/*.h",
-        "src/ray/core_worker/lib/rust/*.cc",
+        "src/ray/core_worker/lib/c/*.h",
+        "src/ray/core_worker/lib/c/*.cc",
     ]),
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
-            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds) -install_name @rpath/libcore_worker_library_rust.so",
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds) -install_name @rpath/libcore_worker_library_c.so",
         ],
         "@bazel_tools//src/conditions:windows": [
         ],
@@ -2523,13 +2527,6 @@ cc_binary(
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
     ],
-)
-
-cc_library(
-    name = "libcore_worker_library_rust_includes",
-    hdrs = ["src/ray/core_worker/lib/rust/*.h"],
-    strip_include_prefix = "src/ray/core_worker/lib/rust",
-    visibility = ["//rust:__subpackages__"],
 )
 
 genrule(
