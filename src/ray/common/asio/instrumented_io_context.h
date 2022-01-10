@@ -27,6 +27,7 @@
 class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
+  /// TODO(ekl) allow taking an externally defined event tracker.
   instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
 
   /// A proxy post function that collects count, queueing, and execution statistics for

@@ -59,8 +59,8 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
-std::shared_ptr<StatsHandle> EventTracker::RecordStart(const std::string &name,
-                                                     int64_t expected_queueing_delay_ns) {
+std::shared_ptr<StatsHandle> EventTracker::RecordStart(
+    const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
   {
@@ -76,11 +76,11 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(const std::string &name,
 }
 
 void EventTracker::RecordExecution(const std::function<void()> &fn,
-                                 std::shared_ptr<StatsHandle> handle) {
+                                   std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
   {
-    auto &stats = handle->event_stats;
+    auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.running_count++;
   }
@@ -93,7 +93,7 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
                                                  handle->event_name);
   {
-    auto &stats = handle->event_stats;
+    auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
     // Event-specific execution stats.
     stats->stats.cum_execution_time += execution_time_ns;
@@ -127,8 +127,8 @@ std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &
   // Get this event's stats.
   std::shared_ptr<GuardedEventStats> result;
   mutex_.ReaderLock();
-  auto it = post_event_stats_.find(name);
-  if (it == post_event_stats_.end()) {
+  auto it = post_handler_stats_.find(name);
+  if (it == post_handler_stats_.end()) {
     mutex_.ReaderUnlock();
     // Lock the table until we have added the entry. We use try_emplace and handle a
     // failed insertion in case the item was added before we acquire the writers lock;
@@ -136,14 +136,14 @@ std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &
     // to only require the readers lock.
     absl::WriterMutexLock lock(&mutex_);
     const auto pair =
-        post_event_stats_.try_emplace(name, std::make_shared<GuardedEventStats>());
+        post_handler_stats_.try_emplace(name, std::make_shared<GuardedEventStats>());
     if (pair.second) {
       it = pair.first;
     } else {
-      it = post_event_stats_.find(name);
+      it = post_handler_stats_.find(name);
       // If try_emplace failed to insert the item, the item is guaranteed to exist in
       // the table.
-      RAY_CHECK(it != post_event_stats_.end());
+      RAY_CHECK(it != post_handler_stats_.end());
     }
     result = it->second;
   } else {
@@ -160,8 +160,8 @@ GlobalStats EventTracker::get_global_stats() const {
 absl::optional<EventStats> EventTracker::get_event_stats(
     const std::string &event_name) const {
   absl::ReaderMutexLock lock(&mutex_);
-  auto it = post_event_stats_.find(event_name);
-  if (it == post_event_stats_.end()) {
+  auto it = post_handler_stats_.find(event_name);
+  if (it == post_handler_stats_.end()) {
     return {};
   }
   return to_event_stats_view(it->second);
@@ -171,8 +171,8 @@ std::vector<std::pair<std::string, EventStats>> EventTracker::get_event_stats() 
   // We lock the stats table while copying the table into a vector.
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, EventStats>> stats;
-  stats.reserve(post_event_stats_.size());
-  std::transform(post_event_stats_.begin(), post_event_stats_.end(),
+  stats.reserve(post_handler_stats_.size());
+  std::transform(post_handler_stats_.begin(), post_handler_stats_.end(),
                  std::back_inserter(stats),
                  [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
                    return std::make_pair(p.first, to_event_stats_view(p.second));

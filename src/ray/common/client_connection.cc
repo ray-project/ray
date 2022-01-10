@@ -111,7 +111,7 @@ void ServerConnection::WriteBufferAsync(
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
-        io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
+        io_context.stats().RecordStart("ClientConnection.async_write.WriteBufferAsync");
     boost::asio::async_write(
         socket_, buffer,
         [handler, stats_handle = std::move(stats_handle), &io_context](

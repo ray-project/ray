@@ -28,7 +28,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
     // handler stats it->second from multiple threads without acquiring a table-level
     // readers lock in the callback.
-    const auto stats_handle = event_stats_.RecordStart(name);
+    const auto stats_handle = event_stats_->RecordStart(name);
     handler = [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
       EventStats::RecordExecution(handler, std::move(stats_handle));
     };
