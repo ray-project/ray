@@ -1,6 +1,7 @@
 import logging
 from unittest.mock import Mock, MagicMock
 
+import numpy as np
 import pytest
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.env.multi_agent_env import make_multi_agent
@@ -134,7 +135,7 @@ class TestCheckMultiAgentEnv():
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         env.reset = reset
         with pytest.raises(
-                ValueError, match="The observation collected from "):
+                ValueError, match="The observation returned by "):
             check_env(env)
 
     def test_check_incorrect_space_contains_functions_error(self):
@@ -142,6 +143,12 @@ class TestCheckMultiAgentEnv():
             raise ValueError("This is a bad contains function")
 
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
+        bad_obs = {0: np.array([np.inf, np.inf, np.inf, np.inf]),
+                   1: np.array([np.inf, np.inf, np.inf, np.inf])}
+        env.reset = lambda *_: bad_obs
+        with pytest.raises(ValueError, match="The observation collected from "
+                                             "env"):
+            check_env(env)
         env.observation_space_contains = bad_contains_function
         with pytest.raises(
                 ValueError,
@@ -150,6 +157,12 @@ class TestCheckMultiAgentEnv():
             check_env(env)
         del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
+        bad_action = {0: 2, 1: 2}
+        env.action_space_sample = lambda *_: bad_action
+        with pytest.raises(ValueError, match="The action collected from "
+                                             "action_space_sample"):
+            check_env(env)
+
         env.action_space_contains = bad_contains_function
         with pytest.raises(
                 ValueError,

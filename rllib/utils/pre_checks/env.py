@@ -152,12 +152,9 @@ def check_gym_environments(env: gym.Env) -> None:
             f"\n\n next_obs's dtype: {next_obs_type}"
             f"\n\n env.observation_space's dtype: {space_type}")
         raise ValueError(error)
-    assert isinstance(reward, (float, int)), \
-        "Your step function must return a reward that is integer or float."
-    assert isinstance(
-        done, bool), "Your step function must return a done that is a boolean."
-    assert isinstance(
-        info, dict), "Your step function must return a info that is a dict."
+    _check_done(done)
+    _check_reward(reward)
+    _check_info(info)
 
 
 def check_multiagent_environments(env: "MultiAgentEnv") -> None:
@@ -171,8 +168,22 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
 
+    def _check_if_obs_multi_agent_dict(obs, function_string):
+        if not isinstance(obs, dict):
+            raise ValueError(
+                f"The observation returned by {function_string} is not a "
+                f"dict. Instead, it is of type: {type(obs)}")
+        if not all(k in obs for k in env.get_agent_ids()):
+            raise ValueError(
+                f"The observation returned by {function_string} has dict keys "
+                f"that are not the names of the agents in the env. "
+                f"{env.get_agent_ids()}")
+
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
+    _check_if_obs_multi_agent_dict(reset_obs, "env.reset()")
+    _check_if_obs_multi_agent_dict(sampled_obs,
+                                   "env.observation_space_sample()")
 
     try:
         env.observation_space_contains(reset_obs)
@@ -184,8 +195,9 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         error = (
             f"The observation collected from env.reset() was not  "
             f"contained within your env's observation space. Its possible "
-            f"that There was a type mismatch, or that one of the "
-            f"sub-observations was out of bounds: \n\n reset_obs: "
+            f"that there was a type mismatch (for example observations of "
+            f"np.float32 and a space of np.float64 observations), or that one "
+            f"of the sub-observations was out of bounds: \n\n reset_obs: "
             f"{reset_obs}\n\n env.observation_space_sample():"
             f" {sampled_obs}\n\n ")
         raise ValueError(error)
@@ -197,13 +209,22 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError("Your action_space_contains function has some "
                          "error ") from e
 
+    if not env.action_space_contains(sampled_action):
+        error = (
+            f"The action collected from action_space_sample() was not  "
+            f"contained within your env's action space. It's possible "
+            f"that there was a type mismatch between the sampled action and "
+            f"the action space (for example actions of np.float32 and a space"
+            f"of np.float64 actions), or that one of the sub-actions was out"
+            f"of bounds: \n\n reset_obs: {reset_obs}\n\n "
+            f"env.observation_space_sample():"
+            f" {sampled_obs}\n\n ")
+        raise ValueError(error)
+
     next_obs, reward, done, info = env.step(sampled_action)
-    assert isinstance(reward, (float, int)), \
-        "Your step function must return a reward that is integer or float."
-    assert isinstance(
-        done, bool), "Your step function must return a done that is a boolean."
-    assert isinstance(
-        info, dict), "Your step function must return a info that is a dict."
+    _check_reward(reward)
+    _check_done(done)
+    _check_info(info)
     if not env.observation_space.contains(next_obs):
         error = (
             f"The observation collected from env.step(sampled_action) was "
@@ -212,3 +233,18 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
             f"sub-observations was out of bounds:\n\n next_obs: {next_obs}"
             f"\n\n sampled_obs: {sampled_obs}")
         raise ValueError(error)
+
+
+def _check_reward(reward):
+    assert isinstance(reward, (float, int)), \
+        "Your step function must return a reward that is integer or float."
+
+
+def _check_done(done):
+    assert isinstance(
+        done, bool), "Your step function must return a done that is a boolean."
+
+
+def _check_info(info):
+    assert isinstance(
+        info, dict), "Your step function must return a info that is a dict."
