@@ -33,3 +33,4 @@
 *Java_io_ray*
 _JNI_On*
 *ray*streaming*
+*rust_worker*

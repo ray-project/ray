@@ -1,21 +1,11 @@
 [package]
 name = "ray-rs-sys"
-version = "0.0.0"
-authors = ["Jonathan Chuang"]
-license = "MIT OR Apache-2.0"
+version = "0.1.0"
 edition = "2018"
-publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# cxx = "1.0"
 
-paste = "1.0.6"
-uniffi = "0.16.0"
-lazy_static = "1.4.0"
-rmp-serde = "0.15.5"
-serde = "1.0.132"
-libloading = "0.7.2"
-libc = "0.2.112"
-
-# [build-dependencies]
-# cxx-build = "1.0"
+[build-dependencies]
+bindgen = "0.53.1"

@@ -127,6 +127,7 @@ cc_library(
         "//:core_worker_lib",
         "@cxx.rs//:core",
         ":ray_rs_include_bridge",
+        "//:lib_coreworker_library_rust_includes",
         # "ray_rs_c.so",
     ],
 )

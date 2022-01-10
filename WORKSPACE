@@ -58,24 +58,24 @@ load("//bazel:crate_universe_defaults.bzl", "DEFAULT_URL_TEMPLATE", "DEFAULT_SHA
 
 load("@rules_rust//crate_universe:defs.bzl", "crate", "crate_universe")
 
-crate_universe(
-    name = "ray-rs-toml",
-    cargo_toml_files = [
-        "//rust/ray-rs-sys:Cargo.toml",
-        "//rust/ray-rs:Cargo.toml",
-    ],
-    resolver_download_url_template = DEFAULT_URL_TEMPLATE,
-    resolver_sha256s = DEFAULT_SHA256_CHECKSUMS,
-    # leave unset for default multi-platform support
-    supported_targets = [
-        "x86_64-apple-darwin",
-        "x86_64-unknown-linux-gnu",
-    ],
-)
+# crate_universe(
+#     name = "ray-rs-toml",
+#     cargo_toml_files = [
+#         "//rust/ray-rs-sys:Cargo.toml",
+#         "//rust/ray-rs:Cargo.toml",
+#     ],
+#     resolver_download_url_template = DEFAULT_URL_TEMPLATE,
+#     resolver_sha256s = DEFAULT_SHA256_CHECKSUMS,
+#     # leave unset for default multi-platform support
+#     supported_targets = [
+#         "x86_64-apple-darwin",
+#         "x86_64-unknown-linux-gnu",
+#     ],
+# )
 
-load("@ray-rs-toml//:defs.bzl", "pinned_rust_install")
-
-pinned_rust_install()
+# load("@ray-rs-toml//:defs.bzl", "pinned_rust_install")
+#
+# pinned_rust_install()
 
 # When the bazel version is updated, make sure to update it
 # in setup.py as well.
