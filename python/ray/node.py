@@ -1037,12 +1037,10 @@ class Node:
         ]
 
     def _write_cluster_info_to_kv(self):
-        client = self.get_gcs_client()
-
-        # Version info.
+        # Write Version info.
         ray_version, python_version = self._compute_version_info()
         version_info = json.dumps((ray_version, python_version))
-        client.internal_kv_put(
+        self.get_gcs_client().internal_kv_put(
             b"VERSION_INFO",
             version_info.encode(),
             overwrite=True,
@@ -1465,5 +1463,5 @@ class Node:
                 time.sleep(2)
         if not result:
             raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                               "Has redis started correctly on the head node?")
+                               "If using Redis, did Redis start successfully?")
         return result

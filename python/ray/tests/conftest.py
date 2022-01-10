@@ -58,18 +58,21 @@ def external_redis(request, monkeypatch):
         external_redis_ports = [7777]
     else:
         del param["external_redis_ports"]
+    processes = []
     for port in external_redis_ports:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(
+        _, proc = _start_redis_instance(
             REDIS_EXECUTABLE,
             temp_dir,
             port,
             password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        processes.append(proc)
     address_str = ",".join(
         map(lambda x: f"localhost:{x}", external_redis_ports))
     monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
     yield None
-    # Relies on ray.shutdown() to shutdown external Redis.
+    for proc in processes:
+        proc.process.terminate()
 
 
 @contextmanager

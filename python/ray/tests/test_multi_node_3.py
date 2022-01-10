@@ -87,25 +87,25 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test starting Ray with --address flag (deprecated).
     temp_dir = ray._private.utils.get_ray_temp_dir()
-    _start_redis_instance(
+    _, proc = _start_redis_instance(
         REDIS_EXECUTABLE,
         temp_dir,
         7777,
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    check_call_ray(
-        ["start", "--head", "--address", "127.0.0.1:7777", "--port", "0"])
+    check_call_ray(["start", "--head", "--address", "127.0.0.1:7777"])
     check_call_ray(["stop"])
+    proc.process.terminate()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
-    temp_dir = ray._private.utils.get_ray_temp_dir()
-    _start_redis_instance(
+    _, proc = _start_redis_instance(
         REDIS_EXECUTABLE,
         temp_dir,
-        7777,
+        8888,
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:7777"
-    check_call_ray(["start", "--head", "--port", "0"])
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:8888"
+    check_call_ray(["start", "--head"])
     check_call_ray(["stop"])
+    proc.process.terminate()
     del os.environ["RAY_REDIS_ADDRESS"]
 
     # Test --block. Killing a child process should cause the command to exit.
