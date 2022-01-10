@@ -178,7 +178,15 @@ class _WrappedDataLoader(DataLoader):
         self.device = device
 
     def _move_to_device(self, item):
-        return tuple(i.to(self.device) for i in item)
+        def try_move_device(i):
+            try:
+                i = i.to(self.device)
+            except AttributeError:
+                logger.debug(f"Item {i} cannot be moved to device "
+                             f"{self.device}.")
+            return i
+
+        return tuple(try_move_device(i) for i in item)
 
     def __len__(self):
         return len(self.dataloader)
