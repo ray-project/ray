@@ -194,7 +194,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
-    GcsFunctionManager& function_manager,
+    GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -236,11 +236,11 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
   RAY_LOG(INFO) << "Registering actor, job id = " << actor_id.JobId()
                 << ", actor id = " << actor_id;
   Status status =
-      RegisterActor(request, [reply, send_reply_callback,
+      RegisterActor(request, [this, reply, send_reply_callback,
                               actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
-        if(actor->IsDetached()) {
+        if (actor->IsDetached()) {
           function_manager_.AddJobReference(actor_id.JobId());
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

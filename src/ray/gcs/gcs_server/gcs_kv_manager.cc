@@ -67,7 +67,7 @@ void RedisInternalKV::Get(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HGET", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if(callback) {
+        if (callback) {
           if (!redis_reply->IsNil()) {
             callback(redis_reply->ReadAsString());
           } else {
@@ -85,7 +85,7 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
                                   value};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if(callback) {
+        if (callback) {
           auto added_num = redis_reply->ReadAsInteger();
           callback(added_num != 0);
         }
@@ -107,7 +107,7 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
           }
           RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
               del_cmd, [callback = std::move(callback)](auto redis_reply) {
-                if(callback) {
+                if (callback) {
                   callback(redis_reply->ReadAsInteger());
                 }
               }));
@@ -116,7 +116,7 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
     std::vector<std::string> cmd = {"DEL", true_key};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [callback = std::move(callback)](auto redis_reply) {
-          if(callback) {
+          if (callback) {
             callback(redis_reply->ReadAsInteger());
           }
         }));
@@ -129,7 +129,7 @@ void RedisInternalKV::Exists(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HEXISTS", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if(callback) {
+        if (callback) {
           bool exists = redis_reply->ReadAsInteger() > 0;
           callback(exists);
         }
@@ -142,7 +142,7 @@ void RedisInternalKV::Keys(const std::string &ns, const std::string &prefix,
   std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if(callback) {
+        if (callback) {
           const auto &reply = redis_reply->ReadAsStringArray();
           std::vector<std::string> results;
           for (const auto &r : reply) {

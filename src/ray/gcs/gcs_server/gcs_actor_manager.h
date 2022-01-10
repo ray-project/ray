@@ -23,6 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -199,7 +200,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
-      GcsFunctionManager& function_manager,
+      GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
