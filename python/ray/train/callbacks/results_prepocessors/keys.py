@@ -18,7 +18,7 @@ class KeysResultsPreprocessor(ResultsPreprocessor):
     """
 
     def __init__(self, excluded_keys: Optional[Iterable[str]] = None) -> None:
-        self.excluded_keys = excluded_keys or {}
+        self.excluded_keys = set(excluded_keys) or {}
 
     def preprocess(self, results: List[Dict]) -> List[Dict]:
         new_results = [{
