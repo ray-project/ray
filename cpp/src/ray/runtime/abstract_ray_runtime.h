@@ -89,7 +89,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   const JobID &GetCurrentJobID();
 
-  virtual WorkerContext &GetWorkerContext();
+  virtual const WorkerContext &GetWorkerContext();
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
   static std::shared_ptr<AbstractRayRuntime> DoInit();

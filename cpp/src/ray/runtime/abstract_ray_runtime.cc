@@ -183,7 +183,7 @@ const JobID &AbstractRayRuntime::GetCurrentJobID() {
   return GetWorkerContext().GetCurrentJobID();
 }
 
-WorkerContext &AbstractRayRuntime::GetWorkerContext() {
+const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
   return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
 }
 
