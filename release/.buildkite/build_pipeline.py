@@ -96,11 +96,13 @@ CORE_NIGHTLY_TESTS = {
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
         "datasets_preprocess_ingest",
+        "datasets_ingest_400G",
         SmokeTest("datasets_ingest_train_infer"),
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
         "chaos_many_tasks_no_object_store",
+        "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
@@ -142,6 +144,15 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+    ],
+}
+
+CORE_REDIS_HA_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_redis_ha",
+        "many_tasks_redis_ha",
+        "many_pgs_redis_ha",
+        "many_nodes_redis_ha",
     ],
 }
 
@@ -269,6 +280,7 @@ SUITES = {
     "serve-nightly": SERVE_NIGHTLY_TESTS,
     "core-daily": CORE_DAILY_TESTS,
     "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
+    "core-redis-ha": CORE_REDIS_HA_TESTS_DAILY,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS

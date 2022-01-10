@@ -39,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
+    "evaluation_duration": 10,
 
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
@@ -195,7 +195,7 @@ class DDPGTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["model"]["custom_model"]:

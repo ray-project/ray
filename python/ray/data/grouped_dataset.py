@@ -6,6 +6,7 @@ from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
     Mean, Std, AggregateOnT
+from ray.data.block import BlockExecStats
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
@@ -70,6 +71,8 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
+        stats = self._dataset._stats.child_builder("aggregate")
+        stage_info = {}
         if len(aggs) == 0:
             raise ValueError("Aggregate requires at least one aggregation")
         # Handle empty dataset.
@@ -88,16 +91,20 @@ class GroupedDataset(Generic[T]):
                 if isinstance(self._key, str) else self._key, num_reducers)
 
         partition_and_combine_block = cached_remote_fn(
-            _partition_and_combine_block).options(num_returns=num_reducers)
+            _partition_and_combine_block).options(num_returns=num_reducers + 1)
         aggregate_combined_blocks = cached_remote_fn(
             _aggregate_combined_blocks, num_returns=2)
 
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
+        map_meta = []
         for i, block in enumerate(blocks):
-            map_results[i, :] = partition_and_combine_block.remote(
+            results = partition_and_combine_block.remote(
                 block, boundaries, self._key, aggs)
+            map_results[i, :] = results[:-1]
+            map_meta.append(results[-1])
         map_bar = ProgressBar("GroupBy Map", len(map_results))
-        map_bar.block_until_complete([ret[0] for ret in map_results])
+        map_bar.block_until_complete(map_meta)
+        stage_info["map"] = ray.get(map_meta)
         map_bar.close()
 
         blocks = []
@@ -112,7 +119,10 @@ class GroupedDataset(Generic[T]):
         reduce_bar.close()
 
         metadata = ray.get(metadata)
-        return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
+        stage_info["reduce"] = metadata
+        return Dataset(
+            BlockList(blocks, metadata), self._dataset._epoch,
+            stats.build_multistage(stage_info))
 
     def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
                       **kwargs):
@@ -424,24 +434,26 @@ class GroupedDataset(Generic[T]):
         return self._aggregate_on(Std, on, ddof=ddof)
 
 
-def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
-                                 key: GroupKeyT,
-                                 aggs: Tuple[AggregateFn]) -> List[Block]:
+def _partition_and_combine_block(
+        block: Block[T], boundaries: List[KeyType], key: GroupKeyT,
+        aggs: Tuple[AggregateFn]) -> List[Union[Block, BlockMetadata]]:
     """Partition the block and combine rows with the same key."""
+    stats = BlockExecStats.builder()
     if key is None:
         partitions = [block]
     else:
         partitions = BlockAccessor.for_block(block).sort_and_partition(
             boundaries, [(key, "ascending")] if isinstance(key, str) else key,
             descending=False)
-    return [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+    parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+    meta = BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=stats.build())
+    return parts + [meta]
 
 
 def _aggregate_combined_blocks(
         num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
-    if num_reducers == 1:
-        blocks = [b[0] for b in blocks]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
         list(blocks), key, aggs)

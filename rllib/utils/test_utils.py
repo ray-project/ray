@@ -214,7 +214,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
-            (x.dtype == np.object or str(x.dtype).startswith("<U")):
+            (x.dtype == object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -307,11 +307,15 @@ def check_compute_single_action(trainer,
         ValueError: If anything unexpected happens.
     """
     # Have to import this here to avoid circular dependency.
-    from ray.rllib.policy.sample_batch import SampleBatch
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
     # Some Trainers may not abide to the standard API.
+    pid = DEFAULT_POLICY_ID
     try:
-        pol = trainer.get_policy()
+        # Multi-agent: Pick any policy (or DEFAULT_POLICY if it's the only
+        # one).
+        pid = next(iter(trainer.workers.local_worker().policy_map))
+        pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
     # Get the policy's model.
@@ -324,6 +328,7 @@ def check_compute_single_action(trainer,
         call_kwargs = {}
         if what is trainer:
             call_kwargs["full_fetch"] = full_fetch
+            call_kwargs["policy_id"] = pid
 
         obs = obs_space.sample()
         if isinstance(obs_space, Box):
@@ -429,10 +434,10 @@ def check_compute_single_action(trainer,
                 worker_set = getattr(trainer, "_workers", None)
             assert worker_set
             if isinstance(worker_set, list):
-                obs_space = trainer.get_policy().observation_space
+                obs_space = trainer.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
-                    lambda p: p.observation_space)
+                    lambda p: p.observation_space, policy_id=pid)
             obs_space = getattr(obs_space, "original_space", obs_space)
         else:
             obs_space = pol.observation_space
@@ -526,8 +531,8 @@ def check_train_results(train_results):
     info = train_results["info"]
     assert LEARNER_INFO in info, \
         f"'learner' not in train_results['infos'] ({info})!"
-    assert "num_steps_trained" in info,\
-        f"'num_steps_trained' not in train_results['infos'] ({info})!"
+    assert "num_steps_trained" in info or "num_env_steps_trained" in info, \
+        f"'num_(env_)?steps_trained' not in train_results['infos'] ({info})!"
 
     learner_info = info[LEARNER_INFO]
 

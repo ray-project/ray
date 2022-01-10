@@ -1,6 +1,7 @@
 import random
 import subprocess
 import sys
+import time
 
 import pytest
 import requests
@@ -28,8 +29,13 @@ def ray_client_instance(scope="module"):
 
 
 @pytest.fixture
-def serve_with_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
+def serve_with_client(ray_client_instance, ray_init_kwargs=None):
+    if ray_init_kwargs is None:
+        ray_init_kwargs = dict()
+    ray.init(
+        f"ray://{ray_client_instance}",
+        namespace="default_test_namespace",
+        **ray_init_kwargs)
     assert ray.util.client.ray.is_connected()
 
     yield
@@ -38,7 +44,9 @@ def serve_with_client(ray_client_instance):
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "win32",
+    reason="Buggy on MacOS")
 def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="default_test_namespace")
 
@@ -109,7 +117,6 @@ A.deploy()
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_class(serve_with_client):
     serve.start()
 
@@ -125,7 +132,6 @@ def test_quickstart_class(serve_with_client):
     assert response == "Hello serve!"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_counter(serve_with_client):
     serve.start()
 
@@ -147,6 +153,36 @@ def test_quickstart_counter(serve_with_client):
     print("query 1 finished")
     assert ray.get(Counter.get_handle().remote()) == {"count": 2}
     print("query 2 finished")
+
+
+@pytest.mark.parametrize(
+    "serve_with_client", [{
+        "runtime_env": {
+            "env_vars": {
+                "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
+                "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+            }
+        }
+    }],
+    indirect=True)
+def test_handle_hanging(serve_with_client):
+    # With https://github.com/ray-project/ray/issues/20971
+    # the following will hang forever.
+
+    serve.start()
+
+    @serve.deployment
+    def f():
+        return 1
+
+    f.deploy()
+
+    handle = f.get_handle()
+    for _ in range(5):
+        assert ray.get(handle.remote()) == 1
+        time.sleep(0.5)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

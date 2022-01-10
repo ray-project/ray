@@ -64,6 +64,10 @@ std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
 GetRemoteFunctions() {
   return init_func_manager.GetRemoteFunctions();
 }
+
+void InitRayRuntime(std::shared_ptr<RayRuntime> runtime) {
+  RayRuntimeHolder::Instance().Init(runtime);
+}
 }  // namespace internal
 
 namespace internal {
@@ -72,13 +76,9 @@ using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
-TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
-    : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
-
 // TODO(SongGuyang): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
-  abstract_ray_tuntime_.GetWorkerContext();
   return std::make_unique<ObjectID>();
 };
 
@@ -198,7 +198,7 @@ Status TaskExecutor::ExecuteTask(
     int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
-        task_output_inlined_bytes, result_ptr));
+        &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {

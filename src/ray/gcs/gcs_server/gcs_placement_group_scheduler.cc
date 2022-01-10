@@ -17,6 +17,31 @@
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+namespace {
+
+using ray::BundleSpecification;
+using ray::NodeID;
+
+// Get a set of bundle specifications grouped by the node.
+std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+GetUnplacedBundlesPerNode(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const ray::gcs::ScheduleMap &selected_nodes) {
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      node_to_bundles;
+  for (const auto &bundle : bundles) {
+    const auto &bundle_id = bundle->BundleId();
+    const auto &iter = selected_nodes.find(bundle_id);
+    RAY_CHECK(iter != selected_nodes.end());
+    if (node_to_bundles.find(iter->second) == node_to_bundles.end()) {
+      node_to_bundles[iter->second] = {};
+    }
+    node_to_bundles[iter->second].push_back(bundle);
+  }
+  return node_to_bundles;
+}
+}  // namespace
+
 namespace ray {
 namespace gcs {
 
@@ -169,18 +194,24 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
 
-  /// TODO(AlisaWu): Change the strategy when reserve resource failed.
-  for (const auto &bundle : bundles) {
-    const auto &bundle_id = bundle->BundleId();
-    const auto &node_id = selected_nodes[bundle_id];
-    lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
+  const auto &pending_bundles = GetUnplacedBundlesPerNode(bundles, selected_nodes);
+  for (const auto &node_to_bundles : pending_bundles) {
+    const auto &node_id = node_to_bundles.first;
+    const auto &bundles_per_node = node_to_bundles.second;
+    for (const auto &bundle : bundles_per_node) {
+      lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
+    }
+
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundle, gcs_node_manager_.GetAliveNode(node_id),
-                     [this, bundle, node_id, lease_status_tracker, failure_callback,
-                      success_callback](const Status &status) {
-                       lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
-                                                                        status);
+    PrepareResources(bundles_per_node, gcs_node_manager_.GetAliveNode(node_id),
+                     [this, bundles_per_node, node_id, lease_status_tracker,
+                      failure_callback, success_callback](const Status &status) {
+                       for (const auto &bundle : bundles_per_node) {
+                         lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
+                                                                          status);
+                       }
+
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
                          OnAllBundlePrepareRequestReturned(
                              lease_status_tracker, failure_callback, success_callback);
@@ -213,7 +244,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 }
 
 void GcsPlacementGroupScheduler::PrepareResources(
-    const std::shared_ptr<const BundleSpecification> &bundle,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
     const StatusCallback &callback) {
   if (!node.has_value()) {
@@ -224,18 +255,19 @@ void GcsPlacementGroupScheduler::PrepareResources(
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
-                 << " for a bundle: " << bundle->DebugString();
+                 << " for bundles: " << GetDebugStringForBundles(bundles);
+
   lease_client->PrepareBundleResources(
-      *bundle, [node_id, bundle, callback](
+      bundles, [node_id, bundles, callback](
                    const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
           RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                         << " for bundle: " << bundle->DebugString();
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                         << " for bundle: " << bundle->DebugString();
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         callback(result);
       });

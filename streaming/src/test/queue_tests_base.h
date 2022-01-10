@@ -182,11 +182,14 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     std::string name = "";
     std::string ray_namespace = "";
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
     ActorCreationOptions actor_options{
         max_restarts,
         /*max_task_retries=*/0,
         /*max_concurrency=*/1,  resources, resources,     {},
-        /*is_detached=*/false,  name,      ray_namespace, /*is_asyncio=*/false};
+        /*is_detached=*/false,  name,      ray_namespace, /*is_asyncio=*/false,
+        scheduling_strategy};
     // Create an actor.
     ActorID actor_id;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(

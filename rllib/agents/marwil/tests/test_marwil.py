@@ -43,7 +43,7 @@ class TestMARWIL(unittest.TestCase):
         config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
-        config["evaluation_num_episodes"] = 5
+        config["evaluation_duration"] = 5
         config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
@@ -100,7 +100,7 @@ class TestMARWIL(unittest.TestCase):
         config["num_workers"] = 1
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
-        config["evaluation_num_episodes"] = 5
+        config["evaluation_duration"] = 5
         config["evaluation_parallel_to_training"] = True
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}

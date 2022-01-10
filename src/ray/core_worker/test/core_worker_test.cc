@@ -68,11 +68,19 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
   std::string name = "";
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   ActorCreationOptions actor_options{max_restarts,
                                      /*max_task_retries=*/0,
-                                     /*max_concurrency*/ 1,  resources, resources,     {},
-                                     /*is_detached=*/false,  name,      ray_namespace,
-                                     /*is_asyncio=*/false};
+                                     /*max_concurrency*/ 1,
+                                     resources,
+                                     resources,
+                                     {},
+                                     /*is_detached=*/false,
+                                     name,
+                                     ray_namespace,
+                                     /*is_asyncio=*/false,
+                                     scheduling_strategy};
 
   // Create an actor.
   ActorID actor_id;
@@ -249,10 +257,12 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                              "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
-      auto return_refs = driver.SubmitTask(
-          func, args, options, /*max_retries=*/0,
-          /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-          /*debugger_breakpoint=*/"");
+      rpc::SchedulingStrategy scheduling_strategy;
+      scheduling_strategy.mutable_default_scheduling_strategy();
+      auto return_refs =
+          driver.SubmitTask(func, args, options, /*max_retries=*/0,
+                            /*retry_exceptions=*/false, scheduling_strategy,
+                            /*debugger_breakpoint=*/"");
       auto return_ids = ObjectRefsToIds(return_refs);
 
       ASSERT_EQ(return_ids.size(), 1);
@@ -501,6 +511,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   std::unordered_map<std::string, double> resources;
   std::string name = "";
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   ActorCreationOptions actor_options{0,
                                      0,
                                      1,
@@ -510,7 +522,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      /*is_detached=*/false,
                                      name,
                                      ray_namespace,
-                                     /*is_asyncio=*/false};
+                                     /*is_asyncio=*/false,
+                                     scheduling_strategy};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
@@ -532,7 +545,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
+                              "", 0);
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -852,19 +865,21 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   // func2.
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
 
   // Submit func1. The function should start looping forever.
-  auto return_ids1 = ObjectRefsToIds(driver.SubmitTask(
-      func1, args, options, /*max_retries=*/0,
-      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-      /*debugger_breakpoint=*/""));
+  auto return_ids1 =
+      ObjectRefsToIds(driver.SubmitTask(func1, args, options, /*max_retries=*/0,
+                                        /*retry_exceptions=*/false, scheduling_strategy,
+                                        /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids1.size(), 1);
 
   // Submit func2. The function should be queued at the worker indefinitely.
-  auto return_ids2 = ObjectRefsToIds(driver.SubmitTask(
-      func2, args, options, /*max_retries=*/0,
-      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-      /*debugger_breakpoint=*/""));
+  auto return_ids2 =
+      ObjectRefsToIds(driver.SubmitTask(func2, args, options, /*max_retries=*/0,
+                                        /*retry_exceptions=*/false, scheduling_strategy,
+                                        /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids2.size(), 1);
 
   // Cancel func2 by removing it from the worker's queue
