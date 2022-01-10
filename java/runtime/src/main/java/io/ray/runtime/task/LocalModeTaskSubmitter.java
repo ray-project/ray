@@ -286,7 +286,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl) options.group;
         Preconditions.checkArgument(
-            options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
+            options.bundleIndex == -1
+                || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
     }
