@@ -221,6 +221,27 @@ def test_wait_failure_recovery_2(workflow_start_regular_shared):
     assert ready == [2, 1]
 
 
+def test_wait_no_extra_checkpoint(workflow_start_regular):
+    from ray.workflow import workflow_storage
+    import uuid
+
+    @workflow.step
+    def foo():
+        return 1
+
+    workflow_id = uuid.uuid4().hex
+    workflow.wait(
+        [foo.options(name="foo").step()],
+        timeout=None).run(workflow_id=workflow_id)
+    store = workflow_storage.get_workflow_storage(workflow_id=workflow_id)
+    result = store.inspect_step("foo")
+    assert result.output_object_valid
+    result = store.inspect_step("workflow.wait")
+    assert result.workflows
+    # no saving inputs in "workflow.wait"
+    assert not result.output_object_valid
+
+
 if __name__ == "__main__":
     import sys
 
