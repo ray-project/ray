@@ -215,7 +215,7 @@ message PubsubCommandBatchRequest {
 message PubsubCommandBatchReply {
 }
 
-service PublisherService {
+service SubscriberService {
   /// The long polling request sent to the publisher for pubsub operations.
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
