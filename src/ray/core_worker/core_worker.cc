@@ -1864,7 +1864,7 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
           cb(Status::Invalid(stream.str()));
         }
       },
-      "CoreWorker::KillActor");
+      "CoreWorker.KillActor");
   const auto &status = f.get();
   actor_manager_->OnActorKilled(actor_id);
   return status;

@@ -139,7 +139,7 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
                         << ": " << status.ToString();
         }
         polling_service_.post([this, state]() { NodeResourceReportReceived(state); },
-                              "GcsResourceReportPoller::PullResourceReport");
+                              "GcsResourceReportPoller.PullResourceReport");
       });
 }
 
