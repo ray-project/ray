@@ -86,14 +86,6 @@ class CometLoggerCallback(LoggerCallback):
     def __init__(
         self, online: bool = True, tags: List[str] = None, **experiment_kwargs
     ):
-        """
-
-        Args:
-            online (bool, optional): Whether to make use of an Online or
-                Offline Experiment. Defaults to True.
-            tags (List[str], optional): Tags to add to the logged Experiment.
-                Defaults to None.
-        """
         _import_comet()
         self.online = online
         self.tags = tags
