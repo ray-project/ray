@@ -86,7 +86,7 @@ class CometLoggerCallback(LoggerCallback):
     def __init__(
         self, online: bool = True, tags: List[str] = None, **experiment_kwargs
     ):
-        """[summary]
+        """
 
         Args:
             online (bool, optional): Whether to make use of an Online or
