@@ -848,7 +848,7 @@ class Trainer(Trainable):
             # Now that workers have been created, update our policy
             # specs in the config[multiagent] dict with the correct spaces.
             self.config["multiagent"]["policies"] = \
-                self.workers.local_worker().policy_map.policy_specs
+                self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
