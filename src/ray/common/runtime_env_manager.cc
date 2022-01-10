@@ -60,7 +60,7 @@ std::string RuntimeEnvManager::DebugString() const {
   stream << "ID to URIs table:";
   for (const auto &entry : id_to_uris_) {
     stream << "\n- " << entry.first << ": ";
-    for (const auto uri : entry.second) {
+    for (const auto &uri : entry.second) {
       stream << uri << ",";
     }
     // Erase the last ","
