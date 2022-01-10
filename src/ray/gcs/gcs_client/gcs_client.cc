@@ -388,7 +388,6 @@ void GcsClient::OnReconnectionFinished(const Status &status, absl::Time start,
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
-    RAY_LOG(INFO) << "Reconnected call callback";
     ExecutePendingCallbacks();
     reconnect_in_progress_ = false;
   } else {
