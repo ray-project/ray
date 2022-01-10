@@ -20,8 +20,18 @@ def _import_comet():
 class CometLoggerCallback(LoggerCallback):
     """CometLoggerCallback for logging Tune results to Comet.
 
-    Comet (https://comet.ml) is {}. This Ray Tune ``LoggerCallback`` sends
-    metrics and parameters to Comet for tracking.
+    Comet (https://comet.ml) is a tool to manage and optimize the
+    entire ML lifecycle, from experiment tracking and dataset versioning
+    to model production monitoring.
+
+    This Ray Tune ``LoggerCallback`` sends metrics and parameters to
+    Comet for tracking.
+
+    In order to use the CometLoggerCallback you must first install Comet
+    via ``pip install comet_ml``
+
+    Then set the following environment variables
+    ``export COMET_API_KEY=<Your API Key>``
 
     Args:
             online (bool, optional): Whether to make use of an Online or
@@ -34,7 +44,6 @@ class CometLoggerCallback(LoggerCallback):
 
     Please consult the Comet ML documentation for more information on the
     Experiment and OfflineExperiment classes: https://comet.ml/
-
 
     Example:
 
@@ -53,6 +62,7 @@ class CometLoggerCallback(LoggerCallback):
         )
 
     """
+
     # Do not enable these auto log options unless overridden
     _exclude_autolog = [
         "auto_output_logging",
@@ -71,14 +81,11 @@ class CometLoggerCallback(LoggerCallback):
     # These values should be logged as "Other" instead of as metrics.
     _other_results = ["trial_id", "experiment_id", "experiment_tag"]
 
-    _episode_results = [
-        "hist_stats/episode_reward", "hist_stats/episode_lengths"
-    ]
+    _episode_results = ["hist_stats/episode_reward", "hist_stats/episode_lengths"]
 
-    def __init__(self,
-                 online: bool = True,
-                 tags: List[str] = None,
-                 **experiment_kwargs):
+    def __init__(
+        self, online: bool = True, tags: List[str] = None, **experiment_kwargs
+    ):
         """[summary]
 
         Args:
@@ -128,6 +135,7 @@ class CometLoggerCallback(LoggerCallback):
         _import_comet()  # is this necessary?
         from comet_ml import Experiment, OfflineExperiment
         from comet_ml.config import set_global_experiment
+
         if trial not in self._trial_experiments:
             experiment_cls = Experiment if self.online else OfflineExperiment
             experiment = experiment_cls(**self.experiment_kwargs)
@@ -176,13 +184,10 @@ class CometLoggerCallback(LoggerCallback):
             if any(self._check_key_name(k, item) for item in self._to_other):
                 other_logs[k] = v
 
-            elif any(
-                    self._check_key_name(k, item) for item in self._to_system):
+            elif any(self._check_key_name(k, item) for item in self._to_system):
                 system_logs[k] = v
 
-            elif any(
-                    self._check_key_name(k, item)
-                    for item in self._to_episodes):
+            elif any(self._check_key_name(k, item) for item in self._to_episodes):
                 episode_logs[k] = v
 
             else:
