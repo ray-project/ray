@@ -33,7 +33,9 @@ def do_test_log_likelihood(run,
         env = "FrozenLake-v1"
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
-        preprocessed_obs_batch = one_hot(obs_batch, depth=16)
+        # PG does not preprocess anymore by default.
+        preprocessed_obs_batch = one_hot(obs_batch, depth=16) \
+            if run is not pg.PGTrainer else obs_batch
 
     prev_r = None if prev_a is None else np.array(0.0)
 

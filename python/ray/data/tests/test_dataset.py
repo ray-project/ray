@@ -22,6 +22,7 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.stats import DatasetStats
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
@@ -230,10 +231,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = list(range(total_rows, total_rows + block_size))
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
     block_list = BlockList(blocks, metadata)
-    ds = Dataset(block_list, 0)
+    ds = Dataset(block_list, 0, DatasetStats(stages={}, parent=None))
 
     splits = ds.split(num_splits, equal=True)
     split_counts = [split.count() for split in splits]
@@ -2398,28 +2400,102 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_to_torch_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("input", ["single", "list", "dict"])
+@pytest.mark.parametrize("force_dtype", [False, True])
+@pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
+def test_to_torch_feature_columns(ray_start_regular_shared, input, force_dtype,
+                                  label_type):
     import torch
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
+        "three": [4.0, 5.0, 6.0],
         "label": [1.0, 2.0, 3.0]
     })
     df2 = pd.DataFrame({
         "one": [4, 5, 6],
         "two": [4.0, 5.0, 6.0],
+        "three": [7.0, 8.0, 9.0],
         "label": [4.0, 5.0, 6.0]
     })
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
+    df3 = pd.DataFrame({
+        "one": [7, 8],
+        "two": [7.0, 8.0],
+        "three": [10.0, 11.0],
+        "label": [7.0, 8.0]
+    })
+    df = pd.concat([df1, df2, df3]).drop("three", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
+
+    feature_column_dtypes = None
+    label_column_dtype = None
+    if force_dtype:
+        label_column_dtype = torch.long
+    if input == "single":
+        feature_columns = ["one", "two"]
+        if force_dtype:
+            feature_column_dtypes = torch.long
+    elif input == "list":
+        feature_columns = [["one"], ["two"]]
+        if force_dtype:
+            feature_column_dtypes = [torch.long, torch.long]
+    elif input == "dict":
+        feature_columns = {"X1": ["one"], "X2": ["two"]}
+        if force_dtype:
+            feature_column_dtypes = {"X1": torch.long, "X2": torch.long}
+
+    label_column = None if label_type is None else "label"
+    unsqueeze_label_tensor = label_type == "unsqueezed"
+
     torchd = ds.to_torch(
-        label_column="label", feature_columns=["one"], batch_size=3)
+        label_column=label_column,
+        feature_columns=feature_columns,
+        feature_column_dtypes=feature_column_dtypes,
+        label_column_dtype=label_column_dtype,
+        unsqueeze_label_tensor=unsqueeze_label_tensor,
+        batch_size=3)
     iterations = []
 
     for batch in iter(torchd):
-        iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
+        features, label = batch
+
+        if input == "single":
+            assert isinstance(features, torch.Tensor)
+            if force_dtype:
+                assert features.dtype == torch.long
+            data = features
+        elif input == "list":
+            assert isinstance(features, list)
+            assert all(isinstance(item, torch.Tensor) for item in features)
+            if force_dtype:
+                assert all(item.dtype == torch.long for item in features)
+            data = torch.cat(tuple(features), dim=1)
+        elif input == "dict":
+            assert isinstance(features, dict)
+            assert all(
+                isinstance(item, torch.Tensor) for item in features.values())
+            if force_dtype:
+                assert all(
+                    item.dtype == torch.long for item in features.values())
+            data = torch.cat(tuple(features.values()), dim=1)
+
+        if not label_type:
+            assert label is None
+        else:
+            assert isinstance(label, torch.Tensor)
+            if force_dtype:
+                assert label.dtype == torch.long
+            if unsqueeze_label_tensor:
+                assert label.dim() == 2
+            else:
+                assert label.dim() == 1
+                label = label.view(-1, 1)
+            data = torch.cat((data, label), dim=1)
+        iterations.append(data.numpy())
+
     combined_iterations = np.concatenate(iterations)
+    if not label_type:
+        df.drop("label", axis=1, inplace=True)
     assert np.array_equal(df.values, combined_iterations)
 
 

@@ -31,11 +31,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
     ASSERT_TRUE(GetParam() == "redis" || GetParam() == "memory");
     ray::gcs::RedisClientOptions redis_client_options(
         "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
-    redis_client = std::make_unique<ray::gcs::RedisClient>(redis_client_options);
-    auto status = redis_client->Connect(io_service);
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
     if (GetParam() == "redis") {
-      kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client.get());
+      kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client_options);
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(io_service);
     }
@@ -55,21 +52,39 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 };
 
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  kv_instance->Get("A", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Put("A", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A", "C", false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("A", [](auto b) { ASSERT_EQ("B", *b); });
-  kv_instance->Put("A", "C", true, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("A", [](auto b) { ASSERT_EQ("C", *b); });
-
-  kv_instance->Put("A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
-
-  kv_instance->Keys("A_", [](std::vector<std::string> keys) {
-    auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
-    ASSERT_EQ(expected, keys);
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_FALSE(b.has_value()); });
+  kv_instance->Put("N1", "A", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A", "C", false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("B", *b); });
+  kv_instance->Put("N1", "A", "C", true, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("C", *b); });
+  kv_instance->Put("N1", "A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("N1", "A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
+    auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
+    ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
   });
+  kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
+  kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
+  {
+    // Delete by prefix are two steps in redis mode, so we need sync here
+    std::promise<void> p;
+    kv_instance->Del("N1", "A_", true, [&p](auto b) {
+      ASSERT_EQ(3, b);
+      p.set_value();
+    });
+    p.get_future().get();
+  }
+  {
+    // Make sure the last cb is called
+    std::promise<void> p;
+    kv_instance->Get("N1", "A_1", [&p](auto b) {
+      ASSERT_FALSE(b.has_value());
+      p.set_value();
+    });
+    p.get_future().get();
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,

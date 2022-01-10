@@ -1,6 +1,8 @@
+import logging
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
-    Union
+    Union, Set
 
+import gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
@@ -13,6 +15,8 @@ if TYPE_CHECKING:
     from ray.rllib.env.vector_env import VectorEnv
 
 ASYNC_RESET_RETURN = "async_reset_return"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -30,12 +34,6 @@ class BaseEnv:
     gym.Env => rllib.VectorEnv => rllib.BaseEnv
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
     rllib.ExternalEnv => rllib.BaseEnv
-
-    Attributes:
-        action_space (gym.Space): Action space. This must be defined for
-            single-agent envs. Multi-agent envs can set this to None.
-        observation_space (gym.Space): Observation space. This must be defined
-            for single-agent envs. Multi-agent envs can set this to None.
 
     Examples:
         >>> env = MyBaseEnv()
@@ -185,13 +183,28 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
+        Args:
+            as_dict: If True, return a dict mapping from env_id to env.
+
         Returns:
-            List of the underlying sub environments or [].
+            List or dictionary of the underlying sub environments or [] / {}.
         """
+        if as_dict:
+            return {}
         return []
+
+    @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Return the agent ids for the sub_environment.
+
+        Returns:
+            All agent ids for each the environment.
+        """
+        return {_DUMMY_AGENT_ID}
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -217,6 +230,121 @@ class BaseEnv:
     @Deprecated(new="get_sub_environments", error=False)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
+
+    @PublicAPI
+    @property
+    def observation_space(self) -> gym.Space:
+        """Returns the observation space for each agent.
+
+        Note: samples from the observation space need to be preprocessed into a
+            `MultiEnvDict` before being used by a policy.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    @property
+    def action_space(self) -> gym.Space:
+        """Returns the action space for each agent.
+
+        Note: samples from the action space need to be preprocessed into a
+            `MultiEnvDict` before being passed to `send_actions`.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("action_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random observation for each environment, and potentially
+            each agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def last(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        """Returns the last observations, rewards, and done flags that were
+            returned by the environment.
+
+        Returns:
+            The last observations, rewards, and done flags for each environment
+        """
+        logger.warning("last has not been implemented for this environment.")
+        return {}, {}, {}, {}, {}
+
+    @PublicAPI
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given observation is valid for each environment.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observations are contained within their respective
+                spaces. False otherwise.
+        """
+        self._space_contains(self.observation_space, x)
+
+    @PublicAPI
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given actions is valid for each environment.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the actions are contained within their respective
+                spaces. False otherwise.
+        """
+        return self._space_contains(self.action_space, x)
+
+    def _space_contains(self, space: gym.Space, x: MultiEnvDict) -> bool:
+        """Check if the given space contains the observations of x.
+
+        Args:
+            space: The space to if x's observations are contained in.
+            x: The observations to check.
+
+        Returns:
+            True if the observations of x are contained in space.
+        """
+        agents = set(self.get_agent_ids())
+        for multi_agent_dict in x.values():
+            for agent_id, obs in multi_agent_dict:
+                if (agent_id not in agents) or (
+                        not space[agent_id].contains(obs)):
+                    return False
+
+        return True
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -443,7 +571,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            # Allow `__common__` entry in `infos` for data unrelated with any
+            # agent, but rather with the environment itself.
+            if set(infos).difference(set(obs) | {"__common__"}):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
             if "__all__" not in dones:
@@ -496,7 +626,7 @@ class _MultiAgentEnvState:
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
-        infos = {}
+        infos = {"__common__": self.last_infos.get("__common__")}
 
         # If episode is done, release everything we have.
         if dones["__all__"]:
@@ -543,7 +673,7 @@ class _MultiAgentEnvState:
         self.last_obs = self.env.reset()
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
-        self.last_infos = {}
+        self.last_infos = {"__common__": {}}
         return self.last_obs
 
 
@@ -589,7 +719,7 @@ def convert_to_base_env(
         The resulting BaseEnv object.
     """
 
-    from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+    from ray.rllib.env.remote_base_env import RemoteBaseEnv
     from ray.rllib.env.external_env import ExternalEnv
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
     from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper

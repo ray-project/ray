@@ -138,14 +138,8 @@ template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<UniqueID, ProfileTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
-template class GcsTable<TaskID, TaskTableData>;
-template class GcsTable<TaskID, TaskLeaseData>;
-template class GcsTable<TaskID, TaskReconstructionData>;
 template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
-template class GcsTableWithJobId<TaskID, TaskTableData>;
-template class GcsTableWithJobId<TaskID, TaskLeaseData>;
-template class GcsTableWithJobId<TaskID, TaskReconstructionData>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
 template class GcsTable<PlacementGroupID, ScheduleData>;
 

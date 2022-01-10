@@ -1,7 +1,7 @@
 from typing import Optional
 
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 
 class Batcher:
@@ -53,7 +53,7 @@ class Batcher:
             block = self._buffer[0]
             self._buffer = []
             return block
-        output = DelegatingArrowBlockBuilder()
+        output = DelegatingBlockBuilder()
         leftover = []
         needed = self._batch_size
         for block in self._buffer:

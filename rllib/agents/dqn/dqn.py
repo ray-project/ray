@@ -131,6 +131,16 @@ class DQNTrainer(SimpleQTrainer):
         return DEFAULT_CONFIG
 
     @override(SimpleQTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
+
+        # Update effective batch size to include n-step
+        adjusted_rollout_len = max(config["rollout_fragment_length"],
+                                   config["n_step"])
+        config["rollout_fragment_length"] = adjusted_rollout_len
+
+    @override(SimpleQTrainer)
     def get_default_policy_class(
             self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
@@ -197,9 +207,7 @@ class DQNTrainer(SimpleQTrainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
+                _fake_gpus=config["_fake_gpus"])
 
         replay_op = Replay(local_buffer=local_replay_buffer) \
             .for_each(lambda x: post_fn(x, workers, config)) \

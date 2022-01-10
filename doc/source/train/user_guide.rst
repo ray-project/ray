@@ -182,6 +182,9 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="torch", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
+
 
   .. group-tab:: TensorFlow
 
@@ -190,12 +193,18 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="tensorflow", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
+
   .. group-tab:: Horovod
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="horovod", num_workers=2)
+
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="horovod", num_workers=2, use_gpu=True)
 
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
@@ -317,7 +326,7 @@ Log directories are exposed through the following attributes:
 
 Logs will be written by:
 
-1. :ref:`Logging Callbacks <train-logging-callbacks>`
+1. :ref:`Callbacks <train-callbacks>`
 2. :ref:`Checkpoints <train-checkpointing>`
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
@@ -326,6 +335,11 @@ Logs will be written by:
 
 Logging, Monitoring, and Callbacks
 ----------------------------------
+
+Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run
+and also has a :ref:`Callback interface <train-callbacks>` to perform actions on these intermediate results (such as logging, aggregations, printing, etc.).
+You can use either the :ref:`built-in callbacks <train-builtin-callbacks>` that Ray Train provides,
+or implement a :ref:`custom callback <train-custom-callbacks>` for your use case.
 
 Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -393,9 +407,65 @@ Callbacks
 ~~~~~~~~~
 
 You may want to plug in your training code with your favorite experiment management framework.
-Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results.
+Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
+(the values passed into ``train.report(...)``).
 
-You can plug all of these into Ray Train with the following interface:
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+
+.. _train-builtin-callbacks:
+
+Built-in Callbacks
+++++++++++++++++++
+
+The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
+
+1. :ref:`train-api-print-callback`
+2. :ref:`train-api-json-logger-callback`
+3. :ref:`train-api-tbx-logger-callback`
+4. :ref:`train-api-mlflow-logger-callback`
+
+Example: Logging to MLflow and Tensorboard
+++++++++++++++++++++++++++++++++++++++++++
+
+**Step 1: Install the necessary packages**
+
+.. code-block:: bash
+
+    $ pip install mlflow
+    $ pip install tensorboardX
+
+**Step 2: Run the following training script**
+
+.. literalinclude:: /../../python/ray/train/examples/mlflow_simple_example.py
+   :language: python
+
+**Step 3: Visualize the logs**
+
+.. code-block:: bash
+
+    # Navigate to the run directory of the trainer.
+    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
+    $ cd <TRAINER_RUN_DIR>
+
+    # View the MLflow UI.
+    $ mlflow ui
+
+    # View the tensorboard UI.
+    $ tensorboard --logdir .
+
+
+.. _train-custom-callbacks:
+
+Custom Callbacks
+++++++++++++++++
+
+If the provided callbacks do not cover your desired integrations or use-cases,
+you may always implement a custom callback by subclassing ``TrainingCallback``. If
+the callback is general enough, please feel welcome to `add it <https://docs
+.ray.io/en/master/getting-involved.html>`_ to the ``ray``
+`repository <https://github.com/ray-project/ray>`_.
+
+A simple example for creating a callback that will print out results:
 
 .. code-block:: python
 
@@ -421,44 +491,6 @@ You can plug all of these into Ray Train with the following interface:
     # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
-
-.. Here is a list of callbacks that are supported by Ray Train:
-
-.. * JsonLoggerCallback
-.. * TBXLoggerCallback
-.. * WandbCallback
-.. * MlflowCallback
-.. * CSVCallback
-
-.. _train-logging-callbacks:
-
-Logging Callbacks
-+++++++++++++++++
-
-The following ``TrainingCallback``\s are available and will write to a file within the
-:ref:`log directory <train-log-dir>` of each training run.
-
-1. :ref:`train-api-json-logger-callback`
-2. :ref:`train-api-tbx-logger-callback`
-
-Custom Callbacks
-++++++++++++++++
-
-If the provided callbacks do not cover your desired integrations or use-cases,
-you may always implement a custom callback by subclassing ``TrainingCallback``. If
-the callback is general enough, please feel welcome to `add it <https://docs
-.ray.io/en/master/getting-involved.html>`_ to the ``ray``
-`repository <https://github.com/ray-project/ray>`_.
-
-A simple example for creating a callback that will print out results:
-
-.. code-block:: python
-
-    from ray.train import TrainingCallback
-
-    class PrintingCallback(TrainingCallback):
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
 
 
 ..
@@ -532,36 +564,105 @@ workers to be saved on the ``Trainer`` (where your python script is executed).
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
 
-As a trivial example, let's create a "model" which is an integer value that is
-equivalent to the sum of the number of epochs.
+Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
+appropriately in distributed training.
 
-.. code-block:: python
+.. tabs::
 
-    from ray import train
-    from ray.train import Trainer
+  .. group-tab:: PyTorch
 
-    def train_func(config):
-        model = 0 # This should be replaced with a real model.
-        for epoch in range(config["num_epochs"]):
-            model += epoch # This should be replaced with training logic.
-            train.save_checkpoint(epoch=epoch, model=model)
+    .. code-block:: python
+        :emphasize-lines: 37, 38, 39
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
+        import ray.train.torch
+        from ray import train
+        from ray.train import Trainer
 
-    trainer.run(train_func, config={"num_epochs": 1})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 0, 'model': 0}
+        import torch
+        import torch.nn as nn
+        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+        from torch.optim import Adam
+        import numpy as np
 
-    trainer.run(train_func, config={"num_epochs": 5})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 4, 'model': 10}
 
-    trainer.run(train_func, config={"num_epochs": 3})
-    print(trainer.latest_checkpoint)
-    # {'epoch': 2, 'model': 3}
+        def train_func(config):
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+            # toy neural network : 1-layer
+            # wrap the model in DDP
+            model = ray.train.torch.prepare_model(nn.Linear(4, 1))
+            criterion = nn.MSELoss()
 
-    trainer.shutdown()
+            optimizer = Adam(model.parameters(), lr=3e-4)
+            for epoch in range(config["num_epochs"]):
+                y = model.forward(X)
+                # compute loss
+                loss = criterion(y, Y)
+                # back-propagate loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                # To fetch non-DDP state_dict
+                # w/o DDP: model.state_dict()
+                # w/  DDP: model.module.state_dict()
+                # See: https://github.com/ray-project/ray/issues/20915
+                state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
+
+
+        trainer = Trainer(backend="torch", num_workers=2)
+        trainer.start()
+        trainer.run(train_func, config={"num_epochs": 5})
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([0.1533])), ('weight', tensor([[0.4529, 0.4618, 0.2730, 0.0190]]))]), '_timestamp': 1639117274}
+
+
+  .. group-tab:: TensorFlow
+
+    .. code-block:: python
+        :emphasize-lines: 24
+
+        from ray import train
+        from ray.train import Trainer
+
+        import numpy as np
+
+
+        def train_func(config):
+            import tensorflow as tf
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            X = np.random.normal(0, 1, size=(n, 4))
+            Y = np.random.uniform(0, 1, size=(n, 1))
+
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+            with strategy.scope():
+                # toy neural network : 1-layer
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+            for epoch in range(config["num_epochs"]):
+                model.fit(X, Y, batch_size=20)
+                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+
+
+        trainer = Trainer(backend="tensorflow", num_workers=2)
+        trainer.start()
+        trainer.run(train_func, config={"num_epochs": 5})
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': [array([[-0.03075046], [-0.8020745 ], [-0.13172336], [ 0.6760253 ]], dtype=float32), array([0.02125629], dtype=float32)], '_timestamp': 1639117674}
+
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
 directory <train-log-dir>` of each run.
@@ -652,28 +753,131 @@ Checkpoints can be loaded into the training function in 2 steps:
 2. The checkpoint to start training with can be bootstrapped by passing in a
    ``checkpoint`` to ``trainer.run()``.
 
-.. code-block:: python
+.. tabs::
 
-    from ray import train
-    from ray.train import Trainer
+  .. group-tab:: PyTorch
 
-    def train_func(config):
-        checkpoint = train.load_checkpoint() or {}
-        # This should be replaced with a real model.
-        model = checkpoint.get("model", 0)
-        start_epoch = checkpoint.get("epoch", -1) + 1
-        for epoch in range(start_epoch, config["num_epochs"]):
-            model += epoch
-            train.save_checkpoint(epoch=epoch, model=model)
+    .. code-block:: python
+        :emphasize-lines: 24, 26, 27, 30, 31, 35
 
-    trainer = Trainer(backend="torch", num_workers=2)
-    trainer.start()
-    trainer.run(train_func, config={"num_epochs": 5},
-                checkpoint={"epoch": 2, "model": 3})
-    trainer.shutdown()
+        import ray.train.torch
+        from ray import train
+        from ray.train import Trainer
 
-    print(trainer.latest_checkpoint)
-    # {'epoch': 4, 'model': 10}
+        import torch
+        import torch.nn as nn
+        from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
+        from torch.optim import Adam
+        import numpy as np
+
+
+        def train_func(config):
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            X = torch.Tensor(np.random.normal(0, 1, size=(n, 4)))
+            Y = torch.Tensor(np.random.uniform(0, 1, size=(n, 1)))
+
+            # toy neural network : 1-layer
+            model = nn.Linear(4, 1)
+            criterion = nn.MSELoss()
+            optimizer = Adam(model.parameters(), lr=3e-4)
+            start_epoch = 0
+
+            checkpoint = train.load_checkpoint()
+            if checkpoint:
+                # assume that we have run the train.save_checkpoint() example
+                # and successfully save some model weights
+                model.load_state_dict(checkpoint.get("model_weights"))
+                start_epoch = checkpoint.get("epoch", -1) + 1
+
+            # wrap the model in DDP
+            model = ray.train.torch.prepare_model(model)
+            for epoch in range(start_epoch, config["num_epochs"]):
+                y = model.forward(X)
+                # compute loss
+                loss = criterion(y, Y)
+                # back-propagate loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                state_dict = model.state_dict()
+                consume_prefix_in_state_dict_if_present(state_dict, "module.")
+                train.save_checkpoint(epoch=epoch, model_weights=state_dict)
+
+
+        trainer = Trainer(backend="torch", num_workers=2)
+        trainer.start()
+        # save a checkpoint
+        trainer.run(train_func, config={"num_epochs": 2})
+        # load a checkpoint
+        trainer.run(train_func, config={"num_epochs": 4},
+                    checkpoint=trainer.latest_checkpoint)
+
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+        # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
+
+  .. group-tab:: TensorFlow
+
+    .. code-block:: python
+        :emphasize-lines: 16, 22, 23, 26, 27, 30
+
+        from ray import train
+        from ray.train import Trainer
+
+        import numpy as np
+
+
+        def train_func(config):
+            import tensorflow as tf
+            n = 100
+            # create a toy dataset
+            # data   : X - dim = (n, 4)
+            # target : Y - dim = (n, 1)
+            X = np.random.normal(0, 1, size=(n, 4))
+            Y = np.random.uniform(0, 1, size=(n, 1))
+
+            start_epoch = 0
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+
+            with strategy.scope():
+                # toy neural network : 1-layer
+                model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+                checkpoint = train.load_checkpoint()
+                if checkpoint:
+                    # assume that we have run the train.save_checkpoint() example
+                    # and successfully save some model weights
+                    model.set_weights(checkpoint.get("model_weights"))
+                    start_epoch = checkpoint.get("epoch", -1) + 1
+                model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+            for epoch in range(start_epoch, config["num_epochs"]):
+                model.fit(X, Y, batch_size=20)
+                train.save_checkpoint(epoch=epoch, model_weights=model.get_weights())
+
+
+        trainer = Trainer(backend="tensorflow", num_workers=2)
+        trainer.start()
+        # save a checkpoint
+        trainer.run(train_func, config={"num_epochs": 2})
+        trainer.shutdown()
+
+        # restart the trainer for the loading checkpoint example
+        # TensorFlow ops need to be created after a MultiWorkerMirroredStrategy instance is created.
+        # See: https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#train_the_model_with_multiworkermirroredstrategy
+        trainer.start()
+        # load a checkpoint
+        trainer.run(train_func, config={"num_epochs": 5},
+                    checkpoint=trainer.latest_checkpoint)
+        trainer.shutdown()
+
+        print(trainer.latest_checkpoint)
+        # {'epoch': 4, 'model_weights': [array([[ 0.06892418], [-0.73326826], [ 0.76637405], [ 0.06124062]], dtype=float32), array([0.05737507], dtype=float32)], '_timestamp': 1639117991}
+
+
 
 .. Running on the cloud
 .. --------------------

@@ -228,7 +228,8 @@ def _build_block_metadata(
                     m.row_group(i).total_byte_size
                     for i in range(m.num_row_groups)) for m in metadata),
             schema=schema,
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=None)  # Exec stats filled in later.
     else:
         # Piece metadata was not available, construct an empty
         # BlockMetadata.

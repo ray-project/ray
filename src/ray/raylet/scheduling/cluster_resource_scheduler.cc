@@ -28,7 +28,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
+      local_node_id_, nodes_);
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -43,7 +43,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
       gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
-      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
+      local_node_id_, nodes_);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
@@ -211,8 +211,9 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
-    const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    const ResourceRequest &resource_request,
+    const rpc::SchedulingStrategy &scheduling_strategy, bool actor_creation,
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
@@ -245,7 +246,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = scheduling_policy_->HybridPolicy(
-      resource_request, force_spillback, force_spillback,
+      resource_request,
+      scheduling_strategy.scheduling_strategy_case() ==
+              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
+          ? 0.0
+          : RayConfig::instance().scheduler_spread_threshold(),
+      force_spillback, force_spillback,
       [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
@@ -265,12 +271,14 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
-    bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    const rpc::SchedulingStrategy &scheduling_strategy, bool requires_object_store_memory,
+    bool actor_creation, bool force_spillback, int64_t *total_violations,
+    bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
-  int64_t node_id = GetBestSchedulableNode(
-      resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
+  int64_t node_id =
+      GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
+                             force_spillback, total_violations, is_infeasible);
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.

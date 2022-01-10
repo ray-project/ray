@@ -563,7 +563,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated
+@Deprecated(message="Use ray.init()['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -840,17 +840,19 @@ def init(
         node_ip_address = services.address_to_ip(_node_ip_address)
     raylet_ip_address = node_ip_address
 
+    bootstrap_address, redis_address, gcs_address = None, None, None
     if address:
-        redis_address, _, _ = services.validate_redis_address(address)
-    else:
-        redis_address = None
+        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        assert bootstrap_address is not None
+        logger.info("Connecting to existing Ray cluster at address: "
+                    f"{bootstrap_address}")
+        if gcs_utils.use_gcs_for_bootstrap():
+            gcs_address = bootstrap_address
+        else:
+            redis_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
-
-    if redis_address is not None:
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -873,15 +875,14 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if redis_address is None:
+    if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+        # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -944,6 +945,7 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1273,9 +1275,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    # Exports that are published after the call to
-    # gcs_subscriber.subscribe_error() and before the call to
-    # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
     worker.gcs_error_subscriber.subscribe()
@@ -1372,23 +1371,28 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
-    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    if not gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = node.create_redis_client()
+    worker.gcs_client = node.get_gcs_client()
+    assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
-    ray.state.state._initialize_global_state(
-        node.redis_address, redis_password=node.redis_password)
+    if gcs_utils.use_gcs_for_bootstrap():
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address))
+    else:
+        ray.state.state._initialize_global_state(
+            ray._raylet.GcsClientOptions.from_redis_address(
+                node.redis_address, redis_password=node.redis_password))
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(
-            channel=worker.gcs_channel.channel())
+        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
         worker.gcs_error_subscriber = GcsErrorSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_log_subscriber = GcsLogSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1421,7 +1425,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1451,12 +1455,19 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    redis_address, redis_port = node.redis_address.split(":")
-    gcs_options = ray._raylet.GcsClientOptions(
-        redis_address,
-        int(redis_port),
-        node.redis_password,
-    )
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
+            node.gcs_address)
+    else:
+        # As the synchronous and the asynchronous context of redis client is
+        # not used in this gcs client. We would not open connection for it
+        # by setting `enable_sync_conn` and `enable_async_conn` as false.
+        gcs_options = ray._raylet.GcsClientOptions.from_redis_address(
+            node.redis_address,
+            node.redis_password,
+            enable_sync_conn=False,
+            enable_async_conn=False,
+            enable_subscribe_conn=True)
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2208,14 +2219,15 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (SchedulingStrategy): Strategy about how to
+        scheduling_strategy (SchedulingStrategyT): Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
             will either be the PlacementGroupSchedulingStrategy using parent's
             placement group if parent has one and has
             placement_group_capture_child_tasks set to true,
-            or the DefaultSchedulingStrategy;
+            or "DEFAULT";
             "DEFAULT": default hybrid scheduling;
+            "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """

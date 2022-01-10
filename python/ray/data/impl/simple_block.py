@@ -14,7 +14,7 @@ from ray.data.impl.block_builder import BlockBuilder
 from ray.data.aggregate import AggregateFn
 from ray.data.impl.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType, AggType
+    T, U, KeyType, AggType, BlockExecStats
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
@@ -214,9 +214,11 @@ class SimpleBlockAccessor(BlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
-        return ret, SimpleBlockAccessor(ret).get_metadata(None)
+        return ret, SimpleBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -241,6 +243,7 @@ class SimpleBlockAccessor(BlockAccessor):
             If key is None then the k element of tuple is omitted.
         """
 
+        stats = BlockExecStats.builder()
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
@@ -288,4 +291,5 @@ class SimpleBlockAccessor(BlockAccessor):
             except StopIteration:
                 break
 
-        return ret, SimpleBlockAccessor(ret).get_metadata(None)
+        return ret, SimpleBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build())

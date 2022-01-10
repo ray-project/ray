@@ -1,6 +1,6 @@
 ray
 click
-anyscale
+anyscale>0.5.0
 slackclient
 boto3
 PyGithub
