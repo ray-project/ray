@@ -1,4 +1,6 @@
 from collections import defaultdict
+from concurrent.futures.thread import ThreadPoolExecutor
+import functools
 import os
 import sys
 import time
@@ -1163,6 +1165,51 @@ def test_deployment_error_handling(serve_instance):
     # the stacktrace is incomplete.
     assert os.sep.join(("ray", "serve",
                         "deployment_state.py")) in str(exception_info.value)
+
+
+def test_http_proxy_request_cancellation(serve_instance):
+    # https://github.com/ray-project/ray/issues/21425
+    s = SignalActor.remote()
+
+    @serve.deployment(max_concurrent_queries=1)
+    class A:
+        def __init__(self) -> None:
+            self.counter = 0
+
+        async def __call__(self):
+            self.counter += 1
+            ret_val = self.counter
+            await s.wait.remote()
+            return ret_val
+
+    A.deploy()
+
+    url = "http://127.0.0.1:8000/A"
+    with ThreadPoolExecutor() as pool:
+        # Send the first request, it should block for the result
+        first_blocking_fut = pool.submit(
+            functools.partial(requests.get, url, timeout=100))
+        time.sleep(1)
+        assert not first_blocking_fut.done()
+
+        # Send more requests, these should be queued in handle.
+        # But because first request is hanging and these have low timeout.
+        # They should all disconnect from http connection.
+        # These requests should never reach the replica.
+        rest_blocking_futs = [
+            pool.submit(functools.partial(requests.get, url, timeout=0.5))
+            for _ in range(3)
+        ]
+        time.sleep(1)
+        assert all(f.done() for f in rest_blocking_futs)
+
+        # Now unblock the first request.
+        ray.get(s.send.remote())
+        assert first_blocking_fut.result().text == "1"
+
+    # Sending another request to verify that only one request has been
+    # processed so far.
+    assert requests.get(url).text == "2"
 
 
 if __name__ == "__main__":

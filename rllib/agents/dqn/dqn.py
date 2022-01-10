@@ -132,6 +132,7 @@ class DQNTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         # Update effective batch size to include n-step

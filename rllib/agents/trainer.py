@@ -845,10 +845,11 @@ class Trainer(Trainable):
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
 
-        # Now that workers have been created, update our policy specs
-        # in the config[multiagent] dict with the correct spaces.
-        self.config["multiagent"]["policies"] = \
-            self.workers.local_worker().policy_map.policy_specs
+            # Now that workers have been created, update our policies
+            # dict in config[multiagent] (with the correct original/
+            # unpreprocessed spaces).
+            self.config["multiagent"]["policies"] = \
+                self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.

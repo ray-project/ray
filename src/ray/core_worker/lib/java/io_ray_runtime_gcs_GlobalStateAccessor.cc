@@ -153,10 +153,11 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *env, jobject o,
                                                                 jlong gcs_accessor_ptr,
-                                                                jstring k) {
+                                                                jstring n, jstring k) {
   std::string key = JavaStringToNativeString(env, k);
+  std::string ns = JavaStringToNativeString(env, n);
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto value = gcs_accessor->GetInternalKV(key);
+  auto value = gcs_accessor->GetInternalKV(ns, key);
   if (value) {
     return NativeStringToJavaByteArray(env, *value);
   }

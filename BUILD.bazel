@@ -1358,6 +1358,18 @@ cc_test(
 )
 
 cc_test(
+    name = "wait_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/wait_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "client_connection_test",
     size = "small",
     srcs = ["src/ray/common/test/client_connection_test.cc"],
