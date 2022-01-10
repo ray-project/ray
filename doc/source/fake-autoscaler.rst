@@ -78,8 +78,7 @@ Most of the features of the autoscaler are supported in fake multi-node mode. Fo
 
 However, there are a few limitations:
 
-1. All node raylets run uncontainerized on the local machine, and hence they share the same IP address.
-See the :ref:`fake_multinode_docker <fake-multinode-docker>` section for an alternative local multi node setup.
+1. All node raylets run uncontainerized on the local machine, and hence they share the same IP address. See the :ref:`fake_multinode_docker <fake-multinode-docker>` section for an alternative local multi node setup.
 
 2. Configurations for auth, setup, initialization, Ray start, file sync, and anything cloud-specific are not supported.
 
@@ -194,7 +193,7 @@ For the Ray OSS Buildkite environment, we thus set some environment variables:
   ``localhost``, as the ports are not exposed to the outer container. Thus, we can set the Ray host with this environment
   variable.
 
-Lastly, docker-compose obviously requires a docker image. The default docker image is ``rayproject/ray:nightly`.
+Lastly, docker-compose obviously requires a docker image. The default docker image is ``rayproject/ray:nightly``.
 However, on our Ray OSS Buildkite environment, we want to test changes from the respective PR or Branch. Thus, we set
 
 * ``RAY_DOCKER_IMAGE="rayproject/ray:nightly-py37-cpu"``
