@@ -735,7 +735,6 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -1007,7 +1006,6 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1037,7 +1035,9 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
 
     data = "hello"
     tmpfile = tempfile.NamedTemporaryFile()
-    a = A.remote(tmpfile.name, data)
+    tmpfile_name = tmpfile.name + ".tmp"
+    open(tmpfile_name, "w+").close()
+    a = A.remote(tmpfile_name, data)
     ray.get(a.ready.remote())
 
     if exit_condition == "out_of_scope":
@@ -1052,7 +1052,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert False, "Unrecognized condition"
 
     def check_file_written():
-        with open(tmpfile.name) as f:
+        with open(tmpfile_name) as f:
             if f.read() == data:
                 return True
             return False
