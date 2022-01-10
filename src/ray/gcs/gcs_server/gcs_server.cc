@@ -560,7 +560,7 @@ void GcsServer::DumpDebugStateToFile() const {
   fs.open(config_.log_dir + "/debug_state_gcs.txt",
           std::fstream::out | std::fstream::trunc);
   fs << GetDebugState() << "\n\n";
-  fs << main_service_.StatsString();
+  fs << main_service_.stats().StatsString();
   fs.close();
 }
 

@@ -59,7 +59,7 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
-std::shared_ptr<StatsHandle> EventStats::RecordStart(const std::string &name,
+std::shared_ptr<StatsHandle> EventTracker::RecordStart(const std::string &name,
                                                      int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   int64_t curr_count = 0;
@@ -75,7 +75,7 @@ std::shared_ptr<StatsHandle> EventStats::RecordStart(const std::string &name,
       global_stats_);
 }
 
-void EventStats::RecordExecution(const std::function<void()> &fn,
+void EventTracker::RecordExecution(const std::function<void()> &fn,
                                  std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
@@ -123,7 +123,7 @@ void EventStats::RecordExecution(const std::function<void()> &fn,
   handle->execution_recorded = true;
 }
 
-std::shared_ptr<GuardedEventStats> EventStats::GetOrCreate(const std::string &name) {
+std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &name) {
   // Get this event's stats.
   std::shared_ptr<GuardedEventStats> result;
   mutex_.ReaderLock();
@@ -153,11 +153,11 @@ std::shared_ptr<GuardedEventStats> EventStats::GetOrCreate(const std::string &na
   return result;
 }
 
-GlobalStats EventStats::get_global_stats() const {
+GlobalStats EventTracker::get_global_stats() const {
   return to_global_stats_view(global_stats_);
 }
 
-absl::optional<EventStats> EventStats::get_event_stats(
+absl::optional<EventStats> EventTracker::get_event_stats(
     const std::string &event_name) const {
   absl::ReaderMutexLock lock(&mutex_);
   auto it = post_event_stats_.find(event_name);
@@ -167,7 +167,7 @@ absl::optional<EventStats> EventStats::get_event_stats(
   return to_event_stats_view(it->second);
 }
 
-std::vector<std::pair<std::string, EventStats>> EventStats::get_event_stats() const {
+std::vector<std::pair<std::string, EventStats>> EventTracker::get_event_stats() const {
   // We lock the stats table while copying the table into a vector.
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, EventStats>> stats;
@@ -180,7 +180,7 @@ std::vector<std::pair<std::string, EventStats>> EventStats::get_event_stats() co
   return stats;
 }
 
-std::string EventStats::StatsString() const {
+std::string EventTracker::StatsString() const {
   if (!RayConfig::instance().event_stats()) {
     return "Stats collection disabled, turn on "
            "event_stats "

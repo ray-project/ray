@@ -101,7 +101,7 @@ void RedisAsioClient::add_io(bool write) {
   io_service_.dispatch([this, write]() {
     (write ? write_requested_ : read_requested_) = true;
     operate();
-  });
+  }, "RedisAsioClient.add_io");
 }
 
 void RedisAsioClient::del_io(bool write) {

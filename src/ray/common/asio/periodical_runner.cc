@@ -83,7 +83,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   timer.async_wait([this, fn = std::move(fn), period, &timer,
                     stats_handle = std::move(stats_handle),
                     name](const boost::system::error_code &error) {
-    io_service_.RecordExecution(
+    io_service_.stats().RecordExecution(
         [this, fn = std::move(fn), error, period, &timer, name]() {
           if (error == boost::asio::error::operation_aborted) {
             // `operation_aborted` is set when `timer` is canceled or destroyed.
