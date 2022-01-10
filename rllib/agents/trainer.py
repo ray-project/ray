@@ -48,7 +48,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
     NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.multi_agent import check_multi_agent
+from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
@@ -2103,11 +2103,6 @@ class Trainer(Trainable):
         policies, is_multi_agent = check_multi_agent(config)
 
         for pid, policy_spec in policies.copy().items():
-            # Policy IDs must be strings.
-            if not isinstance(pid, str):
-                raise ValueError("Policy keys must be strs, got {}".format(
-                    type(pid)))
-
             # Convert to PolicySpec if plain list/tuple.
             if not isinstance(policy_spec, PolicySpec):
                 # Values must be lists/tuples of len 4.

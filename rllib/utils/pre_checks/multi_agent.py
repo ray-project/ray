@@ -20,6 +20,8 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
     Raises:
         KeyError: If `config` does not contain a "multiagent" key or if there
         is an invalid key inside the "multiagent" config.
+        KeyError: If any policy has a non-str ID.
+        ValueError: If
     """
     if "multiagent" not in config:
         raise KeyError(
@@ -49,6 +51,27 @@ def check_multi_agent(config: PartialTrainerConfigDict) -> \
             pid: PolicySpec()
             for pid in policies
         }
+
+    # Check each defined policy ID and spec.
+    for pid, spec in policies.items():
+        # Policy IDs must be strings.
+        if not isinstance(pid, str):
+            raise KeyError(
+                f"Policy IDs must always be of type `str`, got {type(pid)}")
+        # Spec must be valid.
+
+    # Check other "multiagent" sub-keys' values.
+    if multiagent_config.get("count_steps_by", "env_steps") not in \
+            ["env_steps", "agent_steps"]:
+        raise ValueError("config.multiagent.count_steps_by must be "
+                         "[env_steps|agent_steps], not "
+                         f"{multiagent_config['count_steps_by']}!")
+    if multiagent_config.get("replay_mode", "independent") not in \
+            ["independent", "lockstep"]:
+        raise ValueError("config.multiagent.replay_mode must be "
+                         "[independent|lockstep], not "
+                         f"{multiagent_config['replay_mode']}!")
+
     # Is this a multi-agent setup? True, iff DEFAULT_POLICY_ID is only
     # PolicyID found in policies dict.
     is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies

@@ -488,7 +488,7 @@ def check_train_results(train_results):
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
         LEARNER_STATS_KEY
-    from ray.rllib.utils.multi_agent import check_multi_agent
+    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
