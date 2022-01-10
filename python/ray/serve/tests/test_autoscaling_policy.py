@@ -1,6 +1,3 @@
-import sys
-
-import pytest
 from unittest import mock
 
 from ray._private.test_utils import SignalActor, wait_for_condition
