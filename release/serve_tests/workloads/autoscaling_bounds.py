@@ -148,7 +148,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         #     time.sleep(sleep_interval)
 
         print("Starting to issue requests.\n")
-        [handle.remote() for _ in range(500)]
+        [handle.remote() for _ in range(1)]
         # import time
         # time.sleep(10)
         # [handle.remote() for _ in range(500)]
