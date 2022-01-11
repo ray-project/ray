@@ -73,7 +73,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
     max_depth = 5
     array_oid = put_object(
-        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
@@ -116,7 +116,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     def return_an_id():
         return [
             put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+                np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
         ]
 
     @ray.remote(max_retries=1)
@@ -153,7 +153,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     def return_an_id():
         return [
             put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+                np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
         ]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
@@ -201,7 +201,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
     @ray.remote
     def return_an_id():
         return put_object(
-            np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+            np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -267,7 +267,7 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
             return put_object(
-                np.zeros(20 * 1024 * 1024, dtype=np.uint8),
+                np.zeros(20 * 256 * 512, dtype=np.uint8),
                 use_ray_put), os.getpid()
 
         return ray.get(recursive.remote(num_tasks_left - 1))
@@ -338,7 +338,7 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     borrower = Borrower.remote()
     ray.get(borrower.ping.remote())
 
-    obj = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
+    obj = ray.put(np.zeros(20 * 256 * 512, dtype=np.uint8))
     if failure:
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(parent.pass_ref.remote([obj], borrower))
