@@ -126,7 +126,6 @@ def get_gcs_memory_used():
         process.memory_info().rss for process in psutil.process_iter()
         if process.name() in ("gcs_server", "redis-server")
     ])
-    print(m)
     return m
 
 
@@ -168,6 +167,12 @@ def test_function_table_gc(call_ray_start):
 
     assert get_gcs_memory_used() > 500 * 1024 * 1024
     job_id = ray.worker.global_worker.current_job_id.binary()
+    # We only check it for redis mode since in memory mode, the rss depends
+    # on when the OS evict the page.
+    if os.get("RAY_gcs_storage") != "memory":
+        wait_for_condition(
+            lambda: get_gcs_memory_used() < 100 * 1024 * 1024, timeout=30)
+    assert function_entry_num(job_id) > 0
 
     ray.shutdown()
 
@@ -189,7 +194,7 @@ def test_function_table_gc_actor(call_ray_start):
         def ready(self):
             return
 
-    # If there is a detached actor, function won't be deleted
+    # If there is a detached actor, the function won't be deleted.
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
     job_id = ray.worker.global_worker.current_job_id.binary()
@@ -202,7 +207,7 @@ def test_function_table_gc_actor(call_ray_start):
     ray.kill(a)
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
-    # If it's not a detached actor, it'll be deleted once job finished
+    # If there is not a detached actor, it'll be deleted when the job finishes.
     a = Actor.remote()
     ray.get(a.ready.remote())
     job_id = ray.worker.global_worker.current_job_id.binary()

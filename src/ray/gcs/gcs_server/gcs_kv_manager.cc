@@ -100,7 +100,7 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [this, callback = std::move(callback)](auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
-          // If there is no keys with this prefix, we don't need to send
+          // If there are no keys with this prefix, we don't need to send
           // another delete.
           if (reply.size() == 0) {
             if (callback) {
