@@ -309,7 +309,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         if not train_results:
             return train_results
 
-        # Update target nets and KL.
+        # Update target net and KL.
         with policy._target_and_kl_stats[TARGET_NET_UPDATE_TIMER]:
             policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED] += train_results[NUM_AGENT_STEPS_TRAINED]
             target_update_freq = policy.config["num_sgd_iter"] * policy.config[
@@ -322,9 +322,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 policy._target_and_kl_stats[NUM_TARGET_UPDATES] += 1
                 policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS] = cur_ts
                 policy.update_target()
-                # Also update KL coeff.
+                # Also update Policy's current KL coeff.
                 if policy.config["use_kl_loss"]:
-                    # Make the actual `Policy.update_kl()` call.
                     policy.update_kl(TODO)
 
         return train_results

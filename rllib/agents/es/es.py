@@ -228,10 +228,18 @@ class ESTrainer(Trainer):
                 "`NoFilter` for ES!")
 
     @override(Trainer)
-    def _init(self, config, env_creator):
+    def setup(self, config):
+        # Call super's validation method.
         self.validate_config(config)
+
+        # Generate `self.env_creator` callable to create an env instance.
+        self._get_env_creator_from_env_id(self._env_id)
+        # Generate the local env.
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
-        env = env_creator(env_context)
+        env = self.env_creator(env_context)
+
+        self.callbacks = config.get("callbacks")()
+
         self._policy_class = get_policy_class(config)
         self.policy = self._policy_class(
             obs_space=env.observation_space,
@@ -247,8 +255,8 @@ class ESTrainer(Trainer):
 
         # Create the actors.
         logger.info("Creating actors.")
-        self._workers = [
-            Worker.remote(config, {}, env_creator, noise_id, idx + 1)
+        self.workers = [
+            Worker.remote(config, {}, self.env_creator, noise_id, idx + 1)
             for idx in range(config["num_workers"])
         ]
 
@@ -333,7 +341,7 @@ class ESTrainer(Trainer):
         # Now sync the filters
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.observation_filter
-        }, self._workers)
+        }, self.workers)
 
         info = {
             "weights_norm": np.square(theta).sum(),
@@ -375,7 +383,7 @@ class ESTrainer(Trainer):
     @override(Trainer)
     def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self._workers:
+        for w in self.workers:
             w.__ray_terminate__.remote()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -386,7 +394,7 @@ class ESTrainer(Trainer):
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
             rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self._workers
+                worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
@@ -413,4 +421,4 @@ class ESTrainer(Trainer):
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.observation_filter
-        }, self._workers)
+        }, self.workers)

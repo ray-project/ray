@@ -678,7 +678,7 @@ class Trainer(Trainable):
             env or config.get("env"), config)
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Callable[[EnvContext], EnvType] = None
+        self.env_creator: Optional[Callable[[EnvContext], EnvType]] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -742,38 +742,14 @@ class Trainer(Trainable):
         # be a partial config dict with the class' default).
         self.config = self.merge_trainer_configs(
             self.get_default_config(), config, self._allow_unknown_configs)
+        self.config["env"] = self._env_id
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
 
-        # Setup the "env creator" callable.
-        env = self._env_id
-        if env:
-            self.config["env"] = env
-
-            # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env):
-                self.env_creator = _global_registry.get(ENV_CREATOR, env)
-
-            # A class path specifier.
-            elif "." in env:
-
-                def env_creator_from_classpath(env_context):
-                    try:
-                        env_obj = from_config(env, env_context)
-                    except ValueError:
-                        raise EnvError(
-                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
-                    return env_obj
-
-                self.env_creator = env_creator_from_classpath
-            # Try gym/PyBullet/Vizdoom.
-            else:
-                self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=env)
-        # No env -> Env creator always returns None.
-        else:
-            self.env_creator = lambda env_config: None
+        # Setup the self.env_creator callable (to be passed
+        # e.g. to RolloutWorkers' c'tors).
+        self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -781,11 +757,6 @@ class Trainer(Trainable):
                                         self.config["seed"])
 
         self.validate_config(self.config)
-        if not callable(self.config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}".format(
-                    self.config["callbacks"]))
         self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
@@ -1909,6 +1880,32 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
+    def _get_env_creator_from_env_id(self, env_id):
+        if env_id:
+            # An already registered env.
+            if _global_registry.contains(ENV_CREATOR, env_id):
+                self.env_creator = _global_registry.get(ENV_CREATOR, env_id)
+
+            # A class path specifier.
+            elif "." in env_id:
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env_id, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                    return env_obj
+
+                self.env_creator = env_creator_from_classpath
+            # Try gym/PyBullet/Vizdoom.
+            else:
+                self.env_creator = functools.partial(
+                    gym_env_creator, env_descriptor=env_id)
+        # No env -> Env creator always returns None.
+        else:
+            self.env_creator = lambda env_config: None
+
     @DeveloperAPI
     def _make_workers(
             self,
@@ -2128,10 +2125,15 @@ class Trainer(Trainable):
         if config.get("record_env") == "":
             config["record_env"] = True
 
-        # DefaultCallbacks if callbacks - for whatever reason - set to
-        # None.
+        # Use DefaultCallbacks class, if callbacks is None.
         if config["callbacks"] is None:
             config["callbacks"] = DefaultCallbacks
+        # Check, whether given `callbacks` is a callable.
+        if not callable(config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got "
+                f"{config['callbacks']}!")
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
