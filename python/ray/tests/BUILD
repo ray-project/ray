@@ -124,7 +124,6 @@ py_test_module_list(
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
-    "test_kv.py",
     "test_microbenchmarks.py",
     "test_mini.py",
     "test_node_manager.py",

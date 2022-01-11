@@ -122,6 +122,15 @@ class Trainer:
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
+        if not ray.is_initialized():
+            ray.init()
+
+        if "GPU" in ray.available_resources() and not use_gpu:
+            logger.info("GPUs are detected in your Ray cluster, but GPU "
+                        "training is not enabled for Ray Train. To enable "
+                        "GPU training, make sure to set `use_gpu` to True "
+                        "when instantiating your Trainer.")
+
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker

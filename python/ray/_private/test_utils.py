@@ -680,10 +680,6 @@ def format_web_url(url):
     return url
 
 
-def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
-
-
 def client_test_enabled() -> bool:
     return ray._private.client_mode_hook.is_client_mode_enabled
 
