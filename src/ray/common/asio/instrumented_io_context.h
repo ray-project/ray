@@ -36,15 +36,14 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void post(std::function<void()> handler, const std::string name) LOCKS_EXCLUDED(mutex_);
+  void post(std::function<void()> handler, const std::string name);
 
   /// A proxy post function where the operation start is manually recorded. For example,
   /// this is useful for tracking the number of active outbound RPC calls.
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
-      LOCKS_EXCLUDED(mutex_);
+  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -52,8 +51,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  void dispatch(std::function<void()> handler, const std::string name)
-      LOCKS_EXCLUDED(mutex_);
+  void dispatch(std::function<void()> handler, const std::string name);
 
   EventTracker &stats() const { return *event_stats_; };
 
