@@ -48,7 +48,8 @@ MOCK_MODULES = [
     "horovod.ray.runner",
     "horovod.ray.utils",
     "hyperopt",
-    "hyperopt.hp" "kubernetes",
+    "hyperopt.hp"
+    "kubernetes",
     "mlflow",
     "modin",
     "mxnet",
@@ -167,8 +168,7 @@ versionwarning_messages = {
         "<b>Got questions?</b> Join "
         f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
         "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."
-    ),
+        "and best practices with the Ray community."),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -474,20 +474,21 @@ FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}
 def feedback_form_url(project, page):
     """Create a URL for feedback on a particular page in a project."""
     return FEEDBACK_FORM_FMT.format(
-        title=urllib.parse.quote("[docs] Issue on `{page}.rst`".format(page=page)),
+        title=urllib.parse.quote(
+            "[docs] Issue on `{page}.rst`".format(page=page)),
         body=urllib.parse.quote(
             "# Documentation Problem/Question/Comment\n"
             "<!-- Describe your issue/question/comment below. -->\n"
             "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
             "\n\n\n\n"
-            "(Created directly from the docs)\n"
-        ),
+            "(Created directly from the docs)\n"),
     )
 
 
 def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
-    context["feedback_form_url"] = feedback_form_url(app.config.project, pagename)
+    context["feedback_form_url"] = feedback_form_url(app.config.project,
+                                                     pagename)
 
 
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
