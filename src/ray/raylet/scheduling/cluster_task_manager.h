@@ -126,22 +126,23 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
  public:
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
-  ///        the state of the cluster.
+  ///                                    the state of the cluster.
   /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
-  ///        (according to our ownership model).
+  ///                        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
   /// \param announce_infeasible_task: Callback that informs the user if a task
-  ///        is infeasible.
+  ///                                  is infeasible.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
   /// \param get_task_arguments: A callback for getting a tasks' arguments by
-  ///        their ids.
+  ///                            their ids.
   /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
   /// \param sched_cls_cap_interval_ms: The time before we increase the cap
-  ///        on the number of tasks that can run per scheduling class. If set
-  ///        to 0, there is no cap. If it's a large number, the cap is hard.
+  ///                                   on the number of tasks that can run per
+  ///                                   scheduling class. If set to 0, there is no
+  ///                                   cap. If it's a large number, the cap is hard.
   ClusterTaskManager(
       const NodeID &self_node_id,
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
