@@ -4,8 +4,8 @@ from ray.train.callbacks.results_prepocessors.preprocessor import \
     ResultsPreprocessor
 
 
-class KeysResultsPreprocessor(ResultsPreprocessor):
-    """Preprocesses each result dictionary by key.
+class ExcludedKeysResultsPreprocessor(ResultsPreprocessor):
+    """Preprocesses each result dictionary by excluding specified keys.
 
     Example
     - excluded_keys: ["a"]

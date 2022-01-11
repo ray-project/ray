@@ -1,5 +1,7 @@
 from contextlib import redirect_stdout
 import io
+from pathlib import Path
+
 import pytest
 import os
 import shutil
@@ -18,7 +20,8 @@ from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
                                  TBXLoggerCallback)
 from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
-from ray.train.callbacks.logging import MLflowLoggerCallback
+from ray.train.callbacks.logging import MLflowLoggerCallback, \
+    TrainCallbackLogdirManager
 
 try:
     from tensorflow.python.summary.summary_iterator \
@@ -42,6 +45,18 @@ def make_temp_dir():
     # The code after the yield will run as teardown code.
     if os.path.exists(tmpdir):
         shutil.rmtree(tmpdir)
+
+
+make_temp_dir_2 = make_temp_dir
+
+
+@pytest.fixture
+def make_temp_file():
+    tmpfile = str(tempfile.mkstemp())
+    yield tmpfile
+    # The code after the yield will run as teardown code.
+    if os.path.exists(tmpfile):
+        shutil.rmtree(tmpfile)
 
 
 class TestConfig(BackendConfig):
@@ -79,6 +94,33 @@ def test_print(ray_start_4_cpus):
     for i, result in enumerate(results):
         assert set(result.keys()) == (BASIC_AUTOFILLED_KEYS | {"rank"})
         assert result["rank"] == i
+
+
+@pytest.mark.parametrize("input", [None, "dir", "file"])
+def test_train_callback_logdir_manager(make_temp_dir, make_temp_file,
+                                       make_temp_dir_2, input):
+    if input == "dir":
+        input_logdir = make_temp_dir
+    elif input == "file":
+        input_logdir = make_temp_file
+    else:
+        input_logdir = None
+
+    default_dir = make_temp_dir_2
+    logdir_manager = TrainCallbackLogdirManager(input_logdir)
+
+    if input_logdir:
+        path = logdir_manager.logdir_path
+        assert path == logdir_manager.logdir_path
+    else:
+        with pytest.raises(RuntimeError):
+            path = logdir_manager.logdir_path
+
+    if input_logdir and not Path(input_logdir).is_dir():
+        logdir_manager.setup_logdir(default_dir)
+    else:
+        path = logdir_manager.setup_logdir(default_dir)
+        assert path == logdir_manager.logdir_path
 
 
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])

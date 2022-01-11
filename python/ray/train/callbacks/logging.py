@@ -9,7 +9,7 @@ import numpy as np
 
 from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.results_prepocessors import IndexedResultsPreprocessor, \
-    KeysResultsPreprocessor
+    ExcludedKeysResultsPreprocessor
 from ray.train.callbacks.results_prepocessors.preprocessor import \
     SequentialResultsPreprocessor
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
@@ -39,6 +39,9 @@ class TrainCallbackLogdirManager():
         create_logdir (bool): Whether to create the logdir if it does not
             already exist.
 
+    Returns:
+        The path of the logdir.
+
     Attributes:
         logdir_path (Path): The path of the logdir. The default logdir will
             not be available until ``setup_logdir`` is called.
@@ -51,7 +54,7 @@ class TrainCallbackLogdirManager():
         self._logdir = Path(logdir) if logdir else None
         self._create_logdir = create_logdir
 
-    def setup_logdir(self, default_logdir: str):
+    def setup_logdir(self, default_logdir: str) -> Path:
         """Sets up the logdir.
 
         The directory will be created if it does not exist and
@@ -69,6 +72,8 @@ class TrainCallbackLogdirManager():
         if not self.logdir_path.is_dir():
             raise ValueError(
                 f"logdir '{self.logdir_path}' must be a directory.")
+
+        return self.logdir_path
 
     @property
     def logdir_path(self) -> Path:
@@ -96,7 +101,7 @@ class JsonLoggerCallback(TrainingCallback):
     def __init__(self,
                  logdir: Optional[str] = None,
                  filename: Optional[str] = None,
-                 workers_to_log=0):
+                 workers_to_log: Optional[Union[int, List[int]]] = 0):
         self._filename = filename
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
         self._results_preprocessor = IndexedResultsPreprocessor(
@@ -173,7 +178,7 @@ class MLflowLoggerCallback(TrainingCallback):
                  tags: Optional[Dict] = None,
                  save_artifact: bool = False,
                  logdir: Optional[str] = None,
-                 worker_to_log=0):
+                 worker_to_log: int = 0):
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
         self._results_preprocessor = IndexedResultsPreprocessor(
             indices=worker_to_log)
@@ -242,7 +247,7 @@ class TBXLoggerCallback(TrainingCallback):
 
         results_preprocessors = [
             IndexedResultsPreprocessor(indices=worker_to_log),
-            KeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
+            ExcludedKeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
         ]
         self._results_preprocessor = SequentialResultsPreprocessor(
             results_preprocessors)
