@@ -113,8 +113,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
-            put_object(
-                np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
+            put_object(np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
         ]
 
     @ray.remote(max_retries=1)
@@ -150,8 +149,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
-            put_object(
-                np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
+            put_object(np.zeros(20 * 256 * 512, dtype=np.uint8), use_ray_put)
         ]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
