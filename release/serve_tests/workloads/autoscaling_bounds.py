@@ -147,6 +147,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         #     handle.remote()
         #     time.sleep(sleep_interval)
 
+        print("Starting to issue requests.\n")
         [handle.remote() for _ in range(500)]
         # import time
         # time.sleep(10)
@@ -160,8 +161,8 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         import time
         start = time.time()
         while time.time() - start < 30:
-            num_wrk_replicas = get_num_running_replicas(controller,
-                                                        deployment_name)
+            num_wrk_replicas = get_num_running_replicas(
+                controller, deployment_name)
             print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
             time.sleep(5)
         wait_for_condition(lambda: running_replicas_bounded(controller,
