@@ -47,15 +47,14 @@ enum class UnscheduledWorkCause {
   /// Waiting for acquiring resources.
   WAITING_FOR_RESOURCE_ACQUISITION,
   /// Waiting for more plasma store memory to be available. This is set when we can't pin
-  /// task
-  /// arguments due to the lack of memory.
+  /// task arguments due to the lack of memory.
   WAITING_FOR_AVAILABLE_PLASMA_MEMORY,
-  /// Pending because there's no node that satisfies the resource in the cluster.
+  /// Pending because there's no node that satisfies the resources in the cluster.
   WAITING_FOR_RESOURCES_AVAILABLE,
   /// Waiting because the worker wasn't available since job config for the worker wasn't
   /// registered yet.
   WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST,
-  /// Waiting becasue the worker wasn't available since it has registration timeout.
+  /// Waiting becasue the worker wasn't available since its registration timed out.
   WORKER_NOT_FOUND_REGISTRATION_TIMEOUT,
   /// Waiting because the worker wasn't available since it was rate limited.
   WORKER_NOT_FOUND_RATE_LIMITED,
@@ -113,7 +112,7 @@ typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoG
 /// 1. Queue tasks for scheduling.
 /// 2. Pick a node on the cluster which has the available resources to run a
 ///    task.
-///     * Step 2 should occur anytime any time the state of the cluster is
+///     * Step 2 should occur any time the state of the cluster is
 ///       changed, or a new task is queued.
 /// 3. If a task has unresolved dependencies, set it aside to wait for
 ///    dependencies to be resolved.
@@ -125,19 +124,14 @@ typedef std::function<const rpc::GcsNodeInfo *(const NodeID &node_id)> NodeInfoG
 ///    it and we should release the resources in our view of the node's state.
 class ClusterTaskManager : public ClusterTaskManagerInterface {
  public:
-  /// fullfills_dependencies_func Should return if all dependencies are
-  /// fulfilled and unsubscribe from dependencies only if they're fulfilled. If
-  /// a task has dependencies which are not fulfilled, wait for the
-  /// dependencies to be fulfilled, then run on the local node.
-  ///
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
-  /// the state of the cluster.
+  ///        the state of the cluster.
   /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
-  /// (according to our ownership model).
+  ///        (according to our ownership model).
   /// \param get_node_info: Function that returns the node info for a node.
-  /// \param announce_infeasible_task: Callback that invokes the user if a task
+  /// \param announce_infeasible_task: Callback that informs the user if a task
   ///        is infeasible.
   /// \param worker_pool: A reference to the worker pool.
   /// \param leased_workers: A reference to the leased workers map.
@@ -189,7 +183,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
 
-  /// Return the finished task and relase the worker resources.
+  /// Return the finished task and release the worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
   /// once we remove the legacy scheduler.
   ///
@@ -201,7 +195,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param task_id: The id of the task to remove.
   /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
-  /// failed.
+  ///                                  failed.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
@@ -209,25 +203,26 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
-  /// \param Output parameter.
+  /// \param reply: Output parameter.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  /// fields used.
+  /// \param data: Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  ///              fields used.
+  /// \param last_reported_resources: The last reported resources.
   void FillResourceUsage(rpc::ResourcesData &data,
                          const std::shared_ptr<SchedulingResources>
                              &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
-  /// \param[in] exemplar An example task that is deadlocking.
-  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
-  /// \param[in] num_pending_tasks Number of pending tasks.
-  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \param exemplar: An example task that is deadlocking.
+  /// \param num_pending_actor_creation: Number of pending actor creation tasks.
+  /// \param num_pending_tasks: Number of pending tasks.
+  /// \param any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
   bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
                                              int *num_pending_actor_creation,
@@ -242,7 +237,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// should give up the CPU resources allocated for the running task for the time being
   /// and the worker itself should also be marked as blocked.
   ///
-  /// \param worker The worker who will give up the CPU resources.
+  /// \param worker: The worker who will give up the CPU resources.
   /// \return true if the cpu resources of the specified worker are released successfully,
   /// else false.
   bool ReleaseCpuResourcesFromUnblockedWorker(
@@ -305,7 +300,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \returns true if the task was spilled. The task may not be spilled if the
   /// spillback policy specifies the local node (which may happen if no other nodes have
-  /// the available resources).
+  /// the requested resources available).
   bool TrySpillback(const std::shared_ptr<internal::Work> &work, bool &is_infeasible);
 
   /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
