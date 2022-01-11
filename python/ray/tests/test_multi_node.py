@@ -83,10 +83,18 @@ def test_error_isolation(call_ray_start):
     address = call_ray_start
     # Connect a driver to the Ray cluster.
     ray.init(address=address)
-    p = init_error_pubsub()
+
+    # If a GRPC call exceeds timeout, the calls is cancelled at client side but
+    # server may still reply to it, leading to missed message. Using a sequence
+    # number to ensure no message is dropped can be the long term solution,
+    # but its complexity and the fact the Ray subscribers do not use deadline
+    # in production makes it less preferred.
+    # Therefore, a simpler workaround is used instead: a different subscriber
+    # is used for each get_error_message() call.
+    subscribers = [init_error_pubsub() for _ in range(3)]
 
     # There shouldn't be any errors yet.
-    errors = get_error_message(p, 1, 2)
+    errors = get_error_message(subscribers[0], 1, timeout=2)
     assert len(errors) == 0
 
     error_string1 = "error_string1"
@@ -101,7 +109,7 @@ def test_error_isolation(call_ray_start):
         ray.get(f.remote())
 
     # Wait for the error to appear in Redis.
-    errors = get_error_message(p, 1)
+    errors = get_error_message(subscribers[1], 1)
 
     # Make sure we got the error.
     assert len(errors) == 1
@@ -113,12 +121,12 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
-from ray._private.test_utils import (init_error_pubsub, get_error_message)
+from ray._private.test_utils import init_error_pubsub, get_error_message
 
 ray.init(address="{}")
-p = init_error_pubsub()
+subscribers = [init_error_pubsub() for _ in range(2)]
 time.sleep(1)
-errors = get_error_message(p, 1, 2)
+errors = get_error_message(subscribers[0], 1, timeout=2)
 assert len(errors) == 0
 
 @ray.remote
@@ -130,7 +138,7 @@ try:
 except Exception as e:
     pass
 
-errors = get_error_message(p, 1)
+errors = get_error_message(subscribers[1], 1)
 assert len(errors) == 1
 
 assert "{}" in errors[0].error_message
@@ -144,9 +152,8 @@ print("success")
 
     # Make sure that the other error message doesn't show up for this
     # driver.
-    errors = get_error_message(p, 1)
+    errors = get_error_message(subscribers[2], 1)
     assert len(errors) == 1
-    p.close()
 
 
 def test_remote_function_isolation(call_ray_start):

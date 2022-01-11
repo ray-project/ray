@@ -8,7 +8,8 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, Protocol, upload_package_if_needed)
+    get_uri_for_package, upload_package_to_gcs, parse_uri, Protocol,
+    upload_package_if_needed)
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -47,7 +48,19 @@ def upload_working_dir_if_needed(
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
-    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+    try:
+        working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+    except ValueError:  # working_dir is not a directory
+        package_path = Path(working_dir)
+        if (not package_path.exists() or package_path.suffix != ".zip"):
+            raise ValueError(f"directory {package_path} must be an existing "
+                             "directory or a zip package")
+
+        pkg_uri = get_uri_for_package(package_path)
+        upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+        runtime_env["working_dir"] = pkg_uri
+        return runtime_env
+
     upload_package_if_needed(
         working_dir_uri,
         scratch_dir,
