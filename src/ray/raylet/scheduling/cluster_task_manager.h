@@ -203,26 +203,27 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
-  /// \param reply: Output parameter.
+  /// \param[out] reply: Output parameter. `infeasible_tasks` is the only field filled.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param data: Output parameter. `resource_load` and `resource_load_by_shape` are the only
-  ///              fields used.
-  /// \param last_reported_resources: The last reported resources.
+  /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  ///                   fields used.
+  /// \param[in] last_reported_resources: The last reported resources. Used to check whether
+  ///                                     resources have been changed.
   void FillResourceUsage(rpc::ResourcesData &data,
                          const std::shared_ptr<SchedulingResources>
                              &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
-  /// \param exemplar: An example task that is deadlocking.
-  /// \param num_pending_actor_creation: Number of pending actor creation tasks.
-  /// \param num_pending_tasks: Number of pending tasks.
-  /// \param any_pending: True if there's any pending exemplar.
+  /// \param[out] exemplar: An example task that is deadlocking.
+  /// \param[in,out] num_pending_actor_creation: Number of pending actor creation tasks.
+  /// \param[in,out] num_pending_tasks: Number of pending tasks.
+  /// \param[in,out] any_pending: True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
   bool AnyPendingTasksForResourceAcquisition(RayTask *exemplar, bool *any_pending,
                                              int *num_pending_actor_creation,
