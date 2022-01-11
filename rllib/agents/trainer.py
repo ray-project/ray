@@ -2264,14 +2264,12 @@ class Trainer(Trainable):
             config["metrics_num_episodes_for_smoothing"] = \
                 config["metrics_smoothing_episodes"]
         if config["min_iter_time_s"] != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="min_iter_time_s",
-            #     new="min_time_s_per_reporting",
-            #     error=False,
-            # )
-            config["min_time_s_per_reporting"] = \
-                config["min_iter_time_s"]
+            deprecation_warning(
+                old="min_iter_time_s",
+                new="min_time_s_per_reporting",
+                error=False,
+            )
+            config["min_time_s_per_reporting"] = config["min_iter_time_s"]
 
         if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.

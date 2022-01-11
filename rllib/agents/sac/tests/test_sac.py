@@ -157,7 +157,7 @@ class TestSAC(unittest.TestCase):
         config["Q_model"]["fcnet_hiddens"] = [10]
         config["policy_model"]["fcnet_hiddens"] = [10]
         # Make sure, timing differences do not affect trainer.train().
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         # Test SAC with Simplex action space.
         config["env_config"] = {"simplex_actions": True}
 

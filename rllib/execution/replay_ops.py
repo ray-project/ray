@@ -153,6 +153,9 @@ class SimpleReplayBuffer:
         self.last_added_batches = []
         return random.choice(self.replay_batches)
 
+    def __len__(self):
+        return len(self.replay_batches)
+
 
 class MixInReplay:
     """This operator adds replay to a stream of experiences.

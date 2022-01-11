@@ -3,18 +3,25 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
-from ray.rllib.execution.common import WORKER_UPDATE_TIMER
-from ray.rllib.execution.rollout_ops import asynchronous_parallel_sample
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.buffers.mixin_replay_buffer import \
     MixInMultiAgentReplayBuffer
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import PartialTrainerConfigDict, \
+from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
+    LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
+    NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_TARGET_UPDATES, \
+    SAMPLE_TIMER, SYNCH_WORKER_WEIGHTS_TIMER, TARGET_NET_UPDATE_TIMER
+from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, \
     TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util.timer import _Timer
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -28,8 +35,12 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         #  implementations of different buffers.
         # This is num batches held at any time for each policy.
         "replay_buffer_capacity": 20,
-        # e.g. ratio=0.2 -> 20% of samples are old (replayed) ones.
-        "replay_buffer_replay_ratio": 0.33,
+        # e.g. ratio=0.2 -> 20% of samples in each train batch are
+        # old (replayed) ones.
+        "replay_buffer_replay_ratio": 0.5,
+
+        # Iteration
+        "min_time_s_per_reporting": 2,
 
         # Use the `training_iteration` method instead of an execution plan.
         "_disable_execution_plan_api": True,
@@ -108,6 +119,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # and b) the co-located replay actor handle for that policy.
         # We'll keep this map synched across the algorithm's workers.
         _policy_learners = {}
+        _pol_actor_to_pid = {}
         for pid, policy_spec in ma_cfg["policies"].items():
             if pid in self.workers.local_worker().policies_to_train:
                 _policy_learners[pid] = [None, None]
@@ -187,6 +199,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for co, pid in zip(colocated[1:], policies):
                 policy_actor = co[0]
                 _policy_learners[pid] = [policy_actor, replay_actor]
+                _pol_actor_to_pid[policy_actor] = pid
 
         # Store policy actor -> replay actor mapping on each RolloutWorker
         # so they know, to which replay shard to send samples to.
@@ -200,36 +213,48 @@ class AlphaStarTrainer(appo.APPOTrainer):
         ])
 
         self._policy_learners = _policy_learners
+        self._pol_actor_to_pid = _pol_actor_to_pid
 
     def training_iteration(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
         #   shards, instead of here (to the driver).
-        asynchronous_parallel_sample(
-            trainer=self,
-            actors=self.workers.remote_workers()
-            or [self.workers.local_worker()],
-            ray_wait_timeout_s=0.1,
-            max_remote_requests_in_flight_per_actor=2,
-            remote_fn=self._sample_and_send_to_buffer,
-        )
+        with self._timers[SAMPLE_TIMER]:
+            sample_results = asynchronous_parallel_requests(
+                trainer=self,
+                actors=self.workers.remote_workers()
+                or [self.workers.local_worker()],
+                ray_wait_timeout_s=0.01,
+                max_remote_requests_in_flight_per_actor=2,
+                remote_fn=self._sample_and_send_to_buffer,
+            )
+        # Update sample counters.
+        for (env_steps, agent_steps) in sample_results.values():
+            self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
 
         # Trigger asynchronous training update requests on all learning
         # policies.
-        idx_to_pol_actor_and_pid = {}
-        args = []
-        for i, (pid, (pol_actor,
-                      repl_actor)) in enumerate(self._policy_learners.items()):
-            idx_to_pol_actor_and_pid[i] = (pol_actor, pid)
-            args.append([repl_actor, pid])
-        train_results = asynchronous_parallel_sample(
-            trainer=self,
-            actors=[act for (act, _) in idx_to_pol_actor_and_pid.values()],
-            ray_wait_timeout_s=0.1,
-            max_remote_requests_in_flight_per_actor=2,
-            remote_fn=self._update_policy,
-            remote_args=args,
-        )
+        with self._timers[LEARN_ON_BATCH_TIMER]:
+            pol_actors = []
+            args = []
+            for i, (pid, (pol_actor,
+                          repl_actor)) in enumerate(self._policy_learners.items()):
+                pol_actors.append(pol_actor)
+                args.append([repl_actor, pid])
+            train_results = asynchronous_parallel_requests(
+                trainer=self,
+                actors=pol_actors,
+                ray_wait_timeout_s=0.1,
+                max_remote_requests_in_flight_per_actor=2,
+                remote_fn=self._update_policy,
+                remote_args=args,
+            )
+
+        # Update sample counters.
+        for result in train_results.values():
+            if NUM_AGENT_STEPS_TRAINED in result:
+                self._counters[NUM_AGENT_STEPS_TRAINED] += result[NUM_AGENT_STEPS_TRAINED]
 
         # For those policies that have been updated in this iteration
         # (not all policies may have undergone an updated as we are
@@ -237,12 +262,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # - Gather train infos.
         # - Update weights to those remote rollout workers that contain
         #   the respective policy.
-        train_infos = {}
-        policy_weights = {}
-        with self._timers[WORKER_UPDATE_TIMER]:
-            for i, policy_result in enumerate(train_results):
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            train_infos = {}
+            policy_weights = {}
+            for pol_actor, policy_result in train_results.items():
                 if policy_result:
-                    pol_actor, pid = idx_to_pol_actor_and_pid[i]
+                    pid = self._pol_actor_to_pid[pol_actor]
                     train_infos[pid] = policy_result
                     policy_weights[pid] = self._policy_learners[pid][
                         0].get_weights.remote()
@@ -255,7 +280,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         return train_infos
 
     @staticmethod
-    def _sample_and_send_to_buffer(worker):
+    def _sample_and_send_to_buffer(worker: RolloutWorker):
         # Generate a sample.
         sample = worker.sample()
         # Send the per-agent SampleBatches to the correct buffer(s),
@@ -265,8 +290,41 @@ class AlphaStarTrainer(appo.APPOTrainer):
             replay_actor = worker._policy_learners[pid][1]
             ma_batch = MultiAgentBatch({pid: batch}, batch.count)
             replay_actor.add_batch.remote(ma_batch)
+        # Return counts (env-steps, agent-steps).
+        return sample.count, sample.agent_steps()
 
     @staticmethod
-    def _update_policy(policy, replay_actor, pid):
-        return policy.learn_on_batch_from_replay_buffer(
+    def _update_policy(policy: Policy, replay_actor: ActorHandle, pid: PolicyID):
+        if not hasattr(policy, "_target_and_kl_stats"):
+            policy._target_and_kl_stats = {
+                LAST_TARGET_UPDATE_TS: 0,
+                NUM_TARGET_UPDATES: 0,
+                NUM_AGENT_STEPS_TRAINED: 0,
+                TARGET_NET_UPDATE_TIMER: _Timer()
+            }
+
+        train_results = policy.learn_on_batch_from_replay_buffer(
             replay_actor=replay_actor, policy_id=pid)
+
+        if not train_results:
+            return train_results
+
+        # Update target nets and KL.
+        with policy._target_and_kl_stats[TARGET_NET_UPDATE_TIMER]:
+            policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED] += train_results[NUM_AGENT_STEPS_TRAINED]
+            target_update_freq = policy.config["num_sgd_iter"] * policy.config[
+                "replay_buffer_capacity"] * policy.config["train_batch_size"]
+            cur_ts = policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED]
+            last_update = policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS]
+
+            # Update target networks on all policy learners.
+            if cur_ts - last_update > target_update_freq:
+                policy._target_and_kl_stats[NUM_TARGET_UPDATES] += 1
+                policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS] = cur_ts
+                policy.update_target()
+                # Also update KL coeff.
+                if policy.config["use_kl_loss"]:
+                    # Make the actual `Policy.update_kl()` call.
+                    policy.update_kl(TODO)
+
+        return train_results
