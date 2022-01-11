@@ -20,6 +20,7 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 namespace raylet {
@@ -1142,7 +1143,7 @@ std::string ClusterTaskManager::DebugStr() const {
     const auto &info = pair.second;
     const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
     buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
-           << "/" << info.capacity << "\n";
+           << "/" << info.capacity << " " << debug_string(info.running_tasks) << "\n";
   }
 
   buffer << "==================================================\n";
