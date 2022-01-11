@@ -102,7 +102,7 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
           const auto &reply = redis_reply->ReadAsStringArray();
           // If there is no keys with this prefix, we don't need to send
           // another delete.
-          if(reply.size() == 0) {
+          if (reply.size() == 0) {
             if (callback) {
               callback(0);
             }
