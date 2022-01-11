@@ -23,6 +23,10 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "buffer_size": 2000000,
         # TODO(jungong) : update once Apex supports replay_buffer_config.
         "replay_buffer_config": None,
+        # Whether all shards of the replay buffer must be co-located
+        # with the learner process (running the execution plan).
+        # If False, replay shards may be created on different node(s).
+        "replay_buffer_shards_colocated_with_driver": True,
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -31,6 +35,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "worker_side_prioritization": True,
         "min_time_s_per_reporting": 30,
     },
+    _allow_unknown_configs=True,
 )
 
 
