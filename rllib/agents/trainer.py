@@ -1848,8 +1848,9 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
-            self.workers.stop()
+        workers = getattr(self, "workers", None)
+        if workers:
+            workers.stop()
         # Stop all optimizers.
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
