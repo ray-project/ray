@@ -100,17 +100,25 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [this, callback = std::move(callback)](auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
-          std::vector<std::string> del_cmd = {"DEL"};
-          for (const auto &r : reply) {
-            RAY_CHECK(r.has_value());
-            del_cmd.emplace_back(*r);
+          // If there is no keys with this prefix, we don't need to send
+          // another delete.
+          if(reply.size() == 0) {
+            if (callback) {
+              callback(0);
+            }
+          } else {
+            std::vector<std::string> del_cmd = {"DEL"};
+            for (const auto &r : reply) {
+              RAY_CHECK(r.has_value());
+              del_cmd.emplace_back(*r);
+            }
+            RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+                del_cmd, [callback = std::move(callback)](auto redis_reply) {
+                  if (callback) {
+                    callback(redis_reply->ReadAsInteger());
+                  }
+                }));
           }
-          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-              del_cmd, [callback = std::move(callback)](auto redis_reply) {
-                if (callback) {
-                  callback(redis_reply->ReadAsInteger());
-                }
-              }));
         }));
   } else {
     std::vector<std::string> cmd = {"DEL", true_key};

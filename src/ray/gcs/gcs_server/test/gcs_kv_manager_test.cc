@@ -77,6 +77,16 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
     p.get_future().get();
   }
   {
+    // Delete by prefix are two steps in redis mode, so we need sync here
+    std::promise<void> p;
+    kv_instance->Del("NX", "A_", true, [&p](auto b) {
+      ASSERT_EQ(0, b);
+      p.set_value();
+    });
+    p.get_future().get();
+  }
+
+  {
     // Make sure the last cb is called
     std::promise<void> p;
     kv_instance->Get("N1", "A_1", [&p](auto b) {
