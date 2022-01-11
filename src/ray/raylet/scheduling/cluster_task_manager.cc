@@ -449,14 +449,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
       }
     }
-    if (is_infeasible) {
-      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else if (dispatch_queue.empty()) {
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else {
-      shapes_it++;
-    }
     // In the beginning of the loop, we add scheduling_class
     // to the `info_by_sched_cls_` map.
     // In cases like dead owners, we may not add any tasks
@@ -464,6 +456,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     // for that scheduling_class to prevent memory leaks.
     if (sched_cls_info.running_tasks.size() == 0) {
       info_by_sched_cls_.erase(scheduling_class);
+    }
+    if (is_infeasible) {
+      infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
+      tasks_to_dispatch_.erase(shapes_it++);
+    } else if (dispatch_queue.empty()) {
+      tasks_to_dispatch_.erase(shapes_it++);
+    } else {
+      shapes_it++;
     }
   }
 }
