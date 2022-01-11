@@ -465,7 +465,8 @@ void GcsServer::InitRuntimeEnvManager() {
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->GetInstance().Del(
-                uri, [callback = std::move(callback)](bool deleted) { callback(false); });
+                "" /* namespace */, uri /* key */, false /* del_by_prefix*/,
+                [callback = std::move(callback)](int64_t) { callback(false); });
           }
         }
       });

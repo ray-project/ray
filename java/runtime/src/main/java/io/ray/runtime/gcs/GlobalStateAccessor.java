@@ -106,10 +106,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getInternalKV(String k) {
+  public byte[] getInternalKV(String n, String k) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      return this.nativeGetInternalKV(globalStateAccessorNativePointer, k);
+      return this.nativeGetInternalKV(globalStateAccessorNativePointer, n, k);
     }
   }
 
@@ -175,7 +175,7 @@ public class GlobalStateAccessor {
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 
-  private native byte[] nativeGetInternalKV(long nativePtr, String k);
+  private native byte[] nativeGetInternalKV(long nativePtr, String n, String k);
 
   private native byte[] nativeGetNodeToConnectForDriver(long nativePtr, String nodeIpAddress);
 }

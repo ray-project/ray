@@ -4,8 +4,9 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import platform
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -21,7 +22,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+    T, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -638,6 +639,27 @@ class Policy(metaclass=ABCMeta):
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
 
+    @ExperimentalAPI
+    def apply(self,
+              func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+              *args, **kwargs) -> T:
+        """Calls the given function with this Policy instance.
+
+        Useful for when the Policy class has been converted into a ActorHandle
+        and the user needs to execute some functionality (e.g. add a property)
+        on the underlying policy object.
+
+        Args:
+            func: The function to call, with this Policy as first
+                argument, followed by args, and kwargs.
+            args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
+
+        Returns:
+            The return value of the function call.
+        """
+        return func(self, *args, **kwargs)
+
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
         """Called on an update to global vars.
@@ -696,6 +718,15 @@ class Policy(metaclass=ABCMeta):
                 this policy or None.
         """
         return None
+
+    def get_host(self) -> str:
+        """Returns the computer's network name.
+
+        Returns:
+            The computer's networks name or an empty string, if the network
+            name could not be determined.
+        """
+        return platform.node()
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.

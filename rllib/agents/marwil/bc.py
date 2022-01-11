@@ -33,6 +33,7 @@ class BCTrainer(MARWILTrainer):
 
     @override(MARWILTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["beta"] != 0.0:
