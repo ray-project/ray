@@ -24,6 +24,7 @@
 #include <random>
 #include <string>
 
+#include "absl/base/internal/endian.h"
 #include "ray/common/constants.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -176,6 +177,9 @@ class TaskID : public BaseID<TaskID> {
   static constexpr size_t kUniqueBytesLength = 8;
 
  public:
+  static_assert(absl::little_endian::IsLittleEndian(),
+                "TaskID format assumes little endian");
+
   static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;
 
   TaskID() : BaseID() {}

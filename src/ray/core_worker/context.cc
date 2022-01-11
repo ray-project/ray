@@ -23,8 +23,8 @@ namespace core {
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
       : current_task_id_(), task_index_(0), put_counter_(0) {
-        SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
-      }
+    SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
+  }
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
@@ -54,8 +54,7 @@ struct WorkerThreadContext {
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number) {
     current_task_id_ = task_id;
     if (!current_task_id_.IsNil()) {
-      current_internal_task_id_ =
-          TaskID::ForExecutionAttempt(task_id, attempt_number);
+      current_internal_task_id_ = TaskID::ForExecutionAttempt(task_id, attempt_number);
     } else {
       current_internal_task_id_ = TaskID::Nil();
     }
@@ -150,7 +149,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
   // (For other threads it's set to random ID via GetThreadContext).
   GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
                                           ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil(), /*attempt_number=*/0);
+                                          : TaskID::Nil(),
+                                      /*attempt_number=*/0);
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
