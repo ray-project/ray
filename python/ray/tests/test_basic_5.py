@@ -106,6 +106,7 @@ def test_internal_kv(ray_start_regular):
     assert set(kv._internal_kv_list("k",
                                     namespace="n")) == {b"k1", b"k2", b"k3"}
     assert kv._internal_kv_del("k", del_by_prefix=True, namespace="n") == 3
+    assert kv._internal_kv_del("x", del_by_prefix=True, namespace="n") == 0
     assert kv._internal_kv_get("k1", namespace="n") is None
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
@@ -148,7 +149,7 @@ def test_function_table_gc(call_ray_start):
     """
 
     def f():
-        data = '0' * 1024 * 1024  # 1MB
+        data = "0" * 1024 * 1024  # 1MB
 
         @ray.remote
         def r():
@@ -172,9 +173,8 @@ def test_function_table_gc(call_ray_start):
 
     # now check the function table is cleaned up after job finished
     ray.init(address="auto", namespace="a")
-    wait_for_condition(
-        lambda: function_entry_num(job_id) == 0
-    )
+    wait_for_condition(lambda: function_entry_num(job_id) == 0)
+
 
 @pytest.mark.skipif(
     client_test_enabled(),
@@ -183,10 +183,12 @@ def test_function_table_gc_actor(call_ray_start):
     """If there is a detached actor, the table won't be cleaned up.
     """
     ray.init(address="auto", namespace="a")
+
     @ray.remote
     class Actor:
         def ready(self):
             return
+
     # If there is a detached actor, function won't be deleted
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
