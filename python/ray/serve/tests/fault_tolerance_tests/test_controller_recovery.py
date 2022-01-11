@@ -136,7 +136,8 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         timeout_value = 60 if sys.platform == "win32" else 30
         while time.time() - start < timeout_value:
             refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=5, num_returns=num_returns)
+            ready, not_ready = ray.wait(
+                refs, timeout=5, num_returns=num_returns)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
