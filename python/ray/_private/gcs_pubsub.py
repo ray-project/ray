@@ -26,8 +26,7 @@ logger = logging.getLogger(__name__)
 
 def gcs_pubsub_enabled():
     """Checks whether GCS pubsub feature flag is enabled."""
-    return os.environ.get("RAY_gcs_grpc_based_pubsub") not in \
-        [None, "0", "false"]
+    return True
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
