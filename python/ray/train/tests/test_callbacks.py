@@ -52,11 +52,11 @@ make_temp_dir_2 = make_temp_dir
 
 @pytest.fixture
 def make_temp_file():
-    tmpfile = str(tempfile.mkstemp())
+    tmpfile = str(tempfile.mkstemp()[1])
     yield tmpfile
     # The code after the yield will run as teardown code.
     if os.path.exists(tmpfile):
-        shutil.rmtree(tmpfile)
+        os.remove(tmpfile)
 
 
 class TestConfig(BackendConfig):
@@ -117,7 +117,8 @@ def test_train_callback_logdir_manager(make_temp_dir, make_temp_file,
             path = logdir_manager.logdir_path
 
     if input_logdir and not Path(input_logdir).is_dir():
-        logdir_manager.setup_logdir(default_dir)
+        with pytest.raises(FileExistsError):
+            logdir_manager.setup_logdir(default_dir)
     else:
         path = logdir_manager.setup_logdir(default_dir)
         assert path == logdir_manager.logdir_path
