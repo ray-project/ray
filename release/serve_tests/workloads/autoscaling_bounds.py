@@ -147,7 +147,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         #     handle.remote()
         #     time.sleep(sleep_interval)
 
-        [handle.remote() for _ in range(500)]
+        # [handle.remote() for _ in range(500)]
         # import time
         # time.sleep(10)
         # [handle.remote() for _ in range(500)]
@@ -163,10 +163,7 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
         #                                                 deployment_name)
         #     print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
         #     time.sleep(5)
-        wait_for_condition(lambda: running_replicas_bounded(controller,
-                                                            deployment_name,
-                                                            min=max_replicas),
-                           timeout=50)
+        
         print("Deployments scaled up to max replicas ....\n")
 
         signal.send.remote()
