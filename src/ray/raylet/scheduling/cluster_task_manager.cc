@@ -273,7 +273,6 @@ bool ClusterTaskManager::PoppedWorkerHandler(
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
-  RAY_LOG(INFO) << "DispatchScheduledTasksToWorkers";
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -328,6 +327,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
+          if (target_time < sched_cls_info.next_update_time) {
+            RAY_LOG(INFO) << "Worker cap " << current_capacity << " " << allowed_capacity << " " << debug_string(sched_cls_info.running_tasks);
+          }
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
           break;
@@ -393,7 +395,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      RAY_LOG(INFO) << "jjyao";
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
@@ -524,6 +525,7 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
     auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
     auto it = info_by_sched_cls_.find(sched_cls);
     if (it != info_by_sched_cls_.end()) {
+      RAY_LOG(INFO) << "TaskFinished " << task->GetTaskSpecification().TaskId();
       it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
       if (it->second.running_tasks.size() == 0) {
         info_by_sched_cls_.erase(it);
