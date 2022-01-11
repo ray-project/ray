@@ -1560,6 +1560,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
+  TaskID task_id = task.GetTaskSpecification().TaskId();
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
@@ -1577,7 +1578,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
+  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply, task_id,
                                       send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
@@ -1601,6 +1602,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                          normal_task_resources.GetResourceMap().end()};
       resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
+    RAY_LOG(INFO) << "LeaseReply " << task_id << " " << reply->rejected() << " " << reply->worker_address().raylet_id();
 
     send_reply_callback(status, success, failure);
   };
