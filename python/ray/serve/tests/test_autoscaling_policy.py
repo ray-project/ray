@@ -1,6 +1,3 @@
-import sys
-
-import pytest
 from unittest import mock
 
 from ray._private.test_utils import SignalActor, wait_for_condition
@@ -104,7 +101,6 @@ def get_deployment_start_time(controller: ServeController,
     return deployment_info.start_time_ms
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_e2e_basic_scale_up_down(serve_instance):
     """Send 100 requests and check that we autoscale up, and then back down."""
 

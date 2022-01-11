@@ -64,7 +64,6 @@ def test_actor_spilled(ray_start_regular):
     assert num_success == len(objects)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
