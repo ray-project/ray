@@ -30,10 +30,9 @@ class GcsFunctionManager {
     RAY_CHECK(iter != job_counter_.end());
     --iter->second;
     if (iter->second == 0) {
+      job_counter_.erase(job_id);
       RemoveExportedFunctions(job_id);
     }
-    job_counter_.erase(job_id);
-    RemoveExportedFunctions(job_id);
   }
 
  private:
@@ -41,6 +40,7 @@ class GcsFunctionManager {
     auto job_id_binary = job_id.Binary();
     kv_.Del("fun", "IsolatedExports:" + job_id_binary + ":", true, nullptr);
     kv_.Del("fun", "RemoteFunction:" + job_id_binary + ":", true, nullptr);
+    kv_.Del("fun", "ActorClass:" + job_id_binary + ":", true, nullptr);
   }
 
   // Handler for internal KV

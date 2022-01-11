@@ -4,12 +4,13 @@ import logging
 import os
 import sys
 import time
-
 import pytest
 
+import psutil
 import ray.cluster_utils
-from ray._private.test_utils import client_test_enabled
+from ray._private.test_utils import client_test_enabled, wait_for_condition
 from ray._private.test_utils import wait_for_pid_to_exit
+from ray.experimental.internal_kv import _internal_kv_list
 
 import ray
 
@@ -117,6 +118,81 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_del("@namespace_def", namespace="n")
     with pytest.raises(RuntimeError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
+
+
+def get_gcs_memory_used():
+    m = sum([
+        process.memory_info().rss for process in psutil.process_iter()
+        if process.name() in ("gcs_server", "redis-server")
+    ])
+    print(m)
+    return m
+
+
+def function_entry_num(job_id):
+    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    return len(_internal_kv_list(b"IsolatedExports:" + job_id,
+                                 namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
+        len(_internal_kv_list(b"RemoteFunction:" + job_id,
+                              namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
+        len(_internal_kv_list(b"ActorClass:" + job_id,
+                              namespace=KV_NAMESPACE_FUNCTION_TABLE))
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="client api doesn't support namespace right now.")
+def test_function_table_gc(call_ray_start):
+    """This test tries to verify that function table is cleaned up
+    after job exits.
+    """
+
+    def f():
+        data = '0' * 1024 * 1024  # 1MB
+
+        @ray.remote
+        def r():
+            nonlocal data
+
+            @ray.remote
+            class Actor:
+                pass
+
+        return r.remote()
+
+    ray.init(address="auto", namespace="b")
+
+    # It should use > 500MB data
+    ray.get([f() for _ in range(500)])
+
+    assert get_gcs_memory_used() > 500 * 1024 * 1024
+    job_id = ray.worker.global_worker.current_job_id.binary()
+
+    ray.shutdown()
+
+    # now check the function table is cleaned up after job finished
+    ray.init(address="auto", namespace="a")
+    wait_for_condition(
+        lambda: function_entry_num(job_id) == 0
+    )
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            return
+    # If there is a detached actor, function won't be deleted
+    a = Actor.options(lifetime="detached", name="a").remote()
+    ray.get(a.ready.remote())
+    job_id = ray.worker.global_worker.current_job_id.binary()
+    ray.shutdown()
+
+    ray.init(address="auto", namespace="n")
+    with pytest.raises(Exception):
+        wait_for_condition(lambda: function_entry_num(job_id) == 0)
+    a = ray.get_actor("a", namespace="a")
+    ray.kill(a)
+    wait_for_condition(lambda: function_entry_num(job_id) == 0)
+
 
 
 if __name__ == "__main__":
