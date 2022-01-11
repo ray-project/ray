@@ -196,6 +196,14 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
     // All the cleaning work has been done when canceled task. Just return
     // false without doing anything.
+    auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+    auto it = info_by_sched_cls_.find(sched_cls);
+    if (it != info_by_sched_cls_.end()) {
+      it->second.running_tasks.erase(spec.TaskId());
+      if (it->second.running_tasks.size() == 0) {
+        info_by_sched_cls_.erase(it);
+      }
+    }
     return false;
   }
 
