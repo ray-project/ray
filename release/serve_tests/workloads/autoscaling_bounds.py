@@ -165,10 +165,10 @@ def main(max_replicas: Optional[int], min_replicas: Optional[int]):
                 controller, deployment_name)
             print(f"Deployments scaled to {num_wrk_replicas} replicas ....\n")
             time.sleep(5)
-        wait_for_condition(lambda: running_replicas_bounded(controller,
-                                                            deployment_name,
-                                                            min=max_replicas),
-                           timeout=50)
+        # wait_for_condition(lambda: running_replicas_bounded(controller,
+        #                                                     deployment_name,
+        #                                                     min=max_replicas),
+        #                    timeout=50)
         print("Deployments scaled up to max replicas ....\n")
 
         signal.send.remote()
