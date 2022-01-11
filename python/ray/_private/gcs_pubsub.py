@@ -248,6 +248,10 @@ class _SyncSubscriber(_SubscriberBase):
                     # caller. Instead return None. This can be revisited later.
                     if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                         return
+                    # Could be a temporary connection issue. Suppress error.
+                    # TODO: reconnect GRPC channel?
+                    if e.code() == grpc.StatusCode.UNAVAILABLE:
+                        return
                     raise
 
             if fut.done():
