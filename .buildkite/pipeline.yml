@@ -366,7 +366,7 @@
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
-      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
+      -//python/ray/tests:test_healthcheck
       -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
