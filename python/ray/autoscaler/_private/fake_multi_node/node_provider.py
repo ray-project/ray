@@ -83,6 +83,8 @@ class FakeMultiNodeProvider(NodeProvider):
         raise AssertionError("Readonly node provider cannot be updated")
 
     def create_node_with_resources(self, node_config, tags, count, resources):
+        resources = resources.copy()
+
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
