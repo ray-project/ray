@@ -176,6 +176,13 @@ def test_function_table_gc(call_ray_start):
         lambda: function_entry_num(job_id) == 0
     )
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="client api doesn't support namespace right now.")
+def test_function_table_gc_actor(call_ray_start):
+    """If there is a detached actor, the table won't be cleaned up.
+    """
+    ray.init(address="auto", namespace="a")
     @ray.remote
     class Actor:
         def ready(self):
@@ -186,13 +193,20 @@ def test_function_table_gc(call_ray_start):
     job_id = ray.worker.global_worker.current_job_id.binary()
     ray.shutdown()
 
-    ray.init(address="auto", namespace="n")
+    ray.init(address="auto", namespace="b")
     with pytest.raises(Exception):
         wait_for_condition(lambda: function_entry_num(job_id) == 0)
     a = ray.get_actor("a", namespace="a")
     ray.kill(a)
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
+    # If it's not a detached actor, it'll be deleted once job finished
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    job_id = ray.worker.global_worker.current_job_id.binary()
+    ray.shutdown()
+    ray.init(address="auto", namespace="c")
+    wait_for_condition(lambda: function_entry_num(job_id) == 0)
 
 
 if __name__ == "__main__":
