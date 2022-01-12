@@ -11,38 +11,25 @@ common: &common
     LANG: en_US.UTF-8
 
 prelude_commands: &prelude_commands |-
-  ./ci/travis/upload_build_info.sh
+  # Cleanup
+  rm -rf /tmp/bazel_event_logs
+  rm -rf /tmp/ray
   (which bazel && bazel clean) || true;
   . ./ci/travis/ci.sh init && source ~/.zshrc
   . ./ci/travis/ci.sh build
   ./ci/travis/install-dependencies.sh
+  cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
 
-epilogue_commands: &epilogue_commands |-
-  # Cleanup runtime environment to save storage
-  rm -rf /tmp/ray
-  # Cleanup local caches (this shouldn't clean up global disk cache)
-  bazel clean
 
 steps:
 - label: ":mac: :apple: Wheels and Jars"
   <<: *common
   commands:
-    # Cleanup environments
-    - ./ci/travis/upload_build_info.sh
-    - (which bazel && bazel clean) || true
-    # TODO(simon): make sure to change both PR and wheel builds
-    # Special setup for jar builds (will be installed to the machine instead)
-    # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
-    # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
-    - diskutil list external physical
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
-    - java -version
-    # Build wheels
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/travis/ci.sh init && source ~/.zshrc
-    - . ./ci/travis/ci.sh build
+    - *prelude_commands
     # Test wheels
     - . ./ci/travis/ci.sh test_wheels
     # Build jars
@@ -63,20 +50,18 @@ steps:
   <<: *common
   commands:
     - export RAY_INSTALL_JAVA=1
+    - export TORCH_VERSION=1.6
     - *prelude_commands
-    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
     - ./java/test.sh
-    - *epilogue_commands
 
 - label: ":mac: :apple: Worker"
   <<: *common
   commands:
     - *prelude_commands
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
 - label: ":mac: :apple: Small & Client"
@@ -88,7 +73,6 @@ steps:
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
-    - *epilogue_commands
 
 - label: ":mac: :apple: Large"
   <<: *common
@@ -96,7 +80,6 @@ steps:
   commands:
     - *prelude_commands
     - . ./ci/travis/ci.sh test_large
-    - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"
   <<: *common
@@ -105,7 +88,6 @@ steps:
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       python/ray/tests/...
-    - *epilogue_commands
 
 - label: ":mac: :apple: Medium K-Z"
   <<: *common
@@ -114,4 +96,3 @@ steps:
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
       python/ray/tests/...
-    - *epilogue_commands

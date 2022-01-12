@@ -14,10 +14,10 @@ from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 
 def retry(f):
-    def inner():
+    def inner(*args, **kwargs):
         resp = None
         for _ in range(5):
-            resp = f()
+            resp = f(*args, **kwargs)
             print("Getting Presigned URL, status_code", resp.status_code)
             print(resp.text)
             if resp.status_code >= 500:
