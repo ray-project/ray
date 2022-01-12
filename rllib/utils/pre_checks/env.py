@@ -32,7 +32,6 @@ def check_env(env: EnvType) -> None:
 
     if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
         check_gym_environments(env)
-
     elif isinstance(env, MultiAgentEnv):
         check_multiagent_environments(env)
     else:
@@ -222,6 +221,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         raise ValueError(error)
 
     next_obs, reward, done, info = env.step(sampled_action)
+    _check_if_obs_multi_agent_dict(next_obs, "env.step(sampled_action)")
     _check_reward(reward)
     _check_done(done)
     _check_info(info)

@@ -179,7 +179,8 @@ class TestCheckMultiAgentEnv():
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         sampled_obs = env.reset()
         env.step = step
-        with pytest.raises(ValueError, match="The observation collected from"):
+        with pytest.raises(
+                ValueError, match="The observation returned by env"):
             check_env(env)
 
         step = MagicMock(return_value=(sampled_obs, "Not a reward", True, {}))
