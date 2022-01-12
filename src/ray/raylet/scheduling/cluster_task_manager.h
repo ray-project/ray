@@ -282,6 +282,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \return True if any tasks are ready for dispatch.
   bool SchedulePendingTasks();
 
+  void RemoveFromRunningTasksIfExists(const RayTask &task);
+
   /// Handle the popped worker from worker pool.
   bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
                            PopWorkerStatus status, const TaskID &task_id,

@@ -44,7 +44,9 @@ def serve_with_client(ray_client_instance, ray_init_kwargs=None):
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "win32",
+    reason="Buggy on MacOS")
 def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="default_test_namespace")
 
@@ -115,7 +117,6 @@ A.deploy()
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_class(serve_with_client):
     serve.start()
 
@@ -131,7 +132,6 @@ def test_quickstart_class(serve_with_client):
     assert response == "Hello serve!"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_counter(serve_with_client):
     serve.start()
 
@@ -155,7 +155,6 @@ def test_quickstart_counter(serve_with_client):
     print("query 2 finished")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize(
     "serve_with_client", [{
         "runtime_env": {
