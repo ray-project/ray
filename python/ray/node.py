@@ -251,14 +251,18 @@ class Node:
                     b"tracing_startup_hook",
                     ray_params.tracing_startup_hook.encode(), True,
                     ray_constants.KV_NAMESPACE_TRACING)
+        self.gcs_up()
 
         if not connect_only:
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
+                self.gcs_up()
+                print("before wait")
                 ray._private.services.wait_for_node(
                     self.redis_address, self.gcs_address,
                     self._plasma_store_socket_name, self.redis_password)
+                print("up wait")
             except TimeoutError:
                 raise Exception(
                     "The current node has not been updated within 30 "
@@ -913,6 +917,7 @@ class Node:
                                  f"{gcs_server_port}")
         # Initialize gcs client, which also waits for GCS to start running.
         self.get_gcs_client()
+        print("gcs started")
 
     def start_raylet(self,
                      plasma_directory,
@@ -1058,6 +1063,13 @@ class Node:
             self.start_dashboard(require_dashboard=True)
         elif self._ray_params.include_dashboard is None:
             self.start_dashboard(require_dashboard=False)
+        print(">>>> head started")
+        self.gcs_up()
+
+    def gcs_up(self):
+        import psutil
+        assert len([p for p in psutil.process_iter() if p.name() == "gcs_server"]) != 0
+
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -1084,6 +1096,7 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}")
             self._config = new_config
+        self.gcs_up()
         self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple

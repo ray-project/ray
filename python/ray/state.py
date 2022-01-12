@@ -49,6 +49,7 @@ class GlobalState:
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
+        print("connected")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -73,6 +74,7 @@ class GlobalState:
         self.gcs_options = gcs_options
 
     def _really_init_global_state(self):
+        print("_really_init_global_state")
         self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
         self.global_state_accessor.connect()
 
@@ -172,9 +174,10 @@ class GlobalState:
             Information about the node in the cluster.
         """
         self._check_connected()
-
+        print("get_node_table")
         node_table = self.global_state_accessor.get_node_table()
 
+        print("after ", node_table)
         results = []
         for node_info_item in node_table:
             item = gcs_utils.GcsNodeInfo.FromString(node_info_item)

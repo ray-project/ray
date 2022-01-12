@@ -51,6 +51,7 @@ cdef class GlobalStateAccessor:
 
     def get_node_table(self):
         cdef c_vector[c_string] result
+        print("{0:x}".format(<unsigned long>self.inner.get()))
         with nogil:
             result = self.inner.get().GetAllNodeInfo()
         return result

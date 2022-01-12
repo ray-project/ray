@@ -45,6 +45,7 @@ class TuneRestoreTest(unittest.TestCase):
         shutil.rmtree(self.logdir)
         ray.shutdown()
         _register_all()
+        print("FINISHED")
 
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
@@ -85,6 +86,11 @@ class TuneInterruptionTest(unittest.TestCase):
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
+        print("started")
+    def tearDown(self) -> None:
+        os.environ.pop("TUNE_PLACEMENT_GROUP_WAIT_S")
+        os.environ.pop("TUNE_TRIAL_STARTUP_GRACE_PERIOD")
+        os.environ.pop("TUNE_TRIAL_RESULT_WAIT_TIME_S")
 
     def testExperimentInterrupted(self):
         import multiprocessing
@@ -114,7 +120,6 @@ class TuneInterruptionTest(unittest.TestCase):
         process.start()
 
         exp_dir = os.path.join(local_dir, "interrupt")
-
         # Skip first five steps
         for i in range(5):
             driver_semaphore.acquire()  # Wait for callback
@@ -130,6 +135,7 @@ class TuneInterruptionTest(unittest.TestCase):
 
         self.assertTrue(experiment_state_file)
         last_mtime = os.path.getmtime(experiment_state_file)
+        print("before kill")
 
         # Now send kill signal
         os.kill(process.pid, signal.SIGINT)
@@ -483,6 +489,5 @@ class SearcherTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
+    unittest.main()

@@ -334,6 +334,8 @@ def _find_gcs_address_or_die():
             "or `RAY_ADDRESS` environment variable.")
     return gcs_addresses.pop()
 
+def gcs_alive():
+    pass
 
 def get_ray_address_from_environment():
     """
@@ -351,6 +353,10 @@ def get_ray_address_from_environment():
             addr = _find_redis_address_or_die()
     return addr
 
+
+def gcs_up():
+    import psutil
+    assert len([p for p in psutil.process_iter() if p.name() == "gcs_server"]) != 0
 
 def wait_for_node(redis_address,
                   gcs_address,
@@ -379,6 +385,7 @@ def wait_for_node(redis_address,
         wait_for_redis_to_start(redis_ip_address, redis_port, redis_password)
         gcs_options = GcsClientOptions.from_redis_address(
             redis_address, redis_password)
+    gcs_up()
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -1443,6 +1450,7 @@ def start_gcs_server(redis_address,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)
+    print("gcs started")
     return process_info
 
 
