@@ -47,12 +47,12 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pandas is None:
             raise ImportError("Run `pip install pandas` for Pandas support.")
-        TableBlockBuilder.__init__(self, pandas.DataFrame)
+        super().__init__(pandas.DataFrame)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         return pandas.DataFrame(columns)
 
-    def _concat_tables(self, tables: List[Block]) -> Block:
+    def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         return pandas.concat(tables, ignore_index=True)
 
     @staticmethod
@@ -70,7 +70,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         if pandas is None:
             raise ImportError("Run `pip install pandas` for Pandas support.")
-        TableBlockAccessor.__init__(self, table)
+        super().__init__(table)
 
     def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
         return PandasRow(row)
@@ -81,10 +81,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             view = view.copy(deep=True)
         return view
 
-    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+    def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         return self._table.sample(frac=1, random_state=random_seed)
 
-    def schema(self) -> Any:
+    def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
         schema = PandasBlockSchema(
             names=dtypes.index.tolist(), types=dtypes.values.tolist())
@@ -121,7 +121,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def size_bytes(self) -> int:
         return self._table.memory_usage(index=True, deep=True).sum()
 
-    def _zip(self, acc: BlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
         s = acc.to_pandas()
         for col_name in s.columns:
@@ -150,7 +150,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             n_samples, ignore_index=True)
 
     def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
-                           descending: bool) -> List["Block[T]"]:
+                           descending: bool) -> List["pandas.DataFrame"]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         delegated_result = BlockAccessor.for_block(
             self.to_arrow()).sort_and_partition(boundaries, key, descending)
@@ -159,15 +159,15 @@ class PandasBlockAccessor(TableBlockAccessor):
         ]
 
     def combine(self, key: GroupKeyT,
-                aggs: Tuple[AggregateFn]) -> Block[PandasRow]:
+                aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         return BlockAccessor.for_block(self.to_arrow()).combine(
             key, aggs).to_pandas()
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List[Block[T]], key: SortKeyT,
-            _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+            blocks: List["pandas.DataFrame"], key: SortKeyT,
+            _descending: bool) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
@@ -175,9 +175,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         return BlockAccessor.for_block(block).to_pandas(), metadata
 
     @staticmethod
-    def aggregate_combined_blocks(blocks: List[Block[PandasRow]],
+    def aggregate_combined_blocks(blocks: List["pandas.DataFrame"],
                                   key: GroupKeyT, aggs: Tuple[AggregateFn]
-                                  ) -> Tuple[Block[PandasRow], BlockMetadata]:
+                                  ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
