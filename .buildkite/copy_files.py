@@ -1,4 +1,5 @@
 import argparse
+import io
 import json
 import os
 import subprocess
@@ -77,6 +78,18 @@ class BKAnalyticsUploader:
             })
         return resp
 
+    @staticmethod
+    def merge_xmls(xml_texts: List[str]) -> str:
+        if len(xml_texts) == 1:
+            return xml_texts[0]
+
+        records = [ET.parse(io.StringIO(t)) for t in xml_texts]
+        first, later = records[0], records[1:]
+        for later_record in later:
+            first.getroot().append(later_record.find("testsuite"))
+        return ET.tostring(
+            first.getroot(), encoding="utf8", method="xml").decode()
+
 
 def upload_to_bk_analytics(event_files_dir, token):
     event_dir = event_files_dir.replace("/", os.path.sep)
@@ -85,10 +98,18 @@ def upload_to_bk_analytics(event_files_dir, token):
             continue
 
         path = os.path.join(event_dir, name)
+        xml_texts: List[str] = []
         for xml_path in BKAnalyticsUploader.yield_result_xml_path(path):
             assert os.path.exists(xml_path), xml_path
             parsed_xml = BKAnalyticsUploader.read_and_transform_xml(xml_path)
-            BKAnalyticsUploader.send_to_buildkite(parsed_xml, token)
+            xml_texts.append(parsed_xml)
+
+        if len(xml_texts) == 0:
+            continue
+
+        print(f"Sending result of {len(xml_texts)} suites")
+        BKAnalyticsUploader.send_to_buildkite(
+            BKAnalyticsUploader.merge_xmls(xml_texts), token)
 
 
 @retry
