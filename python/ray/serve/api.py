@@ -106,7 +106,9 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
-        self._root_url = ray.get(self._controller.get_root_url.remote())
+        self._root_url = ray.get(controller.get_root_url.remote())
+        self._checkpoint_path = ray.get(
+            controller.get_checkpoint_path.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -125,6 +127,14 @@ class Client:
     @property
     def root_url(self):
         return self._root_url
+
+    @property
+    def http_config(self):
+        return self._http_config
+
+    @property
+    def checkpoint_path(self):
+        return self._checkpoint_path
 
     def __del__(self):
         if not self._detached:
@@ -365,6 +375,26 @@ class Client:
         return handle
 
 
+def _check_http_and_checkpoint_options(
+        client: Client,
+        http_options: Union[dict, HTTPOptions],
+        checkpoint_path: str,
+) -> None:
+    client_http_options = client.http_config
+    if checkpoint_path and not checkpoint_path == client.checkpoint_path:
+        logger.warn(
+            f"The new client checkpoint path '{checkpoint_path}' "
+            f"is different from the existing one '{client.checkpoint_path}'.")
+
+    if http_options:
+        http_options_dict = http_options if isinstance(
+            http_options, dict) else http_options.__dict__
+        if not client_http_options.__dict__ == http_options_dict:
+            logger.warn(
+                "The new client HTTP config is different from the existing one."
+            )
+
+
 @PublicAPI(stability="beta")
 def start(
         detached: bool = False,
@@ -425,6 +455,10 @@ def start(
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{controller_namespace}'.")
+
+        _check_http_and_checkpoint_options(client, http_options,
+                                           _checkpoint_path)
+
         return client
     except RayServeException:
         pass
