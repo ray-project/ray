@@ -32,7 +32,7 @@ class ActorCreator {
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ray::ActorHandle<GetActorType<F>> Remote(Args &&...args);
+  ray::ActorHandle<GetActorType<F>, is_python_v<F>> Remote(Args &&...args);
 
   ActorCreator &SetName(std::string name) {
     create_options_.name = std::move(name);
@@ -75,7 +75,7 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&...args) {
+ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&...args) {
   StaticCheck<F, Args...>();
   CheckTaskOptions(create_options_.resources);
   using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
@@ -85,7 +85,7 @@ ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&...args) {
                                  std::forward<Args>(args)...);
   auto returned_actor_id =
       runtime_->CreateActor(remote_function_holder_, args_, create_options_);
-  return ActorHandle<GetActorType<F>>(returned_actor_id);
+  return ActorHandle<GetActorType<F>, is_python_v<F>>(returned_actor_id);
 }
 }  // namespace internal
 }  // namespace ray

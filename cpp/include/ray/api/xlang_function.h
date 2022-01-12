@@ -21,6 +21,7 @@ namespace ray {
 
 template <typename R, typename... Args>
 struct PyFunction {
+  bool is_python() { return true; }
   R operator()(Args... args) { return {}; }
 
   std::string module_name;
@@ -29,6 +30,7 @@ struct PyFunction {
 
 template <typename... Args>
 struct PyActorClass {
+  bool is_python() { return true; }
   void operator()(Args... args) {}
 
   std::string module_name;
@@ -38,7 +40,7 @@ struct PyActorClass {
 
 template <typename R, typename... Args>
 struct PyActorMethod {
-  static constexpr bool is_python_actor_function = true;
+  bool is_python() { return true; }
   R operator()(Args... args) { return {}; }
 
   std::string function_name;

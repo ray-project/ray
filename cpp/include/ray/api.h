@@ -235,6 +235,7 @@ ray::internal::TaskCaller<PyFunction<R, Args...>> Task(PyFunction<R, Args...> fu
 /// Normal task.
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func) {
+  static_assert(!ray::internal::is_python_v<F>, "Must be a cpp function.");
   static_assert(!std::is_member_function_pointer_v<F>,
                 "Incompatible type: member function cannot be called with ray::Task.");
   return TaskInternal<F>(func);
