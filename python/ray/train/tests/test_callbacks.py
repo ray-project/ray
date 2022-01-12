@@ -1,27 +1,24 @@
-from contextlib import redirect_stdout
+import glob
 import io
+import json
+from collections import defaultdict
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
-import os
-import shutil
-import tempfile
-import json
-import glob
-from collections import defaultdict
 
 import ray
 import ray.train as train
 from ray.train import Trainer
+from ray.train.backend import BackendConfig, Backend
+from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
+                                 TBXLoggerCallback)
+from ray.train.callbacks.logging import MLflowLoggerCallback, \
+    TrainCallbackLogdirManager
 from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
-from ray.train.callbacks import (JsonLoggerCallback, PrintCallback,
-                                 TBXLoggerCallback)
-from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
-from ray.train.callbacks.logging import MLflowLoggerCallback, \
-    TrainCallbackLogdirManager
 
 try:
     from tensorflow.python.summary.summary_iterator \
@@ -36,27 +33,6 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
-
-@pytest.fixture
-def make_temp_dir():
-    tmpdir = str(tempfile.mkdtemp())
-    yield tmpdir
-    # The code after the yield will run as teardown code.
-    if os.path.exists(tmpdir):
-        shutil.rmtree(tmpdir)
-
-
-make_temp_dir_2 = make_temp_dir
-
-
-@pytest.fixture
-def make_temp_file():
-    tmpfile = str(tempfile.mkstemp()[1])
-    yield tmpfile
-    # The code after the yield will run as teardown code.
-    if os.path.exists(tmpfile):
-        os.remove(tmpfile)
 
 
 class TestConfig(BackendConfig):
@@ -97,16 +73,18 @@ def test_print(ray_start_4_cpus):
 
 
 @pytest.mark.parametrize("input", [None, "dir", "file"])
-def test_train_callback_logdir_manager(make_temp_dir, make_temp_file,
-                                       make_temp_dir_2, input):
+def test_train_callback_logdir_manager(tmp_path, input):
+    default_dir = tmp_path / "default_dir"
+
     if input == "dir":
-        input_logdir = make_temp_dir
+        input_logdir = tmp_path / "dir"
+        input_logdir.mkdir(parents=True)
     elif input == "file":
-        input_logdir = make_temp_file
+        input_logdir = tmp_path / "file"
+        input_logdir.touch()
     else:
         input_logdir = None
 
-    default_dir = make_temp_dir_2
     logdir_manager = TrainCallbackLogdirManager(input_logdir)
 
     if input_logdir:
@@ -118,16 +96,16 @@ def test_train_callback_logdir_manager(make_temp_dir, make_temp_file,
 
     if input_logdir and not Path(input_logdir).is_dir():
         with pytest.raises(FileExistsError):
-            logdir_manager.setup_logdir(default_dir)
+            logdir_manager.setup_logdir(str(default_dir))
     else:
-        path = logdir_manager.setup_logdir(default_dir)
+        path = logdir_manager.setup_logdir(str(default_dir))
         assert path == logdir_manager.logdir_path
 
 
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
 @pytest.mark.parametrize("detailed", [False, True])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
-def test_json(monkeypatch, ray_start_4_cpus, make_temp_dir, workers_to_log,
+def test_json(monkeypatch, ray_start_4_cpus, tmp_path, workers_to_log,
               detailed, filename):
     if detailed:
         monkeypatch.setenv(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, "1")
@@ -155,7 +133,7 @@ def test_json(monkeypatch, ray_start_4_cpus, make_temp_dir, workers_to_log,
     else:
         callback = JsonLoggerCallback(
             filename=filename, workers_to_log=workers_to_log)
-    trainer = Trainer(config, num_workers=num_workers, logdir=make_temp_dir)
+    trainer = Trainer(config, num_workers=num_workers, logdir=str(tmp_path))
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
     if filename is None:

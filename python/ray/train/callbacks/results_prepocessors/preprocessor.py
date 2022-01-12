@@ -23,7 +23,7 @@ class ResultsPreprocessor(abc.ABC):
         return results
 
 
-class SequentialResultsPreprocessor():
+class SequentialResultsPreprocessor(ResultsPreprocessor):
     """A processor that sequentially runs a series of preprocessing steps.
 
     - preprocessors: [A, B, C]

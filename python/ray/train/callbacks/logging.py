@@ -39,9 +39,6 @@ class TrainCallbackLogdirManager():
         create_logdir (bool): Whether to create the logdir if it does not
             already exist.
 
-    Returns:
-        The path of the logdir.
-
     Attributes:
         logdir_path (Path): The path of the logdir. The default logdir will
             not be available until ``setup_logdir`` is called.
@@ -63,6 +60,9 @@ class TrainCallbackLogdirManager():
         Args:
             default_logdir (str): The default logdir to use, only if the
             ``TrainCallbackLogdirManager`` was not initialized with a ``logdir``.
+
+        Returns:
+            The path of the logdir.
         """
         self._default_logdir = Path(default_logdir)
 
@@ -104,7 +104,7 @@ class JsonLoggerCallback(TrainingCallback):
                  workers_to_log: Optional[Union[int, List[int]]] = 0):
         self._filename = filename
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
-        self._results_preprocessor = IndexedResultsPreprocessor(
+        self.results_preprocessor = IndexedResultsPreprocessor(
             indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
@@ -180,7 +180,7 @@ class MLflowLoggerCallback(TrainingCallback):
                  logdir: Optional[str] = None,
                  worker_to_log: int = 0):
         self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
-        self._results_preprocessor = IndexedResultsPreprocessor(
+        self.results_preprocessor = IndexedResultsPreprocessor(
             indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
@@ -249,7 +249,7 @@ class TBXLoggerCallback(TrainingCallback):
             IndexedResultsPreprocessor(indices=worker_to_log),
             ExcludedKeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
         ]
-        self._results_preprocessor = SequentialResultsPreprocessor(
+        self.results_preprocessor = SequentialResultsPreprocessor(
             results_preprocessors)
 
     def start_training(self, logdir: str, **info):

@@ -7,6 +7,8 @@ from ray.train.callbacks.results_prepocessors import ResultsPreprocessor
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
+    results_preprocessor: ResultsPreprocessor = None
+
     def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
 
@@ -32,10 +34,8 @@ class TrainingCallback(abc.ABC):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        _results_preprocessor : ResultsPreprocessor = \
-            getattr(self, "_results_preprocessor", None)
-        if _results_preprocessor:
-            results = _results_preprocessor.preprocess(results)
+        if self.results_preprocessor:
+            results = self.results_preprocessor.preprocess(results)
         self.handle_result(results, **info)
 
     def handle_result(self, results: List[Dict], **info):
