@@ -211,9 +211,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// \param[out] data: Output parameter. `resource_load` and `resource_load_by_shape` are
+  /// the only
   ///                   fields used.
-  /// \param[in] last_reported_resources: The last reported resources. Used to check whether
+  /// \param[in] last_reported_resources: The last reported resources. Used to check
+  /// whether
   ///                                     resources have been changed.
   void FillResourceUsage(rpc::ResourcesData &data,
                          const std::shared_ptr<SchedulingResources>
