@@ -268,8 +268,6 @@ class FakeMultiNodeProvider(NodeProvider):
         raise AssertionError("Readonly node provider cannot be updated")
 
     def create_node_with_resources(self, node_config, tags, count, resources):
-        resources = resources.copy()
-
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -414,6 +412,8 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
     def _create_node_spec_with_resources(self, head: bool, node_id: str,
                                          resources: Dict[str, Any]):
+        resources = resources.copy()
+
         # Create shared directory
         node_dir = os.path.join(self._volume_dir, "nodes", node_id)
         os.makedirs(node_dir, mode=0o755, exist_ok=True)
