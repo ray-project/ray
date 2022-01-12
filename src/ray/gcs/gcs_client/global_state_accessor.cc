@@ -301,7 +301,6 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
     {
       absl::ReaderMutexLock lock(&mutex_);
-
       RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
           [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
             promise.set_value(
@@ -321,6 +320,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                  [](const rpc::GcsNodeInfo &node) {
                    return node.state() == rpc::GcsNodeInfo::ALIVE;
                  });
+                 
     if (nodes.empty()) {
       status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {

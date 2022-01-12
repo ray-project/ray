@@ -219,24 +219,17 @@ PlasmaClient::Impl::~Impl() {}
 // pointer in a hash table.
 uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
                                                int64_t map_size) {
-  RAY_LOG(INFO) << "FD1";
   auto entry = mmap_table_.find(store_fd_val);
-    RAY_LOG(INFO) << "FD2";
   if (entry != mmap_table_.end()) {
-    RAY_LOG(INFO) << "FD3";
     return entry->second->pointer();
   } else {
-    RAY_LOG(INFO) << "FD4";
     MEMFD_TYPE fd;
     RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
-      RAY_LOG(INFO) << "FD5";
     fd.second = store_fd_val.second;
     // Close and erase the old duplicated fd entry that is no longer needed.
     if (dedup_fd_table_.find(store_fd_val.first) != dedup_fd_table_.end()) {
-      RAY_LOG(INFO) << "Erasing re-used mmap entry for fd " << store_fd_val.first;
       mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
     }
-      RAY_LOG(INFO) << "FD6";
     dedup_fd_table_[store_fd_val.first] = store_fd_val;
     mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
@@ -286,82 +279,55 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
                                              const uint8_t *metadata,
                                              uint64_t *retry_with_request_id,
                                              std::shared_ptr<Buffer> *data) {
-  std::vector<uint8_t> buffer;
-  RAY_LOG(INFO) << "HANDLING REPLY 1";
+  std::vector<uint8_t> buffer
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
-  RAY_LOG(INFO) << "HANDLING REPLY 2";
   ObjectID id;
   PlasmaObject object;
   MEMFD_TYPE store_fd;
   int64_t mmap_size;
 
-  RAY_LOG(INFO) << "HANDLING REPLY 3";
   if (retry_with_request_id) {
-
-      RAY_LOG(INFO) << "HANDLING REPLY 4";
     RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id,
                                       retry_with_request_id, &object, &store_fd,
                                       &mmap_size));
-
-                                        RAY_LOG(INFO) << "HANDLING REPLY 5";
     if (*retry_with_request_id > 0) {
-
-        RAY_LOG(INFO) << "HANDLING REPLY 6";
       // The client should retry the request.
       return Status::OK();
     }
   } else {
-
-      RAY_LOG(INFO) << "HANDLING REPLY 7";
     uint64_t unused = 0;
     RAY_RETURN_NOT_OK(ReadCreateReply(buffer.data(), buffer.size(), &id, &unused, &object,
                                       &store_fd, &mmap_size));
-
-                                        RAY_LOG(INFO) << "HANDLING REPLY 8";
     RAY_CHECK(unused == 0);
   }
 
   // If the CreateReply included an error, then the store will not send a file
   // descriptor.
   if (object.device_num == 0) {
-
-      RAY_LOG(INFO) << "HANDLING REPLY 9";
     // The metadata should come right after the data.
     RAY_CHECK(object.metadata_offset == object.data_offset + object.data_size);
-
-      RAY_LOG(INFO) << "HANDLING REPLY 9.1";
     *data = std::make_shared<PlasmaMutableBuffer>(
         shared_from_this(), GetStoreFdAndMmap(store_fd, mmap_size) + object.data_offset,
         object.data_size);
-              RAY_LOG(INFO) << "HANDLING REPLY 9.2";
     // If plasma_create is being called from a transfer, then we will not copy the
     // metadata here. The metadata will be written along with the data streamed
     // from the transfer.
     if (metadata != NULL) {
-
-            RAY_LOG(INFO) << "HANDLING REPLY 9.3";
       // Copy the metadata to the buffer.
       memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
     }
   } else {
     RAY_LOG(FATAL) << "GPU is not enabled.";
   }
-
-    RAY_LOG(INFO) << "HANDLING REPLY 10";
   // Increment the count of the number of instances of this object that this
   // client is using. A call to PlasmaClient::Release is required to decrement
   // this count. Cache the reference to the object.
   IncrementObjectCount(object_id, &object, false);
-
-    RAY_LOG(INFO) << "HANDLING REPLY 11";
   // We increment the count a second time (and the corresponding decrement will
   // happen in a PlasmaClient::Release call in plasma_seal) so even if the
   // buffer returned by PlasmaClient::Create goes out of scope, the object does
   // not get released before the call to PlasmaClient::Seal happens.
   IncrementObjectCount(object_id, &object, false);
-
-
-    RAY_LOG(INFO) << "HANDLING REPLY 12";
   return Status::OK();
 }
 
@@ -369,34 +335,25 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
     const ObjectID &object_id, const ray::rpc::Address &owner_address, int64_t data_size,
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     fb::ObjectSource source, int device_num) {
-  RAY_LOG(INFO) << "Locking plasma client on conn " << store_conn_;
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
-  RAY_LOG(INFO) << "Locked plasma client on conn " << store_conn_;
   uint64_t retry_with_request_id = 0;
 
-  RAY_LOG(INFO) << "called plasma_create on conn " << store_conn_ << " with size "
-                 << data_size << " and metadata size " << metadata_size;
+  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
+                   << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
 
-  RAY_LOG(INFO) << "SENT CREATE REQUEST " << store_conn_;
   Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
-  RAY_LOG(INFO) << "GOT REPLY " << store_conn_;
-
   while (retry_with_request_id > 0) {
     guard.unlock();
     // TODO(sang): Consider using exponential backoff here.
     std::this_thread::sleep_for(
         std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
     guard.lock();
-    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
-                   << retry_with_request_id;
     status = RetryCreate(object_id, retry_with_request_id, metadata,
                          &retry_with_request_id, data);
   }
-
-  RAY_LOG(INFO) << "Unlocking plasma client on conn " << store_conn_;
   return status;
 }
 
@@ -414,15 +371,14 @@ Status PlasmaClient::Impl::TryCreateImmediately(
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     fb::ObjectSource source, int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
-                 << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/true));
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 
+RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
+                 << data_size << " and metadata size " << metadata_size;
 Status PlasmaClient::Impl::GetBuffers(
     const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
     const std::function<std::shared_ptr<Buffer>(
