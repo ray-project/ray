@@ -365,7 +365,7 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
+      -//python/ray/tests:test_healthcheck
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
