@@ -153,7 +153,7 @@ class Dataset(Generic[T]):
                     *,
                     batch_size: Optional[int] = 4096,
                     compute: Optional[str] = None,
-                    batch_format: str = "native",
+                    batch_format: str = "pandas",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
 
@@ -1829,7 +1829,7 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
         for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks, batch_format="native"):
+                prefetch_blocks=prefetch_blocks, batch_format="pandas"):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
                 yield row
@@ -1838,7 +1838,7 @@ class Dataset(Generic[T]):
                      *,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "native",
+                     batch_format: str = "pandas",
                      drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
