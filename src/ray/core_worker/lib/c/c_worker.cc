@@ -38,7 +38,7 @@ inline ID ByteArrayToId(char *bytes) {
   return ID::FromBinary(id_str);
 }
 
-DataBuffer *AllocateDataBuffer(void *ptr, int size) {
+DataBuffer *AllocateDataBuffer(uint8_t *ptr, int size) {
   auto db = new DataBuffer();
   db->p = ptr;
   db->size = size;
@@ -46,8 +46,8 @@ DataBuffer *AllocateDataBuffer(void *ptr, int size) {
 }
 
 // TODO(jon-chuang): what is the purpose of this RAY_EXPORT?
-RAY_EXPORT DataValue* c_worker_AllocateDataValue(void *data_ptr, size_t data_size,
-                                                  void *meta_ptr, size_t meta_size) {
+RAY_EXPORT DataValue* c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_size,
+                                                 uint8_t *meta_ptr, size_t meta_size) {
   auto dv = new DataValue();
   dv->data = AllocateDataBuffer(data_ptr, data_size);
   dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
@@ -111,17 +111,12 @@ ray::Status ExecutionCallback(
   execute_return_value_list.cap = return_ids.size();
   execute_return_value_list.len = return_ids.size();
 
-    RAY_LOG(INFO) << "HERE EXECUTE 5";
   // invoke RUST method
   if (c_worker_execute == nullptr) {
-
-      RAY_LOG(INFO) << "HERE EXECUTE 6";
     // TODO (jon-chuang): RAY_THROW.
     assert (false);
   }
-    RAY_LOG(INFO) << "HERE EXECUTE 7";
   c_worker_execute(task_type, fd_list, execute_args, execute_return_value_list);
-    RAY_LOG(INFO) << "HERE EXECUTE 8";
   results->clear();
   for (size_t i = 0; i < return_value_list.size(); i++) {
 
@@ -129,23 +124,23 @@ ray::Status ExecutionCallback(
     auto &result_id = return_ids[i];
     auto &return_value = return_value_list[i];
           RAY_LOG(INFO) << "HERE EXECUTE 9.1" << return_value->data->size;
+
+          RAY_LOG(INFO) << "HERE EXECUTE 9.2 " << return_value->data->p << " data " << ((uint8_t*)return_value->data->p)[0];
+    // How do you prevent memory bugs without needing to copy data?
     std::shared_ptr<ray::Buffer> data_buffer =
         std::make_shared<ray::LocalMemoryBuffer>(
             reinterpret_cast<uint8_t *>(return_value->data->p),
-            return_value->data->size, false);
-                  RAY_LOG(INFO) << "HERE EXECUTE 10";
+            return_value->data->size, true);
     std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
         // std::make_shared<ray::LocalMemoryBuffer>(
         //     reinterpret_cast<uint8_t *>(return_value->meta->p),
         //     return_value->meta->size, false);
 
-                  RAY_LOG(INFO) << "HERE EXECUTE 11";
     std::vector<ray::ObjectID> contained_object_ids;
     auto contained_object_refs =
         ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
             contained_object_ids);
 
-                  RAY_LOG(INFO) << "HERE EXECUTE 12";
     auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                   contained_object_refs);
     results->emplace_back(value);

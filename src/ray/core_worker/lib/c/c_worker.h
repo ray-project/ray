@@ -13,6 +13,8 @@ typedef unsigned long long RayInt64;
 typedef RayInt64 RayInt;
 typedef struct RaySlice {
   // Shouldn't this be `char *data`?
+  // Actually no, we want this to be some arbitrary type
+  // (either a DataBuffer or a DataValue)
   void *data;
   RayInt64 len;
   RayInt64 cap;
@@ -22,7 +24,7 @@ typedef struct RaySlice {
 typedef struct DataBuffer {
   // TODO: replace with standard uint64_t here...
   size_t size;
-  void *p;
+  uint8_t *p;
 } DataBuffer;
 
 typedef struct DataValue {
@@ -37,7 +39,7 @@ typedef void (*c_worker_ExecuteCallback)(RayInt task_type, RaySlice ray_function
 int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback);
 
 // Why not char instead of void ptr?
-DataValue *c_worker_AllocateDataValue(void *data_ptr, size_t data_size, void *meta_ptr, size_t meta_size);
+DataValue *c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_size, uint8_t *meta_ptr, size_t meta_size);
 
 void c_worker_InitConfig(int workerMode, int language, int num_workers,
                                     char *code_search_path, char *head_args,

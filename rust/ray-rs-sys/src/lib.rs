@@ -85,7 +85,7 @@ pub fn get(id: CString, timeout: i32) -> DataValue {
 pub fn dv_as_slice<'a>(data: DataValue) -> &'a mut [u8] {
     unsafe {
         std::slice::from_raw_parts_mut::<u8>(
-            (*data.data).p as *mut u8,
+            (*data.data).p,
             (*data.data).size as usize,
         )
     }
@@ -101,13 +101,13 @@ pub mod test {
         unsafe {
             let data =
                 c_worker_AllocateDataValue(
-                    data_vec.as_mut_ptr() as *mut c_void,
+                    data_vec.as_mut_ptr(),
                     data_vec.len() as u64,
-                    meta_vec.as_mut_ptr() as *mut c_void,
+                    meta_vec.as_mut_ptr(),
                     meta_vec.len() as u64,
                 );
-            assert_eq!((*(*data).data).p, data_vec.as_mut_ptr() as *mut c_void);
-            assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr() as *mut c_void);
+            assert_eq!((*(*data).data).p, data_vec.as_mut_ptr());
+            assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr());
             assert_eq!((*(*data).data).size, data_vec.len() as u64);
             assert_eq!((*(*data).meta).size, data_vec.len() as u64);
         }
@@ -190,8 +190,13 @@ pub mod test {
     //     }
     // }
 
+    // To run this test, you must first compile ray
+    // with the worker's execution callback set to
+    // rust_worker_execute_add
+    //
+    // Could you do a local version?
     #[test]
-    fn test_submit_task() {
+    fn test_submit_task_executer_add() {
         ray::init_inner(true, Some(rust_worker_execute_dummy), None);
         unsafe {
             // Create data
@@ -199,9 +204,10 @@ pub mod test {
             let mut meta_vec = vec![0u8];
             let mut data = vec![
                 c_worker_AllocateDataValue(
-                    data_vec.as_mut_ptr() as *mut c_void,
+                    // Why is this a void pointer, not a void/char ptr?
+                    data_vec.as_mut_ptr(),
                     data_vec.len() as u64,
-                    meta_vec.as_mut_ptr() as *mut c_void,
+                    meta_vec.as_mut_ptr(),
                     meta_vec.len() as u64,
                 )
             ];
@@ -261,17 +267,21 @@ pub extern "C" fn rust_worker_execute_add(
             return_values.data as *mut *mut DataValue,
             return_values.len as usize,
         );
+// slice[0] + slice[1]
+        let mut ret_owned = vec![3u8];
 
-
-        let mut ret_owned = vec![slice[0] + slice[1]];
-
+        // Reimplement RustBuffer functionality around
+        // this DataBuffer raw type
         let mut data_buffer_owned = DataBuffer {
             size: ret_owned.len() as u64,
-            p: ret_owned.as_mut_ptr() as *mut c_void,
+            p: ret_owned.as_mut_ptr(),
         };
         (*ret_slice[0]).data = &mut data_buffer_owned;
 
-        // Reimplement RustBuffer functionality around the raw type
+        assert_eq!(data_buffer_owned.size, 1);
+
+        println!("data buffer ptr: {:?}", &data_buffer_owned);
+
         std::mem::forget(ret_owned);
         std::mem::forget(data_buffer_owned);
     }
