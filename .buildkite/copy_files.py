@@ -48,7 +48,7 @@ class BKAnalyticsUploader:
                     "CI": "buildkite",
                     "key": os.environ["BUILDKITE_BUILD_ID"],
                     "job_id": os.environ["BUILDKITE_JOB_ID"],
-                    "branch": os.environ["BUILDKITE_BRANCH_NAME"],
+                    "branch": os.environ["BUILDKITE_BRANCH"],
                     "commit_sha": os.environ["BUILDKITE_COMMIT"],
                     "message": os.environ["BUILDKITE_MESSAGE"],
                     "url": os.environ["BUILDKITE_BUILD_URL"],
