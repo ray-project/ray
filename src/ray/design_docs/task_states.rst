@@ -32,22 +32,27 @@ A task can be in one of the following states:
 
 ::
 
-                                    ---------------------------------
-                                   |                                 |
-                                   |     forward                     | forward
-                                   |----------------                 |
-  node with                  ------|                |   arguments    |
-  resources          forward|      |   resource     |     local      |   actor/worker
-  joins                     |      v  available     |    -------->   |    available
-    ---------------------- Placeable ----------> Waiting           Ready ---------> Running
-  |                       | |  ^                    ^    <--------   ^               |   ^
-  |             |---------  |  |                    |    local arg   |               |   |
-  |             |           |  |                    |     evicted    |        worker |   | worker
-  |             |     actor |  |                    |                |       blocked |   | unblocked
-  |   resources |   created |  | actor              | ---------------                |   |
-  |  infeasible |           |  | created            | actor                          |   |
-  |             |           |  | (remote)           | created                        v   |
-  |             |           v  |                    | (local)                              Blocked
-  |             |     WaitForActorCreation----------
-  |             v
-   ----Infeasible
+                                                    forward
+                            +------------------------------+----------------------------------+
+                            |                              |                                  |
+                    +-------v--------+             +-------+--------+                  +------+--------+
+                    |                |   resource  |                | arguments local  |               |
+                    |                +------------->                +------------------>               |
+         +---------->   Placeable    |   available |     Waiting    |                  |     Ready     |
+         |          |                |             |                | local arg evicted|               |
+         |          |                <------+      |                <------------------+               |
+         |          +---+------+-----+      |      +--------^-------+                  +-+-----+-------+
+         |              |      |            |               |                            ^     |
+     node with          |      |            |               |                            |     |
+  resources joins       |      |            |               +----------------------------+     |
+         |          resources  |     actor created          |                              actor/worker
+         |          infeasible |        (remote)       actor created                        available    
+         |              |     actor         |             (local)                              |
+         |              |     created       |               |                                  |
+ +-------+---------+    |      |        +---+---------------+------------+        +------------v--+               +---------------+
+ |                 |    |      |        |                                |        |               | worker blocked|               |
+ |                 |    |      |        |                                |        |               +--------------->               |
+ |    Infeasible   +<---+      +------->+      WaitForActorCreation      |        |    Running    |               |    Blocked    |
+ |                 |                    |                                |        |               |  worker       |               |
+ |                 |                    |                                |        |               <---------------+               |
+ +-----------------+                    +--------------------------------+        +---------------+  unblocked    +---------------+
