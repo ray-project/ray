@@ -93,11 +93,16 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
 template <typename F>
 ray::internal::TaskCaller<F> Task(F func);
 
+template <typename R>
+ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func);
+
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
+
+ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 
 /// Get a handle to a named actor in current namespace.
 /// Gets a handle to a named actor with the given name. The actor must have been created
