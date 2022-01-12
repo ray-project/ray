@@ -20,7 +20,6 @@
 
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
-#include "ray/util/container_util.h"
 
 namespace ray {
 namespace raylet {
@@ -134,7 +133,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work>
     bool args_ready =
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {
-      RAY_LOG(INFO) << "Args already ready, task can be dispatched " << task_id;
+      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
@@ -144,7 +143,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work>
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
-    RAY_LOG(INFO) << "No args, task can be dispatched "
+    RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].push_back(work);
   }
@@ -196,14 +195,6 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
     // All the cleaning work has been done when canceled task. Just return
     // false without doing anything.
-    auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
-    auto it = info_by_sched_cls_.find(sched_cls);
-    if (it != info_by_sched_cls_.end()) {
-      it->second.running_tasks.erase(spec.TaskId());
-      if (it->second.running_tasks.size() == 0) {
-        info_by_sched_cls_.erase(it);
-      }
-    }
     return false;
   }
 
@@ -262,7 +253,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
-    RAY_LOG(INFO) << "Dispatching task " << task_id << " to worker "
+    RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                    << worker->WorkerId();
 
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
@@ -335,9 +326,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
-          if (target_time < sched_cls_info.next_update_time) {
-            RAY_LOG(INFO) << "Worker cap " << current_capacity << " " << allowed_capacity << " " << debug_string(sched_cls_info.running_tasks);
-          }
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
           break;
@@ -444,7 +432,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
-        RAY_LOG(INFO) << "PopWorker for " << task_id;
         worker_pool_.PopWorker(
             spec,
             [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
@@ -533,7 +520,6 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
     auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
     auto it = info_by_sched_cls_.find(sched_cls);
     if (it != info_by_sched_cls_.end()) {
-      RAY_LOG(INFO) << "TaskFinished " << task->GetTaskSpecification().TaskId();
       it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
       if (it->second.running_tasks.size() == 0) {
         info_by_sched_cls_.erase(it);
@@ -1153,7 +1139,7 @@ std::string ClusterTaskManager::DebugStr() const {
     const auto &info = pair.second;
     const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
     buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
-           << "/" << info.capacity << " " << debug_string(info.running_tasks) << "\n";
+           << "/" << info.capacity << "\n";
   }
 
   buffer << "==================================================\n";
