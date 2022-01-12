@@ -156,7 +156,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
                 DataSource.actors.pop(old_actor_id)
 
-
         # Receive actors from channel.
         if gcs_pubsub_enabled():
             gcs_addr = await self._dashboard_head.get_gcs_address()
