@@ -5,6 +5,7 @@ import os
 from contextlib import contextmanager
 import pytest
 import tempfile
+import socket
 import subprocess
 import json
 import time
@@ -56,7 +57,10 @@ def external_redis(request, monkeypatch):
     param = getattr(request, "param", {})
     external_redis_ports = param.get("external_redis_ports")
     if external_redis_ports is None:
-        external_redis_ports = [7777]
+        with socket.socket() as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+        external_redis_ports = [port]
     else:
         del param["external_redis_ports"]
     processes = []
