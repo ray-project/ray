@@ -57,7 +57,7 @@ void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
 
 std::string RuntimeEnvManager::DebugString() const {
   std::ostringstream stream;
-  stream << "ID to URIs table:";
+  stream << "[runtime env manager] ID to URIs table:";
   for (const auto &entry : id_to_uris_) {
     stream << "\n- " << entry.first << ": ";
     for (const auto &uri : entry.second) {
@@ -66,7 +66,7 @@ std::string RuntimeEnvManager::DebugString() const {
     // Erase the last ","
     stream.seekp(-1, std::ios_base::end);
   }
-  stream << "\nURIs reference table:";
+  stream << "\n[runtime env manager] URIs reference table:";
   for (const auto &entry : uri_reference_) {
     stream << "\n- " << entry.first << ": " << entry.second;
   }
