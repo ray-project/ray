@@ -1613,6 +1613,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
