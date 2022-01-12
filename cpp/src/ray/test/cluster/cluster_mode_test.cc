@@ -226,19 +226,19 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
           .Remote();
   EXPECT_EQ(42, *py_obj.Get());
 
-  auto py_obj1 = ray::Task(ray::PyFunction<int, int>{"test_cross_language_invocation",
-                                                     "py_return_input"})
-                     .Remote(42);
+  auto py_obj1 =
+      ray::Task(ray::PyFunction<int>{"test_cross_language_invocation", "py_return_input"})
+          .Remote(42);
   EXPECT_EQ(42, *py_obj1.Get());
 
-  auto py_obj2 = ray::Task(ray::PyFunction<std::string, std::string>{
-                               "test_cross_language_invocation", "py_return_input"})
+  auto py_obj2 = ray::Task(ray::PyFunction<std::string>{"test_cross_language_invocation",
+                                                        "py_return_input"})
                      .Remote("hello");
   EXPECT_EQ("hello", *py_obj2.Get());
 
   Person p{"tom", 20};
-  auto py_obj3 = ray::Task(ray::PyFunction<Person, Person>{
-                               "test_cross_language_invocation", "py_return_input"})
+  auto py_obj3 = ray::Task(ray::PyFunction<Person>{"test_cross_language_invocation",
+                                                   "py_return_input"})
                      .Remote(p);
   auto py_result = *py_obj3.Get();
   EXPECT_EQ(p.age, py_result.age);

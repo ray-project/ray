@@ -19,10 +19,10 @@
 
 namespace ray {
 
-template <typename R, typename... Args>
+template <typename R>
 struct PyFunction {
   bool is_python() { return true; }
-  R operator()(Args... args) { return {}; }
+  R operator()() { return {}; }
 
   std::string module_name;
   std::string function_name;
