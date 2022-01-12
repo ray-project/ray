@@ -2,6 +2,7 @@ import atexit
 import collections
 import datetime
 import errno
+import grpc
 import json
 import logging
 import os
@@ -1480,7 +1481,7 @@ class Node:
                 result = self.get_gcs_client().internal_kv_put(
                     key, value, overwrite=True, namespace=namespace)
                 break
-            except Exception:
+            except grpc.RpcError:
                 logger.exception("Internal KV Put failed")
                 result = None
                 time.sleep(2)
