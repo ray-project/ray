@@ -1414,6 +1414,13 @@ class Trainer(Trainable):
                 error=False)
             unsquash_action = unsquash_actions
 
+        # `unsquash_action` is None: Use value of config['normalize_actions'].
+        if unsquash_action is None:
+            unsquash_action = self.config["normalize_actions"]
+        # `clip_action` is None: Use value of config['clip_actions'].
+        elif clip_action is None:
+            clip_action = self.config["clip_actions"]
+
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
         err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
@@ -1545,6 +1552,13 @@ class Trainer(Trainable):
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
                 error=False)
             unsquash_actions = normalize_actions
+
+        # `unsquash_actions` is None: Use value of config['normalize_actions'].
+        if unsquash_actions is None:
+            unsquash_actions = self.config["normalize_actions"]
+        # `clip_actions` is None: Use value of config['clip_actions'].
+        elif clip_actions is None:
+            clip_actions = self.config["clip_actions"]
 
         # Preprocess obs and states.
         state_defined = state is not None
