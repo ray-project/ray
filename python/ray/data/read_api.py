@@ -546,8 +546,9 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
             return df
         else:
             raise ValueError(
-                f"Expected a Ray object ref or a Pandas DataFrame, got {type(df)}"
-            )
+                "Expected a Ray object ref or a Pandas DataFrame, "
+                f"got {type(df)}")
+
     return from_pandas_refs([
         to_ref(next(iter(part.dask.values()))) for part in persisted_partitions
     ])
@@ -618,13 +619,11 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     elif isinstance(dfs, list):
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
-                raise ValueError(
-                    f"Expected list of Ray object refs, got list containing {type(df)}"
-                )
+                raise ValueError("Expected list of Ray object refs, "
+                                 f"got list containing {type(df)}")
     else:
-        raise ValueError(
-            f"Expected Ray object ref or list of Ray object refs, got {type(df)}"
-        )
+        raise ValueError("Expected Ray object ref or list of Ray object refs, "
+                         f"got {type(df)}")
 
     context = DatasetContext.get_current()
     if context.enable_pandas_block:

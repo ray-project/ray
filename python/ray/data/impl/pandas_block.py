@@ -8,7 +8,7 @@ try:
 except ImportError:
     pandas = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
     TableBlockBuilder, SortKeyT, GroupKeyT
 from ray.data.impl.arrow_block import ArrowBlockAccessor
@@ -49,10 +49,12 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             raise ImportError("Run `pip install pandas` for Pandas support.")
         super().__init__(pandas.DataFrame)
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
+    def _table_from_pydict(
+            self, columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         return pandas.DataFrame(columns)
 
-    def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+    def _concat_tables(self,
+                       tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         return pandas.concat(tables, ignore_index=True)
 
     @staticmethod
@@ -175,9 +177,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         return BlockAccessor.for_block(block).to_pandas(), metadata
 
     @staticmethod
-    def aggregate_combined_blocks(blocks: List["pandas.DataFrame"],
-                                  key: GroupKeyT, aggs: Tuple[AggregateFn]
-                                  ) -> Tuple["pandas.DataFrame", BlockMetadata]:
+    def aggregate_combined_blocks(
+            blocks: List["pandas.DataFrame"], key: GroupKeyT,
+            aggs: Tuple[AggregateFn]
+    ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
