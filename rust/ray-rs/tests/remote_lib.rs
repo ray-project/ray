@@ -11,14 +11,14 @@ pub fn add_two_vecs(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
 }
 }
 
-remote! {
-pub fn put_and_get_nested(a: Vec<u64>) -> Vec<u64> {
-    let id = put::<Vec<u64>, _>(&a);
-    let a_get = get::<Vec<u64>>(id);
-    assert_eq!(a, a_get);
-    return a_get;
-}
-}
+// remote! {
+// pub fn put_and_get_nested(a: Vec<u64>) -> Vec<u64> {
+//     let id = put::<Vec<u64>, _>(&a);
+//     let a_get = get::<Vec<u64>>(id);
+//     assert_eq!(a, a_get);
+//     return a_get;
+// }
+// }
 
 remote! {
 pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {

@@ -5,7 +5,10 @@ load("@rules_rust//rust:defs.bzl", "rust_binary")
 rust_binary(
     name = "worker",
     srcs = glob(["src/**/*.rs"]),
-    deps = ["//rust/ray-rs-sys:ray_rs_sys"],
+    deps = [
+        "//rust/ray-rs-sys:ray_rs_sys",
+        "//rust/ray-rs:ray_rs",
+    ],
     rustc_flags = [
         "-C", "link-args=-L/home/jonch/Desktop/Programming/systems/ray/python/ray/rust/lib -lcore_worker_library_c",
     ],

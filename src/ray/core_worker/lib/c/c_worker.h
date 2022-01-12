@@ -48,7 +48,9 @@ void c_worker_InitConfig(int workerMode, int language, int num_workers,
 void c_worker_Initialize();
 
 void c_worker_Run();
-//
+
+void c_worker_Log(char* msg);
+
 // int c_worker_GetNextJobID(void *p);
 //
 // int c_worker_CreateActor(char *type_name, char **result);

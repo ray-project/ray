@@ -43,6 +43,7 @@ crate_universe(
     name = "ray-rs-toml",
     cargo_toml_files = [
         "//rust/ray-rs-sys:Cargo.toml",
+        "//rust/ray-rs:Cargo.toml",
         # "//rust/ray-rs:Cargo.toml",
     ],
     resolver_download_url_template = DEFAULT_URL_TEMPLATE,

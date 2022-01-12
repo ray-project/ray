@@ -184,7 +184,6 @@ const SchedulingClass TaskSpecification::GetSchedulingClass() const {
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const {
-  RAY_LOG(INFO) << "NUM RETURNS";
   return message_->num_returns();
 }
 

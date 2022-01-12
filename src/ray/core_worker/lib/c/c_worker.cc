@@ -46,12 +46,18 @@ DataBuffer *AllocateDataBuffer(uint8_t *ptr, int size) {
 }
 
 // TODO(jon-chuang): what is the purpose of this RAY_EXPORT?
+
+// How do we ensure that this is destructed...?
 RAY_EXPORT DataValue* c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_size,
                                                  uint8_t *meta_ptr, size_t meta_size) {
   auto dv = new DataValue();
   dv->data = AllocateDataBuffer(data_ptr, data_size);
   dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
   return dv;
+}
+
+RAY_EXPORT void c_worker_Log(char *msg) {
+  RAY_LOG(INFO) << msg;
 }
 
 RAY_EXPORT void c_worker_InitConfig(int workerMode, int language, int num_workers,
@@ -80,6 +86,7 @@ ray::Status ExecutionCallback(
 ) {
   // convert RayFunction
   auto function_descriptor = ray_function.GetFunctionDescriptor();
+
   auto typed_descriptor = function_descriptor->As<ray::RustFunctionDescriptor>();
 
   char *fd_data[1];
@@ -92,9 +99,9 @@ ray::Status ExecutionCallback(
   std::vector<DataValue *> args_array_list;
   for (auto &it : args) {
     auto data = it->GetData();
-    auto meta = it->GetMetadata();
+    // auto meta = it->GetMetadata();
     args_array_list.push_back(c_worker_AllocateDataValue(
-        data->Data(), data->Size(), meta->Data(), meta->Size()));
+        data->Data(), data->Size(), nullptr, 0));//meta->Data(), meta->Size()));
   }
 
   RaySlice execute_args;
@@ -102,16 +109,17 @@ ray::Status ExecutionCallback(
   execute_args.len = args_array_list.size();
   execute_args.cap = args_array_list.size();
 
+
   std::vector<std::shared_ptr<DataValue>> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
     return_value_list.push_back(make_shared<DataValue>());
   }
+  // return_value_list[0].reset(buf);
   RaySlice execute_return_value_list;
   execute_return_value_list.data = &return_value_list[0];
   execute_return_value_list.cap = return_ids.size();
   execute_return_value_list.len = return_ids.size();
 
-  // invoke RUST method
   if (c_worker_execute == nullptr) {
     // TODO (jon-chuang): RAY_THROW.
     assert (false);
@@ -119,13 +127,8 @@ ray::Status ExecutionCallback(
   c_worker_execute(task_type, fd_list, execute_args, execute_return_value_list);
   results->clear();
   for (size_t i = 0; i < return_value_list.size(); i++) {
-
-      RAY_LOG(INFO) << "HERE EXECUTE 9";
     auto &result_id = return_ids[i];
     auto &return_value = return_value_list[i];
-          RAY_LOG(INFO) << "HERE EXECUTE 9.1" << return_value->data->size;
-
-          RAY_LOG(INFO) << "HERE EXECUTE 9.2 " << return_value->data->p << " data " << ((uint8_t*)return_value->data->p)[0];
     // How do you prevent memory bugs without needing to copy data?
     std::shared_ptr<ray::Buffer> data_buffer =
         std::make_shared<ray::LocalMemoryBuffer>(
@@ -145,17 +148,12 @@ ray::Status ExecutionCallback(
                                                   contained_object_refs);
     results->emplace_back(value);
     int64_t task_output_inlined_bytes = 0;
-
-          RAY_LOG(INFO) << "HERE EXECUTE 13" << value->GetData()->Size();
     RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, value->GetData()->Size(), value->GetMetadata(),
         contained_object_ids, &task_output_inlined_bytes, &value));
-
-              RAY_LOG(INFO) << "HERE EXECUTE 14";
     RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id, value));
   }
-        RAY_LOG(INFO) << "HERE EXECUTE 15";
   return ray::Status::OK();
 };
 

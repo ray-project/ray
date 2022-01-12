@@ -1,209 +1,177 @@
-
-use crate::*;
-use ray_rs_sys
-use paste::paste;
-
-// ray::register!(add_two_vecs);
-// ray::register!(add_three_vecs);
-//
-// ray::task!(add_two_vecs);
-
+#![feature(fn_traits, unboxed_closures, min_specialization)]
+#[macro_use]
+pub use paste::paste;
+#[macro_use]
+pub use lazy_static::lazy_static;
+pub use rmp_serde;
+pub use uniffi::ffi::RustBuffer;
+use core::pin::Pin;
 
 
-// Idea: add a macro that
-macro_rules! impl_ray_function {
-    ([$n:literal], $($arg:ident: $argp:ident [$argty:ty]),*) => {
-        paste! {
-            pub struct [<RayFunction $n>]<$($argp,)* R> {
-                raw_fn: fn($($argty),*) -> R,
-                wrapped_fn: InvokerFunction,
-                ffi_lookup_name: String,
-            }
+pub use ray_rs_sys::*;
+pub use ray_rs_sys::ray;
 
-            impl<$($argp: serde::Serialize,)* R> [<RayFunction $n>]<$($argp,)* R> {
-                pub fn new(
-                    raw_fn: fn($($argty),*) -> R,
-                    wrapped_fn: InvokerFunction,
-                    ffi_lookup_name: String
-                ) -> Self {
-                    Self { raw_fn, wrapped_fn, ffi_lookup_name }
-                }
+pub mod remote_functions;
+pub use remote_functions::*;
 
-                pub fn name(&self) -> &str {
-                    &self.ffi_lookup_name
-                }
+pub use std::ffi::CString;
 
-                pub fn call(&self, $($arg: $argty),*) -> R {
-                    (self.raw_fn)($($arg),*)
-                }
+use std::{collections::HashMap, sync::Mutex, os::raw::c_char, ops::Deref};
 
-                // Return object ref
-                // This should submit the
-                pub fn remote<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
-                    &self,
-                    $($arg: [<$argp Borrow>]),*
-                ) -> UniquePtr<ray_api_ffi::ObjectID>
-                {
-                    let mut task_args = Vec::new();
-                    $(
-                        let result = rmp_serde::to_vec($arg.borrow()).unwrap();
-                        task_args.push(RustTaskArg {
-                            buf: result,
-                            object_id: String::new()
-                        });
-                    )*
-                    ray_api_ffi::LogInfo(&format!("SUBMITTING: {:?}", &self.ffi_lookup_name));
-                    ray_api_ffi::Submit(&self.ffi_lookup_name, &task_args)
-                }
+use libloading::{Library, Symbol};
 
-                pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
-                    (self.wrapped_fn)(args)
-                }
+type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 
-                pub fn get_invoker(&self) -> InvokerFunction {
-                    self.wrapped_fn
-                }
-            }
+type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
-            impl<$($argp,)* R> std::ops::FnOnce<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-                type Output = R;
-                extern "rust-call" fn call_once(self, ($($arg),*): ($($argty),*)) -> Self::Output {
-                    (self.raw_fn)($($arg),*)
-                }
-            }
 
-            impl<$($argp,)* R> std::ops::FnMut<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-                extern "rust-call" fn call_mut(&mut self, ($($arg),*): ($($argty),*)) -> Self::Output {
-                    (self.raw_fn)($($arg),*)
-                }
-            }
-
-            impl<$($argp,)* R> std::ops::Fn<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
-                extern "rust-call" fn call(&self, ($($arg),*): ($($argty),*)) -> Self::Output {
-                    (self.raw_fn)($($arg),*)
-                }
-            }
-        }
-    };
-}
-
-impl_ray_function!([0], );
-impl_ray_function!([1], a0: T0 [T0]);
-impl_ray_function!([2], a0: T0 [T0], a1: T1 [T1]);
-impl_ray_function!([3], a0: T0 [T0], a1: T1 [T1], a2: T2 [T2]);
-// impl_ray_function!(a0: T0, a1: T1, a2: T2, a3: T3);
-
-#[macro_export]
-macro_rules! count {
-    () => (0usize);
-    ( $x:tt $($xs:tt)* ) => (1usize + count!($($xs)*));
-}
-
-#[macro_export]
-macro_rules! deserialize {
-    ($ptrs:ident, $sizes:ident) => {};
-    ($ptrs:ident, $sizes:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
-        deserialize!($ptrs, $sizes $(,$args:$argsty)*);
-        let ptr = $ptrs[$ptrs.len() - count!($($args)*) - 1];
-        let size = $sizes[$sizes.len() - count!($($args)*) - 1];
-        let $arg = rmp_serde::from_read_ref::<_, $argty>(
-            unsafe { std::slice::from_raw_parts(ptr as *const u8, size as usize) }
-        ).unwrap();
-    };
-}
-
-#[macro_export]
-macro_rules! serialize {
-    ($ptrs:ident) => {};
-    ($ptrs:ident, $arg:ident: $argty:ty $(,$args:ident: $argsty:ty)*) => {
-        serialize!($ptrs $(,$args:$argsty)*);
-        let (ptr, size) = $ptrs[$ptrs.len() - count!($($args)*) - 1];
-        let $arg = rmp_serde::from_read_ref::<_, $argty>(
-            unsafe { std::slice::from_raw_parts(ptr as *const u8, size as usize) }
-        ).unwrap();
-    };
-}
-
-// When porting this to
-#[macro_export]
-macro_rules! remote_internal {
-    ($lit_n:literal, $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
-        paste! {
-            fn [<ray_rust_private_ $name>]($($arg: $argty,)*) -> $ret {
-                $body
-            }
-
-            // TODO: convert this `no_mangle` name to use module_path!():: $name
-            #[no_mangle]
-            pub extern "C" fn [<ray_rust_ffi_ $name>](args: RustBuffer) -> RustBuffer {
-                let (arg_raw_ptrs, sizes) = rmp_serde::from_read_ref::<_, (Vec<u64>, Vec<u64>)>(
-                    &args.destroy_into_vec()
-                ).unwrap();
-                // TODO: ensure this
-                deserialize!(arg_raw_ptrs, sizes $(,$arg:$argty)*);
-                let ret: $ret = [<ray_rust_private_ $name>]($($arg,)*);
-                let result = rmp_serde::to_vec(&ret).unwrap();
-                RustBuffer::from_vec(result)
-            }
-
-            #[allow(non_upper_case_globals)]
-            lazy_static! {
-                pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
-                    = [<RayFunction $lit_n>]::new(
-                        [<ray_rust_private_ $name>],
-                        [<ray_rust_ffi_ $name>],
-                        String::from(
-                            // concat!(module_path!(), "::", // we are temporarily disabling this
-                            // When using proc macros we can modify the extern "C" fn name itself to include the
-                            // module path
-                            // Else, one could also reasonably mangle for Ray namespace using a random string...
-                            stringify!([<ray_rust_ffi_ $name>]))
-                    );
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! match_remote {
-    ([$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(0, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(1, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(2, $name ($($arg: $argty),*) -> $ret $body); };
-    ($x:tt $y:tt $z:tt [$name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block]) => { remote_internal!(3, $name ($($arg: $argty),*) -> $ret $body); };
-    // ($x:tt $y:tt $z: tt $a:tt) => remote_internal!(4, $name($($arg: $argty),*) -> $ret $body);
-}
-
-#[macro_export]
-macro_rules! remote {
-    (pub fn $name:ident ($($arg:ident: $argty:ty),*) -> $ret:ty $body:block) => {
-        match_remote!($($arg)* [$name ($($arg: $argty),*) -> $ret $body]);
+#[macro_use]
+macro_rules! ray_log {
+    ($msg:expr) => {
+        util::log_internal(format!("In Rust src file {} line {}: {}", file!(), line!(), $msg));
     }
 }
 
-pub fn get<R: serde::de::DeserializeOwned>(id : UniquePtr<ray_api_ffi::ObjectID>) -> R {
-    let buf = ray_api_ffi::GetRaw(id);
-    rmp_serde::from_read_ref::<_, R>(&buf).unwrap()
+lazy_static::lazy_static! {
+    static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
+        Mutex::new([
+            // (add_two_vecs.name().as_bytes().to_vec(), add_two_vecs.get_invoker()),
+            // (add_two_vecs_nested.name().as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
+        ].iter().cloned().collect::<HashMap<_,_>>())
+    };
 }
 
-pub fn put<I: serde::Serialize, B: std::borrow::Borrow<I>>(input: B) -> UniquePtr<ray_api_ffi::ObjectID> {
-    let result = rmp_serde::to_vec(input.borrow()).unwrap();
-    ray_api_ffi::PutRaw(result)
+lazy_static::lazy_static! {
+    static ref LIBRARIES: Mutex<Vec<Library>> = {
+        Mutex::new(Vec::new())
+    };
 }
 
+// Prints each argument on a separate line
+pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char) {
+    let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
 
-unsafe fn allocate_vec_and_copy_from_raw_parts(data: *const u8, size: usize) -> Vec<u8> {
-    let mut vec = Vec::with_capacity(size);
-    let slice = core::slice::from_raw_parts(data, size);
-    vec.copy_from_slice(slice);
-    vec
+    for ptr in slice {
+        let arg = unsafe { std::ffi::CStr::from_ptr(*ptr).to_str().unwrap() };
+        if arg.starts_with("--ray_code_search_path=") {
+            let (_, path_str) = arg.clone().split_at("--ray_code_search_path=".len());
+            let paths = path_str.split(":").collect();
+            load_libraries_from_paths(&paths);
+        }
+    }
 }
 
-// struct ObjectRef<T> {
-//     _type: PhantomData<T>
-// }
-
-// fn main() {
-//     use math::vectors::add_two_vecs;
-//     add_two_vecs.remote(a, b);
+// Prints each argument on a separate line
+// pub fn load_code_paths_from_rust_cmdline() {
+//     let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
 //
+//     for ptr in slice {
+//         let arg = unsafe { std::ffi::CStr::from_ptr(*ptr).to_str().unwrap() };
+//         if arg.starts_with("--ray_code_search_path=") {
+//             let (_, path_str) = arg.clone().split_at("--ray_code_search_path=".len());
+//             let paths = path_str.split(":").collect();
+//             load_libraries_from_paths(&paths);
+//         }
+//     }
 // }
+
+// For safety to hold, the libraries cannot be unloaded once loaded
+// Below, we are doing the incredibly unsafe "std::mem::transmute"
+// to have the library lifetime be static
+pub fn load_libraries_from_paths(paths: &Vec<&str>) {
+    let mut libs = LIBRARIES.lock().unwrap();
+    for path in paths {
+        match unsafe { Library::new(path).ok() } {
+            Some(lib) => libs.push(lib),
+            None => panic!("Shared-object library not found at path: {}", path),
+        }
+    }
+}
+
+pub extern "C" fn rust_worker_execute(
+    _task_type: RayInt,
+    ray_function_info: RaySlice,
+    args: RaySlice,
+    return_values: RaySlice,
+) {
+    // TODO (jon-chuang): One should replace RustBuffer with RaySlice...
+    // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
+    let args_slice = unsafe {
+        std::slice::from_raw_parts(
+            args.data as *mut *mut DataValue,
+            args.len as usize,
+        )
+    };
+
+    let mut arg_ptrs = Vec::<u64>::new();
+    let mut arg_sizes = Vec::<u64>::new();
+
+    for &arg in args_slice {
+        // Todo: change this to ingest the raw ptr to hide unsafe
+        // ray_rs_sys::util::dv_as_slice(*arg);
+        unsafe {
+            arg_ptrs.push((*(*arg).data).p as u64);
+            arg_sizes.push((*(*arg).data).size as u64);
+        }
+    }
+
+    let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&arg_ptrs, &arg_sizes)).unwrap());
+    // Since the string data was passed from the outer invocation context,
+    // it will be destructed by that context with a lifetime that outlives this function body.
+    let fn_name = std::mem::ManuallyDrop::new(
+        unsafe {
+            CString::from_raw(*(ray_function_info.data as *mut *mut std::os::raw::c_char))
+        }
+    );
+    // Check if we get a cache hit
+    let libs = LIBRARIES.lock().unwrap();
+    let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
+
+    let mut ret_ref = fn_map.get(fn_name.deref());
+    // Check if we can get fn from available libraries
+
+    // TODO(jon-chuang): figure out if you can narrow search
+    // by mapping library name to function crate name...
+    if let None = ret_ref {
+        for lib in libs.iter() {
+            let ret = unsafe {
+                    lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
+            };
+            ray_log!(format!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret));
+            if let Some(symbol) = ret {
+                let static_symbol = unsafe {
+                    std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
+                };
+                fn_map.insert(fn_name.deref().clone(), static_symbol);
+                ret_ref = fn_map.get(fn_name.deref());
+            }
+        }
+    } else {
+        ray_log!(format!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref));
+    }
+    let func = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name.to_str().unwrap()));
+    let ret = func(args_buffer);
+
+    let mut ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
+
+    unsafe {
+        let mut dv_ptr = c_worker_AllocateDataValue(
+            ret_owned.as_mut_ptr(),
+            ret_owned.len() as u64,
+            std::ptr::null_mut::<u8>(),
+            0,
+        );
+        let ret_slice = std::slice::from_raw_parts(
+            return_values.data as *mut *mut DataValue,
+            return_values.len as usize,
+        );
+        let dv_ptr = c_worker_AllocateDataValue(
+            // (*(*ret_slice[0]).data).p,
+            ret_owned.as_mut_ptr(),
+            ret_owned.len() as u64,
+            std::ptr::null_mut::<u8>(),
+            0,
+        );
+        (*ret_slice[0]).data = (*dv_ptr).data;
+    }
+}

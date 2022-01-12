@@ -35,6 +35,7 @@ pub mod ray {
     pub fn init_inner(
         is_driver: bool,
         f: MaybeExecuteCallback,
+        // d: MaybeBufferDestructor,
         argc_v: Option<(c_int, *const *const c_char)>
     ) {
         unsafe {
@@ -42,6 +43,7 @@ pub mod ray {
             let mut head_args = CString::new("").unwrap();
 
             c_worker_RegisterExecutionCallback(f);
+            // c_worker_RegisterBufferDestructor(d);
 
             let (argc, argv) = argc_v.unwrap_or((0, std::ptr::null()));
 
@@ -68,17 +70,75 @@ pub mod ray {
     }
 }
 
-pub fn get(id: CString, timeout: i32) -> DataValue {
-    let mut data = vec![id.as_ptr()];
-    let mut d_value: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
-    unsafe {
-        c_worker_Get(
-            data.as_ptr() as *mut *mut c_char,
-            1,
-            timeout,
-            d_value.as_ptr() as *mut *mut DataValue
-        );
-        *d_value[0] as DataValue
+pub mod util {
+    use super::dv_as_slice;
+    pub fn log_internal(msg: String) {
+        unsafe {
+            super::c_worker_Log(std::ffi::CString::new(msg).unwrap().into_raw());
+        }
+    }
+//     pub fn fd_to_cstring(fd: RaySlice) -> CString {
+//         CString::from(fd.data as *c_char)
+//     }
+}
+
+
+pub mod internal {
+    use super::*;
+    // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
+    pub fn submit(fn_name: CString, args: &mut Vec<Vec<u8>>) -> CString {
+        unsafe {
+            // Create data
+            let mut meta_vec = vec![0u8];
+            let mut data = args
+                .iter_mut()
+                .map(|data_vec| {
+                    c_worker_AllocateDataValue(
+                        // Why is this a void pointer, not a void/char ptr?
+                        (*data_vec).as_mut_ptr(),
+                        data_vec.len() as u64,
+                        std::ptr::null_mut(),
+                        0u64,
+                    )
+                })
+                .collect::<Vec<*mut DataValue>>();
+
+            let mut obj_ids = vec![std::ptr::null_mut()];
+            let mut is_refs = vec![false; args.len()];
+
+            c_worker_SubmitTask(
+                fn_name.into_raw(),
+                is_refs.as_mut_ptr(),
+                data.as_mut_ptr(),
+                std::ptr::null_mut::<*mut c_char>(),
+                data.len() as i32,
+                1,
+                obj_ids.as_mut_ptr()
+            );
+
+            let c_str_id = CString::from_raw(obj_ids[0]);
+            println!("{:x?}", c_str_id);
+            c_str_id
+        }
+    }
+
+    pub fn get_slice<'a>(id: CString, timeout: i32) -> &'a mut [u8] {
+        dv_as_slice(get(id, timeout))
+    }
+
+    #[inline]
+    fn get(id: CString, timeout: i32) -> DataValue {
+        let mut data = vec![id.as_ptr()];
+        let mut d_value: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
+        unsafe {
+            c_worker_Get(
+                data.as_ptr() as *mut *mut c_char,
+                1,
+                timeout,
+                d_value.as_ptr() as *mut *mut DataValue
+            );
+            *d_value[0] as DataValue
+        }
     }
 }
 
@@ -236,16 +296,29 @@ pub mod test {
                 get_data.as_mut_ptr() as *mut *mut DataValue
             );
 
-            // let slice = std::slice::from_raw_parts_mut::<u8>(
-            //     (*(*get_data[0]).data).p as *mut u8,
-            //     (*(*get_data[0]).data).size as usize,
-            // );
-            // assert_eq!(slice, &vec![3u8]);
-            //
+            let slice = std::slice::from_raw_parts_mut::<u8>(
+                (*(*get_data[0]).data).p as *mut u8,
+                (*(*get_data[0]).data).size as usize,
+            );
+            assert_eq!(slice, &vec![3u8]);
+
             // assert_eq!(dv_as_slice(get(c_str_id, -1)), &vec![3u8]);
 
             c_worker_Shutdown();
         }
+    }
+}
+
+type BufferDestructor = extern "C" fn(*mut u8, u64);
+
+// This is how to prevent memory leakage...
+// How does Rust allocate memory...? In terms of malloc slices?
+// Apprently, in terms of malloc slices but in the layout of a type....
+pub extern "C" fn rust_raw_parts_dealloc(ptr: *mut u8, len: u64) {
+    unsafe {
+        std::ptr::drop_in_place(
+            std::ptr::slice_from_raw_parts_mut(ptr, len as usize)
+        )
     }
 }
 
@@ -255,35 +328,68 @@ pub extern "C" fn rust_worker_execute_add(
     _ray_function_info: RaySlice,
     args: RaySlice,
     mut return_values: RaySlice,
+    // This is an array of buffer destructors for each of the
+    // return values.
+    //
+    // return_value_destructors: *const *const BufferDestructor,
+    //
+    // If there is only one return type, could we save on the
+    // vector allocation somehow?
+    // Maybe just store the function pointer in a custom
+    // RayReturnSlice
 ) {
+    // assert!(false);
     unsafe {
         let data = std::slice::from_raw_parts(
             args.data as *mut *mut DataValue,
             args.len as usize,
         );
+
+        assert_eq!(data.len(), 1);
+
         let slice = dv_as_slice(*data[0]);
+        assert_eq!(slice, &vec![1u8, 2]);
 
         let ret_slice = std::slice::from_raw_parts(
             return_values.data as *mut *mut DataValue,
             return_values.len as usize,
         );
-// slice[0] + slice[1]
-        let mut ret_owned = vec![3u8];
 
+        assert_eq!(ret_slice.len(), 1);
+        assert_eq!(dv_as_slice(*ret_slice[0]), &vec![1, 2, 3]);
+
+        *(*(*ret_slice[0]).data).p = 1;
+        (*(*ret_slice[0]).data).size = 1;
+
+        let mut ret_vec = vec![slice[0] + slice[1]];
+        let mut ret_owned = std::mem::ManuallyDrop::new(ret_vec);
+        //
+        //
         // Reimplement RustBuffer functionality around
-        // this DataBuffer raw type
-        let mut data_buffer_owned = DataBuffer {
-            size: ret_owned.len() as u64,
-            p: ret_owned.as_mut_ptr(),
-        };
-        (*ret_slice[0]).data = &mut data_buffer_owned;
+        // this DataBuffer raw type... or use CVec?
+        // let mut data_buffer_owned = std::mem::ManuallyDrop::new(
+        //     DataBuffer {
+        //         size: 1u64,
+        //         p: (*(*ret_slice[0]).data).p //ret_owned.as_mut_ptr(),
+        //     }
+        // );
+        let dv_ptr = c_worker_AllocateDataValue(
+            // (*(*ret_slice[0]).data).p,
+            ret_owned.as_mut_ptr(),
+            ret_owned.len() as u64,
+            std::ptr::null_mut::<u8>(),
+            0,
+        );
+        (*ret_slice[0]).data = (*dv_ptr).data;
 
-        assert_eq!(data_buffer_owned.size, 1);
 
-        println!("data buffer ptr: {:?}", &data_buffer_owned);
+        // (&mut data_buffer_owned)
+        //     as *mut std::mem::ManuallyDrop<DataBuffer>
+        //     as *mut DataBuffer;
 
-        std::mem::forget(ret_owned);
-        std::mem::forget(data_buffer_owned);
+        // assert_eq!(data_buffer_owned.size, 1);
+        //
+        // println!("data buffer ptr: {:?}", &data_buffer_owned);
     }
 }
 
