@@ -365,7 +365,7 @@ class Monitor:
                     _internal_kv_put(
                         DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
             except Exception:
-                logger.error("Monitor: Execution exception. Trying again...")
+                logger.exception("Monitor: Execution exception. Trying again...")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

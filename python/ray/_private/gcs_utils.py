@@ -79,7 +79,7 @@ _GRPC_KEEPALIVE_TIME_MS = 60 * 1000
 # Keepalive should be replied < 60s
 _GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
 # Max retries to get GCS address from Redis server
-_MAX_GET_GCS_SERVER_ADDRESS_RETRIES = 200
+_MAX_GET_GCS_SERVER_ADDRESS_RETRIES = 60
 
 # Also relying on these defaults:
 # grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
