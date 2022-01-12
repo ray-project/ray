@@ -27,6 +27,8 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 namespace gcs {
@@ -44,6 +46,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
       periodical_runner_(main_service),
+      detect_hang_timer_(main_service_),
       is_started_(false),
       is_stopped_(false) {
   // Init gcs table storage.
@@ -193,6 +196,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       [this] { DumpDebugStateToFile(); },
       /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
       "GCSServer.deadline_timer.debug_state_dump");
+
+  DetectHang();
 
   is_started_ = true;
 }
@@ -597,6 +602,34 @@ void GcsServer::PrintAsioStats() {
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
   }
+}
+
+void GcsServer::DetectHang() {
+  auto last_detect_time_ms = std::make_shared<int64_t>(current_time_ms());
+  auto detect_interval_ms =
+      RayConfig::instance().gcs_main_thread_busy_detect_interval_ms();
+  detect_hang_timer_.expires_from_now(std::chrono::milliseconds(detect_interval_ms));
+  detect_hang_timer_.async_wait([this, last_detect_time_ms, detect_interval_ms](
+                                    const boost::system::error_code &error) {
+    if (error) {
+      return;
+    }
+
+    auto current_ms = current_time_ms();
+    auto real_interval_ms = current_ms - *last_detect_time_ms;
+    auto maximum_miss_detect_count =
+        RayConfig::instance().gcs_main_thread_maximum_miss_detect_count();
+    if (real_interval_ms > maximum_miss_detect_count * detect_interval_ms) {
+      std::ostringstream ostr;
+      ostr << "The detect task was delayed by " << (real_interval_ms - detect_interval_ms)
+           << "(ms) to execute, the main thread of gcs maybe high load.";
+      std::string message = ostr.str();
+      RAY_LOG(WARNING) << message;
+      RAY_EVENT(ERROR, EVENT_LABEL_GCS_MAIN_THREAD_BUSY) << message;
+    }
+    *last_detect_time_ms = current_ms;
+    DetectHang();
+  });
 }
 
 }  // namespace gcs

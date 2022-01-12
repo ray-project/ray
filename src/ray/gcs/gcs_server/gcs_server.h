@@ -159,6 +159,9 @@ class GcsServer {
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
+  /// Detect that if the main thread hangs.
+  void DetectHang();
+
   /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
@@ -227,6 +230,8 @@ class GcsServer {
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  /// The timer to detect if the main thread hangs.
+  boost::asio::steady_timer detect_hang_timer_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

@@ -30,4 +30,6 @@ namespace ray {
 
 #define EL_RAY_CPP_TASK_FAILED "RAY_CPP_TASK_FAILED"
 
+#define EVENT_LABEL_GCS_MAIN_THREAD_BUSY "GCS_MAIN_THREAD_BUSY"
+
 }  // namespace ray

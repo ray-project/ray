@@ -456,6 +456,16 @@ RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5
 /// Whether to enable GCS-based actor scheduling.
 RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
 
+RAY_CONFIG(int64_t, gcs_main_thread_busy_detect_interval_ms,
+           getenv("GCS_MAIN_THREAD_BUSY_DETECT_INTERVAL_MS") != nullptr
+               ? std::stoull(getenv("GCS_MAIN_THREAD_BUSY_DETECT_INTERVAL_MS"))
+               : 1000);
+
+RAY_CONFIG(int64_t, gcs_main_thread_maximum_miss_detect_count,
+           getenv("GCS_MAIN_THREAD_MAXIMUM_MISS_DETECT_COUNT") != nullptr
+               ? std::stoull(getenv("GCS_MAIN_THREAD_MAXIMUM_MISS_DETECT_COUNT"))
+               : 3);
+
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
 /// If enabled, raylet will report resources only when resources are changed.
