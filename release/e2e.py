@@ -187,6 +187,8 @@ Release test yaml example
 """  # noqa: E501
 import argparse
 import enum
+from random import random
+import string
 
 import boto3
 import collections
@@ -374,6 +376,62 @@ class State:
         self.state = state
         self.timestamp = timestamp
         self.data = data
+
+
+class S3SyncSessionController(SessionController):
+    def __init__(self, sdk, result_queue):
+        self.sdk = sdk
+        self.result_queue = result_queue
+        self.s3_client = boto3.client("s3")
+        self.bucket = GLOBAL_CONFIG["RELEASE_AWS_BUCKET"]
+        super().__init__()
+
+    def _generate_tmp_s3_path(self):
+        fn = ''.join(random.choice(string.ascii_lowercase) for i in range(10))
+        location = f"tmp/{fn}"
+        return location
+
+    def pull(self, session_name, source, target):
+        remote_upload_to = self._generate_tmp_s3_path()
+        session_id = self._resolve_session(session_name).id
+        # remote source -> s3
+        scd_id, result = run_session_command(
+            sdk=self.sdk,
+            session_id=session_id,
+            cmd_to_run=
+            f"aws s3 cp {source} s3://{self.bucket}/{remote_upload_to}",
+            result_queue=self.result_queue,
+            env_vars={},
+            state_str="PULL")
+        _, _ = wait_for_session_command_to_complete(
+            result,
+            sdk=self.sdk,
+            scd_id=scd_id,
+            stop_event=multiprocessing.Event(),  # unused
+            state_str="PULL")
+        # s3 -> local target
+        self.s3_client.download_file(self.bucket, remote_upload_to, target)
+
+    def push(self, session_name, source, target):
+        remote_upload_to = self._generate_tmp_s3_path()
+        session_id = self._resolve_session(session_name).id
+        # local source -> s3
+        self.s3_client.upload_file(remote_upload_to, self.bucket, source)
+        # s3 -> remote target
+        scd_id, result = run_session_command(
+            sdk=self.sdk,
+            session_id=session_id,
+            cmd_to_run=
+            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}",
+            result_queue=self.result_queue,
+            env_vars={},
+            state_str="PUSH")
+        _, _ = wait_for_session_command_to_complete(
+            result,
+            sdk=self.sdk,
+            scd_id=scd_id,
+            stop_event=multiprocessing.Event(),  # unused
+            state_str="PUSH")
 
 
 sys.path.insert(0, anyscale.ANYSCALE_RAY_DIR)
@@ -1310,7 +1368,7 @@ def run_test_config(
     get_auth_api_client(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
         host=GLOBAL_CONFIG["ANYSCALE_HOST"])
-    session_controller = SessionController()
+    session_controller = S3SyncSessionController(sdk, result_queue)
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
