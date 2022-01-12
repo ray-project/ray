@@ -6,6 +6,10 @@ from ray.serve.config import (DeploymentConfig, DeploymentMode, HTTPOptions,
 from ray.serve.config import AutoscalingConfig
 
 
+def test_bad_config():
+    1 / 0
+
+
 def test_autoscaling_config_validation():
     # Check validation over publicly exposed options
 
