@@ -59,13 +59,6 @@ class MultiNodeSyncTest(unittest.TestCase):
         When new nodes are added to the cluster while a Tune job is running,
         trials get scheduled on them immediately. However, Tune only
         updates its internal list of available nodes every 10 seconds.
-
-        The new trial is thus detected as living on a stale node and
-        errored out.
-
-        We fixed thiws behavior by disabling this check. This test
-        previously failed, and we add it now to make sure that autoscaling
-        works as expected.
         """
         self.cluster.update_config({
             "provider": {
