@@ -12,12 +12,31 @@ import requests
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
 
+def retry(f):
+    def inner():
+        resp = None
+        for _ in range(5):
+            resp = f()
+            print("Getting Presigned URL, status_code", resp.status_code)
+            print(resp.text)
+            if resp.status_code >= 500:
+                print("errored, retrying...")
+                time.sleep(5)
+            else:
+                return resp
+        if resp is None or resp.status_code >= 500:
+            print("still errorred after many retries")
+            sys.exit(1)
+
+    return inner
+
+
 class BKAnalyticsUploader:
     @staticmethod
     def yield_result_xml_path(event_file_path):
         with open(event_file_path) as f:
-            for l in f:
-                event_line = json.loads(l)
+            for line in f:
+                event_line = json.loads(line)
                 if "testResult" not in event_line:
                     continue
                 if "testActionOutput" not in event_line["testResult"]:
@@ -38,6 +57,7 @@ class BKAnalyticsUploader:
         return ET.tostring(f.getroot(), encoding="utf8", method="xml").decode()
 
     @staticmethod
+    @retry
     def send_to_buildkite(xml_string, token):
         resp = requests.post(
             "https://analytics-api.buildkite.com/v1/uploads",
@@ -55,8 +75,7 @@ class BKAnalyticsUploader:
                 },
                 "data": xml_string
             })
-        print(resp.text)
-        resp.raise_for_status()
+        return resp
 
 
 def upload_to_bk_analytics(event_files_dir, token):
@@ -70,25 +89,6 @@ def upload_to_bk_analytics(event_files_dir, token):
             assert os.path.exists(xml_path), xml_path
             parsed_xml = BKAnalyticsUploader.read_and_transform_xml(xml_path)
             BKAnalyticsUploader.send_to_buildkite(parsed_xml, token)
-
-
-def retry(f):
-    def inner():
-        resp = None
-        for _ in range(5):
-            resp = f()
-            print("Getting Presigned URL, status_code", resp.status_code)
-            if resp.status_code >= 500:
-                print("errored, retrying...")
-                print(resp.text)
-                time.sleep(5)
-            else:
-                return resp
-        if resp is None or resp.status_code >= 500:
-            print("still errorred after many retries")
-            sys.exit(1)
-
-    return inner
 
 
 @retry
