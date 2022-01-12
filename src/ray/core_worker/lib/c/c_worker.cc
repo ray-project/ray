@@ -16,12 +16,17 @@ using namespace std;
 // Use anonymous namespace to enforce Rule of One Definition
 // for static global variables
 namespace {
-static execute_callback c_worker_execute;
+// TODO: We can also register c_worker_on_shutdown and c_worker_gc_collect
+//
+// We need additional wrappers with the right function signature to marshall
+// and unmarshall data to/from C-ABI callback (or maybe this is much simpler if
+// they are simply `std::function<void()>`)
+static c_worker_ExecuteCallback c_worker_execute;
 static ray::core::CoreWorkerOptions stored_worker_options;
 static Config stored_config;
 }
 
-int c_worker_RegisterCallback(execute_callback callback) {
+int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback) {
     c_worker_execute = callback;
     return 1;
 }
@@ -48,10 +53,6 @@ RAY_EXPORT DataValue* c_worker_AllocateDataValue(void *data_ptr, size_t data_siz
   dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
   return dv;
 }
-
-// The purpose of this function is to initialize
-// a cached version of the config for the raylet (in the case of driver)
-// and
 
 RAY_EXPORT void c_worker_InitConfig(int workerMode, int language, int num_workers,
                                     char *code_search_path, char *head_args,
@@ -96,56 +97,73 @@ ray::Status ExecutionCallback(
         data->Data(), data->Size(), meta->Data(), meta->Size()));
   }
 
-  RaySlice args_go;
-  args_go.data = &args_array_list[0];
-  args_go.len = args_array_list.size();
-  args_go.cap = args_array_list.size();
+  RaySlice execute_args;
+  execute_args.data = &args_array_list[0];
+  execute_args.len = args_array_list.size();
+  execute_args.cap = args_array_list.size();
 
   std::vector<std::shared_ptr<DataValue>> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
     return_value_list.push_back(make_shared<DataValue>());
   }
-  RaySlice return_value_list_go;
-  return_value_list_go.data = &return_value_list[0];
-  return_value_list_go.cap = return_ids.size();
-  return_value_list_go.len = return_ids.size();
+  RaySlice execute_return_value_list;
+  execute_return_value_list.data = &return_value_list[0];
+  execute_return_value_list.cap = return_ids.size();
+  execute_return_value_list.len = return_ids.size();
 
+    RAY_LOG(INFO) << "HERE EXECUTE 5";
   // invoke RUST method
   if (c_worker_execute == nullptr) {
+
+      RAY_LOG(INFO) << "HERE EXECUTE 6";
     // TODO (jon-chuang): RAY_THROW.
     assert (false);
   }
-  c_worker_execute(task_type, fd_list, args_go, return_value_list_go);
+    RAY_LOG(INFO) << "HERE EXECUTE 7";
+  c_worker_execute(task_type, fd_list, execute_args, execute_return_value_list);
+    RAY_LOG(INFO) << "HERE EXECUTE 8";
   results->clear();
   for (size_t i = 0; i < return_value_list.size(); i++) {
+
+      RAY_LOG(INFO) << "HERE EXECUTE 9";
     auto &result_id = return_ids[i];
     auto &return_value = return_value_list[i];
+          RAY_LOG(INFO) << "HERE EXECUTE 9.1" << return_value->data->size;
     std::shared_ptr<ray::Buffer> data_buffer =
         std::make_shared<ray::LocalMemoryBuffer>(
             reinterpret_cast<uint8_t *>(return_value->data->p),
             return_value->data->size, false);
-    std::shared_ptr<ray::Buffer> meta_buffer =
-        std::make_shared<ray::LocalMemoryBuffer>(
-            reinterpret_cast<uint8_t *>(return_value->meta->p),
-            return_value->meta->size, false);
+                  RAY_LOG(INFO) << "HERE EXECUTE 10";
+    std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
+        // std::make_shared<ray::LocalMemoryBuffer>(
+        //     reinterpret_cast<uint8_t *>(return_value->meta->p),
+        //     return_value->meta->size, false);
+
+                  RAY_LOG(INFO) << "HERE EXECUTE 11";
     std::vector<ray::ObjectID> contained_object_ids;
     auto contained_object_refs =
         ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(
             contained_object_ids);
+
+                  RAY_LOG(INFO) << "HERE EXECUTE 12";
     auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                   contained_object_refs);
     results->emplace_back(value);
     int64_t task_output_inlined_bytes = 0;
+
+          RAY_LOG(INFO) << "HERE EXECUTE 13" << value->GetData()->Size();
     RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, value->GetData()->Size(), value->GetMetadata(),
         contained_object_ids, &task_output_inlined_bytes, &value));
+
+              RAY_LOG(INFO) << "HERE EXECUTE 14";
     RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id, value));
   }
+        RAY_LOG(INFO) << "HERE EXECUTE 15";
   return ray::Status::OK();
 };
 
-// A few notes on the parameters
 RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerOptions options = stored_worker_options;
   auto redis_ip = stored_config.redis_ip;
@@ -183,15 +201,14 @@ RAY_EXPORT void c_worker_Initialize() {
     options.raylet_socket = node_info.raylet_socket_name();
     options.store_socket = node_info.object_store_socket_name();
     options.node_manager_port = node_info.node_manager_port();
+    if (options.job_id == ray::JobID::Nil()) {
+      options.job_id = global_state_accessor->GetNextJobID();
+    }
   }
 
   RAY_CHECK(!options.raylet_socket.empty());
   RAY_CHECK(!options.store_socket.empty());
   RAY_CHECK(options.node_manager_port > 0);
-
-  if (options.job_id == ray::JobID::Nil()) {
-    options.job_id = global_state_accessor->GetNextJobID();
-  }
 
   std::string log_dir = options.log_dir;
   if (log_dir.empty()) {
@@ -232,12 +249,11 @@ RAY_EXPORT void c_worker_Initialize() {
   ray::core::CoreWorkerProcess::Initialize(options);
 }
 
+RAY_EXPORT void c_worker_Run() {
+  ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
+  // _Exit(0);
+}
 
-//
-// RAY_EXPORT void c_worker_Run() {
-//   ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
-//   _Exit(0);
-// }
 //
 // RAY_EXPORT void *c_worker_CreateGlobalStateAccessor(char *redis_address,
 //                                                      char *redis_password) {
@@ -324,19 +340,19 @@ RAY_EXPORT void c_worker_Initialize() {
 //   return result_length;
 // }
 //
-// inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(DataBuffer *db) {
-//   return std::make_shared<ray::LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(db->p),
-//                                                   db->size, false);
-// }
-//
-// inline std::shared_ptr<ray::RayObject> DataValueToRayObject(DataValue *in) {
-//   std::vector<ObjectID> contained_object_ids;
-//   auto contained_object_refs =
-//       ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
-//   std::shared_ptr<ray::Buffer> data = DataBufferToRayBuffer(in->data);
-//   std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
-//   return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
-// }
+inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(DataBuffer *db) {
+  return std::make_shared<ray::LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(db->p),
+                                                  db->size, false);
+}
+
+inline std::shared_ptr<ray::RayObject> DataValueToRayObject(DataValue *in) {
+  std::vector<ObjectID> contained_object_ids;
+  auto contained_object_refs =
+      ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  std::shared_ptr<ray::Buffer> data = DataBufferToRayBuffer(in->data);
+  std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
+  return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
+}
 //
 // RAY_EXPORT int c_worker_SubmitActorTask(void *actor_id, char *method_name,
 //                                          DataValue **input_values, int num_input_value,
@@ -388,6 +404,58 @@ RAY_EXPORT void c_worker_Initialize() {
 // }
 //
 
+// TODO: make this more generic for char** method_names
+RAY_EXPORT int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
+                                   DataValue **input_values, char **input_refs,
+                                   int num_input_value,
+                                   int num_returns, char **object_ids) {
+  std::vector<std::string> function_descriptor_list = { method_name };
+  ray::FunctionDescriptor function_descriptor =
+      ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
+                                                 function_descriptor_list);
+  ray::core::RayFunction ray_function =
+      ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
+  std::string name = "";
+  std::unordered_map<std::string, double> resources;
+  ray::core::TaskOptions task_options{name, num_returns, resources};
+  std::vector<std::unique_ptr<ray::TaskArg>> args;
+
+  for (int i = 0; i < num_input_value; i++) {
+    if (input_is_ref[i]) {
+      auto obj_id = ByteArrayToId<ray::ObjectID>(object_ids[i]);
+      auto owner_id = ray::core::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(obj_id);
+      args.push_back(std::unique_ptr<ray::TaskArg>(
+                     new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
+    } else {
+      auto value = DataValueToRayObject(static_cast<DataValue *>(input_values[i]));
+      args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
+    }
+  }
+  ray::BundleID bundle_id = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+  ray::rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!bundle_id.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        bundle_id.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
+
+  auto return_refs = ray::core::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, args, task_options, /*max_retries=*/1, false, scheduling_strategy, "");
+
+  int object_id_size = ObjectID::Size();
+  for (size_t i = 0; i < return_refs.size(); i++) {
+    char *result = (char *)malloc(object_id_size);
+    memcpy(result, (char *)return_refs[i].object_id().data(), object_id_size);
+    RAY_LOG(DEBUG) << "return object id:" << result;
+    object_ids[i] = result;
+  }
+  return 0;
+}
+
 DataBuffer *RayBufferToDataBuffer(const std::shared_ptr<ray::Buffer> buffer) {
   auto data_db = new DataBuffer();
   data_db->p = buffer->Data();
@@ -395,12 +463,11 @@ DataBuffer *RayBufferToDataBuffer(const std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
-RAY_EXPORT int c_worker_Get(void **object_ids, int object_ids_size, int timeout,
-                              void **objects) {
+RAY_EXPORT int c_worker_Get(char **object_ids, int object_ids_size, int timeout,
+                            DataValue **objects) {
   std::vector<ray::ObjectID> object_ids_data;
-  char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
-    auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
+    auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_ids[i]);
     RAY_LOG(DEBUG) << "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }

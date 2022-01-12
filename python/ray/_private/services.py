@@ -59,7 +59,7 @@ DEFAULT_CPP_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
 
 # Location of the rust default worker executables.
 DEFAULT_RUST_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
-                                              "rust/rust_worker" + EXE_SUFFIX)
+                                              "rust/worker" + EXE_SUFFIX)
 
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib") + ":" + os.path.join(RAY_PATH, "rust/lib")

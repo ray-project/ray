@@ -193,4 +193,4 @@ build:ubsan --linkopt -fno-sanitize-recover=all
 try-import %workspace%/.llvm-local.bazelrc
 
 # Rust
-build --@rules_rust//:extra_rustc_flags=-Clink-arg=-fuse-ld=lld
+# build --@rules_rust//:extra_rustc_flags=-Clink-arg=-fuse-ld=lld

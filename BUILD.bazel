@@ -2534,6 +2534,21 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "libcore_worker_library_c_includes",
+    srcs = ["src/ray/core_worker/lib/c/c_worker.h"],
+    visibility = ["//rust:__subpackages__"],
+)
+
+load("@rules_rust//bindgen:bindgen.bzl", "rust_bindgen")
+
+rust_bindgen(
+    name = "ray_rs_sys_bindgen",
+    header = "src/ray/core_worker/lib/c/c_worker.h",
+    cc_lib = "//:libcore_worker_library_c_includes",
+    visibility = ["//rust:__subpackages__"],
+)
+
 genrule(
     name = "ray_pkg",
     srcs = [

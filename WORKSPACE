@@ -35,48 +35,33 @@ load("@rules_rust//rust:repositories.bzl", "rust_repositories")
 
 rust_repositories(version = "nightly", iso_date = "2021-06-16", edition="2018")
 
-http_archive(
-    name = "cxx.rs",
-    strip_prefix = "cxx-master",
-    sha256 = "4a7a733b8f96d4ca2c38961b18e9e1d001b723062c93b89b870c87ca6d23e09d",
-    urls = [
-        "https://github.com/jon-chuang/cxx/archive/refs/heads/master.zip",
-    ]
-)
-
-load("@cxx.rs//tools/bazel:vendor.bzl", "vendor")
-
-RUST_VERSION = "1.55.0"
-
-vendor(
-    name = "third-party",
-    lockfile = "@cxx.rs//third-party:Cargo.lock",
-    cargo_version = RUST_VERSION,
-)
-
 load("//bazel:crate_universe_defaults.bzl", "DEFAULT_URL_TEMPLATE", "DEFAULT_SHA256_CHECKSUMS")
 
 load("@rules_rust//crate_universe:defs.bzl", "crate", "crate_universe")
 
-# crate_universe(
-#     name = "ray-rs-toml",
-#     cargo_toml_files = [
-#         "//rust/ray-rs-sys:Cargo.toml",
-#         "//rust/ray-rs:Cargo.toml",
-#     ],
-#     resolver_download_url_template = DEFAULT_URL_TEMPLATE,
-#     resolver_sha256s = DEFAULT_SHA256_CHECKSUMS,
-#     # leave unset for default multi-platform support
-#     supported_targets = [
-#         "x86_64-apple-darwin",
-#         "x86_64-unknown-linux-gnu",
-#     ],
-# )
+crate_universe(
+    name = "ray-rs-toml",
+    cargo_toml_files = [
+        "//rust/ray-rs-sys:Cargo.toml",
+        # "//rust/ray-rs:Cargo.toml",
+    ],
+    resolver_download_url_template = DEFAULT_URL_TEMPLATE,
+    resolver_sha256s = DEFAULT_SHA256_CHECKSUMS,
+    # leave unset for default multi-platform support
+    supported_targets = [
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
 
-# load("@ray-rs-toml//:defs.bzl", "pinned_rust_install")
-#
-# pinned_rust_install()
+load("@ray-rs-toml//:defs.bzl", "pinned_rust_install")
+
+pinned_rust_install()
+
+load("@rules_rust//bindgen:repositories.bzl", "rust_bindgen_repositories")
+
+rust_bindgen_repositories()
 
 # When the bazel version is updated, make sure to update it
-# in setup.py as well.
+# in setup.py as wellrustc
 versions.check(minimum_bazel_version = "4.2.1")

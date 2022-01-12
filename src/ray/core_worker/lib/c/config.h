@@ -5,7 +5,7 @@ class Config {
  public:
   std::string redis_ip = "";
   int redis_port = 6379;
-  std::string redis_password = "5241590000000000";;
+  std::string redis_password = "5241590000000000";
   std::string driver_name;
   std::string session_dir;
   std::vector<std::string> code_search_path;

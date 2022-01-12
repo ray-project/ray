@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include "absl/flags/usage.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
@@ -30,6 +31,9 @@ ABSL_FLAG(std::string, ray_head_args, "",
 ABSL_FLAG(int64_t, startup_token, -1,
           "The startup token assigned to this worker process by the raylet.");
 
+namespace {
+static bool absl_flags_usage_set_ = false;
+}
 
 void InitOptions(Config* config,
                 ray::core::CoreWorkerOptions* options,
@@ -39,6 +43,10 @@ void InitOptions(Config* config,
   // if (!code_search_path.empty()) {
   //   code_search_path = config->code_search_path;
   // }
+  if (!absl_flags_usage_set_) {
+    absl::SetProgramUsageMessage("Flags for Ray CoreWorker harness cmdline.");
+    absl_flags_usage_set_ = true;
+  }
 
   if (!head_args.empty()) {
     std::vector<std::string> args =
