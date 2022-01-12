@@ -1,15 +1,15 @@
 import collections
 import platform
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import ray
 from ray.rllib import SampleBatch
-from ray.rllib.execution import PrioritizedReplayBuffer
+from ray.rllib.execution import PrioritizedReplayBuffer, ReplayBuffer
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.timer import TimerStat
@@ -54,7 +54,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                 `self.replay_batch_size` will be set to the number of
                 sequences sampled (B).
             prioritized_replay_alpha (float): Alpha parameter for a prioritized
-                replay buffer.
+                replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta (float): Beta parameter for a prioritized
                 replay buffer.
             prioritized_replay_eps (float): Epsilon parameter for a prioritized
@@ -108,8 +108,11 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
-            return PrioritizedReplayBuffer(
-                self.capacity, alpha=prioritized_replay_alpha)
+            if prioritized_replay_alpha == 0.0:
+                return ReplayBuffer(self.capacity)
+            else:
+                return PrioritizedReplayBuffer(
+                    self.capacity, alpha=prioritized_replay_alpha)
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
@@ -158,9 +161,8 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         """
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
-        # Handle everything as if multiagent
-        if isinstance(batch, SampleBatch):
-            batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
+        # Handle everything as if multi-agent.
+        batch = batch.as_multi_agent()
 
         with self.add_batch_timer:
             # Lockstep mode: Store under _ALL_POLICIES key (we will always
@@ -198,10 +200,10 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         a MultiAgentBatch with samples.
         """
         if self._fake_batch:
-            fake_batch = SampleBatch(self._fake_batch)
-            return MultiAgentBatch({
-                DEFAULT_POLICY_ID: fake_batch
-            }, fake_batch.count)
+            if not isinstance(self._fake_batch, MultiAgentBatch):
+                self._fake_batch = SampleBatch(
+                    self._fake_batch).as_multi_agent()
+            return self._fake_batch
 
         if self.num_added < self.replay_starts:
             return None

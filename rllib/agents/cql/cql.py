@@ -105,6 +105,7 @@ class CQLTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["num_gpus"] > 1:
@@ -172,9 +173,7 @@ class CQLTrainer(SACTrainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
+                _fake_gpus=config["_fake_gpus"])
 
         train_op = Replay(local_buffer=local_replay_buffer) \
             .for_each(lambda x: post_fn(x, workers, config)) \

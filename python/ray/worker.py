@@ -563,7 +563,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated
+@Deprecated(message="Use ray.init()['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -840,17 +840,19 @@ def init(
             _node_ip_address)
     raylet_ip_address = node_ip_address
 
+    bootstrap_address, redis_address, gcs_address = None, None, None
     if address:
-        redis_address, _, _ = services.validate_redis_address(address)
-    else:
-        redis_address = None
+        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        assert bootstrap_address is not None
+        logger.info("Connecting to existing Ray cluster at address: "
+                    f"{bootstrap_address}")
+        if gcs_utils.use_gcs_for_bootstrap():
+            gcs_address = bootstrap_address
+        else:
+            redis_address = bootstrap_address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
-
-    if redis_address is not None:
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -873,15 +875,14 @@ def init(
         raise TypeError("The _system_config must be a dict.")
 
     global _global_node
-    if redis_address is None:
+    if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+        # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
-            redis_address=redis_address,
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=None,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -944,6 +945,7 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1369,9 +1371,10 @@ def connect(node,
     # The Redis client can safely be shared between threads. However,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
-    worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
-    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
+    if not gcs_utils.use_gcs_for_bootstrap():
+        worker.redis_client = node.create_redis_client()
+    worker.gcs_client = node.get_gcs_client()
+    assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     if gcs_utils.use_gcs_for_bootstrap():
         ray.state.state._initialize_global_state(
@@ -1383,14 +1386,13 @@ def connect(node,
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(
-            channel=worker.gcs_channel.channel())
+        worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
         worker.gcs_error_subscriber = GcsErrorSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_log_subscriber = GcsLogSubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
         worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-            channel=worker.gcs_channel.channel())
+            address=worker.gcs_client.address)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1423,7 +1425,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray._private.services.check_version_info(worker.redis_client)
+        node.check_version_info()
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e
@@ -1453,7 +1455,6 @@ def connect(node,
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    redis_address, redis_port = node.redis_address.split(":")
     if gcs_utils.use_gcs_for_bootstrap():
         gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
             node.gcs_address)

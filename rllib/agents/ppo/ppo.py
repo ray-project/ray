@@ -295,9 +295,7 @@ class PPOTrainer(Trainer):
                     sgd_minibatch_size=config["sgd_minibatch_size"],
                     num_sgd_iter=config["num_sgd_iter"],
                     num_gpus=config["num_gpus"],
-                    shuffle_sequences=config["shuffle_sequences"],
-                    _fake_gpus=config["_fake_gpus"],
-                    framework=config.get("framework")))
+                    _fake_gpus=config["_fake_gpus"]))
 
         # Update KL after each round of training.
         train_op = train_op.for_each(lambda t: t[1]).for_each(
