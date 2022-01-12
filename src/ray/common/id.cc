@@ -201,7 +201,7 @@ TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_numbe
   auto data = reinterpret_cast<uint64_t *>(data_str.data());
   // Zero out the low byte for readability.
   uint64_t mask = 0xFFFFFFFFFFFFFF00;
-  data[0] = data[0] & mask;
+  data[0] &= mask;
   // Add attempt number to the task ID unique bytes.
   (*data) += attempt_number;
   return TaskID::FromBinary(data_str);
