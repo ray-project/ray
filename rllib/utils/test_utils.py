@@ -402,6 +402,11 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
+        if unsquash is None:
+            unsquash = what.config["normalize_actions"]
+        if clip is None:
+            clip = what.config["clip_actions"]
+
         # Test whether unsquash/clipping works on the Trainer's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
@@ -448,8 +453,9 @@ def check_compute_single_action(trainer,
                 for full_fetch in ([False, True]
                                    if what is trainer else [False]):
                     timestep = random.randint(0, 100000)
-                    for unsquash in [True, False]:
-                        for clip in ([False] if unsquash else [True, False]):
+                    for unsquash in [True, False, None]:
+                        for clip in ([False]
+                                     if unsquash else [True, False, None]):
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
 
