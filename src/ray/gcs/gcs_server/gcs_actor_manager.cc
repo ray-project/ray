@@ -725,7 +725,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   } else {
-    runtime_env_manager_.RemoveURIReference(actor_id.JobId().Hex());
+    runtime_env_manager_.RemoveURIReference(actor_id.Hex());
   }
   function_manager_.RemoveJobReference(actor_id.JobId());
   RemoveActorNameFromRegistry(actor);
