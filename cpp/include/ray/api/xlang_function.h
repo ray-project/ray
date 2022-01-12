@@ -28,10 +28,9 @@ struct PyFunction {
   std::string function_name;
 };
 
-template <typename... Args>
 struct PyActorClass {
   bool is_python() { return true; }
-  void operator()(Args... args) {}
+  void operator()() {}
 
   std::string module_name;
   std::string class_name;

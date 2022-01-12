@@ -213,7 +213,7 @@ TEST(RayClusterModeTest, FullTest) {
 
 TEST(RayClusterModeTest, PythonInvocationTest) {
   auto py_actor_handle =
-      ray::Actor(ray::PyActorClass<int>{"test_cross_language_invocation", "Counter"})
+      ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})
           .Remote(1);
   EXPECT_TRUE(!py_actor_handle.ID().empty());
 

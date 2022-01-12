@@ -203,8 +203,7 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
   return WaitResult<T>(std::move(readys), std::move(unreadys));
 }
 
-template <typename... Args>
-ray::internal::ActorCreator<PyActorClass<Args...>> Actor(PyActorClass<Args...> func) {
+inline ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
       func.module_name, func.function_name, func.class_name,
       ray::internal::LangType::PYTHON);
@@ -212,7 +211,7 @@ ray::internal::ActorCreator<PyActorClass<Args...>> Actor(PyActorClass<Args...> f
 }
 
 template <typename R>
-ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
+inline ray::internal::TaskCaller<PyFunction<R>> Task(PyFunction<R> func) {
   ray::internal::RemoteFunctionHolder remote_func_holder(
       func.module_name, func.function_name, "", ray::internal::LangType::PYTHON);
   return {ray::internal::GetRayRuntime().get(), std::move(remote_func_holder)};
