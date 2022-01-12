@@ -1,4 +1,4 @@
-from ray.train.callbacks.results_prepocessors import \
+from ray.train.callbacks.results_preprocessors import \
     ExcludedKeysResultsPreprocessor, IndexedResultsPreprocessor, \
     SequentialResultsPreprocessor
 

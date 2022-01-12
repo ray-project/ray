@@ -1,6 +1,6 @@
 from typing import List, Dict, Iterable, Union, Optional
 
-from ray.train.callbacks.results_prepocessors.preprocessor import \
+from ray.train.callbacks.results_preprocessors.preprocessor import \
     ResultsPreprocessor
 
 
@@ -8,9 +8,10 @@ class IndexedResultsPreprocessor(ResultsPreprocessor):
     """Preprocesses results by filtering by index.
 
     Example:
-    - indices: [0, 2]
-    - input: [a, b, c, d]
-    - output: [a, c]
+
+    - indices: ``[0, 2]``
+    - input: ``[a, b, c, d]``
+    - output: ``[a, c]``
 
     Args:
         indices(Optional[int|List[int]]): The indices of the results to return.

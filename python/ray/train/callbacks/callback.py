@@ -1,7 +1,7 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_prepocessors import ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
 
 
 class TrainingCallback(abc.ABC):

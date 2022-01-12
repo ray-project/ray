@@ -1,8 +1,8 @@
-from ray.train.callbacks.results_prepocessors.index import \
+from ray.train.callbacks.results_preprocessors.index import \
     IndexedResultsPreprocessor
-from ray.train.callbacks.results_prepocessors.keys import \
+from ray.train.callbacks.results_preprocessors.keys import \
     ExcludedKeysResultsPreprocessor
-from ray.train.callbacks.results_prepocessors.preprocessor import \
+from ray.train.callbacks.results_preprocessors.preprocessor import \
     SequentialResultsPreprocessor, ResultsPreprocessor
 
 __all__ = [

@@ -8,9 +8,9 @@ from typing import List, Optional, Dict, Set, Tuple, Union
 import numpy as np
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.results_prepocessors import IndexedResultsPreprocessor, \
+from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor, \
     ExcludedKeysResultsPreprocessor
-from ray.train.callbacks.results_prepocessors.preprocessor import \
+from ray.train.callbacks.results_preprocessors.preprocessor import \
     SequentialResultsPreprocessor
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                  TIME_TOTAL_S, TIMESTAMP, PID,

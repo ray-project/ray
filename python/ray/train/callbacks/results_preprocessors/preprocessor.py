@@ -14,7 +14,8 @@ class ResultsPreprocessor(abc.ABC):
                 function. Each value in the list corresponds to the output of
                 the training function from each worker.
 
-        Returns: A list of dictionaries. Each item in the list does *not*
+        Returns:
+            A list of dictionaries. Each item in the list does *not*
             need to correspond to a single worker, and it is expected for
             the corresponding caller to understand the semantics of the
             preprocessed results.
@@ -26,8 +27,8 @@ class ResultsPreprocessor(abc.ABC):
 class SequentialResultsPreprocessor(ResultsPreprocessor):
     """A processor that sequentially runs a series of preprocessing steps.
 
-    - preprocessors: [A, B, C]
-    - preprocess: C.preprocess(B.preprocess(A.preprocess(results)
+    - preprocessors: ``[A, B, C]``
+    - preprocess: ``C.preprocess(B.preprocess(A.preprocess(results)``
 
     Args:
         preprocessors (List[ResultsPreprocessor]): The preprocessors that

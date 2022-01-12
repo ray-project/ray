@@ -1,16 +1,17 @@
 from typing import List, Dict, Optional, Iterable
 
-from ray.train.callbacks.results_prepocessors.preprocessor import \
+from ray.train.callbacks.results_preprocessors.preprocessor import \
     ResultsPreprocessor
 
 
 class ExcludedKeysResultsPreprocessor(ResultsPreprocessor):
     """Preprocesses each result dictionary by excluding specified keys.
 
-    Example
-    - excluded_keys: ["a"]
-    - input: [{"a": 1, "b": 2}, {"a": 3, "b": 4}]
-    - output: [{"b": 2}, {"b": 4}]
+    Example:
+
+    - excluded_keys: ``["a"]``
+    - input: ``[{"a": 1, "b": 2}, {"a": 3, "b": 4}]``
+    - output: ``[{"b": 2}, {"b": 4}]``
 
     Args:
         excluded_keys (Optional[Iterable[str]]): The keys to remove. If

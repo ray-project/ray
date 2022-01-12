@@ -414,7 +414,7 @@ You may want to plug in your training code with your favorite experiment managem
 Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
 (the values passed into ``train.report(...)``).
 
-Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainingCallback`` interface.
 
 .. _train-builtin-callbacks:
 
@@ -495,6 +495,35 @@ A simple example for creating a callback that will print out results:
     # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
+
+
+Results Preprocessors
+^^^^^^^^^^^^^^^^^^^^^
+
+When defining a custom callback with ``handle_result`` defined, you may want to
+preprocess the raw results from the workers before ``handle_result`` is called.
+You can do this by defining a :ref:`train-api-results-preprocessor` and setting
+``self.results_preprocessor``.
+
+Preprocessing allows for better composability. The ``handle_result`` definition
+can focus on core callback functionality, and common preprocessing logic can be
+easily shared across different callbacks.
+
+In the following example, we show how you might implement a ``TrainingCallback``
+that only prints the results from worker 0.
+
+.. code-block:: python
+
+    from ray.train import TrainingCallback
+    from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
+    from typing import List, Dict
+
+    class FirstWorkerPrintingCallback(TrainingCallback):
+        def __init__(self):
+            self.results_preprocessor = IndexedResultsPreprocessor(0)
+
+        def handle_result(self, results: List[Dict], **info):
+            print(results)
 
 
 ..
