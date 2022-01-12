@@ -28,7 +28,7 @@ struct PyFunction {
 };
 
 template <typename... Args>
-struct PyClass {
+struct PyActorClass {
   void operator()(Args... args) {}
 
   std::string module_name;
@@ -37,7 +37,7 @@ struct PyClass {
 };
 
 template <typename R, typename... Args>
-struct PyActorFunction {
+struct PyActorMethod {
   static constexpr bool is_python_actor_function = true;
   R operator()(Args... args) { return {}; }
 

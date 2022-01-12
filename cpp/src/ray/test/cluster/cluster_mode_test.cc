@@ -213,12 +213,12 @@ TEST(RayClusterModeTest, FullTest) {
 
 TEST(RayClusterModeTest, PythonInvocationTest) {
   auto py_actor_handle =
-      ray::Actor(ray::PyClass<int>{"test_cross_language_invocation", "Counter"})
+      ray::Actor(ray::PyActorClass<int>{"test_cross_language_invocation", "Counter"})
           .Remote(1);
   EXPECT_TRUE(!py_actor_handle.ID().empty());
 
   auto py_actor_ret =
-      py_actor_handle.Task(ray::PyActorFunction<std::string, int>{"increase"}).Remote(1);
+      py_actor_handle.Task(ray::PyActorMethod<std::string, int>{"increase"}).Remote(1);
   EXPECT_EQ("2", *py_actor_ret.Get());
 
   auto py_obj =
