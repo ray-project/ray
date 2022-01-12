@@ -549,7 +549,7 @@ def create_redis_client(redis_address, password=None):
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
-    for _ in range(10):
+    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
