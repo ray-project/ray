@@ -28,10 +28,14 @@ pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
 }
 }
 
+// This is currently not possible to do?
+// The owning worker is already dead by the time this function ends...?
+
 // remote! {
 // pub fn add_two_vecs_nested_remote_outer_get(a: Vec<u64>, b: Vec<u64>) -> Vec<u8> {
-//     let objr = add_two_vecs.remote(&a, &b);
-//     object_id_to_byte_vec(objr)
+//     let obj = add_two_vecs.remote(&a, &b);
+//     util::add_local_ref(obj.clone());
+//     obj.into_bytes()
 // }
 // }
 

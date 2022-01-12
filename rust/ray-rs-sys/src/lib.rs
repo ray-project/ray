@@ -72,6 +72,27 @@ pub mod ray {
 
 pub mod util {
     use super::dv_as_slice;
+    use std::ffi::CString;
+    pub fn add_local_ref(id: CString) {
+        unsafe {
+            super::c_worker_AddLocalRef(id.into_raw())
+        }
+    }
+
+    pub fn remove_local_ref(id: CString) {
+        unsafe {
+            super::c_worker_RemoveLocalRef(id.into_raw())
+        }
+    }
+
+    pub fn pretty_print_id(id: &CString) -> String {
+        id.as_bytes()
+            .iter()
+            .map(|x| format!("{:02x?}", x))
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
     pub fn log_internal(msg: String) {
         unsafe {
             super::c_worker_Log(std::ffi::CString::new(msg).unwrap().into_raw());
@@ -117,7 +138,7 @@ pub mod internal {
             );
 
             let c_str_id = CString::from_raw(obj_ids[0]);
-            println!("{:x?}", c_str_id);
+            println!("ObjectID: {:x?}", util::pretty_print_id(&c_str_id));
             c_str_id
         }
     }

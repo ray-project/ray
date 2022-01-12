@@ -456,6 +456,18 @@ DataBuffer *RayBufferToDataBuffer(const std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
+RAY_EXPORT void c_worker_AddLocalRef(char* id) {
+  // TODO: again, shouldn't this be uint8_t?
+  auto obj_id = ByteArrayToId<ray::ObjectID>(id);
+  ray::core::CoreWorkerProcess::GetCoreWorker().AddLocalReference(obj_id);
+}
+
+RAY_EXPORT void c_worker_RemoveLocalRef(char* id) {
+  // TODO: again, shouldn't this be uint8_t?
+  auto obj_id = ByteArrayToId<ray::ObjectID>(id);
+  ray::core::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(obj_id);
+}
+
 RAY_EXPORT int c_worker_Get(char **object_ids, int object_ids_size, int timeout,
                             DataValue **objects) {
   std::vector<ray::ObjectID> object_ids_data;

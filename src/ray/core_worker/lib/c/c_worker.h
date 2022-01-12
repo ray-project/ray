@@ -51,6 +51,10 @@ void c_worker_Run();
 
 void c_worker_Log(char* msg);
 
+void c_worker_AddLocalRef(char* id);
+
+void c_worker_RemoveLocalRef(char* id);
+
 // int c_worker_GetNextJobID(void *p);
 //
 // int c_worker_CreateActor(char *type_name, char **result);

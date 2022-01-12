@@ -16,7 +16,7 @@ mod test {
     use std::sync::Mutex;
     use lazy_static::lazy_static;
 
-    const NUM_CLUSTER_TESTS: usize = 2;
+    const NUM_CLUSTER_TESTS: usize = 1;
 
     lazy_static! {
         static ref CLUSTER_TEST_COUNTER: Mutex<(usize, usize)> = Mutex::new((0, 0));
@@ -45,7 +45,6 @@ mod test {
                     c_args.as_ptr()
                 )),
             );
-            // ray_init(&arg);
         }
         guard.0 += 1;
     }
@@ -54,8 +53,8 @@ mod test {
         let mut guard = CLUSTER_TEST_COUNTER.lock().unwrap();
         guard.1 += 1;
         if guard.1 == NUM_CLUSTER_TESTS {
-            // Shutdown();
-            // println!("Shutting down. Status: running = {}", IsInitialized());
+            println!("shutting down");
+            ray::shutdown()
         }
     }
 
@@ -108,11 +107,11 @@ mod test {
         println!("Execute + Get: {:?}", now.elapsed().as_millis());
         try_shutdown();
     }
-    //
+
     // #[test]
     // fn test_nested_remote_outer_get() {
     //     try_init();
-    //     const VEC_SIZE: usize = 1 << 12;
+    //     const VEC_SIZE: usize = 1 << 20;
     //     let num_jobs = 1 << 0;
     //     let (a, b): (Vec<_>, Vec<_>) =
     //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
@@ -133,7 +132,11 @@ mod test {
     //             .collect::<Vec<_>>()
     //             .join("")
     //         );
-    //         get::<Vec<u64>>(byte_vec_to_object_id(byte_vec))
+    //         get::<Vec<u64>>(
+    //             unsafe {
+    //                 CString::from_vec_unchecked(byte_vec)
+    //             }
+    //         )
     //     }).collect();
     //
     //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
