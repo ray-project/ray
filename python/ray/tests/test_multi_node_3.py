@@ -7,6 +7,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
+from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
@@ -151,7 +152,18 @@ for i in range(0, 5):
     blocked.poll()
     assert blocked.returncode is None
 
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
+    # Include GCS, autoscaler monitor, client server, dashboard, raylet and
+    # log_monitor.py
+    num_children = 6
+    if not use_gcs_for_bootstrap():
+        # Account for Redis
+        num_children += 1
+    if not detect_fate_sharing_support():
+        # Account for ray_process_reaper.py
+        num_children += 1
+    # Check a set of child process commands & scripts instead?
+    wait_for_children_of_pid(
+        blocked.pid, num_children=num_children, timeout=30)
 
     blocked.terminate()
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)

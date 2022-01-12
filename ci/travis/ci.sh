@@ -208,7 +208,7 @@ test_large_gcs() {
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
       --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1 --test_env=RAY_gcs_storage=memory \
-      -- python/ray/tests/... -//python/ray/tests:test_failure_2
+      -- python/ray/tests/...
 }
 
 test_cpp() {
