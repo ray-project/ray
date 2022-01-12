@@ -1,4 +1,3 @@
-from collections import defaultdict
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, \
@@ -144,19 +143,12 @@ def asynchronous_parallel_sample(
     if remote_kwargs is not None:
         assert len(remote_kwargs) == len(actors)
 
-    # Create a map inside Trainer instance that maps actorss to sets of open
-    # requests (object refs). This way, we keep track, of which actorss have
-    # already been sent how many requests
-    # (`max_remote_requests_in_flight_per_actor` arg).
-    if not hasattr(trainer, "_remote_requests_in_flight"):
-        trainer._remote_requests_in_flight = defaultdict(set)
-
     # Collect all currently pending remote requests into a single set of
     # object refs.
     pending_remotes = set()
     # Also build a map to get the associated actor for each remote request.
     remote_to_actor = {}
-    for actor, set_ in trainer._remote_requests_in_flight.items():
+    for actor, set_ in trainer.remote_requests_in_flight.items():
         pending_remotes |= set_
         for r in set_:
             remote_to_actor[r] = actor
@@ -165,7 +157,7 @@ def asynchronous_parallel_sample(
     # `max_remote_requests_in_flight_per_actor` setting allows it).
     for actor_idx, actor in enumerate(actors):
         # Still room for another request to this actor.
-        if len(trainer._remote_requests_in_flight[actor]) < \
+        if len(trainer.remote_requests_in_flight[actor]) < \
                 max_remote_requests_in_flight_per_actor:
             if remote_fn is None:
                 req = actor.sample.remote()
@@ -176,7 +168,7 @@ def asynchronous_parallel_sample(
             # Add to our set to send to ray.wait().
             pending_remotes.add(req)
             # Keep our mappings properly updated.
-            trainer._remote_requests_in_flight[actor].add(req)
+            trainer.remote_requests_in_flight[actor].add(req)
             remote_to_actor[req] = actor
 
     # There must always be pending remote requests.
@@ -201,11 +193,11 @@ def asynchronous_parallel_sample(
 
         # Return None if nothing ready after the timeout.
         if not ready:
-            return
+            return None
 
     for obj_ref in ready:
         # Remove in-flight record for this ref.
-        trainer._remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
+        trainer.remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
             obj_ref)
         remote_to_actor.pop(obj_ref)
 

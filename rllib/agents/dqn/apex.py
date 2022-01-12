@@ -137,7 +137,7 @@ class ApexTrainer(DQNTrainer):
         num_replay_buffer_shards = config["optimizer"][
             "num_replay_buffer_shards"]
 
-        args = [
+        replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
             config["buffer_size"],
@@ -154,14 +154,16 @@ class ApexTrainer(DQNTrainer):
             replay_actors = create_colocated_actors(
                 actor_specs=[
                     # (class, args, kwargs={}, count)
-                    (ReplayActor, args, {}, num_replay_buffer_shards)  # [0]
+                    (ReplayActor, replay_actor_args, {},
+                     num_replay_buffer_shards)
                 ],
                 node=platform.node(),  # localhost
-            )[0]
+            )[0]  # [0]=only one item in `actor_specs`.
         # Place replay buffer shards on any node(s).
         else:
             replay_actors = [
-                ReplayActor(*args) for _ in range(num_replay_buffer_shards)
+                ReplayActor(*replay_actor_args)
+                for _ in range(num_replay_buffer_shards)
             ]
 
         # Start the learner thread.
