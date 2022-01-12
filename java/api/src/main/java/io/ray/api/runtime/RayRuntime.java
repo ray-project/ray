@@ -20,6 +20,7 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.utils.parallelactor.ParallelContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -286,4 +287,7 @@ public interface RayRuntime {
 
   /** Create runtime env instance at runtime. */
   RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
+  
+  /// TODO(qwang): Move out from Ray.java
+  ParallelContext getParallelContext();
 }

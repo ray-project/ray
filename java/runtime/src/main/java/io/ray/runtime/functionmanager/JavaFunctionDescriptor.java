@@ -3,10 +3,13 @@ package io.ray.runtime.functionmanager;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import io.ray.runtime.generated.Common.Language;
+import sun.plugin2.message.Serializer;
+
+import java.io.Serializable;
 import java.util.List;
 
 /** Represents metadata of Java function. */
-public final class JavaFunctionDescriptor implements FunctionDescriptor {
+public final class JavaFunctionDescriptor implements FunctionDescriptor, Serializable {
 
   /** Function's class name. */
   public final String className;

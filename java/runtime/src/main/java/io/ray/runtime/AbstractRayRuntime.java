@@ -22,6 +22,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
+import io.ray.api.utils.parallelactor.ParallelContext;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -46,6 +47,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+
+import io.ray.runtime.utils.parallelactor.ParallelContextImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -286,6 +289,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
     return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
+  }
+
+  @Override
+  public ParallelContext getParallelContext() {
+    return new ParallelContextImpl();
   }
 
   @Override
