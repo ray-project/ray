@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray.cluster_utils
+from ray.cluster_utils import Cluster
 from ray._private.test_utils import client_test_enabled
 from ray._private.test_utils import wait_for_pid_to_exit
 
@@ -117,6 +118,25 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_del("@namespace_def", namespace="n")
     with pytest.raises(RuntimeError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_using_hostname(ray_start_cluster):
+    import socket
+    hostname = socket.gethostname()
+    cluster = Cluster(
+        initialize_head=True, head_node_args={
+            "node_ip_address": hostname,
+        })
+
+    # Use `ray.init` to test the connection.
+    ray.init(address=cluster.address, _node_ip_address=hostname)
+
+    # Clean up.
+    ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":
