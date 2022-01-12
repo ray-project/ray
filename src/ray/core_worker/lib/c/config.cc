@@ -103,7 +103,7 @@ void InitOptions(Config* config,
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       config->head_args.insert(config->head_args.end(), args.begin(), args.end());
     }
-    // startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    options->startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
   }
   // if (worker_type == WorkerType::DRIVER) {
   //   if (redis_ip.empty()) {

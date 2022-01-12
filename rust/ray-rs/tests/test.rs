@@ -24,6 +24,7 @@ mod test {
 
     fn try_init() {
         let mut guard = CLUSTER_TEST_COUNTER.lock().unwrap();
+        // TODO: get rid of this ugly monkey patch code
         if guard.0 == 0 {
             let env_var = std::env::var("RAY_RUST_LIBRARY_PATHS").unwrap();
             let mut args = vec![CString::new("").unwrap(), CString::new("--ray_code_search_path=").unwrap()];
@@ -58,43 +59,19 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_init_submit_execute_shutdown() {
-        try_init();
-        const VEC_SIZE: usize = 1 << 12;
-        let num_jobs = 1 << 0;
-
-        let (a, b): (Vec<_>, Vec<_>) =
-            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
-
-        let now = std::time::Instant::now();
-        println!("{}", add_two_vecs.name());
-        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            add_two_vecs.remote(&a, &b)
-        }).collect();
-
-        ids.reverse();
-        println!("Submission: {:?}", now.elapsed().as_millis());
-
-        let results: Vec<_> = (0..num_jobs).map(|_| {
-            get::<Vec<u64>>(ids.pop().unwrap())
-        }).collect();
-
-        println!("Execute + Get: {:?}", now.elapsed().as_millis());
-        try_shutdown();
-    }
-
     // #[test]
-    // fn test_nested_remote() {
+    // fn test_init_submit_execute_shutdown() {
     //     try_init();
     //     const VEC_SIZE: usize = 1 << 12;
     //     let num_jobs = 1 << 0;
+    //
     //     let (a, b): (Vec<_>, Vec<_>) =
     //         ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
     //
     //     let now = std::time::Instant::now();
+    //     println!("{}", add_two_vecs.name());
     //     let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-    //         add_two_vecs_nested.remote(&a, &b)
+    //         add_two_vecs.remote(&a, &b)
     //     }).collect();
     //
     //     ids.reverse();
@@ -107,6 +84,30 @@ mod test {
     //     println!("Execute + Get: {:?}", now.elapsed().as_millis());
     //     try_shutdown();
     // }
+
+    #[test]
+    fn test_nested_remote() {
+        try_init();
+        const VEC_SIZE: usize = 1 << 12;
+        let num_jobs = 1 << 0;
+        let (a, b): (Vec<_>, Vec<_>) =
+            ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
+
+        let now = std::time::Instant::now();
+        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+            add_two_vecs_nested.remote(&a, &b)
+        }).collect();
+
+        ids.reverse();
+        println!("Submission: {:?}", now.elapsed().as_millis());
+
+        let results: Vec<_> = (0..num_jobs).map(|_| {
+            get::<Vec<u64>>(ids.pop().unwrap())
+        }).collect();
+
+        println!("Execute + Get: {:?}", now.elapsed().as_millis());
+        try_shutdown();
+    }
     //
     // #[test]
     // fn test_nested_remote_outer_get() {

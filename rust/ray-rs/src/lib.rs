@@ -25,10 +25,10 @@ type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
 
-#[macro_use]
+#[macro_export]
 macro_rules! ray_log {
     ($msg:expr) => {
-        util::log_internal(format!("In Rust src file {} line {}: {}", file!(), line!(), $msg));
+        util::log_internal(format!("[rust] {}:{}: {}", file!(), line!(), $msg));
     }
 }
 
@@ -150,6 +150,7 @@ pub extern "C" fn rust_worker_execute(
         ray_log!(format!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref));
     }
     let func = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name.to_str().unwrap()));
+    ray_log!("executing");
     let ret = func(args_buffer);
 
     let mut ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
