@@ -173,7 +173,7 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     while time.time() - start_time < timeout:
         alive = p.children(recursive=False)
         num_alive = len(alive)
-        if num_alive == num_children:
+        if num_alive >= num_children:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
