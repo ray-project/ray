@@ -1,13 +1,75 @@
 import argparse
+import json
 import os
-from collections import OrderedDict
+import subprocess
 import sys
 import time
-import subprocess
+import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from typing import List
 
-from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
+from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
+
+
+class BKAnalyticsUploader:
+    @staticmethod
+    def yield_result_xml_path(event_file_path):
+        with open(event_file_path) as f:
+            for l in f:
+                event_line = json.loads(l)
+                if "testResult" not in event_line:
+                    continue
+                if "testActionOutput" not in event_line["testResult"]:
+                    continue
+                for output in event_line["testResult"]["testActionOutput"]:
+                    if output["name"].endswith("xml"):
+                        uri = output["uri"].replace("file://", "")
+                        yield uri
+
+    @staticmethod
+    def read_and_transform_xml(xml_path):
+        f = ET.parse(xml_path)
+        case = next(f.iter("testcase"))
+        test_name = case.attrib["name"]
+        *classname_chunks, name = test_name.split("/")
+        case.set("name", name)
+        case.set("classname", "/".join(classname_chunks))
+        return ET.tostring(f.getroot(), encoding="utf8", method="xml").decode()
+
+    @staticmethod
+    def send_to_buildkite(xml_string, token):
+        resp = requests.post(
+            "https://analytics-api.buildkite.com/v1/uploads",
+            headers={"Authorization": f'Token token="{token}"'},
+            json={
+                "format": "junit",
+                "run_env": {
+                    "CI": "buildkite",
+                    "key": os.environ["BUILDKITE_BUILD_ID"],
+                    "job_id": os.environ["BUILDKITE_JOB_ID"],
+                    "branch": os.environ["BUILDKITE_BRANCH_NAME"],
+                    "commit_sha": os.environ["BUILDKITE_COMMIT"],
+                    "message": os.environ["BUILDKITE_MESSAGE"],
+                    "url": os.environ["BUILDKITE_BUILD_URL"],
+                },
+                "data": xml_string
+            })
+        print(resp.text)
+        resp.raise_for_status()
+
+
+def upload_to_bk_analytics(event_files_dir, token):
+    event_dir = event_files_dir.replace("/", os.path.sep)
+    for name in os.listdir(event_dir):
+        if "bazel_log" not in name:
+            continue
+
+        path = os.path.join(event_dir, name)
+        for xml_path in BKAnalyticsUploader.yield_result_xml_path(path):
+            assert os.path.exists(xml_path), xml_path
+            parsed_xml = BKAnalyticsUploader.read_and_transform_xml(xml_path)
+            BKAnalyticsUploader.send_to_buildkite(parsed_xml, token)
 
 
 def retry(f):
@@ -101,8 +163,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     assert args.destination in {
-        "branch_jars", "branch_wheels", "jars", "logs", "wheels",
-        "docker_login"
+        "branch_jars",
+        "branch_wheels",
+        "jars",
+        "logs",
+        "wheels",
+        "docker_login",
     }
     assert "BUILDKITE_JOB_ID" in os.environ
     assert "BUILDKITE_COMMIT" in os.environ
@@ -115,3 +181,8 @@ if __name__ == "__main__":
         paths = gather_paths(args.path)
         print("Planning to upload", paths)
         upload_paths(paths, resp, args.destination)
+
+    # Additionally, we will push the logs to Buildkite test analytics (beta)
+    if args.destination == "logs":
+        token = resp.json()["bk_analytics_token"]
+        upload_to_bk_analytics(args.path, token)
