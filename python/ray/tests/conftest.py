@@ -71,7 +71,7 @@ def external_redis(request, monkeypatch):
         wait_for_redis_to_start("127.0.0.1", port,
                                 ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(
-        map(lambda x: f"localhost:{x}", external_redis_ports))
+        map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
     monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
     yield None
     for proc in processes:

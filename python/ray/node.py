@@ -1040,10 +1040,9 @@ class Node:
         # Write Version info.
         ray_version, python_version = self._compute_version_info()
         version_info = json.dumps((ray_version, python_version))
-        self.get_gcs_client().internal_kv_put(
+        self._internal_kv_put_with_retry(
             b"VERSION_INFO",
             version_info.encode(),
-            overwrite=True,
             namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
     def start_head_processes(self):
@@ -1466,4 +1465,24 @@ class Node:
         if not result:
             raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
                                "If using Redis, did Redis start successfully?")
+        return result
+
+    def _internal_kv_put_with_retry(self,
+                                    key,
+                                    value,
+                                    namespace,
+                                    num_retries=NUM_REDIS_GET_RETRIES):
+        result = None
+        if isinstance(key, str):
+            key = key.encode()
+        for i in range(num_retries):
+            try:
+                result = self.get_gcs_client().internal_kv_put(
+                    key, value, overwrite=True, namespace=namespace)
+                break
+            except Exception:
+                logger.exception("Internal KV Put failed")
+                result = None
+                time.sleep(2)
+
         return result
