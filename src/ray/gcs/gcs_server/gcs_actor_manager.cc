@@ -240,9 +240,7 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                               actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
-        if (actor->IsDetached()) {
-          function_manager_.AddJobReference(actor_id.JobId());
-        }
+        function_manager_.AddJobReference(actor_id.JobId());
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
@@ -728,8 +726,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     RemoveActorFromOwner(actor);
   } else {
     runtime_env_manager_.RemoveURIReference(actor_id.JobId().Hex());
-    function_manager_.RemoveJobReference(actor_id.JobId());
   }
+  function_manager_.RemoveJobReference(actor_id.JobId());
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {

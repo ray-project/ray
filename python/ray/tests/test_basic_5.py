@@ -167,14 +167,14 @@ def test_function_table_gc(call_ray_start):
 
     assert get_gcs_memory_used() > 500 * 1024 * 1024
     job_id = ray.worker.global_worker.current_job_id.binary()
+    assert function_entry_num(job_id) > 0
+    ray.shutdown()
+
     # We only check it for redis mode since in memory mode, the rss depends
     # on when the OS evict the page.
-    if os.get("RAY_gcs_storage") != "memory":
+    if os.environ.get("RAY_gcs_storage") != "memory":
         wait_for_condition(
             lambda: get_gcs_memory_used() < 100 * 1024 * 1024, timeout=30)
-    assert function_entry_num(job_id) > 0
-
-    ray.shutdown()
 
     # now check the function table is cleaned up after job finished
     ray.init(address="auto", namespace="a")

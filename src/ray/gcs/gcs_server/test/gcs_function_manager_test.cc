@@ -21,6 +21,7 @@
 // clang-format on
 using namespace ::testing;
 using namespace ray::gcs;
+using namespace ray;
 
 class GcsFunctionManagerTest : public Test {
  public:
@@ -32,18 +33,15 @@ class GcsFunctionManagerTest : public Test {
   std::unique_ptr<MockInternalKVInterface> kv;
 };
 
-
-TEST_P(GcsFunctionManagerTest, TestFunctionManagerGC) {
-  JobId job_id = BaseID<JobID>::FromRandom();
+TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
+  JobID job_id = BaseID<JobID>::FromRandom();
   int num_del_called = 0;
-  auto f = [&num_del_called] mutable () {
-    ++num_del_called;
-  };
-  EXPECT_CALL(*function_manager, Del("fun", StartsWith("IsolatedExports:"), true, nullptr))
+  auto f = [&num_del_called]() mutable { ++num_del_called; };
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("IsolatedExports:"), true, _))
       .WillOnce(InvokeWithoutArgs(f));
-  EXPECT_CALL(*function_manager, Del("fun", StartsWith("RemoteFunction:"), true, nullptr))
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("RemoteFunction:"), true, _))
       .WillOnce(InvokeWithoutArgs(f));
-  EXPECT_CALL(*function_manager, Del("fun", StartsWith("ActorClass:"), true, nullptr))
+  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
       .WillOnce(InvokeWithoutArgs(f));
   function_manager->AddJobReference(job_id);
   EXPECT_EQ(0, num_del_called);

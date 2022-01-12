@@ -39,7 +39,7 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
               (const std::string &ns, const std::string &prefix,
                std::function<void(std::vector<std::string>)> callback),
               (override));
-  MOCK_METHOD(void, GetEventLoop, (), (override));
+  MOCK_METHOD(instrumented_io_context &, GetEventLoop, (), (override));
 };
 
 }  // namespace gcs
