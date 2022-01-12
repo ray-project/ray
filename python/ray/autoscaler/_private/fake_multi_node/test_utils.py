@@ -16,6 +16,8 @@ from ray.util.ml_utils.dict import deep_update
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_DOCKER_IMAGE = "rayproject/ray:nightly-py{major}{minor}-cpu"
+
 
 class DockerCluster:
     """Docker cluster wrapper.
@@ -142,7 +144,7 @@ class DockerCluster:
                 mj = sys.version_info.major
                 mi = sys.version_info.minor
 
-                docker_image = f"rayproject/ray:nightly-py{mj}{mi}-cpu"
+                docker_image = DEFAULT_DOCKER_IMAGE.format(major=mj, minor=mi)
 
             self._docker_image = docker_image
 
