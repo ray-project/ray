@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import aiohttp.web
+from collections import deque
+
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
 from aioredis.pubsub import Receiver
@@ -38,11 +40,14 @@ def actor_table_data_to_dict(message):
 
 
 class ActorHead(dashboard_utils.DashboardHeadModule):
-    def __init__(self, dashboard_head):
+    def __init__(self, dashboard_head, history_limits=5000):
         super().__init__(dashboard_head)
         self._stubs = {}
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
+        assert history_limits > 0
+        self._history_limits = history_limits
+        self._actor_info = deque()
         DataSource.nodes.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -134,6 +139,23 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             job_actors = dict(DataSource.job_actors.get(job_id, {}))
             job_actors[actor_id] = actor_table_data
             DataSource.job_actors[job_id] = job_actors
+            self._actor_info.append((actor_id, job_id, node_id))
+            if len(self._actor_info) > self._history_limits:
+                old_actor_id, old_job_id, old_node_id = self._actor_info.pop()
+                DataSource.actors.pop(old_actor_id, None)
+                old_job_actors = DataSource.job_actors.get(old_job_id, None)
+                if old_job_actors is not None:
+                    old_job_actors.pop(old_actor_id, None)
+                    if len(old_job_actors) == 0:
+                        DataSource.job_actors.pop(old_job_id)
+                old_node_actors = DataSource.node_actors.get(old_node_id, None)
+                if old_node_actors is not None:
+                    old_node_actors.pop(old_actor_id, None)
+                    if len(old_node_actors) == 0:
+                        DataSource.node_id.pop(old_node_id)
+
+                DataSource.actors.pop(old_actor_id)
+
 
         # Receive actors from channel.
         if gcs_pubsub_enabled():
