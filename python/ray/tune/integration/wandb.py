@@ -195,7 +195,11 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
-        os.environ["WANDB_START_METHOD"] = "thread"
+        # check if on Windows
+        if os.name == 'nt':
+            os.environ["WANDB_START_METHOD"] = "thread"
+        else:
+            os.environ["WANDB_START_METHOD"] = "fork"
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
@@ -566,7 +570,11 @@ class WandbTrainableMixin:
             config=_config)
         wandb_init_kwargs.update(wandb_config)
 
-        os.environ["WANDB_START_METHOD"] = "thread"
+        # check if on Windows
+        if os.name == 'nt':
+            os.environ["WANDB_START_METHOD"] = "thread"
+        else:
+            os.environ["WANDB_START_METHOD"] = "fork"
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):
