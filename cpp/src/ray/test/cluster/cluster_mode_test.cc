@@ -218,7 +218,7 @@ TEST(RayClusterModeTest, PythonInvocationTest) {
   EXPECT_TRUE(!py_actor_handle.ID().empty());
 
   auto py_actor_ret =
-      py_actor_handle.Task(ray::PyActorMethod<std::string, int>{"increase"}).Remote(1);
+      py_actor_handle.Task(ray::PyActorMethod<std::string>{"increase"}).Remote(1);
   EXPECT_EQ("2", *py_actor_ret.Get());
 
   auto py_obj =

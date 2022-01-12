@@ -37,10 +37,10 @@ struct PyActorClass {
   std::string function_name = "__init__";
 };
 
-template <typename R, typename... Args>
+template <typename R>
 struct PyActorMethod {
   bool is_python() { return true; }
-  R operator()(Args... args) { return {}; }
+  R operator()() { return {}; }
 
   std::string function_name;
 };
