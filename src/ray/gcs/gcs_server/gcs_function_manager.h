@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2021 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,13 @@
 namespace ray {
 namespace gcs {
 
+/// GcsFunctionManager is a class to manage exported functions in runtime.
+/// Right now it only hanldes resource cleanup when it's not useful any more.
+/// But for long term, we should put all function/actor management into this
+/// class, includes:
+///    - function/actor exporting
+///    - function/actor importing
+///    - function/actor code life cycle management.
 class GcsFunctionManager {
  public:
   explicit GcsFunctionManager(InternalKVInterface &kv) : kv_(kv) {}
