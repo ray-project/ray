@@ -1309,6 +1309,20 @@ cc_test(
 )
 
 cc_test(
+    name = "container_util_test",
+    size = "small",
+    srcs = ["src/ray/util/container_util_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "util_test",
     size = "small",
     srcs = ["src/ray/util/util_test.cc"],

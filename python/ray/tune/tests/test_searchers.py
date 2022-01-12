@@ -2,6 +2,7 @@ import unittest
 import tempfile
 import shutil
 import os
+from copy import deepcopy
 
 import numpy as np
 
@@ -25,6 +26,10 @@ def _invalid_objective(config):
 
 def _multi_objective(config):
     tune.report(a=config["a"] * 100, b=config["b"] * -100, c=config["c"])
+
+
+def _dummy_objective(config):
+    tune.report(metric=config["report"])
 
 
 class InvalidValuesTest(unittest.TestCase):
@@ -283,6 +288,13 @@ class AddEvaluatedPointTest(unittest.TestCase):
         self.valid_value = 1.0
         self.space = {self.param_name: tune.uniform(0.0, 5.0)}
 
+        self.analysis = tune.run(
+            _dummy_objective,
+            config=self.space,
+            metric="metric",
+            num_samples=4,
+            verbose=0)
+
     def tearDown(self):
         pass
 
@@ -293,6 +305,61 @@ class AddEvaluatedPointTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    def run_add_evaluated_point(self, point, searcher, get_len_X, get_len_y):
+        searcher = deepcopy(searcher)
+        len_X = get_len_X(searcher)
+        len_y = get_len_y(searcher)
+        self.assertEqual(len_X, 0)
+        self.assertEqual(len_y, 0)
+
+        searcher.add_evaluated_point(point, 1.0)
+
+        len_X = get_len_X(searcher)
+        len_y = get_len_y(searcher)
+        self.assertEqual(len_X, 1)
+        self.assertEqual(len_y, 1)
+
+        searcher.suggest("1")
+
+    def run_add_evaluated_trials(self, searcher, get_len_X, get_len_y):
+        searcher_copy = deepcopy(searcher)
+        searcher_copy.add_evaluated_trials(self.analysis, "metric")
+        self.assertEqual(get_len_X(searcher_copy), 4)
+        self.assertEqual(get_len_y(searcher_copy), 4)
+        searcher_copy.suggest("1")
+
+        searcher_copy = deepcopy(searcher)
+        searcher_copy.add_evaluated_trials(self.analysis.trials, "metric")
+        self.assertEqual(get_len_X(searcher_copy), 4)
+        self.assertEqual(get_len_y(searcher_copy), 4)
+        searcher_copy.suggest("1")
+
+        searcher_copy = deepcopy(searcher)
+        searcher_copy.add_evaluated_trials(self.analysis.trials[0], "metric")
+        self.assertEqual(get_len_X(searcher_copy), 1)
+        self.assertEqual(get_len_y(searcher_copy), 1)
+        searcher_copy.suggest("1")
+
+    def testDragonfly(self):
+        from ray.tune.suggest.dragonfly import DragonflySearch
+
+        searcher = DragonflySearch(
+            space=self.space,
+            metric="metric",
+            mode="max",
+            domain="euclidean",
+            optimizer="bandit")
+
+        point = {
+            self.param_name: self.valid_value,
+        }
+
+        get_len_X = lambda s: len(s._opt.history.curr_opt_points)  # noqa E731
+        get_len_y = lambda s: len(s._opt.history.curr_opt_vals)  # noqa E731
+
+        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
+        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
     def testOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
@@ -307,7 +374,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
             }],
             evaluated_rewards=[1.0])
 
-        self.assertGreater(len(searcher._ot_study.trials), 0)
+        get_len = lambda s: len(s._ot_study.trials)  # noqa E731
+
+        self.assertGreater(get_len(searcher), 0)
 
         searcher = OptunaSearch(
             space=self.space,
@@ -319,24 +388,34 @@ class AddEvaluatedPointTest(unittest.TestCase):
             self.param_name: self.valid_value,
         }
 
-        self.assertEqual(len(searcher._ot_study.trials), 0)
+        self.assertEqual(get_len(searcher), 0)
 
         searcher.add_evaluated_point(
             point, 1.0, intermediate_values=[0.8, 0.9])
-        self.assertEqual(len(searcher._ot_study.trials), 1)
+        self.assertEqual(get_len(searcher), 1)
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.COMPLETE)
 
         searcher.add_evaluated_point(
             point, 1.0, intermediate_values=[0.8, 0.9], error=True)
-        self.assertEqual(len(searcher._ot_study.trials), 2)
+        self.assertEqual(get_len(searcher), 2)
         self.assertTrue(searcher._ot_study.trials[-1].state == TrialState.FAIL)
 
         searcher.add_evaluated_point(
             point, 1.0, intermediate_values=[0.8, 0.9], pruned=True)
-        self.assertEqual(len(searcher._ot_study.trials), 3)
+        self.assertEqual(get_len(searcher), 3)
         self.assertTrue(
             searcher._ot_study.trials[-1].state == TrialState.PRUNED)
+
+        searcher.suggest("1")
+
+        searcher = OptunaSearch(
+            space=self.space,
+            metric="metric",
+            mode="max",
+        )
+
+        self.run_add_evaluated_trials(searcher, get_len, get_len)
 
         def dbr_space(trial):
             return {
@@ -364,17 +443,30 @@ class AddEvaluatedPointTest(unittest.TestCase):
             self.param_name: self.valid_value,
         }
 
-        len_X = len(searcher._opt.X)
-        len_y = len(searcher._opt.y)
-        self.assertEqual(len_X, 0)
-        self.assertEqual(len_y, 0)
+        get_len_X = lambda s: len(s._opt.X)  # noqa E731
+        get_len_y = lambda s: len(s._opt.y)  # noqa E731
 
-        searcher.add_evaluated_point(point, 1.0)
+        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
+        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
-        len_X = len(searcher._opt.X)
-        len_y = len(searcher._opt.y)
-        self.assertEqual(len_X, 1)
-        self.assertEqual(len_y, 1)
+    def testSkOpt(self):
+        from ray.tune.suggest.skopt import SkOptSearch
+
+        searcher = SkOptSearch(
+            space=self.space,
+            metric="metric",
+            mode="max",
+        )
+
+        point = {
+            self.param_name: self.valid_value,
+        }
+
+        get_len_X = lambda s: len(s._skopt_opt.Xi)  # noqa E731
+        get_len_y = lambda s: len(s._skopt_opt.yi)  # noqa E731
+
+        self.run_add_evaluated_point(point, searcher, get_len_X, get_len_y)
+        self.run_add_evaluated_trials(searcher, get_len_X, get_len_y)
 
 
 class SaveRestoreCheckpointTest(unittest.TestCase):
