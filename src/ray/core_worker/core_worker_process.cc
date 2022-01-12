@@ -21,22 +21,9 @@ namespace ray {
 namespace core {
 namespace {
 
-std::shared_ptr<CoreWorkerProcessImpl> core_worker_process;
+std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
 
 }  // namespace
-
-std::shared_ptr<CoreWorkerProcessImpl> GetCoreWorkerProcess() {
-  return core_worker_process;
-}
-
-void InitializeFromExisting(
-    std::shared_ptr<CoreWorkerProcessImpl> existing_worker_process) {
-  // RAY_CHECK(!core_worker_process)
-  //     << "The process is already initialized for core worker.";
-  core_worker_process = existing_worker_process;
-
-  // TODO(jon-chuang): Also add std::atexit(core_worker_process.reset();) here?
-}
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)

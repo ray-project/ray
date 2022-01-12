@@ -307,7 +307,6 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                 std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
           }));
     }
-
     auto result = promise.get_future().get();
     auto status = result.first;
     if (!status.ok()) {
@@ -320,7 +319,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                  [](const rpc::GcsNodeInfo &node) {
                    return node.state() == rpc::GcsNodeInfo::ALIVE;
                  });
-                 
+
     if (nodes.empty()) {
       status = Status::NotFound("GCS has started but no raylets have registered yet.");
     } else {

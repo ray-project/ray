@@ -141,15 +141,7 @@ Status StoreConn::RecvFd(MEMFD_TYPE_NON_UNIQUE *fd) {
     return Status::IOError("Failed to receive the handle.");
   }
 #else
-RAY_LOG(INFO) << "RECVFD1";
-  auto nh = GetNativeHandle();
-  RAY_LOG(INFO) << "RECVFD1.1";
-  *fd = recv_fd(nh);
-  RAY_LOG(INFO) << "RECVFD2";
-  if (*fd < 0) {
-  RAY_LOG(INFO) << "RECVFD3";
-    return Status::IOError("Failed to receive the fd.");
-  }
+  *fd = recv_fd(GetNativeHandle());
 #endif
 
 RAY_LOG(INFO) << "RECVFD4";

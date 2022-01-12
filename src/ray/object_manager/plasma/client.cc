@@ -227,6 +227,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
     RAY_CHECK_OK(store_conn_->RecvFd(&fd.first));
     fd.second = store_fd_val.second;
     // Close and erase the old duplicated fd entry that is no longer needed.
+    RAY_LOG(INFO) << "Erasing re-used mmap entry for fd " << store_fd_val.first;
     if (dedup_fd_table_.find(store_fd_val.first) != dedup_fd_table_.end()) {
       mmap_table_.erase(dedup_fd_table_[store_fd_val.first]);
     }
@@ -279,7 +280,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
                                              const uint8_t *metadata,
                                              uint64_t *retry_with_request_id,
                                              std::shared_ptr<Buffer> *data) {
-  std::vector<uint8_t> buffer
+  std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaCreateReply, &buffer));
   ObjectID id;
   PlasmaObject object;
@@ -319,6 +320,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
   } else {
     RAY_LOG(FATAL) << "GPU is not enabled.";
   }
+
   // Increment the count of the number of instances of this object that this
   // client is using. A call to PlasmaClient::Release is required to decrement
   // this count. Cache the reference to the object.
@@ -339,7 +341,7 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
   uint64_t retry_with_request_id = 0;
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
-                   << data_size << " and metadata size " << metadata_size;
+                 << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
