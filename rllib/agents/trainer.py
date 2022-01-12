@@ -35,7 +35,7 @@ from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
     train_one_step, multi_gpu_train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
@@ -49,7 +49,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
     NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.multi_agent import check_multi_agent
+from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
@@ -1429,6 +1429,13 @@ class Trainer(Trainable):
                 error=False)
             unsquash_action = unsquash_actions
 
+        # `unsquash_action` is None: Use value of config['normalize_actions'].
+        if unsquash_action is None:
+            unsquash_action = self.config["normalize_actions"]
+        # `clip_action` is None: Use value of config['clip_actions'].
+        elif clip_action is None:
+            clip_action = self.config["clip_actions"]
+
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
         err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
@@ -1560,6 +1567,13 @@ class Trainer(Trainable):
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
                 error=False)
             unsquash_actions = normalize_actions
+
+        # `unsquash_actions` is None: Use value of config['normalize_actions'].
+        if unsquash_actions is None:
+            unsquash_actions = self.config["normalize_actions"]
+        # `clip_actions` is None: Use value of config['clip_actions'].
+        elif clip_actions is None:
+            clip_actions = self.config["clip_actions"]
 
         # Preprocess obs and states.
         state_defined = state is not None
@@ -1848,8 +1862,9 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
-            self.workers.stop()
+        workers = getattr(self, "workers", None)
+        if workers:
+            workers.stop()
         # Stop all optimizers.
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
@@ -2130,34 +2145,9 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
-        # Loop through all policy definitions in multi-agent policies.
+        # Validate "multiagent" sub-dict and convert policy 4-tuples to
+        # PolicySpec objects.
         policies, is_multi_agent = check_multi_agent(config)
-
-        for pid, policy_spec in policies.copy().items():
-            # Policy IDs must be strings.
-            if not isinstance(pid, str):
-                raise ValueError("Policy keys must be strs, got {}".format(
-                    type(pid)))
-
-            # Convert to PolicySpec if plain list/tuple.
-            if not isinstance(policy_spec, PolicySpec):
-                # Values must be lists/tuples of len 4.
-                if not isinstance(policy_spec, (list, tuple)) or \
-                        len(policy_spec) != 4:
-                    raise ValueError(
-                        "Policy specs must be tuples/lists of "
-                        "(cls or None, obs_space, action_space, config), "
-                        f"got {policy_spec}")
-                policies[pid] = PolicySpec(*policy_spec)
-
-            # Config is None -> Set to {}.
-            if policies[pid].config is None:
-                policies[pid] = policies[pid]._replace(config={})
-            # Config not a dict.
-            elif not isinstance(policies[pid].config, dict):
-                raise ValueError(
-                    f"Multiagent policy config for {pid} must be a dict, "
-                    f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
