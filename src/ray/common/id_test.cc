@@ -79,6 +79,9 @@ TEST(TaskIDTest, TestTaskIDForExecution) {
             TaskID::ForExecutionAttempt(task_id, 0));
   ASSERT_EQ(TaskID::ForExecutionAttempt(task_id, 1),
             TaskID::ForExecutionAttempt(task_id, 1));
+  // Check for overflow.
+  ASSERT_NE(TaskID::ForExecutionAttempt(task_id, 0),
+            TaskID::ForExecutionAttempt(task_id, 256));
 }
 
 TEST(ObjectIDTest, TestObjectID) {
