@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_split.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -39,26 +40,40 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
-  /// Constructor of GcsClientOptions.
+  /// Constructor of GcsClientOptions from redis.
   ///
-  /// \param ip GCS service ip.
-  /// \param port GCS service port.
-  /// \param password GCS service password.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password,
-                   bool enable_sync_conn = true, bool enable_async_conn = true,
-                   bool enable_subscribe_conn = true)
-      : server_ip_(ip),
-        server_port_(port),
+  /// \param ip redis service ip.
+  /// \param port redis service port.
+  /// \param password redis service password.
+  GcsClientOptions(const std::string &redis_ip, int redis_port,
+                   const std::string &password, bool enable_sync_conn = true,
+                   bool enable_async_conn = true, bool enable_subscribe_conn = true)
+      : redis_ip_(redis_ip),
+        redis_port_(redis_port),
         password_(password),
         enable_sync_conn_(enable_sync_conn),
         enable_async_conn_(enable_async_conn),
         enable_subscribe_conn_(enable_subscribe_conn) {}
 
+  /// Constructor of GcsClientOptions from gcs address
+  ///
+  /// \param gcs_address gcs address, including port
+  GcsClientOptions(const std::string &gcs_address) {
+    std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    RAY_CHECK(address.size() == 2);
+    gcs_address_ = address[0];
+    gcs_port_ = std::stoi(address[1]);
+  }
+
   GcsClientOptions() {}
 
-  // GCS server address
-  std::string server_ip_;
-  int server_port_;
+  // Gcs address
+  std::string gcs_address_;
+  int gcs_port_ = 0;
+
+  // redis server address
+  std::string redis_ip_;
+  int redis_port_ = 0;
 
   // Password of GCS server.
   std::string password_;
@@ -83,7 +98,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param get_gcs_server_address_func Function to get GCS server address.
   explicit GcsClient(const GcsClientOptions &options,
                      std::function<bool(std::pair<std::string, int> *)>
-                         get_gcs_server_address_func = {});
+                         get_gcs_server_address_func = nullptr);
 
   virtual ~GcsClient() = default;
 
@@ -127,13 +142,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   NodeResourceInfoAccessor &NodeResources() {
     RAY_CHECK(node_resource_accessor_ != nullptr);
     return *node_resource_accessor_;
-  }
-
-  /// Get the sub-interface for accessing task information in GCS.
-  /// This function is thread safe.
-  TaskInfoAccessor &Tasks() {
-    RAY_CHECK(task_accessor_ != nullptr);
-    return *task_accessor_;
   }
 
   /// Get the sub-interface for accessing error information in GCS.
@@ -182,7 +190,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<JobInfoAccessor> job_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
-  std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;

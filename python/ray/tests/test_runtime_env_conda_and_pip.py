@@ -1,8 +1,14 @@
 import os
 import pytest
 import sys
+import platform
+
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.test_utils import (wait_for_condition, chdir,
+                                     check_local_files_gced,
                                      generate_runtime_env_dict)
+from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 import yaml
 import tempfile
@@ -16,22 +22,36 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-def check_local_files_gced(cluster):
-    for node in cluster.list_all_nodes():
-        for subdir in ["conda", "pip"]:
-            all_files = os.listdir(
-                os.path.join(node.get_runtime_env_dir_path(), subdir))
-            # Check that there are no files remaining except for .lock files
-            # and generated requirements.txt files.
-            # TODO(architkulkarni): these files should get cleaned up too!
-            if len(
-                    list(
-                        filter(lambda f: not f.endswith((".lock", ".txt")),
-                               all_files))) > 0:
-                print(str(all_files))
-                return False
+def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
+    # Disable dev mode to prevent Ray dependencies being automatically inserted
+    # into the conda dict.
+    if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") is not None:
+        monkeypatch.delenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE")
+    if os.environ.get("RAY_CI_POST_WHEEL_TESTS") is not None:
+        monkeypatch.delenv("RAY_CI_POST_WHEEL_TESTS")
+    monkeypatch.setattr(ray, "__version__", "1.9.0")
+    monkeypatch.setattr(ray, "__commit__",
+                        "92599d9127e228fe8d0a2d94ca75754ec21c4ae4")
+    monkeypatch.setattr(sys, "version_info", (3, 9, 7, "final", 0))
+    # Simulate running on an M1 Mac.
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
 
-    return True
+    input_conda = {"dependencies": ["blah", "pip", {"pip": ["pip_pkg"]}]}
+    runtime_env = RuntimeEnv(
+        ParsedRuntimeEnv({
+            "conda": input_conda
+        }).serialize())
+    output_conda = _get_conda_dict_with_ray_inserted(runtime_env)
+    # M1 wheels are not uploaded to AWS S3.  So rather than have an S3 URL
+    # inserted as a dependency, we should just have the string "ray==1.9.0".
+    assert output_conda == {
+        "dependencies": [
+            "blah", "pip", {
+                "pip": ["ray==1.9.0", "ray[default]", "pip_pkg"]
+            }, "python=3.9.7"
+        ]
+    }
 
 
 @pytest.mark.skipif(
@@ -157,38 +177,6 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
     ray.kill(a)
 
     wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
-
-
-# TODO(architkulkarni): fix bug #19602 and enable test.
-@pytest.mark.skip("Currently failing")
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
-@pytest.mark.parametrize("field", ["conda", "pip"])
-@pytest.mark.parametrize("spec_format", ["file", "python_object"])
-def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
-    """Tests that actor-level working_dir is GC'd when the actor exits."""
-    cluster, address = start_cluster
-
-    ray.init(address)
-
-    runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
-
-    @ray.remote
-    class A:
-        def test_import(self):
-            import pip_install_test  # noqa: F401
-            return True
-
-    NUM_ACTORS = 5
-    actors = [
-        A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
-    ]
-    ray.get([a.test_import.remote() for a in actors])
-    for i in range(5):
-        assert not check_local_files_gced(cluster)
-        ray.kill(actors[i])
-    wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
+import unittest
 from unittest.mock import Mock, MagicMock
 
-import pytest
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.pre_checks import check_gym_environments
+from ray.rllib.utils.pre_checks.env import check_gym_environments
 
 
-class TestGymCheckEnv():
+class TestGymCheckEnv(unittest.TestCase):
     def test_has_observation_and_action_space(self):
         env = Mock(spec=[])
         with pytest.raises(
@@ -112,4 +112,6 @@ class TestGymCheckEnv():
 
 
 if __name__ == "__main__":
-    pytest.main()
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

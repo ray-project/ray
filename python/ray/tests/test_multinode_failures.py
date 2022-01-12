@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray._private.test_utils import RayTestTimeoutException, get_other_nodes
+from ray._private.test_utils import get_other_nodes, Semaphore
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -21,7 +21,9 @@ def ray_start_workers_separate_multinode(request):
     # Start the Ray processes.
     cluster = Cluster()
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_initial_workers)
+        cluster.add_node(
+            num_cpus=num_initial_workers,
+            resources={"custom": num_initial_workers})
     ray.init(address=cluster.address)
 
     yield num_nodes, num_initial_workers
@@ -34,23 +36,24 @@ def ray_start_workers_separate_multinode(request):
 def test_worker_failed(ray_start_workers_separate_multinode):
     num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
 
-    @ray.remote
+    block_worker = Semaphore.remote(0)
+    block_driver = Semaphore.remote(0)
+    ray.get([block_worker.locked.remote(), block_driver.locked.remote()])
+
+    # Acquire a custom resource that isn't released on `ray.get` to make sure
+    # this task gets spread across all the nodes.
+    @ray.remote(num_cpus=1, resources={"custom": 1})
     def get_pids():
-        time.sleep(0.25)
+        ray.get(block_driver.release.remote())
+        ray.get(block_worker.acquire.remote())
         return os.getpid()
 
-    start_time = time.time()
-    pids = set()
-    while len(pids) < num_nodes * num_initial_workers:
-        new_pids = ray.get([
-            get_pids.remote()
-            for _ in range(2 * num_nodes * num_initial_workers)
-        ])
-        for pid in new_pids:
-            pids.add(pid)
-        if time.time() - start_time > 60:
-            raise RayTestTimeoutException(
-                "Timed out while waiting to get worker PIDs.")
+    total_num_workers = num_nodes * num_initial_workers
+    pid_refs = [get_pids.remote() for _ in range(total_num_workers)]
+    ray.get([block_driver.acquire.remote() for _ in range(total_num_workers)])
+    ray.get([block_worker.release.remote() for _ in range(total_num_workers)])
+
+    pids = set(ray.get(pid_refs))
 
     @ray.remote
     def f(x):

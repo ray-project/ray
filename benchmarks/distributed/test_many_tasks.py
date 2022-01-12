@@ -62,6 +62,7 @@ def test(num_tasks):
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print(f"Peak memory usage: {round(used_gb, 2)}GB")
     print(f"Peak memory usage per processes:\n {usage}")
+    del monitor_actor
     test_utils.wait_for_condition(no_resource_leaks)
 
     rate = num_tasks / (end_time - start_time - sleep_time)

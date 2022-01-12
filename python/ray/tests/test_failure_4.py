@@ -19,6 +19,7 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      run_string_as_driver, wait_for_condition)
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.exceptions import LocalRayletDiedError
 import ray.experimental.internal_kv as internal_kv
 
@@ -384,9 +385,13 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     Test batch drain.
     """
     # Prepare requests.
-    redis_cli = ray._private.services.create_redis_client(
-        cluster.address, password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    gcs_server_addr = redis_cli.get("GcsServerAddress").decode("utf-8")
+    if use_gcs_for_bootstrap():
+        gcs_server_addr = cluster.gcs_address
+    else:
+        redis_cli = ray._private.services.create_redis_client(
+            cluster.redis_address,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        gcs_server_addr = redis_cli.get("GcsServerAddress").decode()
     options = (("grpc.enable_http_proxy", 0), )
     channel = grpc.insecure_channel(gcs_server_addr, options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
