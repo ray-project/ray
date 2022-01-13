@@ -345,14 +345,16 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/false));
-
   Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
+
   while (retry_with_request_id > 0) {
     guard.unlock();
     // TODO(sang): Consider using exponential backoff here.
     std::this_thread::sleep_for(
         std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
     guard.lock();
+    RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
+                   << retry_with_request_id;
     status = RetryCreate(object_id, retry_with_request_id, metadata,
                          &retry_with_request_id, data);
   }
@@ -373,14 +375,15 @@ Status PlasmaClient::Impl::TryCreateImmediately(
     const uint8_t *metadata, int64_t metadata_size, std::shared_ptr<Buffer> *data,
     fb::ObjectSource source, int device_num) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+
+  RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
+                   << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/true));
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 
-RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
-                 << data_size << " and metadata size " << metadata_size;
 Status PlasmaClient::Impl::GetBuffers(
     const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
     const std::function<std::shared_ptr<Buffer>(

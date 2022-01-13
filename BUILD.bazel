@@ -2535,9 +2535,10 @@ cc_binary(
 )
 
 cc_library(
-    name = "libcore_worker_library_c_includes",
-    srcs = ["src/ray/core_worker/lib/c/c_worker.h"],
-    visibility = ["//rust:__subpackages__"],
+  name = "core_worker_library_c_so",
+  srcs = [":libcore_worker_library_c.so"],
+  hdrs = ["src/ray/core_worker/lib/c/c_worker.h"],
+  visibility = ["//rust:__subpackages__"],
 )
 
 load("@rules_rust//bindgen:bindgen.bzl", "rust_bindgen")
@@ -2545,7 +2546,7 @@ load("@rules_rust//bindgen:bindgen.bzl", "rust_bindgen")
 rust_bindgen(
     name = "ray_rs_sys_bindgen",
     header = "src/ray/core_worker/lib/c/c_worker.h",
-    cc_lib = "//:libcore_worker_library_c_includes",
+    cc_lib = "//:core_worker_library_c_so",
     visibility = ["//rust:__subpackages__"],
 )
 
