@@ -53,7 +53,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         print("Autoscaling worked")
         ray.util.remove_placement_group(pg)
 
-        time.sleep(1)  # Wait until nodes.json is updated
+        time.sleep(2)  # Give some time so nodes.json is updated
 
         self.cluster.kill_node(num=2)
         print("Killed GPU node.")
