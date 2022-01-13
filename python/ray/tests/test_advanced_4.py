@@ -1,5 +1,4 @@
 import pytest
-import os
 import ray
 import subprocess
 import sys
@@ -209,7 +208,6 @@ def test_function_table_gc(call_ray_start):
     assert get_gcs_memory_used() > 500 * 1024 * 1024
     job_id = ray.worker.global_worker.current_job_id.binary()
     assert function_entry_num(job_id) > 0
-    mem_size_before = get_gcs_memory_used()
     ray.shutdown()
 
     # now check the function table is cleaned up after job finished
