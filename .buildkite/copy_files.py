@@ -8,6 +8,7 @@ import time
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from typing import List
+from pprint import pformat
 
 import requests
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
@@ -19,9 +20,9 @@ def retry(f):
         for _ in range(5):
             resp = f(*args, **kwargs)
             print("Getting Presigned URL, status_code", resp.status_code)
-            print(resp.text)
             if resp.status_code >= 500:
                 print("errored, retrying...")
+                print(pformat(dict(resp.headers.items())))
                 time.sleep(5)
             else:
                 return resp
@@ -76,6 +77,7 @@ class BKAnalyticsUploader:
                 },
                 "data": xml_string
             })
+        print(resp.text)
         return resp
 
     @staticmethod
@@ -83,7 +85,13 @@ class BKAnalyticsUploader:
         if len(xml_texts) == 1:
             return xml_texts[0]
 
-        records = [ET.parse(io.StringIO(t)) for t in xml_texts]
+        records = []
+        for t in xml_texts:
+            try:
+                records.append(ET.parse(io.StringIO(t)))
+            except Exception as e:
+                print(t)
+                raise e
         first, later = records[0], records[1:]
         for later_record in later:
             first.getroot().append(later_record.find("testsuite"))
