@@ -394,6 +394,8 @@ class CommandRunnerHack:
         env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
         full_cmd = " ".join(f"{k}={v}"
                             for k, v in env_vars.items()) + " " + cmd_to_run
+        logger.info(
+            f"Executing {cmd_to_run} with {env_vars} via ray job submit")
         proc = subprocess.Popen(
             " ".join(["ray", "job", "submit",
                       shlex.quote(full_cmd)]),
@@ -423,24 +425,31 @@ class S3SyncSessionController(SessionController):
         super().__init__()
 
     def _generate_tmp_s3_path(self):
-        fn = ''.join(random.choice(string.ascii_lowercase) for i in range(10))
+        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
         location = f"tmp/{fn}"
         return location
 
     def pull(self, session_name, source, target):
         remote_upload_to = self._generate_tmp_s3_path()
-        session_id = self._resolve_session(session_name).id
         # remote source -> s3
         cid = global_command_runner.run_command(
-            session_name, (f"pip install awscli && aws s3 cp {source} "
+            session_name, (f"pip install -q awscli && aws s3 cp {source} "
                            f"s3://{self.bucket}/{remote_upload_to}"), {})
         global_command_runner.wait_command(cid)
+
         # s3 -> local target
-        self.s3_client.download_file(
-            Bucket=self.bucket,
-            Key=remote_upload_to,
-            Filename=target,
-        )
+        def f():
+            self.s3_client.download_file(
+                Bucket=self.bucket,
+                Key=remote_upload_to,
+                Filename=target,
+            )
+
+        exponential_backoff_retry(
+            f,
+            retry_exceptions=Exception,
+            initial_retry_delay_s=0.5,
+            max_retries=6)
 
     def _push_local_dir(self, session_name):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -454,9 +463,11 @@ class S3SyncSessionController(SessionController):
             Key=remote_upload_to,
         )
         # s3 -> remote target
-        cid = global_command_runner.run_command(session_name, (
-            f"pip install awscli && aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
-            "unzip archive.zip"), {})
+        cid = global_command_runner.run_command(
+            session_name,
+            ("pip install awscli && "
+             f"aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
+             "unzip archive.zip"), {})
         global_command_runner.wait_command(cid)
 
     def push(self, session_name, source, target):
@@ -476,9 +487,8 @@ class S3SyncSessionController(SessionController):
         )
         # s3 -> remote target
         cid = global_command_runner.run_command(
-            session_name,
-            f"pip install awscli && aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}",
-            {})
+            session_name, "pip install awscli && "
+            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}", {})
         global_command_runner.wait_command(cid)
 
 
