@@ -112,10 +112,13 @@ def get_gcs_address_from_redis(redis) -> str:
     count = 0
     while count < _MAX_GET_GCS_SERVER_ADDRESS_RETRIES:
         gcs_address = redis.get("GcsServerAddress")
-        if gcs_address is not None:
-            return gcs_address.decode()
-        count += 1
-        time.sleep(1)
+        if gcs_address is None:
+            logger.debug(
+                "Failed to look up gcs address through redis, retrying.")
+            time.sleep(1)
+            count += 1
+            continue
+        return gcs_address.decode()
     raise RuntimeError("Failed to look up gcs address through redis")
 
 
