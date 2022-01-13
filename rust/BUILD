@@ -10,6 +10,8 @@ genrule(
     cmd = """
         WORK_DIR="$$(pwd)" &&
         PY_RUST_DIR="$$WORK_DIR/python/ray/rust" &&
+        rm -rf "$$PY_RUST_DIR" &&
+        rm -rf "$$PY_RUST_DIR/lib" &&
         mkdir -p "$$PY_RUST_DIR" &&
         mkdir -p "$$PY_RUST_DIR/lib" &&
         cp -f $(execpath //rust/ray-rs-worker:worker) "$$PY_RUST_DIR/" &&
