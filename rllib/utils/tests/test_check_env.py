@@ -1,15 +1,16 @@
 import logging
-from unittest.mock import Mock, MagicMock
-
 import numpy as np
 import pytest
-from ray.rllib.examples.env.random_env import RandomEnv
+import unittest
+from unittest.mock import Mock, MagicMock
+
 from ray.rllib.env.multi_agent_env import make_multi_agent
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.utils.pre_checks.env import check_env, check_gym_environments, \
     check_multiagent_environments
 
 
-class TestGymCheckEnv():
+class TestGymCheckEnv(unittest.TestCase):
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog):
         caplog.set_level(logging.CRITICAL)
@@ -23,7 +24,6 @@ class TestGymCheckEnv():
         with pytest.raises(
                 AttributeError, match="Env must have action_space."):
             check_gym_environments(env)
-        del env
 
     def test_obs_and_action_spaces_are_gym_spaces(self):
         env = RandomEnv()
@@ -37,7 +37,6 @@ class TestGymCheckEnv():
         with pytest.raises(
                 ValueError, match="Action space must be a gym.space"):
             check_env(env)
-        del env
 
     def test_sampled_observation_contained(self):
         env = RandomEnv()
@@ -50,7 +49,6 @@ class TestGymCheckEnv():
         env.observation_space.sample = MagicMock(return_value=float(1))
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
     def test_sampled_action_contained(self):
         env = RandomEnv()
@@ -62,7 +60,6 @@ class TestGymCheckEnv():
         env.action_space.sample = MagicMock(return_value=float(1))
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
     def test_reset(self):
         reset = MagicMock(return_value=5)
@@ -77,7 +74,6 @@ class TestGymCheckEnv():
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        del env
 
     def test_step(self):
         step = MagicMock(return_value=(5, 5, True, {}))
@@ -116,10 +112,9 @@ class TestGymCheckEnv():
         error = "Your step function must return a info that is a dict."
         with pytest.raises(AssertionError, match=error):
             check_env(env)
-        del env
 
 
-class TestCheckMultiAgentEnv():
+class TestCheckMultiAgentEnv(unittest.TestCase):
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog):
         caplog.set_level(logging.CRITICAL)
@@ -128,7 +123,6 @@ class TestCheckMultiAgentEnv():
         env = RandomEnv()
         with pytest.raises(ValueError, match="The passed env is not"):
             check_multiagent_environments(env)
-        del env
 
     def test_check_env_reset_incorrect_error(self):
         reset = MagicMock(return_value=5)
@@ -157,7 +151,6 @@ class TestCheckMultiAgentEnv():
                 match="Your observation_space_contains "
                 "function has some"):
             check_env(env)
-        del env
         env = make_multi_agent("CartPole-v1")({"num_agents": 2})
         bad_action = {0: 2, 1: 2}
         env.action_space_sample = lambda *_: bad_action
