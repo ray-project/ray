@@ -439,18 +439,11 @@ class S3SyncSessionController(SessionController):
         global_command_runner.wait_command(cid)
 
         # s3 -> local target
-        def f():
-            self.s3_client.download_file(
-                Bucket=self.bucket,
-                Key=remote_upload_to,
-                Filename=target,
-            )
-
-        exponential_backoff_retry(
-            f,
-            retry_exceptions=Exception,
-            initial_retry_delay_s=0.5,
-            max_retries=6)
+        self.s3_client.download_file(
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+            Filename=target,
+        )
 
     def _push_local_dir(self, session_name):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -1689,6 +1682,7 @@ def run_test_config(
                     "test_name": test_name
                 }, f)
 
+            on_k8s = test_config["cluster"].get("compute_on_k8s")
             if prepare_command or not test_uses_ray_connect:
                 if test_uses_ray_connect:
                     logger.info("Found a prepare command, so pushing it "
@@ -1714,24 +1708,30 @@ def run_test_config(
                 _check_stop(stop_event, "file_sync")
 
                 # Optionally run preparation command
-                if test_config["cluster"].get("compute_on_k8s", False):
-                    assert not prepare_command, "not yet supported on K8s"
                 if prepare_command:
                     logger.info(
                         f"Running preparation command: {prepare_command}")
-                    scd_id, result = run_session_command(
-                        sdk=sdk,
-                        session_id=session_id,
-                        cmd_to_run=prepare_command,
-                        result_queue=result_queue,
-                        env_vars=env_vars,
-                        state_str="CMD_PREPARE")
-                    _, _ = wait_for_session_command_to_complete(
-                        result,
-                        sdk=sdk,
-                        scd_id=scd_id,
-                        stop_event=stop_event,
-                        state_str="CMD_PREPARE")
+                    if on_k8s:
+                        cid = global_command_runner.run_command(
+                            session_name, prepare_command, env_vars)
+                        status_code, _ = global_command_runner.wait_command(
+                            cid)
+                        if status_code != 0:
+                            raise PrepareCommandRuntimeError()
+                    else:
+                        scd_id, result = run_session_command(
+                            sdk=sdk,
+                            session_id=session_id,
+                            cmd_to_run=prepare_command,
+                            result_queue=result_queue,
+                            env_vars=env_vars,
+                            state_str="CMD_PREPARE")
+                        _, _ = wait_for_session_command_to_complete(
+                            result,
+                            sdk=sdk,
+                            scd_id=scd_id,
+                            stop_event=stop_event,
+                            state_str="CMD_PREPARE")
 
             if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
@@ -1765,7 +1765,6 @@ def run_test_config(
             if smoke_test:
                 cmd_to_run += " --smoke-test"
 
-            on_k8s = test_config["cluster"].get("compute_on_k8s")
             if on_k8s:
                 cmd_id = global_command_runner.run_command(
                     session_name, cmd_to_run, env_vars=env_vars)
