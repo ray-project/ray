@@ -378,6 +378,38 @@ class State:
         self.data = data
 
 
+class CommandRunnerHack:
+    def __init__(self):
+        self.subprocess_pool: Dict[int, subprocess.Popen] = dict()
+        self.start_time: Dict[int, float] = dict()
+        self.counter = 0
+
+    def run_command(self, session_name, cmd_to_run, env_vars) -> int:
+        self.counter += 1
+        command_id = self.counter
+        env = os.environ.copy()
+        env["RAY_ADDRESS"] = f"anyscale://{session_name}"
+        full_cmd = " ".join(f"{k}={v}"
+                            for k, v in env_vars.items()) + " " + cmd_to_run
+        proc = subprocess.Popen(
+            ["ray", "job", "submit", full_cmd],
+            shell=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            env=env)
+        self.subprocess_pool[command_id] = proc
+        self.start_time[command_id] = time.time()
+        return command_id
+
+    def wait_command(self, command_id: int):
+        retcode = self.subprocess_pool[command_id].wait()
+        duration = time.time() - self.start_time[command_id]
+        return retcode, duration
+
+
+global_command_runner = CommandRunnerHack()
+
+
 class S3SyncSessionController(SessionController):
     def __init__(self, sdk, result_queue):
         self.sdk = sdk
@@ -395,20 +427,10 @@ class S3SyncSessionController(SessionController):
         remote_upload_to = self._generate_tmp_s3_path()
         session_id = self._resolve_session(session_name).id
         # remote source -> s3
-        scd_id, result = run_session_command(
-            sdk=self.sdk,
-            session_id=session_id,
-            cmd_to_run=
-            f"aws s3 cp {source} s3://{self.bucket}/{remote_upload_to}",
-            result_queue=self.result_queue,
-            env_vars={},
-            state_str="PULL")
-        _, _ = wait_for_session_command_to_complete(
-            result,
-            sdk=self.sdk,
-            scd_id=scd_id,
-            stop_event=multiprocessing.Event(),  # unused
-            state_str="PULL")
+        cid = global_command_runner.run_command(
+            session_name, (f"pip install awscli && aws s3 cp {source} "
+                           f"s3://{self.bucket}/{remote_upload_to}"), {})
+        global_command_runner.wait_command(cid)
         # s3 -> local target
         self.s3_client.download_file(
             Bucket=self.bucket,
@@ -416,7 +438,7 @@ class S3SyncSessionController(SessionController):
             Filename=target,
         )
 
-    def _push_local_dir(self, session_id):
+    def _push_local_dir(self, session_name):
         remote_upload_to = self._generate_tmp_s3_path()
         # pack local dir
         _, local_path = tempfile.mkstemp()
@@ -428,26 +450,14 @@ class S3SyncSessionController(SessionController):
             Key=remote_upload_to,
         )
         # s3 -> remote target
-        scd_id, result = run_session_command(
-            sdk=self.sdk,
-            session_id=session_id,
-            cmd_to_run=
-            (f"aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
-             "unzip archive.zip"),
-            result_queue=self.result_queue,
-            env_vars={},
-            state_str="PUSH")
-        _, _ = wait_for_session_command_to_complete(
-            result,
-            sdk=self.sdk,
-            scd_id=scd_id,
-            stop_event=multiprocessing.Event(),  # unused
-            state_str="PUSH")
+        cid = global_command_runner.run_command(session_name, (
+            f"pip install awscli && aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
+            "unzip archive.zip"), {})
+        global_command_runner.wait_command(cid)
 
     def push(self, session_name, source, target):
-        session_id = self._resolve_session(session_name).id
         if source is None and target is None:
-            self._push_local_dir(session_id)
+            self._push_local_dir(session_name)
             return
 
         assert isinstance(source, str)
@@ -461,20 +471,11 @@ class S3SyncSessionController(SessionController):
             Key=remote_upload_to,
         )
         # s3 -> remote target
-        scd_id, result = run_session_command(
-            sdk=self.sdk,
-            session_id=session_id,
-            cmd_to_run=
-            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}",
-            result_queue=self.result_queue,
-            env_vars={},
-            state_str="PUSH")
-        _, _ = wait_for_session_command_to_complete(
-            result,
-            sdk=self.sdk,
-            scd_id=scd_id,
-            stop_event=multiprocessing.Event(),  # unused
-            state_str="PUSH")
+        cid = global_command_runner.run_command(
+            session_name,
+            f"pip install awscli && aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}",
+            {})
+        global_command_runner.wait_command(cid)
 
 
 sys.path.insert(0, anyscale.ANYSCALE_RAY_DIR)
@@ -1698,6 +1699,8 @@ def run_test_config(
                 _check_stop(stop_event, "file_sync")
 
                 # Optionally run preparation command
+                if test_config["cluster"].get("compute_on_k8s", False):
+                    assert not prepare_command, "not yet supported on K8s"
                 if prepare_command:
                     logger.info(
                         f"Running preparation command: {prepare_command}")
@@ -1747,27 +1750,44 @@ def run_test_config(
             if smoke_test:
                 cmd_to_run += " --smoke-test"
 
-            scd_id, result = run_session_command(
-                sdk=sdk,
-                session_id=session_id,
-                cmd_to_run=cmd_to_run,
-                result_queue=result_queue,
-                env_vars=env_vars,
-                state_str="CMD_RUN")
+            on_k8s = test_config["cluster"].get("compute_on_k8s")
+            if on_k8s:
+                cmd_id = global_command_runner.run_command(
+                    session_name, cmd_to_run, env=env_vars)
+            else:
+                scd_id, result = run_session_command(
+                    sdk=sdk,
+                    session_id=session_id,
+                    cmd_to_run=cmd_to_run,
+                    result_queue=result_queue,
+                    env_vars=env_vars,
+                    state_str="CMD_RUN")
 
             if not kick_off_only:
-                _, runtime = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_RUN")
-                _process_finished_command(
-                    session_controller=session_controller,
-                    scd_id=scd_id,
-                    runtime=runtime,
-                    session_url=session_url,
-                    commit_url=commit_url)
+                if on_k8s:
+                    retcode, runtime = global_command_runner.wait_command(
+                        cmd_id)
+                    if retcode != 0:
+                        raise RuntimeError("Command errored")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id="",
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
+                else:
+                    _, runtime = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_RUN")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id=scd_id,
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
             else:
                 result_queue.put(
                     State("END", time.time(), {
