@@ -621,7 +621,6 @@ def init(
         _metrics_export_port: Optional[int] = None,
         _system_config: Optional[Dict[str, str]] = None,
         _tracing_startup_hook: Optional[Callable] = None,
-        _default_actor_lifetime: str =None,
         **kwargs):
     """
     Connect to an existing Ray cluster or start one and connect to it.
@@ -969,8 +968,7 @@ def init(
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
         namespace=namespace,
-        job_config=job_config,
-        _default_actor_lifetime=_default_actor_lifetime)
+        job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
     else:
@@ -1336,8 +1334,7 @@ def connect(node,
             runtime_env_hash=0,
             worker_shim_pid=0,
             startup_token=0,
-            ray_debugger_external=False,
-            _default_actor_lifetime=None):
+            ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1506,11 +1503,6 @@ def connect(node,
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
-	
-    if _default_actor_lifetime is not None:
-        job_config.set_default_actor_lifetime(_default_actor_lifetime)
-    else:
-        job_config.set_default_actor_lifetime("non-detached")
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(

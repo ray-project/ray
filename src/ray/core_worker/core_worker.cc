@@ -37,7 +37,6 @@ const uint64_t kInternalHeartbeatMillis = 1000;
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 inline bool IsDetachedHelper(ActorLifetime actor_lifetime) {
-  RAY_CHECK(actor_lifetime != ray::rpc::JobConfig_ActorLifetime_NONE);
   return actor_lifetime == ray::rpc::JobConfig_ActorLifetime_DETACHED;
 }
 

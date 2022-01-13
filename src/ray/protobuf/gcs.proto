@@ -251,9 +251,8 @@ message HeartbeatTableData {
 
 message JobConfig {
   enum ActorLifetime {
-    NONE = 0;
-    DETACHED = 1;
-    NON_DETACHED = 2;
+    DETACHED = 0;
+    NON_DETACHED = 1;
   }
 
   // The number of java workers per worker process.

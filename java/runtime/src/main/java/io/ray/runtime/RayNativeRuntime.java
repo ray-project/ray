@@ -103,15 +103,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       int numWorkersPerProcess =
           rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
 
-      JobConfig.ActorLifetime defaultActorLifetime = JobConfig.ActorLifetime.NONE;
-      if (rayConfig.defaultActorLifetime == ActorLifetime.DETACHED) {
-        defaultActorLifetime = JobConfig.ActorLifetime.DETACHED;
-      } else if (rayConfig.defaultActorLifetime == ActorLifetime.NON_DETACHED) {
-        defaultActorLifetime = JobConfig.ActorLifetime.NON_DETACHED;
-      } else {
-        Preconditions.checkState(false, "Unknown lifetime {}.", rayConfig.defaultActorLifetime);
-      }
-
       byte[] serializedJobConfig = null;
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         JobConfig.Builder jobConfigBuilder =
@@ -136,7 +127,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
         jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
-        jobConfigBuilder.setDefaultActorLifetime(defaultActorLifetime);
+        jobConfigBuilder.setDefaultActorLifetime(
+            rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
+                ? JobConfig.ActorLifetime.DETACHED
+                : JobConfig.ActorLifetime.NON_DETACHED);
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 

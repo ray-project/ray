@@ -17,6 +17,7 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
+        TODO: docstring.
     """
 
     def __init__(self,
@@ -26,7 +27,8 @@ class JobConfig:
                  runtime_env=None,
                  client_job=False,
                  metadata=None,
-                 ray_namespace=None):
+                 ray_namespace=None,
+                 default_actor_lifetime="non_detached"):
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -39,7 +41,7 @@ class JobConfig:
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
-        self._default_actor_lifetime = None
+        self.set_default_actor_lifetime(default_actor_lifetime)
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -71,15 +73,12 @@ class JobConfig:
         if default_actor_lifetime == "detached":
             self._default_actor_lifetime = \
                 gcs_utils.JobConfig.ActorLifetime.DETACHED
-        elif default_actor_lifetime == "non-detached":
+        elif default_actor_lifetime == "non_detached":
             self._default_actor_lifetime = \
                 gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
-        elif default_actor_lifetime is None:
-            self._default_actor_lifetime = \
-                gcs_utils.JobConfig.ActorLifetime.NONE
         else:
             raise ValueError(
-                "Lifetime must be one of `detached`, `non-detached` or None.")
+                "Default actor lifetime must be one of `detached`, `non_detached`")
 
     def _validate_runtime_env(self):
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported

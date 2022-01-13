@@ -5,7 +5,7 @@ import io.ray.api.Ray;
 import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.util.SystemUtil;
-import java.util.concurrent.TimeUnit;
+import java.io.IOException;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -44,8 +44,12 @@ public class DefaultActorLifetimeTest {
     }
   }
 
-  public static boolean internalTestDefaultActorLifetime(
-      ActorLifetime defaultActorLifetime, ActorLifetime childActorLifetime) {
+  @Test(
+      groups = {"cluster"},
+      dataProvider = "parameters")
+  public void testDefaultActorLifetime(
+      ActorLifetime defaultActorLifetime, ActorLifetime childActorLifetime)
+      throws IOException, InterruptedException {
     if (defaultActorLifetime != null) {
       System.setProperty("ray.job.default-actor-lifetime", defaultActorLifetime.name());
     }
@@ -62,8 +66,6 @@ public class DefaultActorLifetimeTest {
 
       /// 2. Kill owner and make sure it's dead.
       Runtime.getRuntime().exec("kill -9 " + ownerPid);
-      TimeUnit.SECONDS.sleep(1);
-
       Supplier<Boolean> isOwnerDead =
           () -> {
             try {
@@ -96,28 +98,16 @@ public class DefaultActorLifetimeTest {
             }
           };
 
+      ActorLifetime actualLifetime = defaultActorLifetime;
       if (childActorLifetime != null) {
-        /// childActorLifetime is specified at runtime.
-        if (childActorLifetime == ActorLifetime.DETACHED) {
-          Assert.assertTrue(TestUtils.waitForCondition(childNotDead, 5000));
-        } else {
-          Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
-        }
-      } else {
-        /// Code path of childActorLifetime not specified, so it
-        /// depends on the default actor lifetime.
-        if (defaultActorLifetime == null) {
-          Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
-        } else if (defaultActorLifetime == ActorLifetime.DETACHED) {
-          TimeUnit.SECONDS.sleep(5);
-          Assert.assertTrue(childNotDead.get());
-        } else {
-          Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
-        }
+        actualLifetime = childActorLifetime;
       }
-      return true;
-    } catch (Throwable th) {
-      return false;
+      Assert.assertNotNull(actualLifetime);
+      if (actualLifetime == ActorLifetime.DETACHED) {
+        Assert.assertTrue(TestUtils.waitForCondition(childNotDead, 5000));
+      } else {
+        Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
+      }
     } finally {
       Ray.shutdown();
     }
@@ -125,23 +115,13 @@ public class DefaultActorLifetimeTest {
 
   @DataProvider
   public static Object[][] parameters() {
-    return new Object[][] {
-      {null, null},
-      {null, ActorLifetime.DETACHED},
-      {null, ActorLifetime.NON_DETACHED},
-      {ActorLifetime.DETACHED, null},
-      {ActorLifetime.DETACHED, ActorLifetime.DETACHED},
-      {ActorLifetime.DETACHED, ActorLifetime.NON_DETACHED},
-      {ActorLifetime.NON_DETACHED, null},
-      {ActorLifetime.NON_DETACHED, ActorLifetime.DETACHED},
-      {ActorLifetime.NON_DETACHED, ActorLifetime.NON_DETACHED},
-    };
-  }
-
-  @Test(
-      groups = {"cluster"},
-      dataProvider = "parameters")
-  public void testDefaultActorLifetime(ActorLifetime defaultActorLifetime, ActorLifetime childActor) {
-    Assert.assertTrue(internalTestDefaultActorLifetime(defaultActorLifetime, childActor));
+    Object[] defaultEnums = new Object[] {ActorLifetime.DETACHED, ActorLifetime.NON_DETACHED};
+    Object[] enums = new Object[] {null, ActorLifetime.DETACHED, ActorLifetime.NON_DETACHED};
+    Object[][] params = new Object[6][2];
+    for (int i = 0; i < 6; ++i) {
+      params[i][0] = defaultEnums[i / 3];
+      params[i][1] = enums[i % 3];
+    }
+    return params;
   }
 }

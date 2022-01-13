@@ -5,6 +5,8 @@ import signal
 import sys
 import pytest
 
+from ray.job_config import JobConfig
+
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -16,10 +18,10 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 @pytest.mark.parametrize(
     "default_actor_lifetime,child_actor_lifetime",
-    [(None, None), (None, "detached"), (None, "non-detached"),
+    [(None, None), (None, "detached"), (None, "non_detached"),
      ("detached", None), ("detached", "detached"),
-     ("detached", "non-detached"), ("non-detached", None),
-     ("non-detached", "detached"), ("non-detached", "non-detached")])
+     ("detached", "non_detached"), ("non_detached", None),
+     ("non_detached", "detached"), ("non_detached", "non_detached")])
 def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     @ray.remote
     class OwnerActor:
@@ -42,7 +44,7 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
             return "ok"
 
     if default_actor_lifetime is not None:
-        ray.init(_default_actor_lifetime=default_actor_lifetime)
+        ray.init(job_config=JobConfig(default_actor_lifetime=default_actor_lifetime))
     else:
         ray.init()
 

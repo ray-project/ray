@@ -143,6 +143,7 @@ public class RayConfig {
     }
 
     defaultActorLifetime = config.getEnum(ActorLifetime.class, "ray.job.default-actor-lifetime");
+    Preconditions.checkState(defaultActorLifetime != null);
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
