@@ -2,15 +2,19 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
+from typing import Dict, Set
+
 import ray
 from ray.actor import ActorHandle
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
+from ray.rllib.agents.alpha_star.league_building import league_building_fn
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
 from ray.rllib.execution.buffers.mixin_replay_buffer import \
     MixInMultiAgentReplayBuffer
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
@@ -22,6 +26,12 @@ from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, \
     TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
+
+
+def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    # At first, only have main play against the random main exploiter.
+    return
+
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -39,7 +49,41 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # old (replayed) ones.
         "replay_buffer_replay_ratio": 0.5,
 
-        # Iteration
+        # League-building parameters.
+        # The league building function defines the core logic for constructing
+        # the league. It is called after each `step` and takes the Trainer
+        # instance and the `step()` ResultDict (including the "evaluation"
+        # results) as args. It may then analyze the results and decide on adding
+        # new policies to the league.
+        "league_building_fn": league_building_fn,
+
+        # Basic "multiagent" setup for league-building AlphaStar:
+        # Start with "main_0" (the policy we would like to use in the very end),
+        # "league_exploiter_0" (a random policy) and "main_exploiter_0"
+        # (also random).
+        # Once "main_0" reaches n% win-rate, we'll create a snapshot of it
+        # (main_1) as well as create learning "league_exploiter_1" and
+        # "main_exploiter_1" policies (cloned off "main_0").
+        "multiagent": {
+            # Initial policy map. This will be expanded
+            # to more policy snapshots inside the `league_building_fn`.
+            "policies": {
+                # Our main policy, we'd like to optimize.
+                "main_0": PolicySpec(),
+                # Initial main exploiter (random).
+                "main_exploiter_0": PolicySpec(policy_class=RandomPolicy),
+                # Initial league exploiter (random).
+                "league_exploiter_0": PolicySpec(policy_class=RandomPolicy),
+            },
+            "policy_mapping_fn":
+                (lambda aid, ep, w, **kw: "main" if ep.episode_id % 2 == aid
+                    else "main_exploiter_0"),
+            # At first, only train main_0 (until good enough to win against
+            # random).
+            "policies_to_train": ["main"],
+        },
+
+        # Reporting interval.
         "min_time_s_per_reporting": 2,
 
         # Use the `training_iteration` method instead of an execution plan.
@@ -109,11 +153,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         super().setup(config)
 
         ma_cfg = self.config["multiagent"]
-
-        # TODO: For now, fix the number of policies to those that are already
-        #  defined in the multiagent config dict. However, later, make the pool
-        #  of policy learners dynamically grow with more policies being added
-        #  on-the-fly.
 
         # Map from policy ID to a) respective policy learner actor handle
         # and b) the co-located replay actor handle for that policy.
@@ -212,9 +251,34 @@ class AlphaStarTrainer(appo.APPOTrainer):
             for w in self.workers.remote_workers()
         ])
 
+        # Setup important properties for this trainer:
+        # Map of PolicyID -> Tuple[policy actor, corresponding replay actor]
         self._policy_learners = _policy_learners
+        # Map of policy actor -> PolicyID.
         self._pol_actor_to_pid = _pol_actor_to_pid
 
+        # Policy groups (main, main_exploit, league_exploit):
+        self.main_policies: Set[PolicyID] = set()
+        self.main_exploiters: Set[PolicyID] = set()
+        self.league_exploiters: Set[PolicyID] = set()
+        # Sets of currently trainable/non-trainable policies in the league.
+        self.trainable_policies: Set[PolicyID] = set()
+        self.non_trainable_policies: Set[PolicyID] = set()
+        # Store the win rates for league overview printouts.
+        self.win_rates: Dict[PolicyID, float] = {}
+
+    @override(Trainer)
+    def step(self) -> ResultDict:
+        # Perform a full step (including evaluation).
+        result = super().step()
+
+        # Based on the (train + evaluate) results, perform a step of
+        # league building.
+        self.config["build_league_fn"](self, result)
+
+        return result
+
+    @override(Trainer)
     def training_iteration(self) -> ResultDict:
         # Trigger asynchronous rollouts on all RolloutWorkers.
         # - Rollout results are sent directly to correct replay buffer
@@ -238,8 +302,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             pol_actors = []
             args = []
-            for i, (pid, (pol_actor,
-                          repl_actor)) in enumerate(self._policy_learners.items()):
+            for i, (pid, (pol_actor, repl_actor)) in enumerate(
+                    self._policy_learners.items()):
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
@@ -254,7 +318,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Update sample counters.
         for result in train_results.values():
             if NUM_AGENT_STEPS_TRAINED in result:
-                self._counters[NUM_AGENT_STEPS_TRAINED] += result[NUM_AGENT_STEPS_TRAINED]
+                self._counters[NUM_AGENT_STEPS_TRAINED] += result[
+                    NUM_AGENT_STEPS_TRAINED]
 
         # For those policies that have been updated in this iteration
         # (not all policies may have undergone an updated as we are
@@ -294,7 +359,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         return sample.count, sample.agent_steps()
 
     @staticmethod
-    def _update_policy(policy: Policy, replay_actor: ActorHandle, pid: PolicyID):
+    def _update_policy(policy: Policy, replay_actor: ActorHandle,
+                       pid: PolicyID):
         if not hasattr(policy, "_target_and_kl_stats"):
             policy._target_and_kl_stats = {
                 LAST_TARGET_UPDATE_TS: 0,
@@ -311,9 +377,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         # Update target net and KL.
         with policy._target_and_kl_stats[TARGET_NET_UPDATE_TIMER]:
-            policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED] += train_results[NUM_AGENT_STEPS_TRAINED]
-            target_update_freq = policy.config["num_sgd_iter"] * policy.config[
-                "replay_buffer_capacity"] * policy.config["train_batch_size"]
+            policy._target_and_kl_stats[
+                NUM_AGENT_STEPS_TRAINED] += train_results[
+                    NUM_AGENT_STEPS_TRAINED]
+            target_update_freq = policy.config["num_sgd_iter"] * policy.config["replay_buffer_capacity"] * policy.config["train_batch_size"]
             cur_ts = policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED]
             last_update = policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS]
 

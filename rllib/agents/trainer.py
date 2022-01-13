@@ -982,6 +982,10 @@ class Trainer(Trainable):
                     step_attempt_results=step_attempt_results,
                 )
 
+        # Call custom callback, so that the user has a chance
+        # to utilize (and mutate) the results.
+        self.callbacks.on_train_result(trainer=self, result=result)
+
         return result
 
     @ExperimentalAPI
@@ -1843,14 +1847,6 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @override(Trainable)
-    def log_result(self, result: ResultDict) -> None:
-        # Log after the callback is invoked, so that the user has a chance
-        # to mutate the result.
-        self.callbacks.on_train_result(trainer=self, result=result)
-        # Then log according to Trainable's logging logic.
-        Trainable.log_result(self, result)
-
-    @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
         if hasattr(self, "workers"):
@@ -2153,10 +2149,9 @@ class Trainer(Trainable):
             config["callbacks"] = DefaultCallbacks
         # Check, whether given `callbacks` is a callable.
         if not callable(config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got "
-                f"{config['callbacks']}!")
+            raise ValueError("`callbacks` must be a callable method that "
+                             "returns a subclass of DefaultCallbacks, got "
+                             f"{config['callbacks']}!")
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)

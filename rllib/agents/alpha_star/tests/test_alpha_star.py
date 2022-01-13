@@ -12,7 +12,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=10)#, local_mode=True)#TODO
+        ray.init(num_cpus=10)
 
     @classmethod
     def tearDownClass(cls):
@@ -34,10 +34,9 @@ class TestAlphaStar(unittest.TestCase):
             else:
                 return f"p{np.random.choice(list({0, 1, 2, 3} - {head_pol}))}"
 
-        import ray.rllib.agents.ppo.appo as appo#TODO
+        import ray.rllib.agents.ppo.appo as appo  #TODO
 
         config = alpha_star.DEFAULT_CONFIG.copy()
-        #config = appo.DEFAULT_CONFIG.copy()
 
         config["num_workers"] = 4
         config["num_envs_per_worker"] = 5
@@ -70,7 +69,6 @@ class TestAlphaStar(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
-            #trainer = appo.APPOTrainer(config=_config)
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)

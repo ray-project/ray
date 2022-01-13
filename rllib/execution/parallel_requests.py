@@ -1,6 +1,4 @@
-from collections import defaultdict
 import logging
-import time
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 import ray
@@ -54,8 +52,8 @@ def asynchronous_parallel_requests(
             remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
 
     Returns:
-        A dict mapping The list of asynchronously collected sample batch types. None, if no
-        samples are ready.
+        A dict mapping The list of asynchronously collected sample batch types.
+        None, if no samples are ready.
 
     Examples:
         >>> # 2 remote rollout workers (num_workers=2):
@@ -76,22 +74,16 @@ def asynchronous_parallel_requests(
         assert len(remote_args) == len(actors)
     if remote_kwargs is not None:
         assert len(remote_kwargs) == len(actors)
+
     # For faster hash lookup.
     actor_set = set(actors)
-
-    # Create a map inside Trainer instance that maps actorss to sets of open
-    # requests (object refs). This way, we keep track, of which actorss have
-    # already been sent how many requests
-    # (`max_remote_requests_in_flight_per_actor` arg).
-    if not hasattr(trainer, "_remote_requests_in_flight"):
-        trainer._remote_requests_in_flight = defaultdict(set)
 
     # Collect all currently pending remote requests into a single set of
     # object refs.
     pending_remotes = set()
     # Also build a map to get the associated actor for each remote request.
     remote_to_actor = {}
-    for actor, set_ in trainer._remote_requests_in_flight.items():
+    for actor, set_ in trainer.remote_requests_in_flight.items():
         # Only consider those actors' pending requests that are in
         # the given `actors` list.
         if actor in actor_set:
@@ -103,7 +95,7 @@ def asynchronous_parallel_requests(
     # `max_remote_requests_in_flight_per_actor` setting allows it).
     for actor_idx, actor in enumerate(actors):
         # Still room for another request to this actor.
-        if len(trainer._remote_requests_in_flight[actor]) < \
+        if len(trainer.remote_requests_in_flight[actor]) < \
                 max_remote_requests_in_flight_per_actor:
             if remote_fn is None:
                 req = actor.sample.remote()
@@ -114,7 +106,7 @@ def asynchronous_parallel_requests(
             # Add to our set to send to ray.wait().
             pending_remotes.add(req)
             # Keep our mappings properly updated.
-            trainer._remote_requests_in_flight[actor].add(req)
+            trainer.remote_requests_in_flight[actor].add(req)
             remote_to_actor[req] = actor
 
     # There must always be pending remote requests.
@@ -141,15 +133,16 @@ def asynchronous_parallel_requests(
         if not ready:
             return {}
 
+    # Remove in-flight records for ready refs.
     for obj_ref in ready:
-        # Remove in-flight record for this ref.
-        trainer._remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
+        trainer.remote_requests_in_flight[remote_to_actor[obj_ref]].remove(
             obj_ref)
 
     # Do one ray.get().
     results = ray.get(ready)
     assert len(ready) == len(results)
 
+    # Return mapping from (ready) actors to their results.
     ret = {}
     for obj_ref, result in zip(ready, results):
         ret[remote_to_actor[obj_ref]] = result
