@@ -240,7 +240,6 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                               actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
-        function_manager_.AddJobReference(actor_id.JobId());
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
@@ -473,6 +472,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
   registered_actors_.emplace(actor->GetActorID(), actor);
+  function_manager_.AddJobReference(actor_id.JobId());
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = NodeID::FromBinary(owner_address.raylet_id());
