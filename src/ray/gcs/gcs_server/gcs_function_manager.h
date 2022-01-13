@@ -20,9 +20,9 @@ namespace ray {
 namespace gcs {
 
 /// GcsFunctionManager is a class to manage exported functions in runtime.
-/// Right now it only hanldes resource cleanup when it's not useful any more.
-/// But for long term, we should put all function/actor management into this
-/// class, includes:
+/// Right now it only hanldes resource cleanup when it's not needed any more.
+/// But for the long term, we should put all function/actor management into
+/// this class, includes:
 ///    - function/actor exporting
 ///    - function/actor importing
 ///    - function/actor code life cycle management.
@@ -34,11 +34,7 @@ class GcsFunctionManager {
 
   void RemoveJobReference(const JobID &job_id) {
     auto iter = job_counter_.find(job_id);
-    if (iter == job_counter_.end()) {
-      RAY_LOG(ERROR) << "No such job: " << job_id;
-      return;
-    }
-
+    RAY_CHECK(iter != job_counter_) << "No such job: " << job_id;
     --iter->second;
     if (iter->second == 0) {
       job_counter_.erase(job_id);
