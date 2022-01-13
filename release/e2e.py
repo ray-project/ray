@@ -1753,7 +1753,7 @@ def run_test_config(
             on_k8s = test_config["cluster"].get("compute_on_k8s")
             if on_k8s:
                 cmd_id = global_command_runner.run_command(
-                    session_name, cmd_to_run, env=env_vars)
+                    session_name, cmd_to_run, env_vars=env_vars)
             else:
                 scd_id, result = run_session_command(
                     sdk=sdk,
