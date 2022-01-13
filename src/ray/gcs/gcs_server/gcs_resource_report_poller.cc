@@ -87,7 +87,8 @@ void GcsResourceReportPoller::HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
   to_pull_queue_.push_front(state);
   RAY_LOG(DEBUG) << "Node was added with id: " << node_id;
 
-  polling_service_.post([this]() { TryPullResourceReport(); });
+  polling_service_.post([this]() { TryPullResourceReport(); },
+                        "GcsResourceReportPoller.TryPullResourceReport");
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) {
@@ -138,7 +139,8 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
                         << ": " << status.ToString();
         }
-        polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
+        polling_service_.post([this, state]() { NodeResourceReportReceived(state); },
+                              "GcsResourceReportPoller.PullResourceReport");
       });
 }
 
@@ -152,7 +154,8 @@ void GcsResourceReportPoller::NodeResourceReportReceived(
   state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
   to_pull_queue_.push_back(state);
 
-  polling_service_.post([this] { TryPullResourceReport(); });
+  polling_service_.post([this] { TryPullResourceReport(); },
+                        "GcsResourceReportPoller.TryPullResourceReport");
 }
 
 }  // namespace gcs

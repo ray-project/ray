@@ -68,12 +68,14 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     // In order to avoid multithreading reading and writing created_actors_, we also
     // send the `WaitForActorOutOfScope` callback operation to io_service thread.
     std::promise<bool> promise;
-    io_service_.post([this, status, &promise]() {
-      auto callback = callbacks_.front();
-      auto reply = rpc::WaitForActorOutOfScopeReply();
-      callback(status, reply);
-      promise.set_value(false);
-    });
+    io_service_.post(
+        [this, status, &promise]() {
+          auto callback = callbacks_.front();
+          auto reply = rpc::WaitForActorOutOfScopeReply();
+          callback(status, reply);
+          promise.set_value(false);
+        },
+        "test");
     promise.get_future().get();
 
     callbacks_.pop_front();
@@ -142,18 +144,20 @@ class GcsActorManagerTest : public ::testing::Test {
       // In order to avoid multithreading reading and writing created_actors_, we also
       // send the read operation to io_service thread.
       std::promise<bool> promise;
-      io_service_.post([this, actor_id, &promise]() {
-        const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
-        for (auto &node_iter : created_actors) {
-          for (auto &actor_iter : node_iter.second) {
-            if (actor_iter.second == actor_id) {
-              promise.set_value(true);
-              return;
+      io_service_.post(
+          [this, actor_id, &promise]() {
+            const auto &created_actors = gcs_actor_manager_->GetCreatedActors();
+            for (auto &node_iter : created_actors) {
+              for (auto &actor_iter : node_iter.second) {
+                if (actor_iter.second == actor_id) {
+                  promise.set_value(true);
+                  return;
+                }
+              }
             }
-          }
-        }
-        promise.set_value(false);
-      });
+            promise.set_value(false);
+          },
+          "test");
       return promise.get_future().get();
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
@@ -179,15 +183,17 @@ class GcsActorManagerTest : public ::testing::Test {
     // If we register an actor after destroying an actor, it may result in multithreading
     // reading and writing the same variable. In order to avoid the problem of
     // multithreading, we put `RegisterActor` to io_service thread.
-    io_service_.post([this, request, &promise]() {
-      auto status = gcs_actor_manager_->RegisterActor(
-          request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
-            promise.set_value(std::move(actor));
-          });
-      if (!status.ok()) {
-        promise.set_value(nullptr);
-      }
-    });
+    io_service_.post(
+        [this, request, &promise]() {
+          auto status = gcs_actor_manager_->RegisterActor(
+              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+                promise.set_value(std::move(actor));
+              });
+          if (!status.ok()) {
+            promise.set_value(nullptr);
+          }
+        },
+        "test");
     return promise.get_future().get();
   }
 
@@ -197,10 +203,12 @@ class GcsActorManagerTest : public ::testing::Test {
     // times in succession, the second call may result in multithreading reading and
     // writing the same variable. In order to avoid the problem of multithreading, we put
     // `OnNodeDead` to io_service thread.
-    io_service_.post([this, node_id, &promise]() {
-      gcs_actor_manager_->OnNodeDead(node_id, "127.0.0.1");
-      promise.set_value(true);
-    });
+    io_service_.post(
+        [this, node_id, &promise]() {
+          gcs_actor_manager_->OnNodeDead(node_id, "127.0.0.1");
+          promise.set_value(true);
+        },
+        "test");
     promise.get_future().get();
   }
 
