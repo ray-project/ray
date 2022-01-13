@@ -2,6 +2,7 @@ import logging
 from typing import List, Tuple
 import time
 
+import ray
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -17,6 +18,19 @@ from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
+
+
+def synchronous_parallel_sample(workers: WorkerSet) -> List[SampleBatch]:
+    # No remote workers in the set -> Use local worker for collecting
+    # samples.
+    if not workers.remote_workers():
+        return [workers.local_worker().sample()]
+
+    # Loop over remote workers' `sample()` method in parallel.
+    sample_batches = ray.get(
+        [r.sample.remote() for r in workers.remote_workers()])
+
+    return sample_batches
 
 
 def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
@@ -255,14 +269,20 @@ class StandardizeFields:
         wrapped = False
 
         if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({
-                DEFAULT_POLICY_ID: samples
-            }, samples.count)
+            samples = samples.as_multi_agent()
             wrapped = True
 
         for policy_id in samples.policy_batches:
             batch = samples.policy_batches[policy_id]
             for field in self.fields:
+                if field not in batch:
+                    raise KeyError(
+                        f"`{field}` not found in SampleBatch for policy "
+                        f"`{policy_id}`! Maybe this policy fails to add "
+                        f"{field} in its `postprocess_trajectory` method? Or "
+                        "this policy is not meant to learn at all and you "
+                        "forgot to add it to the list under `config."
+                        "multiagent.policies_to_train`.")
                 batch[field] = standardized(batch[field])
 
         if wrapped:

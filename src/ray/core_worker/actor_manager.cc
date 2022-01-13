@@ -57,32 +57,22 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     // implemented using a promise that's captured in the RPC callback.
     // There should be no risk of deadlock because we don't hold any
     // locks during the call and the RPCs run on a separate thread.
-    std::shared_ptr<std::promise<void>> ready_promise =
-        std::make_shared<std::promise<void>>(std::promise<void>());
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-        name, ray_namespace,
-        [this, &actor_id, name, call_site, &caller_address, ready_promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
-          if (status.ok() && result) {
-            auto actor_handle = std::make_unique<ActorHandle>(*result);
-            actor_id = actor_handle->GetActorID();
-            AddNewActorHandle(std::move(actor_handle),
-                              GenerateCachedActorName(result.get().ray_namespace(),
-                                                      result.get().name()),
-                              call_site, caller_address,
-                              /*is_detached*/ true);
-          } else {
-            // Use a NIL actor ID to signal that the actor wasn't found.
-            RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
-            actor_id = ActorID::Nil();
-          }
-          ready_promise->set_value();
-        }));
-    // Block until the RPC completes. Set a timeout to avoid hangs if the
-    // GCS service crashes.
-    if (ready_promise->get_future().wait_for(std::chrono::seconds(
-            RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-        std::future_status::ready) {
+    rpc::ActorTableData result;
+    const auto status = gcs_client_->Actors().SyncGetByName(name, ray_namespace, result);
+    if (status.ok()) {
+      auto actor_handle = std::make_unique<ActorHandle>(result);
+      actor_id = actor_handle->GetActorID();
+      AddNewActorHandle(std::move(actor_handle),
+                        GenerateCachedActorName(result.ray_namespace(), result.name()),
+                        call_site, caller_address,
+                        /*is_detached*/ true);
+    } else {
+      // Use a NIL actor ID to signal that the actor wasn't found.
+      RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
+      actor_id = ActorID::Nil();
+    }
+
+    if (status.IsTimedOut()) {
       std::ostringstream stream;
       stream << "There was timeout in getting the actor handle, "
                 "probably because the GCS server is dead or under high load .";

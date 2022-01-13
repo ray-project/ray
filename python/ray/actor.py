@@ -162,7 +162,8 @@ class ActorMethod:
                 args=args,
                 kwargs=kwargs,
                 name=name,
-                num_returns=num_returns)
+                num_returns=num_returns,
+                concurrency_group_name=concurrency_group)
 
         # Apply the decorator if there is one.
         if self._decorator is not None:
@@ -967,7 +968,8 @@ class ActorHandle:
                            args=None,
                            kwargs=None,
                            name="",
-                           num_returns=None):
+                           num_returns=None,
+                           concurrency_group_name=None):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
@@ -1013,7 +1015,9 @@ class ActorHandle:
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
-            list_args, name, num_returns, self._ray_actor_method_cpus)
+            list_args, name, num_returns, self._ray_actor_method_cpus,
+            concurrency_group_name
+            if concurrency_group_name is not None else b"")
 
         if len(object_refs) == 1:
             object_refs = object_refs[0]

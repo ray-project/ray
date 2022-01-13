@@ -1,3 +1,4 @@
+import time
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
     Optional, TYPE_CHECKING
 
@@ -49,14 +50,14 @@ class BlockExecStats:
         node_id: A unique id for the node that computed this block.
     """
 
-    # Placeholder for block ops not yet instrumented.
-    TODO = None
-
-    # TODO(ekl) add a builder to fill these out in a simpler way.
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+
+    @staticmethod
+    def builder() -> "_BlockExecStatsBuilder":
+        return _BlockExecStatsBuilder()
 
     def __repr__(self):
         return repr({
@@ -64,6 +65,24 @@ class BlockExecStats:
             "cpu_time_s": self.cpu_time_s,
             "node_id": self.node_id
         })
+
+
+class _BlockExecStatsBuilder:
+    """Helper class for building block stats.
+
+    When this class is created, we record the start time. When build() is
+    called, the time delta is saved as part of the stats.
+    """
+
+    def __init__(self):
+        self.start_time = time.perf_counter()
+        self.start_cpu = time.process_time()
+
+    def build(self) -> "BlockExecStats":
+        stats = BlockExecStats()
+        stats.wall_time_s = time.perf_counter() - self.start_time
+        stats.cpu_time_s = time.process_time() - self.start_cpu
+        return stats
 
 
 @DeveloperAPI

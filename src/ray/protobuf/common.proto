@@ -198,53 +198,37 @@ message RayException {
 
 message ActorDeathCause {
   oneof context {
-    // TODO(sang): Consolidate some context to the same field.
-    CreationTaskFailureContext creation_task_failure_context = 1;
+    // Indicates that this actor is marked as DEAD due to actor creation task failure.
+    RayException creation_task_failure_context = 1;
     ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
-    ActorDeathWorkerDiedContext worker_died_context = 3;
-    ActorDeathNodeDiedContext node_died_context = 4;
-    ActorDeathOwnerDiedContext owner_died_context = 5;
-    ActorDeathKilledByApplicationContext killed_by_app_context = 6;
-    ActorDeathOutOfScopeContext out_of_scope_context = 7;
+    ActorDiedErrorContext actor_died_error_context = 3;
   }
 }
 // ---Actor death contexts start----
-
-// Indicates that this actor is marked as DEAD due to actor creation task failure.
-// TODO(sang): Refactor it to ActorInitError
-message CreationTaskFailureContext {
-  // The exception thrown in creation task.
-  RayException creation_task_exception = 1;
-}
-
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message ActorDeathRuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }
 
-message ActorDeathWorkerDiedContext {
+message ActorDiedErrorContext {
   string error_message = 1;
-}
-
-message ActorDeathNodeDiedContext {
-  string error_message = 1;
-}
-
-message ActorDeathOwnerDiedContext {
-  // The id of the dead owner.
-  bytes owner_id = 1;
-  string error_message = 2;
-  // The exit type of dead owner.
-  WorkerExitType owner_worker_exit_type = 3;
-}
-
-message ActorDeathKilledByApplicationContext {
-  string error_message = 1;
-}
-
-message ActorDeathOutOfScopeContext {
-  string error_message = 1;
+  // The id of owner of the actor.
+  bytes owner_id = 2;
+  // The ip address of the owner worker.
+  string owner_ip_address = 3;
+  // The IP address where actor was created.
+  string node_ip_address = 4;
+  // The process id of this actor.
+  uint32 pid = 5;
+  // Name of the actor.
+  string name = 6;
+  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 7;
+  // The actor's class name.
+  string class_name = 8;
+  // The id of the actor
+  bytes actor_id = 9;
 }
 // ---Actor death contexts end----
 

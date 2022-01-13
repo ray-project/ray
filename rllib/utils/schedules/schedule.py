@@ -1,7 +1,9 @@
 from abc import ABCMeta, abstractmethod
+from typing import Any, Union
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -26,48 +28,48 @@ class Schedule(metaclass=ABCMeta):
     def __init__(self, framework):
         self.framework = framework
 
-    def value(self, t):
+    def value(self, t: Union[int, TensorType]) -> Any:
         """Generates the value given a timestep (based on schedule's logic).
 
         Args:
-            t (int): The time step. This could be a tf.Tensor.
+            t: The time step. This could be a tf.Tensor.
 
         Returns:
-            any: The calculated value depending on the schedule and `t`.
+            The calculated value depending on the schedule and `t`.
         """
         if self.framework in ["tf2", "tf", "tfe"]:
             return self._tf_value_op(t)
         return self._value(t)
 
-    def __call__(self, t):
+    def __call__(self, t: Union[int, TensorType]) -> Any:
         """Simply calls self.value(t). Implemented to make Schedules callable.
         """
         return self.value(t)
 
     @DeveloperAPI
     @abstractmethod
-    def _value(self, t):
+    def _value(self, t: Union[int, TensorType]) -> Any:
         """
         Returns the value based on a time step input.
 
         Args:
-            t (int): The time step. This could be a tf.Tensor.
+            t: The time step. This could be a tf.Tensor.
 
         Returns:
-            any: The calculated value depending on the schedule and `t`.
+            The calculated value depending on the schedule and `t`.
         """
         raise NotImplementedError
 
     @DeveloperAPI
-    def _tf_value_op(self, t):
+    def _tf_value_op(self, t: TensorType) -> TensorType:
         """
         Returns the tf-op that calculates the value based on a time step input.
 
         Args:
-            t (tf.Tensor): The time step op (int tf.Tensor).
+            t: The time step op (int tf.Tensor).
 
         Returns:
-            tf.Tensor: The calculated value depending on the schedule and `t`.
+            The calculated value depending on the schedule and `t`.
         """
         # By default (most of the time), tf should work with python code.
         # Override only if necessary.

@@ -83,39 +83,6 @@ class MockGcsPlacementGroupTable : public GcsPlacementGroupTable {
 namespace ray {
 namespace gcs {
 
-class MockGcsTaskTable : public GcsTaskTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsTaskLeaseTable : public GcsTaskLeaseTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsTaskReconstructionTable : public GcsTaskReconstructionTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const TaskID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsNodeTable : public GcsNodeTable {
  public:
 };

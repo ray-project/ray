@@ -24,7 +24,7 @@ pkg_install_helper() {
 
 install_bazel() {
   if command -v bazel; then
-    if [[ -n "${BUILDKITE-}" ]]; then
+    if [[ -n "${BUILDKITE-}" ]] && [ "${OSTYPE}" != msys ]; then
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
@@ -221,14 +221,12 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --quiet pip==21.0.1
+    "${python}" -m pip install --quiet pip==21.3.1
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
-      "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
 
     "${python}" -m ensurepip

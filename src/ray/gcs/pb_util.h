@@ -113,6 +113,17 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   return worker_failure_info_ptr;
 }
 
+/// Get actor creation task exception from ActorDeathCause.
+/// Returns nullptr if actor isn't dead due to creation task failure.
+inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
+    const rpc::ActorDeathCause *death_cause) {
+  if (death_cause == nullptr ||
+      death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
+    return nullptr;
+  }
+  return &(death_cause->creation_task_failure_context());
+}
+
 /// Generate object error type from ActorDeathCause.
 inline rpc::ErrorType GenErrorTypeFromDeathCause(
     const rpc::ActorDeathCause &death_cause) {
@@ -131,12 +142,12 @@ inline const std::string &GetActorDeathCauseString(
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
       {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
-      {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
-      {ContextCase::kNodeDiedContext, "NodeDiedContext"},
-      {ContextCase::kOwnerDiedContext, "OwnerDiedContext"},
-      {ContextCase::kKilledByAppContext, "KilledByAppContext"},
-      {ContextCase::kOutOfScopeContext, "OutOfScopeContext"}};
-  auto it = death_cause_string.find(death_cause.context_case());
+      {ContextCase::kActorDiedErrorContext, "ActorDiedErrorContext"}};
+  ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
+  if (death_cause != nullptr) {
+    death_cause_case = death_cause->context_case();
+  }
+  auto it = death_cause_string.find(death_cause_case);
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause.context_case() << " doesn't exist.";
   return it->second;

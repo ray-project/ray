@@ -32,19 +32,13 @@ class Pinger:
 a = Pinger.options(lifetime={lifetime}, name={name}).remote()
 ray.get(a.ping.remote())
     """
-
+    address = ray_start_with_dashboard["address"]
     detached_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="'detached'",
-        name="'abc'")
+        address=address, lifetime="'detached'", name="'abc'")
     named_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="'xyz'")
+        address=address, lifetime="None", name="'xyz'")
     unnamed_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="None")
+        address=address, lifetime="None", name="None")
 
     run_string_as_driver(detached_driver)
     run_string_as_driver(named_driver)
@@ -90,7 +84,7 @@ import ray
 from ray import serve
 
 ray.init(
-    address="{ray_start_with_dashboard['redis_address']}",
+    address="{ray_start_with_dashboard['address']}",
     namespace="serve")
 
 serve.start(detached=True)
@@ -140,7 +134,7 @@ my_func_deleted.delete()
     entry = data["data"]["snapshot"]["deployments"][hashlib.sha1(
         "my_func".encode()).hexdigest()]
     assert entry["name"] == "my_func"
-    assert entry["version"] == "None"
+    assert entry["version"] is None
     assert entry["namespace"] == "serve"
     assert entry["httpRoute"] == "/my_func"
     assert entry["className"] == "my_func"
@@ -154,7 +148,7 @@ my_func_deleted.delete()
     metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
         "serve"]
     assert metadata["deploymentName"] == "my_func"
-    assert metadata["version"] == "None"
+    assert metadata["version"] is None
     assert len(metadata["replicaTag"]) > 0
 
     entry_deleted = data["data"]["snapshot"]["deployments"][hashlib.sha1(

@@ -206,6 +206,10 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
       resources_data->resource_load_changed()) {
     absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
+    // Clear the fields that will not be used by raylet.
+    resources_buffer_[node_id].clear_resource_load();
+    resources_buffer_[node_id].clear_resource_load_by_shape();
+    resources_buffer_[node_id].clear_resources_normal_task();
   }
 }
 
