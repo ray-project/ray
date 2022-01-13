@@ -132,7 +132,8 @@ def create_node_spec(head: bool,
 
     ensure_ssh = ("((sudo apt update && sudo apt install -y openssh-server && "
                   "sudo service ssh start) || true)") if not bool(
-                      int(os.environ.get("RAY_HAS_SSH", "0"))) else "true"
+                      int(os.environ.get("RAY_HAS_SSH", "0")
+                          or "0")) else "true"
 
     cmd_kwargs = dict(
         ensure_ssh=ensure_ssh,
