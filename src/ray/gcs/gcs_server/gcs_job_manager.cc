@@ -25,6 +25,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
     const auto &job_table_data = pair.second;
     cached_job_configs_[job_id] =
         std::make_shared<rpc::JobConfig>(job_table_data.config());
+    function_manager_.AddJobReference(job_id);
   }
 }
 

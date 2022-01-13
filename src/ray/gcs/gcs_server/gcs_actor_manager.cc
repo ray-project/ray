@@ -1119,7 +1119,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     auto actor = std::make_shared<GcsActor>(entry.second);
     if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
       registered_actors_.emplace(entry.first, actor);
-
+      function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
         auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
         actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
