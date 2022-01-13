@@ -1,17 +1,25 @@
 use std::env;
 use std::path::PathBuf;
+use std::process::Command;
 
 // This should be an environment variable in the future.
 // const RAY_RUST_LINK_DIR: &'static str = "/home/jonch/Desktop/Programming/systems/ray/python/ray/rust/lib";
 
 fn main() {
-    // Tell cargo to tell rustc to link the core_worker_library_rust
-    // shared library.
-    //
-    // In the future, we need this to be the location in the ray pkg
-    // Use environment variable
+    let out = Command::new("ray")
+        .arg("rust")
+        .arg("--show-library-path")
+        .output()
+        .expect("Could not get Ray Rust library path from stdout of `ray rust --show-library-path`");
 
-    let link_dir = env::var("RAY_RUST_LIBRARY_DIR").unwrap();
+    let link_dir = String::from_utf8(out.stdout)
+        .expect("Could not parse stdout as string")
+        .split("--")
+        .collect::<Vec<_>>()[1]
+        // Strip whitespace and newlines
+        .replace('\n', "")
+        .replace('\r', "")
+        .replace(" ", "");
 
     println!("cargo:rustc-link-lib=core_worker_library_c");
     println!("cargo:rustc-link-search={}", link_dir);
