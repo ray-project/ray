@@ -393,15 +393,10 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={"block": block})
 
-            ret_candidate = ret.text.split("|")
+            if ret.status_code != 200 or len(ret.text.split("|")) != 2:
+                return (None, None)
 
-            # Set return value to (None, None)
-            # if status_code is 404 or if there are
-            # not enough values to return
-            if ret.status_code == 404 or len(ret_candidate) != 2:
-                ret = (None, None)
-            else:
-                ret = ret_candidate
+            ret = ret.text.split("|")
 
         return ret[0], ret[1]
 
@@ -504,8 +499,10 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
-        rets = {key: value for key, value in enumerate(ret.split("|"))}
-        return rets.get(0, "<NULL>"), rets.get(1, "<NULL>")
+            if ret.status_code != 200 or len(ret.text.split("|")) != 2:
+                return (None, None)
+
+            ret = ret.text.split("|")
 
     signal_name = f"signal-{get_random_letters()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -624,8 +621,10 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
-        rets = {key: value for key, value in enumerate(ret.split("|"))}
-        return rets.get(0, "<NULL>"), rets.get(1, "<NULL>")
+            if ret.status_code != 200 or len(ret.text.split("|")) != 2:
+                return (None, None)
+
+            ret = ret.text.split("|")
 
     def make_calls(expected):
         # Returns dict[val, set(pid)].
@@ -679,8 +678,10 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
-        rets = {key: value for key, value in enumerate(ret.split("|"))}
-        return rets.get(0, "<NULL>"), rets.get(1, "<NULL>")
+            if ret.status_code != 200 or len(ret.text.split("|")) != 2:
+                return (None, None)
+
+            ret = ret.text.split("|")
 
     def make_calls(expected):
         # Returns dict[val, set(pid)].
