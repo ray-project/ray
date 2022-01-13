@@ -61,10 +61,10 @@ run_timeout() {
 
 pushd "$ROOT_DIR"/..
 echo "Build java maven deps."
-bazel build //java:gen_maven_deps
+bazel build --config=asan-clang //java:gen_maven_deps
 
 echo "Build test jar."
-bazel build //java:all_tests_deploy.jar
+bazel build --config=asan-clang //java:all_tests_deploy.jar
 
 java/generate_jni_header_files.sh
 
