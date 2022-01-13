@@ -187,7 +187,7 @@ Release test yaml example
 """  # noqa: E501
 import argparse
 import enum
-from random import random
+import random
 import string
 
 import boto3
