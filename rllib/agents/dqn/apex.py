@@ -63,7 +63,12 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "replay_buffer_config": None,
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
-        # If False, replay shards may be created on different node(s).
+        # This is preferred b/c the learner process should have quick
+        # access to the data from the buffer shards, avoiding network
+        # traffic each time samples from the buffer(s) are drawn.
+        # Set this to False for relaxing this constraint and allowing
+        # replay shards to be created on node(s) other than the one
+        # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
 
         "learning_starts": 50000,

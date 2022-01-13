@@ -95,39 +95,53 @@ def create_colocated_actors(
     if node == "localhost":
         node = platform.node()
 
-    # Maps types to lists of already co-located actors.
+    # Maps each entry in `actor_specs` to lists of already co-located actors.
     ok = [[] for _ in range(len(actor_specs))]
-    attempt = 1
-    while attempt < max_attempts:
+
+    # Try n times to co-locate all given actor types (`actor_specs`).
+    # With each (failed) attempt, increase the number of actors we try to
+    # create (on the same node), then kill the ones that have been created in
+    # excess.
+    for attempt in range(max_attempts):
+        # If any attempt to co-locate fails, set this to False and we'll do
+        # another attempt.
         all_good = True
+        # Process all `actor_specs` in sequence.
         for i, (typ, args, kwargs, count) in enumerate(actor_specs):
             args = args or []  # Allow None.
             kwargs = kwargs or {}  # Allow None.
+            # We don't have enough actors yet of this spec co-located on
+            # the desired node.
             if len(ok[i]) < count:
-                all_good = False
                 co_located = try_create_colocated(
                     cls=typ,
                     args=args,
                     kwargs=kwargs,
-                    count=count * attempt,
+                    count=count * (attempt + 1),
                     node=node)
-                # If node did not matter, from here on, use the host that the
-                # first actor(s) are already located on.
+                # If node did not matter (None), from here on, use the host
+                # that the first actor(s) are already co-located on.
                 if node is None:
                     node = ray.get(co_located[0].get_host.remote())
+                # Add the newly co-located actors to the `ok` list.
                 ok[i].extend(co_located)
-            elif len(ok[i]) > count:
+                # If we still don't have enough -> We'll have to do another
+                # attempt.
+                if len(ok[i]) < count:
+                    all_good = False
+            # We created too many actors for this spec -> Kill/truncate
+            # the excess ones.
+            if len(ok[i]) > count:
                 for a in ok[i][count:]:
                     a.__ray_terminate__.remote()
                 ok[i] = ok[i][:count]
-        if all_good:
-            break
-        elif attempt == max_attempts - 1:
-            raise Exception(
-                "Unable to create enough colocated actors -> aborting.")
-        attempt += 1
 
-    return ok
+        # All `actor_specs` have been fulfilled, return lists of
+        # co-located actors.
+        if all_good:
+            return ok
+
+    raise Exception("Unable to create enough colocated actors -> aborting.")
 
 
 def try_create_colocated(
