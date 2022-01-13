@@ -23,7 +23,7 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -278,7 +278,7 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "redis")
 // Feature flag to enable GCS based bootstrapping.

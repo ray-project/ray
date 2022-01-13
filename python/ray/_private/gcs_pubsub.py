@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def gcs_pubsub_enabled():
     """Checks whether GCS pubsub feature flag is enabled."""
     return os.environ.get("RAY_gcs_grpc_based_pubsub") not in \
-        [None, "0", "false"]
+        ["0", "false"]
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
@@ -247,6 +247,10 @@ class _SyncSubscriber(_SubscriberBase):
                     # Choose to not raise deadline exceeded errors to the
                     # caller. Instead return None. This can be revisited later.
                     if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        return
+                    # Could be a temporary connection issue. Suppress error.
+                    # TODO: reconnect GRPC channel?
+                    if e.code() == grpc.StatusCode.UNAVAILABLE:
                         return
                     raise
 

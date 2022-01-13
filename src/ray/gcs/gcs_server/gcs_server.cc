@@ -536,11 +536,13 @@ void GcsServer::InstallEventListeners() {
   // Install scheduling event listeners.
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
-      main_service_.post([this] {
-        // Because resources have been changed, we need to try to schedule the pending
-        // actors.
-        gcs_actor_manager_->SchedulePendingActors();
-      });
+      main_service_.post(
+          [this] {
+            // Because resources have been changed, we need to try to schedule the pending
+            // actors.
+            gcs_actor_manager_->SchedulePendingActors();
+          },
+          "GcsServer.SchedulePendingActors");
     });
   }
 }
@@ -558,7 +560,7 @@ void GcsServer::DumpDebugStateToFile() const {
   fs.open(config_.log_dir + "/debug_state_gcs.txt",
           std::fstream::out | std::fstream::trunc);
   fs << GetDebugState() << "\n\n";
-  fs << main_service_.StatsString();
+  fs << main_service_.stats().StatsString();
   fs.close();
 }
 
@@ -568,7 +570,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
-         << gcs_publisher_->DebugString() << "\n\n";
+         << gcs_publisher_->DebugString() << "\n\n"
+         << runtime_env_manager_->DebugString() << "\n\n";
 
   if (config_.grpc_based_resource_broadcast) {
     stream << grpc_based_resource_broadcaster_->DebugString();
@@ -595,7 +598,7 @@ void GcsServer::PrintAsioStats() {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
+    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
   }
 }
 
