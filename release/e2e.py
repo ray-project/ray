@@ -434,7 +434,8 @@ class S3SyncSessionController(SessionController):
         # remote source -> s3
         cid = global_command_runner.run_command(
             session_name, (f"pip install -q awscli && aws s3 cp {source} "
-                           f"s3://{self.bucket}/{remote_upload_to}"), {})
+                           f"s3://{self.bucket}/{remote_upload_to} "
+                           "--acl bucket-owner-full-control"), {})
         global_command_runner.wait_command(cid)
 
         # s3 -> local target
@@ -465,7 +466,7 @@ class S3SyncSessionController(SessionController):
         # s3 -> remote target
         cid = global_command_runner.run_command(
             session_name,
-            ("pip install awscli && "
+            ("pip install -q awscli && "
              f"aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
              "unzip archive.zip"), {})
         global_command_runner.wait_command(cid)
@@ -487,7 +488,7 @@ class S3SyncSessionController(SessionController):
         )
         # s3 -> remote target
         cid = global_command_runner.run_command(
-            session_name, "pip install awscli && "
+            session_name, "pip install -q awscli && "
             f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}", {})
         global_command_runner.wait_command(cid)
 
