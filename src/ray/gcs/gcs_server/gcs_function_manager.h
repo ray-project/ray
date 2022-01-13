@@ -34,7 +34,7 @@ class GcsFunctionManager {
 
   void RemoveJobReference(const JobID &job_id) {
     auto iter = job_counter_.find(job_id);
-    RAY_CHECK(iter != job_counter_) << "No such job: " << job_id;
+    RAY_CHECK(iter != job_counter_.end()) << "No such job: " << job_id;
     --iter->second;
     if (iter->second == 0) {
       job_counter_.erase(job_id);
