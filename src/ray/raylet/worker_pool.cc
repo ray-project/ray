@@ -1490,6 +1490,7 @@ std::string WorkerPool::DebugString() const {
            << entry.second.util_io_worker_state.pending_io_tasks.size();
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
+  result << "\n" << runtime_env_manager_.DebugString();
   return result.str();
 }
 
