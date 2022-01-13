@@ -7,7 +7,6 @@ pub use rmp_serde;
 pub use uniffi::ffi::RustBuffer;
 use core::pin::Pin;
 
-
 pub use ray_rs_sys::*;
 pub use ray_rs_sys::ray;
 
@@ -25,7 +24,7 @@ type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
 
-#[macro_export]
+#[macro_use]
 macro_rules! ray_log {
     ($msg:expr) => {
         util::log_internal(format!("[rust] {}:{}: {}", file!(), line!(), $msg));

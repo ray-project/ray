@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
-    use uniffi::RustBuffer;
-    use rmp_serde;
+    // use uniffi::RustBuffer;
+    // use rmp_serde;
     use ray_rs::{*,
         // remote,
         // add_two_vecs, add_two_vecs_nested_remote_outer_get,
@@ -12,9 +12,8 @@ mod test {
         rust_worker_execute, load_libraries_from_paths,
         // byte_vec_to_object_id,
     };
-    use remote_lib::*;
+    use simple::*;
     use std::sync::Mutex;
-    use lazy_static::lazy_static;
 
     const NUM_CLUSTER_TESTS: usize = 1;
 

@@ -1826,6 +1826,32 @@ def install_nightly(verbose, dryrun):
         print(f"Running: {' '.join(cmd)}.")
         subprocess.check_call(cmd)
 
+# TODO (jon-chuang): also add bazel template...?
+@cli.command()
+@click.option(
+    "--show-library-path",
+    "-show",
+    required=False,
+    is_flag=True,
+    help="Show the cpp include path and library path, if provided.")
+@add_click_logging_options
+def rust(show_library_path):
+    """Show the rust library path and generate the bazel project template."""
+    if not show_library_path:
+        raise ValueError(
+            "Please input at least one option of '--show-library-path'")
+    raydir = os.path.abspath(os.path.dirname(ray.__file__))
+    rust_dir = os.path.join(raydir, "rust")
+    # cpp_templete_dir = os.path.join(rust_dir, "example")
+    # include_dir = os.path.join(rust_dir, "include")
+    lib_dir = os.path.join(rust_dir, "lib")
+    if not os.path.isdir(rust_dir):
+        raise ValueError(
+            "Please install ray with Rust API by \"pip install ray[rust]\".")
+    if show_library_path:
+        cli_logger.print("Ray Rust library path: {} ", cf.bold(f"{lib_dir}"))
+        cli_logger.print("Make sure to pass these flags to rustc (or equivalent for build.rs):")
+        cli_logger.print(f"RUSTFLAGS=\"-C link-args=-lcore_worker_library_c -L{lib_dir}\"")
 
 @cli.command()
 @click.option(

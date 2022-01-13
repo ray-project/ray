@@ -1,0 +1,13 @@
+[package]
+name = "simple"
+version = "0.0.0"
+authors = ["Jonathan Chuang"]
+license = "MIT OR Apache-2.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+ray-rs = { path="../../ray-rs" }
+
+[lib]
+crate-type = ["rlib", "cdylib"]

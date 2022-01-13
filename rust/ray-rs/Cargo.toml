@@ -14,3 +14,4 @@ rmp-serde = "0.15.5"
 serde = "1.0.132"
 libloading = "0.7.2"
 libc = "0.2.112"
+ray-rs-sys = { path="../ray-rs-sys" }

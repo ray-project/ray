@@ -4,7 +4,7 @@
 #![allow(deref_nullptr)]
 
 #[cfg(not(feature = "bazel"))]
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+include!(concat!(env!("OUT_DIR"), "/ray_rs_sys_bindgen.rs"));
 
 #[cfg(feature = "bazel")]
 include!(env!("BAZEL_BINDGEN_SOURCE"));

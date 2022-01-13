@@ -173,8 +173,8 @@ cpp/example/thirdparty/
 # Rust
 rust/ray-rs/target/
 rust/ray-rs-derive/target/
+rust/ray-rs-examples/*/target/
 rust/ray-rs-sys/target/
-rust/ray-rs-sys-legacy/target/
 rust/*/Cargo.lock
 
 
