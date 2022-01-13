@@ -180,7 +180,7 @@ def function_entry_num(job_id):
 
 
 @pytest.mark.skipif(
-    client_test_enabled() or sys.platform == "win32",
+    client_test_enabled(),
     reason="client api doesn't support namespace right now.")
 def test_function_table_gc(call_ray_start):
     """This test tries to verify that function table is cleaned up
@@ -205,7 +205,9 @@ def test_function_table_gc(call_ray_start):
     # It should use > 500MB data
     ray.get([f() for _ in range(500)])
 
-    assert get_gcs_memory_used() > 500 * 1024 * 1024
+    # It's not working on win32.
+    if sys.platform != "win32":
+        assert get_gcs_memory_used() > 500 * 1024 * 1024
     job_id = ray.worker.global_worker.current_job_id.binary()
     assert function_entry_num(job_id) > 0
     ray.shutdown()
@@ -216,7 +218,7 @@ def test_function_table_gc(call_ray_start):
 
 
 @pytest.mark.skipif(
-    client_test_enabled() or sys.platform == "win32",
+    client_test_enabled(),
     reason="client api doesn't support namespace right now.")
 def test_function_table_gc_actor(call_ray_start):
     """If there is a detached actor, the table won't be cleaned up.
