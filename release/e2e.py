@@ -390,10 +390,13 @@ class CommandRunnerHack:
         command_id = self.counter
         env = os.environ.copy()
         env["RAY_ADDRESS"] = f"anyscale://{session_name}"
+        env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST""]
         full_cmd = " ".join(f"{k}={v}"
                             for k, v in env_vars.items()) + " " + cmd_to_run
         proc = subprocess.Popen(
-            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
+            " ".join(["ray", "job", "submit",
+                      shlex.quote(full_cmd)]),
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -1018,7 +1021,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
     next_report = start_wait + REPORT_S
     logger.info(f"Waiting for build {build_id} to finish...")
     logger.info(f"Track progress here: "
-                f"{anyscale_app_config_build_url(build_id)}")
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
     while not completed:
         now = time.time()
         if now > next_report:
