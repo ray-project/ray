@@ -445,7 +445,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Event stats:\n\n"
+                        << io_service_.stats().StatsString() << "\n\n";
         },
         event_stats_print_interval_ms);
   }
@@ -1844,24 +1845,26 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   }
   std::promise<Status> p;
   auto f = p.get_future();
-  io_service_.post([this, p = &p, actor_id, force_kill, no_restart]() {
-    auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
-      if (status.ok()) {
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
-                                                          no_restart, nullptr));
-      }
-      p->set_value(std::move(status));
-    };
-    if (actor_creator_->IsActorInRegistering(actor_id)) {
-      actor_creator_->AsyncWaitForActorRegisterFinish(actor_id, std::move(cb));
-    } else if (actor_manager_->CheckActorHandleExists(actor_id)) {
-      cb(Status::OK());
-    } else {
-      std::stringstream stream;
-      stream << "Failed to find a corresponding actor handle for " << actor_id;
-      cb(Status::Invalid(stream.str()));
-    }
-  });
+  io_service_.post(
+      [this, p = &p, actor_id, force_kill, no_restart]() {
+        auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
+          if (status.ok()) {
+            RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
+                                                              no_restart, nullptr));
+          }
+          p->set_value(std::move(status));
+        };
+        if (actor_creator_->IsActorInRegistering(actor_id)) {
+          actor_creator_->AsyncWaitForActorRegisterFinish(actor_id, std::move(cb));
+        } else if (actor_manager_->CheckActorHandleExists(actor_id)) {
+          cb(Status::OK());
+        } else {
+          std::stringstream stream;
+          stream << "Failed to find a corresponding actor handle for " << actor_id;
+          cb(Status::Invalid(stream.str()));
+        }
+      },
+      "CoreWorker.KillActor");
   const auto &status = f.get();
   actor_manager_->OnActorKilled(actor_id);
   return status;
@@ -3146,24 +3149,26 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<Status> ret;
   int counter = 0;
   // Post to service pool to avoid mutex
-  io_service_.post([&, this]() {
-    for (const auto &id : actor_ids) {
-      if (actor_creator_->IsActorInRegistering(id)) {
-        ++counter;
-        actor_creator_->AsyncWaitForActorRegisterFinish(
-            id, [&counter, &promise, &ret](Status status) {
-              ret.push_back(status);
-              --counter;
-              if (counter == 0) {
-                promise.set_value();
-              }
-            });
-      }
-    }
-    if (counter == 0) {
-      promise.set_value();
-    }
-  });
+  io_service_.post(
+      [&, this]() {
+        for (const auto &id : actor_ids) {
+          if (actor_creator_->IsActorInRegistering(id)) {
+            ++counter;
+            actor_creator_->AsyncWaitForActorRegisterFinish(
+                id, [&counter, &promise, &ret](Status status) {
+                  ret.push_back(status);
+                  --counter;
+                  if (counter == 0) {
+                    promise.set_value();
+                  }
+                });
+          }
+        }
+        if (counter == 0) {
+          promise.set_value();
+        }
+      },
+      "CoreWorker.WaitForActorRegistered");
   future.wait();
   for (const auto &s : ret) {
     if (!s.ok()) {
