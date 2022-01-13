@@ -14,15 +14,9 @@
 
 #include "plus.h"
 
-#include <unistd.h>
-
 int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
 int Plus(int x, int y) { return x + y; };
 void ThrowTask() { throw std::logic_error("error"); }
-std::array<int, 100000> ReturnLargeArray(std::array<int, 100000> x) {
-  sleep(5);
-  return x;
-};
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, ReturnLargeArray);
+RAY_REMOTE(Return1, Plus1, Plus, ThrowTask);

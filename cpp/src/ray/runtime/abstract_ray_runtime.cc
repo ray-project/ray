@@ -50,7 +50,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
   } else {
-    // ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
+    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
     RAY_LOG(INFO) << "Native ray runtime started.";
   }
@@ -58,8 +58,8 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   internal::RayRuntimeHolder::Instance().Init(runtime);
   if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
     // Load functions from code search path.
-    // FunctionHelper::GetInstance().LoadFunctionsFromPaths(
-    //     ConfigInternal::Instance().code_search_path);
+    FunctionHelper::GetInstance().LoadFunctionsFromPaths(
+        ConfigInternal::Instance().code_search_path);
   }
   abstract_ray_runtime_ = runtime;
   return runtime;
@@ -118,7 +118,6 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
-  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
     if (arg.buf) {
@@ -129,10 +128,9 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
           memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
-      auto id = ObjectID::FromBinary(*arg.id);
-      ray_arg =
-          absl::make_unique<ray::TaskArgByReference>(id, core_worker.GetOwnerAddress(id),
-                                                     /*call_site=*/"");
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
+                                                           ray::rpc::Address{},
+                                                           /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
