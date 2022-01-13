@@ -21,8 +21,8 @@ class CometLoggerCallback(LoggerCallback):
     """CometLoggerCallback for logging Tune results to Comet.
 
     Comet (https://comet.ml) is a tool to manage and optimize the
-    entire ML lifecycle, from experiment tracking and dataset versioning
-    to model production monitoring.
+    entire ML lifecycle, from experiment tracking, model optimization
+    and dataset versioning to model production monitoring.
 
     This Ray Tune ``LoggerCallback`` sends metrics and parameters to
     Comet for tracking.
