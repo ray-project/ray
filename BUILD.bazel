@@ -2538,9 +2538,9 @@ genrule(
 
 # Core worker harness in the form of shared object file with C API/ABI.
 #
-# Ease of language worker implementation via lingua-franca
-# C interface; stable ABI across non-breaking ray versions &
-# diverse compilation setups
+# Ease of language worker implementation via FFI-friendly
+# C interface & included utils; stable ABI across non-breaking
+# ray versions & diverse compilation setups
 
 cc_binary(
     name = "libcore_worker_library_c.so",

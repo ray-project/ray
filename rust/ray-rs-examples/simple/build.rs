@@ -26,9 +26,7 @@ fn main() {
 
     println!("cargo:rustc-link-lib=core_worker_library_c");
     println!("cargo:rustc-link-search={}", link_dir);
-    //
-    // println!("cargo:rustc-link-lib=core_worker_library_c");
-    // println!("cargo:rustc-link-search={}", link_dir);
+    
     println!("cargo:rustc-cdylib-link-args=-Wl,-export-dynamic -nostartfiles");
 
     println!("cargo:rustc-env=LD_LIBRARY_PATH={}:LD_LIBRARY_PATH", link_dir);
