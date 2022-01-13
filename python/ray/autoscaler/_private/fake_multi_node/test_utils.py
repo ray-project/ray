@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Dict, Any, Optional
@@ -14,6 +15,8 @@ from ray.autoscaler._private.fake_multi_node.node_provider import \
 from ray.util.ml_utils.dict import deep_update
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_DOCKER_IMAGE = "rayproject/ray:nightly-py{major}{minor}-cpu"
 
 
 class DockerCluster:
@@ -134,7 +137,16 @@ class DockerCluster:
 
         if not config.get("provider", {}).get("image"):
             # No image specified, trying to parse from buildkite
-            self._docker_image = os.environ.get("RAY_DOCKER_IMAGE", None)
+            docker_image = os.environ.get("RAY_DOCKER_IMAGE", None)
+
+            if not docker_image:
+                # If still no docker image, use one according to Python version
+                mj = sys.version_info.major
+                mi = sys.version_info.minor
+
+                docker_image = DEFAULT_DOCKER_IMAGE.format(major=mj, minor=mi)
+
+            self._docker_image = docker_image
 
         with open(self._base_config_file, "rt") as f:
             cluster_config = yaml.safe_load(f)

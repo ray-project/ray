@@ -1,6 +1,6 @@
 Pygments==2.3.1
 setuptools==41.0.1
-docutils==0.15
+docutils==0.16
 mock==1.0.1
 pillow==8.3.2
 alabaster>=0.7,<0.8,!=0.7.5
@@ -10,3 +10,4 @@ sphinx==3.0.4
 readthedocs-sphinx-ext<1.1
 sphinx-book-theme==0.0.42
 sphinx-sitemap==2.2.0
+myst-parser
