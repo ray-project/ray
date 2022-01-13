@@ -600,8 +600,8 @@ def run_learning_tests_from_yaml(
         # If we have evaluation workers, use their rewards.
         # This is useful for offline learning tests, where
         # we evaluate against an actual environment.
-        return experiment["config"].get(
-            "evaluation_interval", None) is not None
+        return experiment["config"].get("evaluation_interval",
+                                        None) is not None
 
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
@@ -634,12 +634,10 @@ def run_learning_tests_from_yaml(
                 e["stop"]["time_total_s"] = 0
             else:
                 check_eval = should_check_eval(e)
-                episode_reward_key = (
-                    "episode_reward_mean" if not check_eval else
-                    "evaluation/episode_reward_mean")
+                episode_reward_key = ("episode_reward_mean" if not check_eval
+                                      else "evaluation/episode_reward_mean")
                 # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria",
-                                   {}).get(episode_reward_key)
+                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
                 if min_reward is not None:
                     e["stop"][episode_reward_key] = min_reward
 
