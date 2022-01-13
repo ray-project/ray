@@ -180,7 +180,7 @@ def function_entry_num(job_id):
 
 
 @pytest.mark.skipif(
-    client_test_enabled(),
+    client_test_enabled() or sys.platform == "win32",
     reason="client api doesn't support namespace right now.")
 def test_function_table_gc(call_ray_start):
     """This test tries to verify that function table is cleaned up
@@ -216,7 +216,7 @@ def test_function_table_gc(call_ray_start):
 
 
 @pytest.mark.skipif(
-    client_test_enabled(),
+    client_test_enabled() or sys.platform == "win32",
     reason="client api doesn't support namespace right now.")
 def test_function_table_gc_actor(call_ray_start):
     """If there is a detached actor, the table won't be cleaned up.
