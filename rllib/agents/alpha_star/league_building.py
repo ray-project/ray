@@ -1,11 +1,23 @@
 import numpy as np
 import re
+from typing import Set
 
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import PolicyID, ResultDict, TrainerConfigDict
 
 
-def league_building_fn(trainer: Trainer, result: ResultDict, **kwargs):
+def league_building_fn(
+    trainer: Trainer,
+    result: ResultDict,
+    *,
+    config: TrainerConfigDict,
+    main_policies: Set[PolicyID],
+    main_exploiters: Set[PolicyID],
+    league_exploiters: Set[PolicyID],
+    trainable_policies: Set[PolicyID],
+    non_trainable_policies: Set[PolicyID],
+    **kwargs):
+    """TODO: Docstring """
 
     # If no evaluation results -> Use hist data gathered for training.
     if "evaluation" in result:
@@ -31,7 +43,7 @@ def league_building_fn(trainer: Trainer, result: ResultDict, **kwargs):
         trainer.win_rates[policy_id] = win_rate
 
         # Policy is a snapshot (frozen) -> Ignore.
-        if policy_id in trainer.non_trainable_policies:
+        if policy_id in non_trainable_policies:
             continue
 
         print(
@@ -41,39 +53,48 @@ def league_building_fn(trainer: Trainer, result: ResultDict, **kwargs):
 
         # If win rate is good enough -> Snapshot current policy and decide,
         # whether to freeze the new snapshot or not.
-        if win_rate > trainer.config["win_rate_threshold_for_new_snapshot"]:
+        if win_rate >= config["win_rate_threshold_for_new_snapshot"]:
+            initializing_first_exploiters = False
+
             is_main = re.match("^main(_\\d+)?$", policy_id)
-            initializing_exploiters = False
 
             # First time, main manages a decent win-rate against random:
             # Add league_exploiter_0 and main_exploiter_0 to the mix.
-            if is_main and len(trainer.trainable_policies) == 3:
-                initializing_exploiters = True
-                trainer.trainable_policies.add("league_exploiter_1")
-                trainer.trainable_policies.add("main_exploiter_1")
+            if is_main and \
+                    "league_exploiter_1" not in league_exploiters:
+                new_pol_id = "main_1"
+                initializing_first_exploiters = True
+                trainable_policies.add(new_pol_id)
+
+                trainable_policies.add("league_exploiter_1")
+                league_exploiters.add("league_exploiter_1")
+
+                trainable_policies.add("main_exploiter_1")
+                main_exploiters.add("main_exploiter_1")
+
+                print(f"initializing actual league ({new_pol_id} + "
+                      "1st learning league-/main-exploiters).")
             else:
+                keep_training_p = config["keep_new_snapshot_training_prob"]
                 keep_training = False if is_main else np.random.choice(
-                    [True, False], p=[0.3, 0.7])
-                if policy_id in trainer.main_policies:
-                    new_pol_id = re.sub("_\\d+$",
-                                        f"_{len(trainer.main_policies) - 1}",
-                                        policy_id)
-                    trainer.main_policies.add(new_pol_id)
-                elif policy_id in trainer.main_exploiters:
-                    new_pol_id = re.sub("_\\d+$",
-                                        f"_{len(trainer.main_exploiters)}",
-                                        policy_id)
-                    trainer.main_exploiters.add(new_pol_id)
+                    [True, False], p=[keep_training_p, 1.0 - keep_training_p])
+                if policy_id in main_policies:
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{len(main_policies) - 1}", policy_id)
+                    main_policies.add(new_pol_id)
+                elif policy_id in main_exploiters:
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{len(main_exploiters)}", policy_id)
+                    main_exploiters.add(new_pol_id)
                 else:
-                    new_pol_id = re.sub("_\\d+$",
-                                        f"_{len(trainer.league_exploiters)}",
-                                        policy_id)
-                    trainer.league_exploiters.add(new_pol_id)
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{len(league_exploiters)}", policy_id)
+                    league_exploiters.add(new_pol_id)
 
                 if keep_training:
-                    trainer.trainable_policies.add(new_pol_id)
+                    trainable_policies.add(new_pol_id)
                 else:
-                    trainer.non_trainable_policies.add(new_pol_id)
+                    non_trainable_policies.add(new_pol_id)
 
                 print(f"adding new opponents to the mix ({new_pol_id}).")
 
@@ -87,17 +108,17 @@ def league_building_fn(trainer: Trainer, result: ResultDict, **kwargs):
                 if type_ == 1:
                     league_exploiter = "league_exploiter_" + str(
                         np.random.choice(
-                            list(range(len(trainer.league_exploiters)))))
+                            list(range(len(league_exploiters)))))
                     # This league exploiter is a frozen: Play against a
                     # trainable policy.
-                    if league_exploiter not in trainer.trainable_policies:
+                    if league_exploiter not in trainable_policies:
                         opponent = np.random.choice(
-                            list(trainer.trainable_policies))
+                            list(trainable_policies))
                     # League exploiter is trainable: Play against any other
                     # non-trainable policy.
                     else:
                         opponent = np.random.choice(
-                            list(trainer.non_trainable_policies))
+                            list(non_trainable_policies))
                     print(f"{league_exploiter} vs {opponent}")
                     return league_exploiter if \
                         episode.episode_id % 2 == agent_id else opponent
@@ -106,48 +127,49 @@ def league_building_fn(trainer: Trainer, result: ResultDict, **kwargs):
                 else:
                     main_exploiter = "main_exploiter_" + str(
                         np.random.choice(
-                            list(range(len(trainer.main_exploiters)))))
+                            list(range(len(main_exploiters)))))
                     # Main exploiter is frozen: Play against the main policy.
-                    if main_exploiter not in trainer.trainable_policies:
-                        main = "main"
+                    if main_exploiter not in trainable_policies:
+                        main = "main_0"
                     # Main exploiter is trainable: Play against any frozen main.
                     else:
                         main = np.random.choice(
-                            list(trainer.main_policies - {"main"}))
-                    # print(f"{main_exploiter} vs {main}")
+                            list(main_policies - {"main_0"}))
+                    print(f"{main_exploiter} vs {main}")
                     return main_exploiter if \
                         episode.episode_id % 2 == agent_id else main
 
-            # Set the weights of the new polic(y/ies).
-            if initializing_exploiters:
-                main_state = trainer.get_policy("main").get_state()
-                pol_map = trainer.workers.local_worker().policy_map
-                pol_map["main_0"].set_state(main_state)
-                pol_map["league_exploiter_1"].set_state(main_state)
-                pol_map["main_exploiter_1"].set_state(main_state)
-                # We need to sync the just copied local weights to all the
-                # remote workers as well.
-                trainer.workers.sync_weights(policies=[
-                    "main_0", "league_exploiter_1", "main_exploiter_1"
-                ])
+            # Add and initialize the first learning league- and
+            # main-exploiters.
+            if initializing_first_exploiters:
+                main_state = trainer.get_policy("main_0").get_state()
 
-                def _set(worker):
-                    worker.set_policy_mapping_fn(policy_mapping_fn)
-                    worker.set_policies_to_train(trainer.trainable_policies)
-
-                trainer.workers.foreach_worker(_set)
-            else:
-                new_policy = trainer.add_policy(
-                    policy_id=new_pol_id,
-                    policy_cls=type(trainer.get_policy(policy_id)),
+                # Add/initialize `league_exploiter_1`.
+                trainer.add_policy(
+                    policy_id="league_exploiter_1",
+                    policy_cls=type(trainer.get_policy("main_0")),
+                    policy_state=main_state,
                     policy_mapping_fn=policy_mapping_fn,
-                    policies_to_train=trainer.trainable_policies,
+                    policies_to_train=trainable_policies,
                 )
-                main_state = trainer.get_policy(policy_id).get_state()
-                new_policy.set_state(main_state)
-                # We need to sync the just copied local weights to all the
-                # remote workers as well.
-                trainer.workers.sync_weights(policies=[new_pol_id])
+                # Add/initialize `main_exploiter_1`.
+                trainer.add_policy(
+                    policy_id="main_exploiter_1",
+                    policy_cls=type(trainer.get_policy("main_0")),
+                    policy_state=main_state,
+                    policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=trainable_policies,
+                )
+
+            # Add and set the weights of the new polic(y/ies).
+            state = trainer.get_policy(policy_id).get_state()
+            trainer.add_policy(
+                policy_id=new_pol_id,
+                policy_cls=type(trainer.get_policy(policy_id)),
+                policy_state=state,
+                policy_mapping_fn=policy_mapping_fn,
+                policies_to_train=trainer.trainable_policies,
+            )
 
         else:
             print("not good enough; will keep learning ...")

@@ -27,12 +27,6 @@ from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, \
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
-
-def policy_mapping_fn(agent_id, episode, worker, **kwargs):
-    # At first, only have main play against the random main exploiter.
-    return
-
-
 # yapf: disable
 # __sphinx_doc_begin__
 
@@ -56,6 +50,16 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # results) as args. It may then analyze the results and decide on adding
         # new policies to the league.
         "league_building_fn": league_building_fn,
+        # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
+        # be considered for snapshotting (cloning). The cloned copy may then
+        # be frozen (no further learning) or keep learning (independent of
+        # its ancestor policy).
+        # Set this to lower values to speed up league growth.
+        "win_rate_threshold_for_new_snapshot": 0.9,
+        # If we took a new snapshot of any given policy, what's the probability
+        # that this snapshot will continue to be trainable (rather than become
+        # frozen/non-trainable)?
+        "keep_new_snapshot_training_prob": 0.3,
 
         # Basic "multiagent" setup for league-building AlphaStar:
         # Start with "main_0" (the policy we would like to use in the very end),
@@ -76,11 +80,11 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
                 "league_exploiter_0": PolicySpec(policy_class=RandomPolicy),
             },
             "policy_mapping_fn":
-                (lambda aid, ep, w, **kw: "main" if ep.episode_id % 2 == aid
-                    else "main_exploiter_0"),
+                (lambda aid, ep, worker, **kw: "main_0" if
+                ep.episode_id % 2 == aid else "main_exploiter_0"),
             # At first, only train main_0 (until good enough to win against
             # random).
-            "policies_to_train": ["main"],
+            "policies_to_train": ["main_0"],
         },
 
         # Reporting interval.
@@ -264,6 +268,11 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Sets of currently trainable/non-trainable policies in the league.
         self.trainable_policies: Set[PolicyID] = set()
         self.non_trainable_policies: Set[PolicyID] = set()
+        for pid in self.config["multiagent"]["policies"]:
+            if pid in self.config["multiagent"]["policies_to_train"]:
+                self.trainable_policies.add(pid)
+            else:
+                self.non_trainable_policies.add(pid)
         # Store the win rates for league overview printouts.
         self.win_rates: Dict[PolicyID, float] = {}
 
@@ -274,7 +283,16 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         # Based on the (train + evaluate) results, perform a step of
         # league building.
-        self.config["build_league_fn"](self, result)
+        self.config["league_building_fn"](
+            trainer=self,
+            result=result,
+            config=self.config,
+            main_policies=self.main_policies,
+            main_exploiters=self.main_exploiters,
+            league_exploiters=self.league_exploiters,
+            trainable_policies=self.trainable_policies,
+            non_trainable_policies=self.non_trainable_policies,
+        )
 
         return result
 
@@ -352,9 +370,11 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # depending on which policies participated in the episode.
         assert isinstance(sample, MultiAgentBatch)
         for pid, batch in sample.policy_batches.items():
-            replay_actor = worker._policy_learners[pid][1]
-            ma_batch = MultiAgentBatch({pid: batch}, batch.count)
-            replay_actor.add_batch.remote(ma_batch)
+            # Don't send data, if policy is not trainable.
+            if pid in worker._policy_learners:
+                replay_actor = worker._policy_learners[pid][1]
+                ma_batch = MultiAgentBatch({pid: batch}, batch.count)
+                replay_actor.add_batch.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
         return sample.count, sample.agent_steps()
 

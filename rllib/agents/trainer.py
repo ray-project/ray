@@ -11,8 +11,8 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, DefaultDict, Dict, List, Optional, Set, Tuple, \
-    Type, Union
+from typing import Callable, Container, DefaultDict, Dict, List, Optional, \
+    Set, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -54,8 +54,8 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
-    TensorType, TrainerConfigDict
+    PartialTrainerConfigDict, PolicyID, PolicyState, ResultDict, \
+    TensorStructType, TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -779,14 +779,14 @@ class Trainer(Trainable):
         self.remote_requests_in_flight: \
             DefaultDict[ActorHandle, Set[ray.ObjectRef]] = defaultdict(set)
 
-        # Deprecated way of implementing Trainer sub-classes (or "templates"
-        # via the soon-to-be deprecated `build_trainer` utility function).
-        # Instead, sub-classes should override the Trainable's `setup()`
-        # method and call super().setup() from within that override at some
-        # point.
         self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
+        # Deprecated way of implementing Trainer sub-classes (or "templates"
+        # via the `build_trainer` utility function).
+        # Instead, sub-classes should override the Trainable's `setup()`
+        # method and call super().setup() from within that override at some
+        # point.
         # Old design: Override `Trainer._init` (or use `build_trainer()`, which
         # will do this for you).
         try:
@@ -1661,6 +1661,7 @@ class Trainer(Trainable):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1678,6 +1679,8 @@ class Trainer(Trainable):
             action_space: The action space of the policy to add.
                 If None, try to infer this space from the environment.
             config: The config overrides for the policy to add.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
@@ -1702,9 +1705,12 @@ class Trainer(Trainable):
             observation_space=observation_space,
             action_space=action_space,
             config=config,
+            policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=policies_to_train,
+            policies_to_train=list(policies_to_train),
         )
+        from copy import deepcopy#TEST
+        kwargs = deepcopy(kwargs)#TEST
 
         def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
@@ -2474,7 +2480,7 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state and hasattr(self, "workers"):
+        if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():

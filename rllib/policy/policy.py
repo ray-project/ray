@@ -6,7 +6,8 @@ import logging
 import numpy as np
 import platform
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
+    TYPE_CHECKING, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -24,8 +25,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    PolicyID, T, TensorType, TensorStructType, TrainerConfigDict, Tuple, \
-    Union
+    PolicyID, PolicyState, T, TensorType, TensorStructType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -637,7 +637,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
@@ -657,10 +657,7 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
-    def set_state(
-            self,
-            state: Union[Dict[str, TensorType], List[TensorType]],
-    ) -> None:
+    def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
         Args:
