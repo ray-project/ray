@@ -377,7 +377,6 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
         )
-        return self._actor.get_running_replica_info()
 
     @property
     def replica_tag(self) -> ReplicaTag:

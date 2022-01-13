@@ -550,7 +550,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}")
+ray.init(address="{info["address"]}")
 
 def create_pg():
     pg = ray.util.placement_group(
@@ -618,7 +618,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     driver_code = f"""
 import ray
 
-ray.init(address="{info["redis_address"]}", namespace="default_test_namespace")
+ray.init(address="{info["address"]}", namespace="default_test_namespace")
 
 def create_pg():
     pg = ray.util.placement_group(
