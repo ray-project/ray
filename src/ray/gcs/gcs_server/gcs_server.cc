@@ -575,7 +575,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
-         << gcs_publisher_->DebugString() << "\n\n";
+         << gcs_publisher_->DebugString() << "\n\n"
+         << runtime_env_manager_->DebugString() << "\n\n";
 
   if (config_.grpc_based_resource_broadcast) {
     stream << grpc_based_resource_broadcaster_->DebugString();

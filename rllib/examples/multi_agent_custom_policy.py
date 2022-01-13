@@ -82,7 +82,7 @@ if __name__ == "__main__":
             # We wouldn't have to specify this here as the RandomPolicy does
             # not learn anyways (it has an empty `learn_on_batch` method), but
             # it's good practice to define this list here either way.
-            "policies_to_learn": ["pg_policy"],
+            "policies_to_train": ["pg_policy"],
         },
         "framework": args.framework,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

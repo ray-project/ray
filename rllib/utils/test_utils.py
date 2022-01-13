@@ -402,6 +402,11 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
+        if unsquash is None:
+            unsquash = what.config["normalize_actions"]
+        if clip is None:
+            clip = what.config["clip_actions"]
+
         # Test whether unsquash/clipping works on the Trainer's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
@@ -448,8 +453,9 @@ def check_compute_single_action(trainer,
                 for full_fetch in ([False, True]
                                    if what is trainer else [False]):
                     timestep = random.randint(0, 100000)
-                    for unsquash in [True, False]:
-                        for clip in ([False] if unsquash else [True, False]):
+                    for unsquash in [True, False, None]:
+                        for clip in ([False]
+                                     if unsquash else [True, False, None]):
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
 
@@ -493,7 +499,7 @@ def check_train_results(train_results):
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
         LEARNER_STATS_KEY
-    from ray.rllib.utils.multi_agent import check_multi_agent
+    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [

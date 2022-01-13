@@ -67,6 +67,10 @@ training.
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
 
+    .. note::
+       Ray Train will still work even if you don't use the ``prepare_model`` and ``prepare_data_loader`` utilities below,
+       and instead handle the logic directly inside your training function.
+
     First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
 
