@@ -23,7 +23,7 @@ RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
 /// Whether to enable Ray event stats collection.
 /// TODO(ekl) this seems to segfault Java unit tests when on by default?
-RAY_CONFIG(bool, event_stats, false)
+RAY_CONFIG(bool, event_stats, true)
 
 /// Whether to enable Ray legacy scheduler warnings. These are replaced by
 /// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
@@ -108,7 +108,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
 // If true, we place a soft cap on the numer of scheduling classes, see
 // `worker_cap_initial_backoff_delay_ms`.
-RAY_CONFIG(bool, worker_cap_enabled, false)
+RAY_CONFIG(bool, worker_cap_enabled, true)
 
 /// We place a soft cap on the number of tasks of a given scheduling class that
 /// can run at once to limit the total nubmer of worker processes. After the
@@ -278,7 +278,7 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "redis")
 // Feature flag to enable GCS based bootstrapping.
@@ -322,9 +322,6 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
-
-/// Whether put small objects in the local memory store.
-RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)

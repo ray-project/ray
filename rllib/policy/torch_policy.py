@@ -1170,7 +1170,7 @@ class EntropyCoeffSchedule:
 
 @DeveloperAPI
 class DirectStepOptimizer:
-    """Typesafe method for indicating apply gradients can directly step the
+    """Typesafe method for indicating `apply_gradients` can directly step the
        optimizers with in-place gradients.
     """
     _instance = None

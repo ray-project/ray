@@ -67,7 +67,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         df = self.ea.dataframe(self.metric, mode="max")
 
         self.assertTrue(isinstance(df, pd.DataFrame))
-        self.assertEquals(df.shape[0], self.num_samples)
+        self.assertEqual(df.shape[0], self.num_samples)
 
     def testLoadJson(self):
         all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
@@ -112,7 +112,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(logdir.startswith(self.test_path))
         logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_path))
-        self.assertNotEquals(logdir, logdir2)
+        self.assertNotEqual(logdir, logdir2)
 
     def testBestLogdirNan(self):
         nan_ea = self.nan_test_exp()
@@ -216,7 +216,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                     lambda spec: int(100 * random.random())),
             })
         df = analysis.dataframe(self.metric, mode="max")
-        self.assertEquals(df.shape[0], 1)
+        self.assertEqual(df.shape[0], 1)
 
     def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
         analysis = tune.run(
@@ -252,16 +252,15 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
 
         trials = ea.trials
 
-        self.assertEquals(ea.best_trial, trials[2])
-        self.assertEquals(ea.best_config, trials[2].config)
-        self.assertEquals(ea.best_logdir, trials[2].logdir)
-        self.assertEquals(ea.best_checkpoint, trials[2].checkpoint.value)
+        self.assertEqual(ea.best_trial, trials[2])
+        self.assertEqual(ea.best_config, trials[2].config)
+        self.assertEqual(ea.best_logdir, trials[2].logdir)
+        self.assertEqual(ea.best_checkpoint, trials[2].checkpoint.value)
         self.assertTrue(
             all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
-        self.assertEquals(ea.results_df.loc[trials[2].trial_id, "res"], 309)
-        self.assertEquals(ea.best_result["res"], 309)
-        self.assertEquals(ea.best_result_df.loc[trials[2].trial_id, "res"],
-                          309)
+        self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
+        self.assertEqual(ea.best_result["res"], 309)
+        self.assertEqual(ea.best_result_df.loc[trials[2].trial_id, "res"], 309)
 
     def testDataframeBestResult(self):
         def train(config):

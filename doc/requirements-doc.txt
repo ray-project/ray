@@ -38,3 +38,4 @@ git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
 sphinx-sitemap==2.2.0
+myst-parser

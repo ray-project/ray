@@ -57,7 +57,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
-  std::string GetRayNamespace(const JobID &job_id) const;
+  std::shared_ptr<rpc::JobConfig> GetJobConfig(const JobID &job_id) const;
 
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
@@ -66,8 +66,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
-  /// A cached mapping from job id to namespace.
-  std::unordered_map<JobID, std::string> ray_namespaces_;
+  /// A cached mapping from job id to job config.
+  absl::flat_hash_map<JobID, std::shared_ptr<rpc::JobConfig>> cached_job_configs_;
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);

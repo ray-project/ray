@@ -140,7 +140,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
 
   app_env_vars:
-    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
   stable: false
@@ -160,7 +160,7 @@
     script: python distributed/test_many_actors.py
 
   app_env_vars:
-    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
   stable: false
@@ -180,7 +180,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
 
   app_env_vars:
-    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
   stable: false
@@ -200,7 +200,7 @@
     script: python distributed/test_many_pgs.py
 
   app_env_vars:
-    RAY_gcs_grpc_based_pubsub: "true"
+    RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
   stable: false

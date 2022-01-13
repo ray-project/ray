@@ -67,7 +67,7 @@ For Ubuntu, run the following commands:
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc
 
-  pip install cython==0.29.0 pytest
+  pip install cython==0.29.26 pytest
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -76,7 +76,7 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
   sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
 
-  pip install cython==0.29.0 pytest
+  pip install cython==0.29.26 pytest
 
 Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
 
@@ -91,7 +91,7 @@ For MacOS, run the following commands:
   brew update
   brew install wget
 
-  pip install cython==0.29.0 pytest
+  pip install cython==0.29.26 pytest
 
 Ray can be built from the repository as follows.
 
@@ -193,7 +193,7 @@ Define an environment variable BAZEL_PATH to full exe path (example:
 
 .. code-block:: shell
 
-  pip install cython==0.29.0 pytest
+  pip install cython==0.29.26 pytest
 
 6. Download ray source code and build it.
 

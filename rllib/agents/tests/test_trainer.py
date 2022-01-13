@@ -208,7 +208,7 @@ class TestTrainer(unittest.TestCase):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
-            self.assertRaisesRegexp(
+            self.assertRaisesRegex(
                 ValueError, "Cannot evaluate w/o an evaluation worker set",
                 trainer_wo_env_on_driver.evaluate)
             trainer_wo_env_on_driver.stop()

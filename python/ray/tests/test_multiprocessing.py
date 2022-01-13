@@ -352,6 +352,7 @@ def test_starmap(pool):
     assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs in windows")
 def test_callbacks(pool_4_processes,
                    pool_4_processes_python_multiprocessing_lib):
     callback_queue = queue.Queue()

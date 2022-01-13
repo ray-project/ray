@@ -14,7 +14,7 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     SignalActor, kill_actor_and_wait_for_failure, put_object,
-    wait_for_condition, new_scheduler_enabled, convert_actor_state)
+    wait_for_condition, convert_actor_state)
 
 logger = logging.getLogger(__name__)
 
@@ -169,30 +169,6 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
     check_refcounts({})
-
-
-@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic res todo")
-def test_actor_creation_task(ray_start_regular):
-    @ray.remote
-    def large_object():
-        # This will be spilled to plasma.
-        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
-
-    @ray.remote(resources={"init": 1})
-    class Actor:
-        def __init__(self, dependency):
-            return
-
-        def ping(self):
-            return
-
-    a = Actor.remote(large_object.remote())
-    ping = a.ping.remote()
-    ready, unready = ray.wait([ping], timeout=1)
-    assert not ready
-
-    ray.experimental.set_resource("init", 1)
-    ray.get(ping)
 
 
 def test_basic_pinning(one_worker_100MiB):
