@@ -843,12 +843,11 @@ class TrialRunner:
                 # TODO(ujvl): Suggest using cloud checkpointing once
                 #  API has converged.
 
-                msg = (
-                    "Consider turning off forced head-worker trial "
-                    "checkpoint syncs by setting sync_on_checkpoint=False"
-                    ". Note that this may result in faulty trial "
-                    "restoration if a failure occurs while the checkpoint "
-                    "is being synced from the worker to the head node.")
+                msg = ("Consider turning off forced head-worker trial "
+                       "checkpoint syncs by setting sync_on_checkpoint=False"
+                       ". Note that this may result in faulty trial "
+                       "restoration if a failure occurs while the checkpoint "
+                       "is being synced from the worker to the head node.")
 
                 if trial.location.hostname and (trial.location.hostname !=
                                                 get_node_ip_address()):
