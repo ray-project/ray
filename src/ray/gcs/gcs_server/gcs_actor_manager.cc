@@ -236,7 +236,7 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
   RAY_LOG(INFO) << "Registering actor, job id = " << actor_id.JobId()
                 << ", actor id = " << actor_id;
   Status status =
-      RegisterActor(request, [this, reply, send_reply_callback,
+      RegisterActor(request, [reply, send_reply_callback,
                               actor_id](const std::shared_ptr<gcs::GcsActor> &actor) {
         RAY_LOG(INFO) << "Registered actor, job id = " << actor_id.JobId()
                       << ", actor id = " << actor_id;
