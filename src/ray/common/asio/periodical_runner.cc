@@ -13,8 +13,8 @@
 // limitations under the License.
 
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/ray_config.h"
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -24,6 +24,7 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
 
 PeriodicalRunner::~PeriodicalRunner() {
   absl::MutexLock lock(&mutex_);
+  destructed_ = true;
   for (const auto &timer : timers_) {
     timer->cancel();
   }
@@ -32,6 +33,9 @@ PeriodicalRunner::~PeriodicalRunner() {
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
                                          const std::string name) {
+  if (destructed_) {
+    return;
+  }
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     {
@@ -53,6 +57,10 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
 void PeriodicalRunner::DoRunFnPeriodically(const std::function<void()> &fn,
                                            boost::posix_time::milliseconds period,
                                            boost::asio::deadline_timer &timer) {
+  if (destructed_) {
+    return;
+  }
+
   fn();
   absl::MutexLock lock(&mutex_);
   timer.expires_from_now(period);
@@ -72,6 +80,10 @@ void PeriodicalRunner::DoRunFnPeriodically(const std::function<void()> &fn,
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     const std::function<void()> &fn, boost::posix_time::milliseconds period,
     boost::asio::deadline_timer &timer, const std::string name) {
+  if (destructed_) {
+    return;
+  }
+
   fn();
   absl::MutexLock lock(&mutex_);
   timer.expires_from_now(period);
