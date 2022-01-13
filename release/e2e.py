@@ -391,7 +391,7 @@ class CommandRunnerHack:
         env = os.environ.copy()
         env["RAY_ADDRESS"] = f"anyscale://{session_name}"
         env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
-        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST""]
+        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
         full_cmd = " ".join(f"{k}={v}"
                             for k, v in env_vars.items()) + " " + cmd_to_run
         proc = subprocess.Popen(
