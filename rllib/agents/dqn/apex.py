@@ -63,7 +63,12 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "replay_buffer_config": None,
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
-        # If False, replay shards may be created on different node(s).
+        # This is preferred b/c the learner process should have quick
+        # access to the data from the buffer shards, avoiding network
+        # traffic each time samples from the buffer(s) are drawn.
+        # Set this to False for relaxing this constraint and allowing
+        # replay shards to be created on node(s) other than the one
+        # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
 
         "learning_starts": 50000,
@@ -137,7 +142,7 @@ class ApexTrainer(DQNTrainer):
         num_replay_buffer_shards = config["optimizer"][
             "num_replay_buffer_shards"]
 
-        args = [
+        replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
             config["buffer_size"],
@@ -154,14 +159,16 @@ class ApexTrainer(DQNTrainer):
             replay_actors = create_colocated_actors(
                 actor_specs=[
                     # (class, args, kwargs={}, count)
-                    (ReplayActor, args, {}, num_replay_buffer_shards)  # [0]
+                    (ReplayActor, replay_actor_args, {},
+                     num_replay_buffer_shards)
                 ],
                 node=platform.node(),  # localhost
-            )[0]
+            )[0]  # [0]=only one item in `actor_specs`.
         # Place replay buffer shards on any node(s).
         else:
             replay_actors = [
-                ReplayActor(*args) for _ in range(num_replay_buffer_shards)
+                ReplayActor(*replay_actor_args)
+                for _ in range(num_replay_buffer_shards)
             ]
 
         # Start the learner thread.

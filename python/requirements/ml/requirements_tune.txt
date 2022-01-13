@@ -15,8 +15,7 @@ gym[atari]>=0.21.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 h5py==3.1.0
 hpbandster==0.7.4
-pymoo<0.5.0  # this is a HEBO dependency, remove after https://github.com/huawei-noah/noah-research/issues/41 is fixed
-HEBO==0.1.0
+HEBO==0.3.2
 hyperopt==0.2.5
 jupyter==1.0.0
 kubernetes==17.17.0

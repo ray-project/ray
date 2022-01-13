@@ -316,6 +316,14 @@ class StandardizeFields:
         for policy_id in samples.policy_batches:
             batch = samples.policy_batches[policy_id]
             for field in self.fields:
+                if field not in batch:
+                    raise KeyError(
+                        f"`{field}` not found in SampleBatch for policy "
+                        f"`{policy_id}`! Maybe this policy fails to add "
+                        f"{field} in its `postprocess_trajectory` method? Or "
+                        "this policy is not meant to learn at all and you "
+                        "forgot to add it to the list under `config."
+                        "multiagent.policies_to_train`.")
                 batch[field] = standardized(batch[field])
 
         if wrapped:

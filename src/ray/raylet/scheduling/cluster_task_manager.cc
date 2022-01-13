@@ -193,6 +193,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   if (canceled) {
     // Task has been canceled.
     RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
+    RemoveFromRunningTasksIfExists(task);
     // All the cleaning work has been done when canceled task. Just return
     // false without doing anything.
     return false;
@@ -212,6 +213,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
+    RemoveFromRunningTasksIfExists(task);
 
     if (!worker) {
       // Empty worker popped.
@@ -373,14 +375,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
-        auto it = info_by_sched_cls_.find(sched_cls);
-        if (it != info_by_sched_cls_.end()) {
-          it->second.running_tasks.erase(spec.TaskId());
-          if (it->second.running_tasks.size() == 0) {
-            info_by_sched_cls_.erase(it);
-          }
-        }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
@@ -443,6 +437,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
             allocated_instances_serialized_json);
         work_it++;
       }
+    }
+    // In the beginning of the loop, we add scheduling_class
+    // to the `info_by_sched_cls_` map.
+    // In cases like dead owners, we may not add any tasks
+    // to `running_tasks` so we can remove the map entry
+    // for that scheduling_class to prevent memory leaks.
+    if (sched_cls_info.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
@@ -512,20 +514,22 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
+void ClusterTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
+  auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+  auto it = info_by_sched_cls_.find(sched_cls);
+  if (it != info_by_sched_cls_.end()) {
+    it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
+    if (it->second.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(it);
+    }
+  }
+}
+
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  {
-    auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-    auto it = info_by_sched_cls_.find(sched_cls);
-    if (it != info_by_sched_cls_.end()) {
-      it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
-      if (it->second.running_tasks.size() == 0) {
-        info_by_sched_cls_.erase(it);
-      }
-    }
-  }
+  RemoveFromRunningTasksIfExists(*task);
 
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
@@ -683,6 +687,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        RemoveFromRunningTasksIfExists(task);
         (*work_it)->SetStateCancelled();
         work_queue.erase(work_it);
         if (work_queue.empty()) {
