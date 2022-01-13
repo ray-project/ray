@@ -410,7 +410,11 @@ class S3SyncSessionController(SessionController):
             stop_event=multiprocessing.Event(),  # unused
             state_str="PULL")
         # s3 -> local target
-        self.s3_client.download_file(self.bucket, remote_upload_to, target)
+        self.s3_client.download_file(
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+            Filename=target,
+        )
 
     def _push_local_dir(self, session_id):
         remote_upload_to = self._generate_tmp_s3_path()
@@ -418,8 +422,11 @@ class S3SyncSessionController(SessionController):
         _, local_path = tempfile.mkstemp()
         shutil.make_archive(local_path, "zip", os.getcwd())
         # local source -> s3
-        self.s3_client.upload_file(remote_upload_to, self.bucket,
-                                   local_path + ".zip")
+        self.s3_client.upload_file(
+            Filename=local_path + ".zip",
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
         # s3 -> remote target
         scd_id, result = run_session_command(
             sdk=self.sdk,
@@ -448,7 +455,11 @@ class S3SyncSessionController(SessionController):
 
         remote_upload_to = self._generate_tmp_s3_path()
         # local source -> s3
-        self.s3_client.upload_file(remote_upload_to, self.bucket, source)
+        self.s3_client.upload_file(
+            Filename=source,
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
         # s3 -> remote target
         scd_id, result = run_session_command(
             sdk=self.sdk,
