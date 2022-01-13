@@ -33,6 +33,13 @@ def retry(f):
     return inner
 
 
+def clean_escape_chars(text):
+    # https://stackoverflow.com/questions/8115261/how-to-remove-all-the-escape-sequences-from-a-list-of-strings
+    escapes = "".join([chr(char) for char in range(1, 32)])
+    translator = str.maketrans("", "", escapes)
+    return text.translate(translator)
+
+
 class BKAnalyticsUploader:
     @staticmethod
     def yield_result_xml_path(event_file_path):
@@ -45,18 +52,21 @@ class BKAnalyticsUploader:
                     continue
                 for output in event_line["testResult"]["testActionOutput"]:
                     if output["name"].endswith("xml"):
-                        uri = output["uri"].replace("file://", "")
+                        if sys.platform == "win32":
+                            uri = output["uri"].replace("file:///", "")
+                        else:
+                            uri = output["uri"].replace("file://", "")
                         yield uri
 
     @staticmethod
     def read_and_transform_xml(xml_path):
-        f = ET.parse(xml_path)
+        f = ET.parse(io.StringIO(clean_escape_chars(open(xml_path).read())))
         case = next(f.iter("testcase"))
         test_name = case.attrib["name"]
         *classname_chunks, name = test_name.split("/")
         case.set("name", name)
         case.set("classname", "/".join(classname_chunks))
-        return ET.tostring(f.getroot(), encoding="utf8", method="xml").decode()
+        return f
 
     @staticmethod
     @retry
@@ -81,18 +91,8 @@ class BKAnalyticsUploader:
         return resp
 
     @staticmethod
-    def merge_xmls(xml_texts: List[str]) -> str:
-        if len(xml_texts) == 1:
-            return xml_texts[0]
-
-        records = []
-        for t in xml_texts:
-            try:
-                records.append(ET.parse(io.StringIO(t)))
-            except Exception as e:
-                print(t)
-                raise e
-        first, later = records[0], records[1:]
+    def merge_xmls(xml_nodes: List) -> str:
+        first, later = xml_nodes[0], xml_nodes[1:]
         for later_record in later:
             first.getroot().append(later_record.find("testsuite"))
         return ET.tostring(
@@ -106,18 +106,18 @@ def upload_to_bk_analytics(event_files_dir, token):
             continue
 
         path = os.path.join(event_dir, name)
-        xml_texts: List[str] = []
+        xml_nodes: List = []
         for xml_path in BKAnalyticsUploader.yield_result_xml_path(path):
             assert os.path.exists(xml_path), xml_path
             parsed_xml = BKAnalyticsUploader.read_and_transform_xml(xml_path)
-            xml_texts.append(parsed_xml)
+            xml_nodes.append(parsed_xml)
 
-        if len(xml_texts) == 0:
+        if len(xml_nodes) == 0:
             continue
 
-        print(f"Sending result of {len(xml_texts)} suites")
+        print(f"Sending result of {len(xml_nodes)} suites")
         BKAnalyticsUploader.send_to_buildkite(
-            BKAnalyticsUploader.merge_xmls(xml_texts), token)
+            BKAnalyticsUploader.merge_xmls(xml_nodes), token)
 
 
 @retry
