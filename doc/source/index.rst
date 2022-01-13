@@ -358,7 +358,7 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   xgboost-ray.rst
+   xgboost-ray.md
    lightgbm-ray.rst
    ray-lightning.rst
    ray-collective.rst
