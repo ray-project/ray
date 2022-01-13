@@ -54,12 +54,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         print("Autoscaling worked")
 
     def testAutoscalingNewNode(self):
-        """Test that newly added nodes from autoscaling are not stale.
-
-        When new nodes are added to the cluster while a Tune job is running,
-        trials get scheduled on them immediately. However, Tune only
-        updates its internal list of available nodes every 10 seconds.
-        """
+        """Test that newly added nodes from autoscaling are not stale."""
         self.cluster.update_config({
             "provider": {
                 "head_resources": {
