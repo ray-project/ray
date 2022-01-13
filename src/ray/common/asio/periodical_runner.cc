@@ -24,6 +24,7 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
 
 PeriodicalRunner::~PeriodicalRunner() {
   absl::MutexLock lock(&mutex_);
+  RAY_CHECK(io_service_.stopped());
   for (const auto &timer : timers_) {
     timer->cancel();
   }

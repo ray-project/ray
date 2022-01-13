@@ -41,8 +41,8 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
-  updater_runner_.reset();
   updater_io_service_.stop();
+  updater_runner_.reset();
   if (updater_thread_->joinable()) {
     updater_thread_->join();
   }

@@ -62,6 +62,7 @@ void RedisAsyncContext::RedisAsyncHandleWrite() {
   // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
   // it.
   std::lock_guard<std::mutex> lock(mutex_);
+  RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
   redisAsyncHandleWrite(redis_async_context_);
 }
 
