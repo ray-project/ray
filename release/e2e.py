@@ -232,7 +232,7 @@ def _format_link(link: str):
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    return r"\033]1339;url='" + link + r"'\a\n"
+    return "\033]1339;url='" + link + "'\a\n"
 
 
 def getenv_default(key: str, default: Optional[str] = None):
@@ -412,9 +412,41 @@ class S3SyncSessionController(SessionController):
         # s3 -> local target
         self.s3_client.download_file(self.bucket, remote_upload_to, target)
 
-    def push(self, session_name, source, target):
+    def _push_local_dir(self, session_id):
         remote_upload_to = self._generate_tmp_s3_path()
+        # pack local dir
+        _, local_path = tempfile.mkstemp()
+        shutil.make_archive(local_path, "zip", os.getcwd())
+        # local source -> s3
+        self.s3_client.upload_file(remote_upload_to, self.bucket,
+                                   local_path + ".zip")
+        # s3 -> remote target
+        scd_id, result = run_session_command(
+            sdk=self.sdk,
+            session_id=session_id,
+            cmd_to_run=
+            (f"aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
+             "unzip archive.zip"),
+            result_queue=self.result_queue,
+            env_vars={},
+            state_str="PUSH")
+        _, _ = wait_for_session_command_to_complete(
+            result,
+            sdk=self.sdk,
+            scd_id=scd_id,
+            stop_event=multiprocessing.Event(),  # unused
+            state_str="PUSH")
+
+    def push(self, session_name, source, target):
         session_id = self._resolve_session(session_name).id
+        if source is None and target is None:
+            self._push_local_dir(session_id)
+            return
+
+        assert isinstance(source, str)
+        assert isinstance(target, str)
+
+        remote_upload_to = self._generate_tmp_s3_path()
         # local source -> s3
         self.s3_client.upload_file(remote_upload_to, self.bucket, source)
         # s3 -> remote target
@@ -1640,8 +1672,6 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1649,8 +1679,6 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
