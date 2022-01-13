@@ -27,7 +27,7 @@ class MultiAgentEnv(gym.Env):
     def __init__(self):
         self.observation_space = None
         self.action_space = None
-        self._agent_ids = {}
+        self._agent_ids = set()
 
         # do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
@@ -366,6 +366,7 @@ def make_multi_agent(
 
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config=None):
+            super().__init__()
             config = config or {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
