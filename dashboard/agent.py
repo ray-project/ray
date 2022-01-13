@@ -76,7 +76,6 @@ class DashboardAgent(object):
             self.redis_address = dashboard_utils.address_tuple(redis_address)
             self.redis_password = redis_password
             self.aioredis_client = None
-            self.gcs_address = None
 
         self.temp_dir = temp_dir
         self.session_dir = session_dir
