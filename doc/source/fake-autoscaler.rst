@@ -194,11 +194,17 @@ For the Ray OSS Buildkite environment, we thus set some environment variables:
   variable.
 
 Lastly, docker-compose obviously requires a docker image. The default docker image is ``rayproject/ray:nightly``.
-However, on our Ray OSS Buildkite environment, we want to test changes from the respective PR or Branch. Thus, we set
+The docker image requires ``openssh-server`` to be installed and enabled. In Buildkite we build a new image from
+``rayproject/ray:nightly-py37-cpu`` to avoid installing this on the fly for every node (which is the default way).
+This base image is built in one of the previous build steps.
 
-* ``RAY_DOCKER_IMAGE="rayproject/ray:nightly-py37-cpu"``
+Thus, we set
 
-which is the name of the docker image we build in one of the previous build steps.
+* ``RAY_DOCKER_IMAGE="rayproject/ray:multinode-py37"``
+
+* ``RAY_HAS_SSH=1``
+
+to use this docker image and inform our multinode infrastructure that SSH is already installed.
 
 Local development
 -----------------
