@@ -495,14 +495,16 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     def call():
         if use_handle:
             handle = serve.get_deployment(name).get_handle()
-            ret = ray.get(handle.handler.remote())
+            ret = ray.get(handle.handler.remote()).split("|")
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get(f"http://localhost:8000/{name}")
 
             if ret.status_code != 200 or len(ret.text.split("|")) != 2:
                 return (None, None)
 
             ret = ret.text.split("|")
+
+        return ret[0], ret[1]
 
     signal_name = f"signal-{get_random_letters()}"
     signal = SignalActor.options(name=signal_name).remote()
@@ -617,14 +619,16 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     def call():
         if use_handle:
             handle = v1.get_handle()
-            ret = ray.get(handle.remote())
+            ret = ray.get(handle.remote()).split("|")
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get(f"http://localhost:8000/{name}")
 
             if ret.status_code != 200 or len(ret.text.split("|")) != 2:
                 return (None, None)
 
             ret = ret.text.split("|")
+
+        return ret[0], ret[1]
 
     def make_calls(expected):
         # Returns dict[val, set(pid)].
@@ -674,14 +678,16 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     def call():
         if use_handle:
             handle = v1.get_handle()
-            ret = ray.get(handle.remote())
+            ret = ray.get(handle.remote()).split("|")
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get(f"http://localhost:8000/{name}")
 
             if ret.status_code != 200 or len(ret.text.split("|")) != 2:
                 return (None, None)
 
             ret = ret.text.split("|")
+
+        return ret[0], ret[1]
 
     def make_calls(expected):
         # Returns dict[val, set(pid)].
