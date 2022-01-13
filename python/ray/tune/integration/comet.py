@@ -20,7 +20,7 @@ def _import_comet():
 class CometLoggerCallback(LoggerCallback):
     """CometLoggerCallback for logging Tune results to Comet.
 
-    Comet (https://comet.ml) is a tool to manage and optimize the
+    Comet (https://comet.ml/site/) is a tool to manage and optimize the
     entire ML lifecycle, from experiment tracking, model optimization
     and dataset versioning to model production monitoring.
 
@@ -33,6 +33,11 @@ class CometLoggerCallback(LoggerCallback):
     Then set the following environment variables
     ``export COMET_API_KEY=<Your API Key>``
 
+    Alternatively, you can also pass in your API Key as an argument to the
+    CometLoggerCallback constructor.
+
+    ``CometLoggerCallback(api_key=<Your API Key>)``
+
     Args:
             online (bool, optional): Whether to make use of an Online or
                 Offline Experiment. Defaults to True.
@@ -43,7 +48,7 @@ class CometLoggerCallback(LoggerCallback):
                 online=False).
 
     Please consult the Comet ML documentation for more information on the
-    Experiment and OfflineExperiment classes: https://comet.ml/
+    Experiment and OfflineExperiment classes: https://comet.ml/site/
 
     Example:
 
