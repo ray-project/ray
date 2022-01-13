@@ -75,6 +75,11 @@ Take a look at any of the below tutorials to get started with Tune.
     :figure: /images/mlflow.png
     :description: :doc:`Log and track your hyperparameter sweep with MLflow Tracking & AutoLogging <tune-mlflow>`
 
+.. customgalleryitem::
+    :tooltip: Use Comet with Ray Tune.
+    :figure: /images/comet_logo_full.png
+    :description: :doc:`Log and track your Tune trial metrics and parameters with Comet's Experiment Tracking Tools<tune-comet>`
+
 
 .. raw:: html
 
