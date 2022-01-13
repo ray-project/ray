@@ -189,6 +189,7 @@ import argparse
 import enum
 import random
 import string
+import shlex
 
 import boto3
 import collections
@@ -392,7 +393,7 @@ class CommandRunnerHack:
         full_cmd = " ".join(f"{k}={v}"
                             for k, v in env_vars.items()) + " " + cmd_to_run
         proc = subprocess.Popen(
-            ["ray", "job", "submit", full_cmd],
+            " ".join(["ray", "job", "submit", shlex.quote(full_cmd)]),
             shell=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
