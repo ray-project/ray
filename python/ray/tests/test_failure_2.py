@@ -15,6 +15,7 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
+import ray._private.gcs_pubsub as gcs_pubsub
 from ray._private.test_utils import (
     init_error_pubsub, get_error_message, get_log_batch, Semaphore,
     wait_for_condition, run_string_as_driver_nonblocking)
@@ -468,12 +469,17 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         }
     }],
     indirect=True)
+@pytest.mark.skipif(
+    gcs_pubsub.gcs_pubsub_enabled(),
+    reason="Logs are streamed via GCS pubsub when it is enabled, so logs "
+    "cannot be delivered after GCS is killed.")
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     # Get gcs server pid to send a signal.
     all_processes = ray.worker._global_node.all_processes
     gcs_server_process = all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
 
+    # TODO(mwtian): make sure logs are delivered after GCS is restarted.
     os.kill(gcs_server_pid, signal.SIGBUS)
     # wait for 30 seconds, for the 1st batch of logs.
     batches = get_log_batch(log_pubsub, 1, timeout=30)

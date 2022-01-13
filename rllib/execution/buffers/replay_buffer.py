@@ -52,7 +52,7 @@ class ReplayBuffer:
     def __init__(self,
                  capacity: int = 10000,
                  size: Optional[int] = DEPRECATED_VALUE):
-        """Initializes a Replaybuffer instance.
+        """Initializes a ReplayBuffer instance.
 
         Args:
             capacity: Max number of timesteps to store in the FIFO
@@ -84,6 +84,7 @@ class ReplayBuffer:
         self._est_size_bytes = 0
 
     def __len__(self) -> int:
+        """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
     @DeveloperAPI
@@ -147,7 +148,7 @@ class ReplayBuffer:
         """Returns the stats of this buffer.
 
         Args:
-            debug: If true, adds sample eviction statistics to the returned
+            debug: If True, adds sample eviction statistics to the returned
                 stats dict.
 
         Returns:
@@ -253,7 +254,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, beta: float) -> SampleBatchType:
-        """Sample a batch of experiences and return priority weights, indices.
+        """Sample `num_items` items from this buffer, including prio. weights.
+
+        If less than `num_items` records are in this buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -272,11 +277,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self._storage))**(-beta)
+        max_weight = (p_min * len(self))**(-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self._storage))**(-beta)
+            weight = (p_sample * len(self))**(-beta)
             count = self._storage[idx].count
             # If zero-padded, count will not be the actual batch size of the
             # data.

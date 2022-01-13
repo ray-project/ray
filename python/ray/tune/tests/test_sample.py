@@ -402,6 +402,14 @@ class SearchSpaceTest(unittest.TestCase):
         samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
 
+    def testCategoricalDtype(self):
+        dist = tune.choice([1.0, "str"])
+
+        np.random.seed(1000)
+        sample = dist.sample(size=100)
+        self.assertTrue(
+            all((x, type(x)) in [(1.0, float), ("str", str)] for x in sample))
+
     def testCategoricalSeedInTrainingLoop(self):
         def train(config):
             return 0

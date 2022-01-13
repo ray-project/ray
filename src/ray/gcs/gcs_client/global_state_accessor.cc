@@ -266,11 +266,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
   return placement_group_table_data;
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &ns,
+                                                                const std::string &key) {
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status = gcs_client_->InternalKV().Get(key, value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 

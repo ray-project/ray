@@ -286,6 +286,15 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def get_uri_for_package(package: Path) -> str:
+    """Get a content-addressable URI from a package's contents.
+    """
+
+    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val)
+
+
 def get_uri_for_directory(directory: str,
                           excludes: Optional[List[str]] = None) -> str:
     """Get a content-addressable URI from a directory's contents.

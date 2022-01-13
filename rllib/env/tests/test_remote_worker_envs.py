@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from pettingzoo.butterfly import pistonball_v4
+from pettingzoo.butterfly import pistonball_v5
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 import unittest
 
@@ -15,7 +15,7 @@ from ray import tune
 
 # Function that outputs the environment you wish to register.
 def env_creator(config):
-    env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
+    env = pistonball_v5.env()
     env = dtype_v0(env, dtype=np.float32)
     env = color_reduction_v0(env, mode="R")
     env = normalize_obs_v0(env)
