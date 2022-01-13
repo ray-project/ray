@@ -14,9 +14,7 @@ first connect to the cluster.
 
     .. code-block:: python
 
-      ray.init(namespace="hello")
-      # or using ray client
-      ray.init("ray://<head_node_host>:10001", namespace="world")
+      ray.init(..., namespace="hello")
 
   .. group-tab:: Java
 
