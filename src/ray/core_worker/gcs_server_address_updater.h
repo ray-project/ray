@@ -33,6 +33,8 @@ class GcsServerAddressUpdater {
 
   ~GcsServerAddressUpdater();
 
+  void Stop();
+
  private:
   /// Update gcs server address.
   void UpdateGcsServerAddress();
@@ -45,6 +47,7 @@ class GcsServerAddressUpdater {
   std::unique_ptr<std::thread> updater_thread_;
   std::unique_ptr<PeriodicalRunner> updater_runner_;
   int32_t failed_ping_count_ = 0;
+  bool stopped_ = false;
 };
 
 }  // namespace core

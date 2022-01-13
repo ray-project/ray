@@ -457,6 +457,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 }
 
 void CoreWorker::Shutdown() {
+  gcs_server_address_updater_->Stop();
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     direct_task_receiver_->Stop();

@@ -40,14 +40,21 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
 }
 
-GcsServerAddressUpdater::~GcsServerAddressUpdater() {
-  updater_runner_.reset();
+void GcsServerAddressUpdater::Stop() {
   updater_io_service_.stop();
   if (updater_thread_->joinable()) {
     updater_thread_->join();
   }
+  updater_runner_.reset();
   updater_thread_.reset();
   raylet_client_.reset();
+  stopped_ = true;
+}
+
+GcsServerAddressUpdater::~GcsServerAddressUpdater() {
+  if (!stopped_) {
+    Stop();
+  }
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
