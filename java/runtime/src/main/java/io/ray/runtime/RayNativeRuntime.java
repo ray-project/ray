@@ -58,7 +58,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private void updateSessionDir() {
     // Fetch session dir from GCS.
-    final String sessionDir = getGcsClient().getInternalKV("@namespace_session:session_dir");
+    final String sessionDir = getGcsClient().getInternalKV("session", "session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
