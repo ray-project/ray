@@ -555,7 +555,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             num_redis_shards = len(redis_shard_ports)
 
         # This logic is deprecated and will be removed later.
-        if not use_gcs_for_bootstrap() and address is not None:
+        if address is not None:
+            cli_logger.warning(
+                "Specifying {} for external Redis address is deprecated. "
+                "Please specify environment variable {}={} instead.",
+                cf.bold("--address"), cf.bold("RAY_REDIS_ADDRESS"), address)
             cli_logger.print(
                 "Will use `{}` as external Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "

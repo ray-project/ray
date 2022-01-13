@@ -1058,6 +1058,8 @@ class Node:
                 self._ray_params.external_addresses is not None:
             # This only configures external Redis and does not start local
             # Redis, when external Redis address is specified.
+            # TODO(mwtian): after GCS bootstrapping is default and stable,
+            # only keep external Redis configuration logic in the function.
             self.start_or_configure_redis()
             # Wait for Redis to become available.
             self.create_redis_client()
@@ -1473,17 +1475,14 @@ class Node:
                                     value,
                                     namespace,
                                     num_retries=NUM_REDIS_GET_RETRIES):
-        result = None
         if isinstance(key, str):
             key = key.encode()
         for i in range(num_retries):
             try:
-                result = self.get_gcs_client().internal_kv_put(
+                return self.get_gcs_client().internal_kv_put(
                     key, value, overwrite=True, namespace=namespace)
-                break
             except grpc.RpcError:
                 logger.exception("Internal KV Put failed")
-                result = None
                 time.sleep(2)
-
-        return result
+        # Reraise the last grpc.RpcError.
+        raise
