@@ -15,7 +15,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
@@ -34,6 +34,8 @@ from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 @pytest.fixture
 def ray_cluster():
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     cluster = Cluster()
     yield Cluster()
     serve.shutdown()
@@ -145,7 +147,6 @@ def test_connect(detached, ray_shutdown):
     assert "deployment-ception" in serve.list_deployments()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("controller_cpu", [True, False])
 @pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
 def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
@@ -360,7 +361,6 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
@@ -482,7 +482,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     driver_template = """
 import ray
@@ -560,7 +560,6 @@ def test_local_store_recovery(ray_shutdown):
     crash()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
         "num_cpus": 4

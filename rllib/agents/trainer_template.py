@@ -149,7 +149,7 @@ def build_trainer(
 
         @override(Trainer)
         def validate_config(self, config: PartialTrainerConfigDict):
-            # Call super (Trainer) validation method first.
+            # Call super's validation method.
             Trainer.validate_config(self, config)
             # Then call user defined one, if any.
             if validate_config is not None:

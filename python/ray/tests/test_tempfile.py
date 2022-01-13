@@ -5,6 +5,7 @@ import time
 
 import pytest
 import ray
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import check_call_ray, wait_for_condition
 
 
@@ -78,17 +79,20 @@ def test_raylet_tempfiles(shutdown_only):
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
     log_files_expected = {
-        "log_monitor.log", "monitor.log", "redis-shard_0.out",
-        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err", "gcs_server.out", "gcs_server.err", "dashboard.log",
+        "log_monitor.log", "monitor.log", "raylet.out", "raylet.err",
+        "gcs_server.out", "gcs_server.err", "dashboard.log",
         "dashboard_agent.log"
     }
+    if not use_gcs_for_bootstrap():
+        log_files_expected.update({
+            "redis-shard_0.out", "redis-shard_0.err", "redis.out", "redis.err"
+        })
 
     def check_all_log_file_exists():
         for expected in log_files_expected:
             log_files = set(os.listdir(node.get_logs_dir_path()))
             if expected not in log_files:
-                return False
+                raise RuntimeError(f"File {expected} not found!")
         return True
 
     wait_for_condition(check_all_log_file_exists)

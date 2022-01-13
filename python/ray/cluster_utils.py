@@ -136,20 +136,25 @@ class Cluster:
 
     @property
     def gcs_address(self):
+        if self.head_node is None:
+            return None
         return self.head_node.gcs_address
 
     @property
     def address(self):
-        return self.redis_address
+        if use_gcs_for_bootstrap():
+            return self.gcs_address
+        else:
+            return self.redis_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
-        assert self.redis_address is not None
+        assert self.address is not None
         assert not self.connected
         output_info = ray.init(
             namespace=namespace,
             ignore_reinit_error=True,
-            address=self.redis_address,
+            address=self.address,
             _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
@@ -202,10 +207,12 @@ class Cluster:
                 self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
+                ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+
                 node = ray.node.Node(
                     ray_params,
                     head=False,

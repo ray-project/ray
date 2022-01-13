@@ -45,6 +45,7 @@ class RNNSACTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["replay_sequence_length"] != -1:
