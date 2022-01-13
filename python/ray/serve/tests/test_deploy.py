@@ -538,7 +538,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
-                if val != "<NULL>" and pid != "<NULL>":
+                if val is not None and pid is not None:
                     responses[val].add(pid)
             for ref in not_ready:
                 blocking.extend(not_ready)
@@ -640,7 +640,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
-                if val != "<NULL>" and pid != "<NULL>":
+                if val is not None and pid is not None:
                     responses[val].add(pid)
 
             if all(
@@ -699,7 +699,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
-                if val != "<NULL>" and pid != "<NULL>":
+                if val is not None and pid is not None:
                     responses[val].add(pid)
 
             if all(
