@@ -1,3 +1,4 @@
+import subprocess
 import sys
 import time
 import unittest
@@ -108,6 +109,49 @@ class MultiNodeSyncTest(unittest.TestCase):
             num_samples=3,
             resources_per_trial={"cpu": 4},
             fail_fast=True)
+
+    def testFaultTolerence(self):
+        """Test that Tune run can recover from a failed node
+
+        when `max_failures` is set to larger than zero."""
+        self.cluster.update_config({
+            "provider": {
+                "head_resources": {
+                    "CPU": 4,
+                    "GPU": 0
+                }
+            },
+            "available_node_types": {
+                "ray.worker.cpu": {
+                    "resources": {
+                        "CPU": 4
+                    },
+                    "min_workers": 0,  # No minimum nodes
+                    "max_workers": 2,
+                },
+                "ray.worker.gpu": {
+                    "min_workers": 0,
+                    "max_workers": 0,  # No GPU nodes
+                }
+            },
+        })
+        self.cluster.start()
+        self.cluster.connect(client=True, timeout=120)
+
+        def train(config):
+            time.sleep(120)
+            tune.report(1.)
+
+        cmd = "sleep 80 && docker kill fake_docker-fffffffffffffffffffffffffffffffffffffffffffffffffff00001-1"  # noqa
+        subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        tune.run(
+            train,
+            num_samples=3,
+            resources_per_trial={"cpu": 4},
+            max_failures=1,
+        )
 
 
 if __name__ == "__main__":
