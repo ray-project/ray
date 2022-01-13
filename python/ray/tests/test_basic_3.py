@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsFunctionKeySubscriber
 from ray._private.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
@@ -252,7 +254,6 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
@@ -282,7 +283,7 @@ def test_worker_startup_count(ray_start_cluster):
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
-    debug_state_path = session_path / "debug_state.txt"
+    debug_state_path = session_path / "logs" / "debug_state.txt"
 
     def get_num_workers():
         with open(debug_state_path) as f:
@@ -294,7 +295,7 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
-    timeout_limit = 40 if sys.platform == "win32" else 10
+    timeout_limit = 15
     start = time.time()
     wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
@@ -324,10 +325,33 @@ def test_function_unique_export(ray_start_regular):
     def g():
         ray.get(f.remote())
 
-    ray.get(g.remote())
-    num_exports = ray.worker.global_worker.redis_client.llen("Exports")
-    ray.get([g.remote() for _ in range(5)])
-    assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+    if gcs_pubsub_enabled():
+        subscriber = GcsFunctionKeySubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        subscriber.subscribe()
+
+        ray.get(g.remote())
+
+        # Poll pubsub channel for messages generated from running task g().
+        num_exports = 0
+        while True:
+            key = subscriber.poll(timeout=1)
+            if key is None:
+                break
+            else:
+                num_exports += 1
+        print(f"num_exports after running g(): {num_exports}")
+
+        ray.get([g.remote() for _ in range(5)])
+
+        key = subscriber.poll(timeout=1)
+        assert key is None, f"Unexpected function key export: {key}"
+    else:
+        ray.get(g.remote())
+        num_exports = ray.worker.global_worker.redis_client.llen("Exports")
+        ray.get([g.remote() for _ in range(5)])
+        assert ray.worker.global_worker.redis_client.llen("Exports") == \
+               num_exports
 
 
 @pytest.mark.skipif(

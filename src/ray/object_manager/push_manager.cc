@@ -15,6 +15,7 @@
 #include "ray/object_manager/push_manager.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -29,6 +30,7 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
     return;
   }
   RAY_CHECK(num_chunks > 0);
+  chunks_remaining_ += num_chunks;
   push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
   ScheduleRemainingPushes();
 }
@@ -36,6 +38,7 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
 void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
   auto push_id = std::make_pair(dest_id, obj_id);
   chunks_in_flight_ -= 1;
+  chunks_remaining_ -= 1;
   if (--push_info_[push_id]->chunks_remaining <= 0) {
     push_info_.erase(push_id);
     RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
@@ -70,6 +73,20 @@ void PushManager::ScheduleRemainingPushes() {
       it++;
     }
   }
+}
+
+void PushManager::RecordMetrics() const {
+  // TODO(sang): Add metrics.
+}
+
+std::string PushManager::DebugString() const {
+  std::stringstream result;
+  result << "PushManager:";
+  result << "\n- num pushes in flight: " << NumPushesInFlight();
+  result << "\n- num chunks in flight: " << NumChunksInFlight();
+  result << "\n- num chunks remaining: " << NumChunksRemaining();
+  result << "\n- max chunks allowed: " << max_chunks_in_flight_;
+  return result.str();
 }
 
 }  // namespace ray

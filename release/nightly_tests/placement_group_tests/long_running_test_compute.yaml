@@ -12,7 +12,7 @@ head_node_type:
     instance_type: m5.4xlarge
     resources:
       custom_resources:
-        custom: 100
+        custom: 200
         pending: 1
 
 worker_node_types:
@@ -23,5 +23,5 @@ worker_node_types:
       use_spot: false
       resources:
         custom_resources:
-          custom: 100
+          custom: 200
           pending: 1

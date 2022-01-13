@@ -7,13 +7,14 @@ import numpy
 import random
 
 from ray.tune import TuneError
-from ray.tune.sample import Categorical, Domain, Function
+from ray.tune.sample import (Categorical, Domain, Function, RandomState)
 
 logger = logging.getLogger(__name__)
 
 
 def generate_variants(unresolved_spec: Dict,
-                      constant_grid_search: bool = False
+                      constant_grid_search: bool = False,
+                      random_state: "RandomState" = None
                       ) -> Generator[Tuple[Dict, Dict], None, None]:
     """Generates variants from a spec (dict) with unresolved values.
 
@@ -46,7 +47,9 @@ def generate_variants(unresolved_spec: Dict,
         (Dict of resolved variables, Spec object)
     """
     for resolved_vars, spec in _generate_variants(
-            unresolved_spec, constant_grid_search=constant_grid_search):
+            unresolved_spec,
+            constant_grid_search=constant_grid_search,
+            random_state=random_state):
         assert not _unresolved_values(spec)
         yield resolved_vars, spec
 
@@ -177,7 +180,9 @@ def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
 
 
 def _generate_variants(
-        spec: Dict, constant_grid_search: bool = False) -> Tuple[Dict, Dict]:
+        spec: Dict,
+        constant_grid_search: bool = False,
+        random_state: "RandomState" = None) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -194,7 +199,7 @@ def _generate_variants(
         # for grid search.
         # `_resolve_domain_vars` will alter `spec` directly
         all_resolved, resolved_vars = _resolve_domain_vars(
-            spec, domain_vars, allow_fail=True)
+            spec, domain_vars, allow_fail=True, random_state=random_state)
         if not all_resolved:
             # Not all variables have been resolved, but remove those that have
             # from the `to_resolve` list.
@@ -204,10 +209,13 @@ def _generate_variants(
     for resolved_spec in grid_search:
         if not constant_grid_search or not all_resolved:
             # In this path, we sample the remaining random variables
-            _, resolved_vars = _resolve_domain_vars(resolved_spec, to_resolve)
+            _, resolved_vars = _resolve_domain_vars(
+                resolved_spec, to_resolve, random_state=random_state)
 
         for resolved, spec in _generate_variants(
-                resolved_spec, constant_grid_search=constant_grid_search):
+                resolved_spec,
+                constant_grid_search=constant_grid_search,
+                random_state=random_state):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
             for k, v in resolved.items():
@@ -223,7 +231,8 @@ def _generate_variants(
 
 def get_preset_variants(spec: Dict,
                         config: Dict,
-                        constant_grid_search: bool = False):
+                        constant_grid_search: bool = False,
+                        random_state: "RandomState" = None):
     """Get variants according to a spec, initialized with a config.
 
     Variables from the spec are overwritten by the variables in the config.
@@ -267,7 +276,10 @@ def get_preset_variants(spec: Dict,
                         f"parameter `{'/'.join(path)}`: {domain}")
         assign_value(spec["config"], path, val)
 
-    return _generate_variants(spec, constant_grid_search=constant_grid_search)
+    return _generate_variants(
+        spec,
+        constant_grid_search=constant_grid_search,
+        random_state=random_state)
 
 
 def assign_value(spec: Dict, path: Tuple, value: Any):
@@ -282,9 +294,11 @@ def _get_value(spec: Dict, path: Tuple) -> Any:
     return spec
 
 
-def _resolve_domain_vars(spec: Dict,
-                         domain_vars: List[Tuple[Tuple, Domain]],
-                         allow_fail: bool = False) -> Tuple[bool, Dict]:
+def _resolve_domain_vars(
+        spec: Dict,
+        domain_vars: List[Tuple[Tuple, Domain]],
+        allow_fail: bool = False,
+        random_state: "RandomState" = None) -> Tuple[bool, Dict]:
     resolved = {}
     error = True
     num_passes = 0
@@ -295,7 +309,8 @@ def _resolve_domain_vars(spec: Dict,
             if path in resolved:
                 continue
             try:
-                value = domain.sample(_UnresolvedAccessGuard(spec))
+                value = domain.sample(
+                    _UnresolvedAccessGuard(spec), random_state=random_state)
             except RecursiveDependencyError as e:
                 error = e
             except Exception:
@@ -382,7 +397,7 @@ def _split_resolved_unresolved_values(
                 resolved_vars[(k, ) + path] = value
             for (path, value) in _unresolved_children.items():
                 unresolved_vars[(k, ) + path] = value
-        elif isinstance(v, list):
+        elif isinstance(v, (list, tuple)):
             # Recurse into a list
             for i, elem in enumerate(v):
                 _resolved_children, _unresolved_children = \

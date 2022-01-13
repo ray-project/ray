@@ -1,7 +1,9 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.gson.Gson;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.util.JsonFormat;
+import com.google.protobuf.util.JsonFormat.Printer;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
@@ -12,10 +14,11 @@ import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
-import io.ray.runtime.generated.Common.RuntimeEnv;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
+import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnv;
+import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
@@ -23,7 +26,6 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -94,7 +96,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
-      if (rayConfig.getJobId() == JobId.NIL) {
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(gcsClient.nextJobId());
       }
       int numWorkersPerProcess =
@@ -108,19 +110,22 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
-        RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+        RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
           // Set worker env to the serialized runtime env json.
-          Gson gson = new Gson();
-          Map<String, Map<String, String>> runtimeEnv = new HashMap<>();
-          runtimeEnv.put("env_vars", rayConfig.workerEnv);
-          String gsonString = gson.toJson(runtimeEnv);
-          runtimeEnvBuilder.setSerializedRuntimeEnv(gsonString);
+          RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
+          runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
+          Printer printer = JsonFormat.printer();
+          try {
+            runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
+          } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException(e);
+          }
         } else {
-          runtimeEnvBuilder.setSerializedRuntimeEnv("{}");
+          runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
-        jobConfigBuilder.setRuntimeEnv(runtimeEnvBuilder.build());
+        jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 

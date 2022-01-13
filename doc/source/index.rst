@@ -281,6 +281,7 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/dataset-ml-preprocessing.rst
    data/dataset-execution-model.rst
    data/dataset-tensor-support.rst
    data/package-ref.rst

@@ -33,13 +33,8 @@ def fn_trainable(config, checkpoint_dir=None):
 
 
 class RLLibCallback(DefaultCallbacks):
-    def __init__(self):
-        super(RLLibCallback, self).__init__()
-        self.internal_iter = 0
-
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
-        result["internal_iter"] = self.internal_iter
-        self.internal_iter += 1
+        result["internal_iter"] = result["training_iteration"]
 
 
 class IndicatorCallback(tune.Callback):
@@ -60,7 +55,7 @@ def run_tune(no_syncer: bool,
     if trainable == "function":
         train = fn_trainable
         config = {
-            "max_iterations": 30,
+            "max_iterations": 100,
             "sleep_time": 5,
             "checkpoint_freq": 2,
             "score_multiplied": tune.randint(0, 100),
@@ -80,8 +75,10 @@ def run_tune(no_syncer: bool,
         }
         kwargs = {
             "stop": {
-                "training_iteration": 10
+                "training_iteration": 100
             },
+            "checkpoint_freq": 2,
+            "checkpoint_at_end": True,
         }
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
