@@ -36,7 +36,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -735,6 +735,20 @@ def create_ray_handler(address, redis_password):
     return ray_connect_handler
 
 
+def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
+    """
+    Try to create a gcs client based on the the command line args or by
+    autodetecting a running Ray cluster.
+    """
+    if address is None:
+        possible = ray._private.services.find_gcs_address()
+        if len(possible) != 1:
+            return None
+        address = possible.pop()
+
+    return GcsClient(address=address)
+
+
 def try_create_redis_client(redis_address: Optional[str],
                             redis_password: Optional[str]) -> Optional[Any]:
     """
@@ -814,13 +828,11 @@ def main():
             try:
                 if not ray.experimental.internal_kv._internal_kv_initialized():
                     if use_gcs_for_bootstrap():
-                        gcs_client = ray._private.gcs_utils.GcsClient(
-                            address=args.address)
+                        gcs_client = try_create_gcs_client(args.address)
                     else:
                         redis_client = try_create_redis_client(
                             args.address, args.redis_password)
-                        gcs_client = (ray._private.gcs_utils.GcsClient.
-                                      create_from_redis(redis_client))
+                        gcs_client = GcsClient.create_from_redis(redis_client)
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
