@@ -224,86 +224,28 @@ pub mod test {
     //     }
     // }
 
-    // #[test]
-    // fn test_put_get_raw() {
-    //     ray::init_inner(true, Some(rust_worker_execute_dummy), None);
-    //     unsafe {
-    //         // Create data
-    //         let mut data_vec = vec![1u8, 2];
-    //         let mut meta_vec = vec![3u8, 4];
-    //         let mut data = vec![
-    //             c_worker_AllocateDataValue(
-    //                 data_vec.as_mut_ptr() as *mut c_void,
-    //                 data_vec.len() as u64,
-    //                 meta_vec.as_mut_ptr() as *mut c_void,
-    //                 meta_vec.len() as u64,
-    //             )
-    //         ];
-    //
-    //         let mut obj_ids = Vec::<*mut c_char>::new();
-    //         obj_ids.push(std::ptr::null_mut() as *mut c_char);
-    //
-    //         c_worker_Put(
-    //             obj_ids.as_mut_ptr() as *mut *mut c_char,
-    //             -1, data.as_mut_ptr(), data.len() as i32,
-    //         );
-    //
-    //         let c_str_id = CString::from_raw(obj_ids[0]);
-    //         println!("{:x?}", c_str_id);
-    //
-    //         let mut get_data: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
-    //
-    //         c_worker_Get(
-    //             obj_ids.as_mut_ptr() as *mut *mut c_char,
-    //             1, -1,
-    //             get_data.as_mut_ptr() as *mut *mut DataValue
-    //         );
-    //
-    //         let slice = std::slice::from_raw_parts_mut::<u8>(
-    //             (*(*get_data[0]).data).p as *mut u8,
-    //             (*(*get_data[0]).data).size as usize,
-    //         );
-    //         assert_eq!(slice, &data_vec);
-    //
-    //         assert_eq!(dv_as_slice(get(c_str_id, -1)), &data_vec);
-    //
-    //         c_worker_Shutdown();
-    //     }
-    // }
-
-    // To run this test, you must first compile ray
-    // with the worker's execution callback set to
-    // rust_worker_execute_add
-    //
-    // Could you do a local version?
     #[test]
-    fn test_submit_task_executer_add() {
+    fn test_put_get_raw() {
         ray::init_inner(true, Some(rust_worker_execute_dummy), None);
         unsafe {
             // Create data
             let mut data_vec = vec![1u8, 2];
-            let mut meta_vec = vec![0u8];
+            let mut meta_vec = vec![3u8, 4];
             let mut data = vec![
                 c_worker_AllocateDataValue(
-                    // Why is this a void pointer, not a void/char ptr?
-                    data_vec.as_mut_ptr(),
+                    data_vec.as_mut_ptr() as *mut c_void,
                     data_vec.len() as u64,
-                    meta_vec.as_mut_ptr(),
+                    meta_vec.as_mut_ptr() as *mut c_void,
                     meta_vec.len() as u64,
                 )
             ];
 
-            assert_eq!((*(*data[0]).data).size, 2);
+            let mut obj_ids = Vec::<*mut c_char>::new();
+            obj_ids.push(std::ptr::null_mut() as *mut c_char);
 
-            let mut obj_ids = vec![std::ptr::null_mut() as *mut c_char];
-            c_worker_SubmitTask(
-                CString::new("").unwrap().as_ptr() as *mut c_char,
-                &mut false as *mut bool,
-                data.as_mut_ptr(),
-                std::ptr::null_mut::<*mut c_char>(),
-                data.len() as i32,
-                1,
-                obj_ids.as_mut_ptr()
+            c_worker_Put(
+                obj_ids.as_mut_ptr() as *mut *mut c_char,
+                -1, data.as_mut_ptr(), data.len() as i32,
             );
 
             let c_str_id = CString::from_raw(obj_ids[0]);
@@ -321,9 +263,9 @@ pub mod test {
                 (*(*get_data[0]).data).p as *mut u8,
                 (*(*get_data[0]).data).size as usize,
             );
-            assert_eq!(slice, &vec![3u8]);
+            assert_eq!(slice, &data_vec);
 
-            // assert_eq!(dv_as_slice(get(c_str_id, -1)), &vec![3u8]);
+            assert_eq!(dv_as_slice(get(c_str_id, -1)), &data_vec);
 
             c_worker_Shutdown();
         }
@@ -342,131 +284,3 @@ pub extern "C" fn rust_raw_parts_dealloc(ptr: *mut u8, len: u64) {
         )
     }
 }
-
-// TODO (jon-chuang): improve the function signature here
-pub extern "C" fn rust_worker_execute_add(
-    _task_type: RayInt,
-    _ray_function_info: RaySlice,
-    args: RaySlice,
-    mut return_values: RaySlice,
-    // This is an array of buffer destructors for each of the
-    // return values.
-    //
-    // return_value_destructors: *const *const BufferDestructor,
-    //
-    // If there is only one return type, could we save on the
-    // vector allocation somehow?
-    // Maybe just store the function pointer in a custom
-    // RayReturnSlice
-) {
-    // assert!(false);
-    unsafe {
-        let data = std::slice::from_raw_parts(
-            args.data as *mut *mut DataValue,
-            args.len as usize,
-        );
-
-        assert_eq!(data.len(), 1);
-
-        let slice = dv_as_slice(*data[0]);
-        assert_eq!(slice, &vec![1u8, 2]);
-
-        let ret_slice = std::slice::from_raw_parts(
-            return_values.data as *mut *mut DataValue,
-            return_values.len as usize,
-        );
-
-        assert_eq!(ret_slice.len(), 1);
-        assert_eq!(dv_as_slice(*ret_slice[0]), &vec![1, 2, 3]);
-
-        *(*(*ret_slice[0]).data).p = 1;
-        (*(*ret_slice[0]).data).size = 1;
-
-        let mut ret_vec = vec![slice[0] + slice[1]];
-        let mut ret_owned = std::mem::ManuallyDrop::new(ret_vec);
-        //
-        //
-        // Reimplement RustBuffer functionality around
-        // this DataBuffer raw type... or use CVec?
-        // let mut data_buffer_owned = std::mem::ManuallyDrop::new(
-        //     DataBuffer {
-        //         size: 1u64,
-        //         p: (*(*ret_slice[0]).data).p //ret_owned.as_mut_ptr(),
-        //     }
-        // );
-        let dv_ptr = c_worker_AllocateDataValue(
-            // (*(*ret_slice[0]).data).p,
-            ret_owned.as_mut_ptr(),
-            ret_owned.len() as u64,
-            std::ptr::null_mut::<u8>(),
-            0,
-        );
-        (*ret_slice[0]).data = (*dv_ptr).data;
-
-
-        // (&mut data_buffer_owned)
-        //     as *mut std::mem::ManuallyDrop<DataBuffer>
-        //     as *mut DataBuffer;
-
-        // assert_eq!(data_buffer_owned.size, 1);
-        //
-        // println!("data buffer ptr: {:?}", &data_buffer_owned);
-    }
-}
-
-// func (or *ObjectRef) Get() ([]interface{}, error) {
-//     util.Logger.Debugf("get result returObjectIdArrayPointer:%v ,return object num:%d", or.returnObjectIds, or.returnObjectNum)
-//     if or.returnObjectNum == 0 {
-//         return nil, nil
-//     }
-//     returnValues := make([]unsafe.Pointer, or.returnObjectNum, or.returnObjectNum)
-//     success := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1), &returnValues[0])
-//     if success != 0 {
-//         panic("failed to get task result")
-//     }
-//     returnGoValues := make([]interface{}, or.returnObjectNum, or.returnObjectNum)
-//     for index, returnValue := range returnValues {
-//         rv := (*C.struct_DataValue)(returnValue)
-//         goValue, err := dataValueToGoValue(rv)
-//         if err != nil {
-//             return nil, err
-//         }
-//         returnGoValues[index] = goValue
-//     }
-//     return returnGoValues, nil
-// }
-
-
-// #[no_mangle]
-// pub extern "C" fn c_worker_execute(args: Vec<u64>, sizes: Vec<u64>, fn_name: &CxxString) -> Vec<u8> {
-//     let args_buffer = RustBuffer::from_vec(rmp_serde::to_vec(&(&args, &sizes)).unwrap());
-//     // Check if we get a cache hit
-//     let libs = LIBRARIES.lock().unwrap();
-//
-//     let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
-//
-//     let mut ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
-//     // Check if we can get fn from available libraries
-//
-//     // TODO(jon-chuang): figure out if you can narrow search
-//     // by mapping library name to function crate name...
-//     if let None = ret_ref {
-//         for lib in libs.iter() {
-//             let ret = unsafe {
-//                     lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
-//             };
-//             ray_api_ffi::LogInfo(&format!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret));
-//             if let Some(symbol) = ret {
-//                 let static_symbol = unsafe {
-//                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
-//                 };
-//                 fn_map.insert(fn_name.as_bytes().to_vec(), static_symbol);
-//                 ret_ref = fn_map.get(&fn_name.as_bytes().to_vec());
-//             }
-//         }
-//     } else {
-//         ray_api_ffi::LogInfo(&format!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref));
-//     }
-//     let ret = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name))(args_buffer);
-//     ret.destroy_into_vec()
-// }
