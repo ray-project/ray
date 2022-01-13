@@ -467,6 +467,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        self._agent_ids = self.envs[0].get_agent_ids()
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
@@ -501,12 +502,18 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def try_reset(self,
                   env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
-        obs = self.env_states[env_id].reset()
-        assert isinstance(obs, dict), "Not a multi-agent obs"
-        if obs is not None and env_id in self.dones:
-            self.dones.remove(env_id)
-        obs = {env_id: obs}
-        return obs
+        ret = {}
+        if isinstance(env_id, int):
+            env_id = [env_id]
+        if env_id is None:
+            env_id = list(range(len(self.envs)))
+        for idx in env_id:
+            obs = self.env_states[idx].reset()
+            assert isinstance(obs, dict), "Not a multi-agent obs"
+            if obs is not None and idx in self.dones:
+                self.dones.remove(idx)
+            ret[idx] = obs
+        return ret
 
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
@@ -548,11 +555,15 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].observation_space_sample(agent_ids)
+        return {0: self.envs[0].observation_space_sample(agent_ids)}
 
     @override(BaseEnv)
     def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return self.envs[0].action_space_sample(agent_ids)
+        return {0: self.envs[0].action_space_sample(agent_ids)}
+
+    @override(BaseEnv)
+    def get_agent_ids(self) -> Set[AgentID]:
+        return self._agent_ids
 
 
 class _MultiAgentEnvState:
