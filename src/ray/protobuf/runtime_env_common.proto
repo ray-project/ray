@@ -140,11 +140,11 @@ message RuntimeEnv {
   /// The extension fields.
   map<string, string> extensions = 3;
   /// python runtime env
-  PythonRuntimeEnv python_runtime_env = 4;
+  optional PythonRuntimeEnv python_runtime_env = 4;
   /// java runtime env
-  JavaRuntimeEnv java_runtime_env = 5;
+  optional JavaRuntimeEnv java_runtime_env = 5;
   /// cpp runtime env
-  CppRuntimeEnv cpp_runtime_env = 6;
+  optional CppRuntimeEnv cpp_runtime_env = 6;
   /// Runtime env uris of different types.
   RuntimeEnvUris uris = 7;
 }

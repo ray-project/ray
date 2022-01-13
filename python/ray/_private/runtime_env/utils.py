@@ -232,13 +232,13 @@ class RuntimeEnv:
     def from_dict(cls, runtime_env_dict: Dict[str, Any], conda_get_uri_fn,
                   pip_get_uri_fn) -> "RuntimeEnv":
         proto_runtime_env = ProtoRuntimeEnv()
-        proto_runtime_env.python_runtime_env.py_modules.extend(
-            runtime_env_dict.get("py_modules", []))
         proto_runtime_env.working_dir = runtime_env_dict.get("working_dir", "")
         if "working_dir" in runtime_env_dict:
             proto_runtime_env.uris.working_dir_uri = runtime_env_dict[
                 "working_dir"]
         if "py_modules" in runtime_env_dict:
+            proto_runtime_env.python_runtime_env.py_modules.extend(
+                runtime_env_dict["py_modules"])
             for uri in runtime_env_dict["py_modules"]:
                 proto_runtime_env.uris.py_modules_uris.append(uri)
         if "conda" in runtime_env_dict:
