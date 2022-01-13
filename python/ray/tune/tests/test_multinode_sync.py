@@ -111,9 +111,11 @@ class MultiNodeSyncTest(unittest.TestCase):
             fail_fast=True)
 
     def testFaultTolerence(self):
-        """Test that Tune run can recover from a failed node
+        """Test that Tune run can recover from a failed node.
 
-        when `max_failures` is set to larger than zero."""
+        When `max_failures` is set to larger than zero.
+        """
+
         self.cluster.update_config({
             "provider": {
                 "head_resources": {
