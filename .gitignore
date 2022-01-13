@@ -175,7 +175,7 @@ rust/ray-rs/target/
 rust/ray-rs-derive/target/
 rust/ray-rs-examples/*/target/
 rust/ray-rs-sys/target/
-rust/*/Cargo.lock
+rust/**/*/Cargo.lock
 
 
 # streaming/python

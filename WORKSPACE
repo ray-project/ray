@@ -64,5 +64,5 @@ load("@rules_rust//bindgen:repositories.bzl", "rust_bindgen_repositories")
 rust_bindgen_repositories()
 
 # When the bazel version is updated, make sure to update it
-# in setup.py as wellrustc
+# in setup.py as well
 versions.check(minimum_bazel_version = "4.2.1")

@@ -208,7 +208,7 @@ RAY_EXPORT void c_worker_Initialize() {
     std::string session_dir = stored_config.session_dir;
     if (session_dir.empty()) {
       session_dir =
-          *global_state_accessor->GetInternalKV("@namespace_session:session_dir");
+          *global_state_accessor->GetInternalKV("session", "session_dir");
       RAY_CHECK(!session_dir.empty());
     }
     log_dir = session_dir + "/logs";
