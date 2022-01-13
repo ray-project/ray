@@ -23,20 +23,16 @@ type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 
 type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
-
 #[macro_use]
-macro_rules! ray_log {
-    ($msg:expr) => {
-        util::log_internal(format!("[rust] {}:{}: {}", file!(), line!(), $msg));
+macro_rules! ray_info {
+    ($($arg:tt)*) => {
+        util::log_internal(format!("[rust] {}:{}: {}", file!(), line!(), format!($($arg)*)));
     }
 }
 
 lazy_static::lazy_static! {
     static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
-        Mutex::new([
-            // (add_two_vecs.name().as_bytes().to_vec(), add_two_vecs.get_invoker()),
-            // (add_two_vecs_nested.name().as_bytes().to_vec(), add_two_vecs_nested.get_invoker())
-        ].iter().cloned().collect::<HashMap<_,_>>())
+        Mutex::new(HashMap::new())
     };
 }
 
@@ -136,7 +132,7 @@ pub extern "C" fn rust_worker_execute(
             let ret = unsafe {
                     lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
             };
-            ray_log!(format!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret));
+            ray_info!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret);
             if let Some(symbol) = ret {
                 let static_symbol = unsafe {
                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
@@ -146,11 +142,12 @@ pub extern "C" fn rust_worker_execute(
             }
         }
     } else {
-        ray_log!(format!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref));
+        ray_info!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref);
     }
     let func = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name.to_str().unwrap()));
-    ray_log!("executing");
+    ray_info!("Executing: {}", fn_name.to_str().unwrap());
     let ret = func(args_buffer);
+    ray_info!("Executed: {}", fn_name.to_str().unwrap());
 
     let mut ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
 
