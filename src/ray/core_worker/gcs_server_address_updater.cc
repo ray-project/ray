@@ -41,6 +41,7 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
 }
 
 void GcsServerAddressUpdater::Stop() {
+  RAY_LOG(INFO) << "Stop gcs server address updater.";
   updater_io_service_.stop();
   if (updater_thread_->joinable()) {
     updater_thread_->join();
@@ -58,6 +59,9 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
+  if (stopped_) {
+    return;
+  }
   raylet_client_->GetGcsServerAddress([this](const Status &status,
                                              const rpc::GetGcsServerAddressReply &reply) {
     const int64_t max_retries =
