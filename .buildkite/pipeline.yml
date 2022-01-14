@@ -364,8 +364,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_component_failures_3
-      -//python/ray/tests:test_gcs_fault_tolerance
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -375,8 +373,7 @@
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/... -//python/ray/tests:test_multi_node_3
-      -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
+      -- //python/ray/tests/...
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
