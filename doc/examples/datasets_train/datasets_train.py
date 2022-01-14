@@ -557,7 +557,6 @@ def train_func(config):
     dropout_every = config["dropout_every"]
     dropout_prob = config["dropout_prob"]
     num_features = config["num_features"]
-
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
