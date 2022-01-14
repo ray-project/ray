@@ -40,9 +40,52 @@ class GroupedDataset(Generic[T]):
                 raise NotImplementedError(
                     "Multi-key groupby is not supported yet")
             else:
-                self._key = key[0]
-        else:
+                key = key[0]
+
+        fmt = dataset._dataset_format()
+        if key == None:
             self._key = key
+        elif isinstance(key, str):
+            if fmt != "arrow":
+                raise TypeError(
+                    "String key '{}' requires dataset format to be 'arrow', "
+                    "was '{}'.".format(key, fmt))
+            self._key = key
+        elif callable(key):
+            if fmt != "simple":
+                raise NotImplementedError(
+                    "Callable key '{}' requires dataset format to be "
+                    "'simple', was '{}'.".format(key, fmt))
+            self._key = key
+        else:
+            raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+
+    def map_groups(self,
+                    fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+                    *,
+                    compute: Optional[str] = None,
+                    batch_format: str = "pandas",
+                    **ray_remote_args) -> "Dataset[Any]":
+        """Apply a function to each group of records.
+
+        This is similar to pd.groupby().apply().
+        """
+
+        # Sort groups records by key.
+        sorted_ds = self._dataset.sort(key)
+
+        def group_fn(batch):
+            batch_groups = split_by_key(batch)
+            # Assume batch is list type for now.
+            out = []
+            # Apply fn to each group of records
+            for group in groups:
+                for row in fn(group):
+                    out.append(row)
+            return []
+
+        return sorted_ds.map_batches(
+            group_fn, compute=compute, batch_format=batch_format, **ray_remote_args)
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
