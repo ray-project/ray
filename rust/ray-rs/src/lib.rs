@@ -23,7 +23,7 @@ type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
 
 type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
-#[macro_use]
+#[macro_export]
 macro_rules! ray_info {
     ($($arg:tt)*) => {
         util::log_internal(format!("[rust] {}:{}: {}", file!(), line!(), format!($($arg)*)));
@@ -132,7 +132,7 @@ pub extern "C" fn rust_worker_execute(
             let ret = unsafe {
                     lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
             };
-            ray_info!("Loaded function {:?} as {:?}", fn_name.to_str().unwrap(), ret);
+            ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), ret);
             if let Some(symbol) = ret {
                 let static_symbol = unsafe {
                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
@@ -142,9 +142,9 @@ pub extern "C" fn rust_worker_execute(
             }
         }
     } else {
-        ray_info!("Using cached library symbol for {:?}: {:?}", fn_name.to_str().unwrap(), ret_ref);
+        ray_info!("Using cached library symbol for {}: {:?}", fn_name.to_str().unwrap(), ret_ref);
     }
-    let func = ret_ref.expect(&format!("Could not find symbol for fn of name {:?}", fn_name.to_str().unwrap()));
+    let func = ret_ref.expect(&format!("Could not find symbol for fn of name {}", fn_name.to_str().unwrap()));
     ray_info!("Executing: {}", fn_name.to_str().unwrap());
     let ret = func(args_buffer);
     ray_info!("Executed: {}", fn_name.to_str().unwrap());
@@ -163,7 +163,6 @@ pub extern "C" fn rust_worker_execute(
             return_values.len as usize,
         );
         let dv_ptr = c_worker_AllocateDataValue(
-            // (*(*ret_slice[0]).data).p,
             ret_owned.as_mut_ptr(),
             ret_owned.len() as u64,
             std::ptr::null_mut::<u8>(),
