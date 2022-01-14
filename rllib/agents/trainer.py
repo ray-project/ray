@@ -11,9 +11,11 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, DefaultDict, Dict, List, Optional, Set, Tuple, \
+    Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -722,8 +724,9 @@ class Trainer(Trainable):
         self._episode_history = []
         self._episodes_to_be_collected = []
 
-        # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
-        self.evaluation_workers = None
+        # Evaluation WorkerSet.
+        self.evaluation_workers: Optional[WorkerSet] = None
+        # Metrics most recently returned by `self.evaluate()`.
         self.evaluation_metrics = {}
 
         super().__init__(config, logger_creator, remote_checkpoint_dir,
@@ -798,12 +801,19 @@ class Trainer(Trainable):
         self.local_replay_buffer = (
             self._create_local_replay_buffer_if_necessary(self.config))
 
+        # Create a dict, mapping ActorHandles to sets of open remote
+        # requests (object refs). This way, we keep track, of which actors
+        # inside this Trainer (e.g. a remote RolloutWorker) have
+        # already been sent how many (e.g. `sample()`) requests.
+        self.remote_requests_in_flight: \
+            DefaultDict[ActorHandle, Set[ray.ObjectRef]] = defaultdict(set)
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the soon-to-be deprecated `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        self.workers = None
+        self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
         # Old design: Override `Trainer._init` (or use `build_trainer()`, which
@@ -845,13 +855,10 @@ class Trainer(Trainable):
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
 
-            # TODO: Now that workers have been created, update our policy
-            #  specs in the config[multiagent] dict with the correct spaces.
-            #  However, this leads to a problem with the evaluation
-            #  workers' observation one-hot preprocessor in
-            #  `examples/documentation/rllib_in_6sec.py` script.
-            # self.config["multiagent"]["policies"] = \
-            #     self.workers.local_worker().policy_map.policy_specs
+            # Now that workers have been created, update our policy
+            # specs in the config[multiagent] dict with the correct spaces.
+            self.config["multiagent"]["policies"] = \
+                self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -912,7 +919,7 @@ class Trainer(Trainable):
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers = self._make_workers(
+            self.evaluation_workers: WorkerSet = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),

@@ -3645,6 +3645,9 @@ def test_sort_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
     assert ds.sort().take(num_items) == list(range(num_items))
+    # Make sure we have rows in each block.
+    assert len(
+        [n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
     assert ds.sort(descending=True).take(num_items) == list(
         reversed(range(num_items)))
     assert ds.sort(key=lambda x: -x).take(num_items) == list(
@@ -3824,6 +3827,9 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
                 for row in sorted_ds.iter_rows()] == list(expected_rows)
 
     assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    # Make sure we have rows in each block.
+    assert len([n for n in ds.sort(key="a")._block_num_rows()
+                if n > 0]) == parallelism
     assert_sorted(ds.sort(key="b"), zip(a, b))
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
     assert_sorted(

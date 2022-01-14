@@ -210,7 +210,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     # this doesn't prevent tasks from being scheduled on other raylets.
     x = ray.put(np.zeros(1000000))
 
-    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
+    attempt_to_load_balance(f, [x], 100, num_nodes, 20)
 
 
 @pytest.mark.skipif(
