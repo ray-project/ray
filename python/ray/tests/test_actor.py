@@ -1034,10 +1034,10 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
             ray.actor.exit_actor()
 
     data = "hello"
-    tmpfile = tempfile.NamedTemporaryFile()
-    tmpfile_name = tmpfile.name + ".tmp"
-    open(tmpfile_name, "w+").close()
-    a = A.remote(tmpfile_name, data)
+    tmpfile = tempfile.NamedTemporaryFile("w+", suffix=".tmp", delete=False)
+    tmpfile.close()
+
+    a = A.remote(tmpfile.name, data)
     ray.get(a.ready.remote())
 
     if exit_condition == "out_of_scope":
@@ -1052,7 +1052,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert False, "Unrecognized condition"
 
     def check_file_written():
-        with open(tmpfile_name) as f:
+        with open(tmpfile.name, "r") as f:
             if f.read() == data:
                 return True
             return False
@@ -1062,6 +1062,8 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert not check_file_written()
     else:
         wait_for_condition(check_file_written)
+
+    os.unlink(tmpfile.name)
 
 
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
