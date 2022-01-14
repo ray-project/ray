@@ -736,7 +736,8 @@ def create_ray_handler(address, redis_password):
     return ray_connect_handler
 
 
-def try_create_gcs_client(address: Optional[str], redis_password: Optional[str]) -> Optional[GcsClient]:
+def try_create_gcs_client(address: Optional[str], redis_password: Optional[str]
+                          ) -> Optional[GcsClient]:
     """
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
@@ -811,8 +812,8 @@ def main():
 
             try:
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    gcs_client = try_create_gcs_client(
-                        args.address, args.redis_password)
+                    gcs_client = try_create_gcs_client(args.address,
+                                                       args.redis_password)
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
