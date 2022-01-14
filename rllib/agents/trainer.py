@@ -1664,7 +1664,7 @@ class Trainer(Trainable):
             policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+            policies_to_train: Optional[Container[PolicyID]] = None,
             evaluation_workers: bool = True,
             workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Policy:
@@ -1685,9 +1685,9 @@ class Trainer(Trainable):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional list of policy IDs to be trained.
-                If None, will keep the existing list in place. Policies,
-                whose IDs are not in the list will not be updated.
+            policies_to_train: An optional list/set of policy IDs to be
+                trained. If None, will keep the existing list in place.
+                Policies, whose IDs are not in the list will not be updated.
             evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
             workers: A list of RolloutWorker/ActorHandles (remote
@@ -1709,8 +1709,8 @@ class Trainer(Trainable):
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=list(policies_to_train),
         )
-        from copy import deepcopy#TEST
-        kwargs = deepcopy(kwargs)#TEST
+        #from copy import deepcopy#TEST
+        #kwargs = deepcopy(kwargs)#TEST
 
         def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and

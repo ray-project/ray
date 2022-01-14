@@ -2,13 +2,15 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-from typing import Dict, Set
+import gym
+import numpy as np
+import re
+from typing import Callable, Container, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
-from ray.rllib.agents.alpha_star.league_building import league_building_fn
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
@@ -22,8 +24,8 @@ from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
     LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
     NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_TARGET_UPDATES, \
     SAMPLE_TIMER, SYNCH_WORKER_WEIGHTS_TIMER, TARGET_NET_UPDATE_TIMER
-from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, \
-    TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import AgentID, EpisodeID, PartialTrainerConfigDict,\
+    PolicyID, PolicyState, TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
@@ -44,12 +46,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "replay_buffer_replay_ratio": 0.5,
 
         # League-building parameters.
-        # The league building function defines the core logic for constructing
-        # the league. It is called after each `step` and takes the Trainer
-        # instance and the `step()` ResultDict (including the "evaluation"
-        # results) as args. It may then analyze the results and decide on adding
-        # new policies to the league.
-        "league_building_fn": league_building_fn,
         # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
         # be considered for snapshotting (cloning). The cloned copy may then
         # be frozen (no further learning) or keep learning (independent of
@@ -60,6 +56,11 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # that this snapshot will continue to be trainable (rather than become
         # frozen/non-trainable)?
         "keep_new_snapshot_training_prob": 0.3,
+        # The maximum number of trainable policies for this Trainer.
+        # Each trainable policy will exist as a independent remote actor, co-locate
+        # with a replay buffer. This is besides its existence inside
+        # the RolloutWorkers for training and evaluation.
+        "max_policies_to_train": 10,
 
         # Basic "multiagent" setup for league-building AlphaStar:
         # Start with "main_0" (the policy we would like to use in the very end),
@@ -70,7 +71,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # "main_exploiter_1" policies (cloned off "main_0").
         "multiagent": {
             # Initial policy map. This will be expanded
-            # to more policy snapshots inside the `league_building_fn`.
+            # to more policy snapshots inside the `build_league` method.
             "policies": {
                 # Our main policy, we'd like to optimize.
                 "main_0": PolicySpec(),
@@ -262,17 +263,17 @@ class AlphaStarTrainer(appo.APPOTrainer):
         self._pol_actor_to_pid = _pol_actor_to_pid
 
         # Policy groups (main, main_exploit, league_exploit):
-        self.main_policies: Set[PolicyID] = set()
-        self.main_exploiters: Set[PolicyID] = set()
-        self.league_exploiters: Set[PolicyID] = set()
+        self.main_policies = 1 #: Set[PolicyID] = set()
+        self.main_exploiters = 1 #: Set[PolicyID] = set()
+        self.league_exploiters = 1 #: Set[PolicyID] = set()
         # Sets of currently trainable/non-trainable policies in the league.
-        self.trainable_policies: Set[PolicyID] = set()
-        self.non_trainable_policies: Set[PolicyID] = set()
-        for pid in self.config["multiagent"]["policies"]:
-            if pid in self.config["multiagent"]["policies_to_train"]:
-                self.trainable_policies.add(pid)
-            else:
-                self.non_trainable_policies.add(pid)
+        #self.trainable_policies: Set[PolicyID] = set()
+        #self.non_trainable_policies: Set[PolicyID] = set()
+        #for pid in self.config["multiagent"]["policies"]:
+        #    if pid in self.config["multiagent"]["policies_to_train"]:
+        #        self.trainable_policies.add(pid)
+        #    else:
+        #        self.non_trainable_policies.add(pid)
         # Store the win rates for league overview printouts.
         self.win_rates: Dict[PolicyID, float] = {}
 
@@ -283,15 +284,14 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         # Based on the (train + evaluate) results, perform a step of
         # league building.
-        self.config["league_building_fn"](
-            trainer=self,
+        self.build_league(
             result=result,
-            config=self.config,
-            main_policies=self.main_policies,
-            main_exploiters=self.main_exploiters,
-            league_exploiters=self.league_exploiters,
-            trainable_policies=self.trainable_policies,
-            non_trainable_policies=self.non_trainable_policies,
+            #config=self.config,
+            #main_policies=self.main_policies,
+            #main_exploiters=self.main_exploiters,
+            #league_exploiters=self.league_exploiters,
+            #trainable_policies=self.trainable_policies,
+            #non_trainable_policies=self.non_trainable_policies,
         )
 
         return result
@@ -361,6 +361,190 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 worker.set_weights.remote(policy_weights_ref)
 
         return train_infos
+
+    def build_league(self, result: ResultDict) -> None:
+        """TODO: Docstring """
+
+        # If no evaluation results -> Use hist data gathered for training.
+        if "evaluation" in result:
+            hist_stats = result["evaluation"]["hist_stats"]
+        else:
+            hist_stats = result["hist_stats"]
+
+        trainable_policies = set(self.workers.local_worker().policies_to_train)
+        non_trainable_policies = \
+            set(self.workers.local_worker().policy_map.keys()) - \
+            trainable_policies
+
+        # Calculate current win-rates.
+        for policy_id, rew in hist_stats.items():
+            mo = re.match("^policy_(.+)_reward$", policy_id)
+            if mo is None:
+                continue
+            policy_id = mo.group(1)
+
+            # Calculate this policy's win rate.
+            won = 0
+            for r in rew:
+                if r > 0.0:  # win = 1.0; loss = -1.0
+                    won += 1
+            win_rate = won / len(rew)
+            # TODO: This should probably be a running average
+            #  (instead of hard-overriding it with the most recent data).
+            self.win_rates[policy_id] = win_rate
+
+            # Policy is a snapshot (frozen) -> Ignore.
+            if policy_id not in trainable_policies:
+                continue
+
+            print(
+                f"Iter={self.iteration} {policy_id}'s "
+                f"win-rate={win_rate} -> ",
+                end="")
+
+            # If win rate is good enough -> Snapshot current policy and decide,
+            # whether to freeze the new snapshot or not.
+            if win_rate >= self.config["win_rate_threshold_for_new_snapshot"]:
+                initializing_first_exploiters = False
+
+                is_main = re.match("^main(_\\d+)?$", policy_id)
+
+                # First time, main manages a decent win-rate against random:
+                # Add league_exploiter_0 and main_exploiter_0 to the mix.
+                if is_main and self.main_policies == 1:
+                    new_pol_id = "main_1"
+                    self.main_policies += 1
+                    initializing_first_exploiters = True
+                    trainable_policies.add(new_pol_id)
+
+                    trainable_policies.add("league_exploiter_1")
+                    self.league_exploiters += 1
+
+                    trainable_policies.add("main_exploiter_1")
+                    self.main_exploiters += 1
+
+                    print(f"initializing actual league ({new_pol_id} + "
+                          "1st learning league-/main-exploiters).")
+                else:
+                    keep_training_p = self.config["keep_new_snapshot_training_prob"]
+                    keep_training = False if is_main else np.random.choice(
+                        [True, False], p=[keep_training_p, 1.0 - keep_training_p])
+                    #mo = re.match("^.+_(\\d+)$", policy_id)
+                    #idx = int(mo.group(1))
+                    if policy_id.startswith("league"):
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{self.league_exploiters}", policy_id)
+                        self.league_exploiters += 1
+                    elif policy_id.startswith("main_ex"):
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{self.main_exploiters}", policy_id)
+                        self.main_exploiters += 1
+                    else:
+                        new_pol_id = re.sub(
+                            "_\\d+$", f"_{self.main_policies}", policy_id)
+                        self.main_policies += 1
+
+                    if keep_training:
+                        trainable_policies.add(new_pol_id)
+                    else:
+                        non_trainable_policies.add(new_pol_id)
+
+                    print(f"adding new opponents to the mix ({new_pol_id}; trainable={keep_training}).")
+
+                num_main_policies = self.main_policies
+                num_main_exploiters = self.main_exploiters
+                num_league_exploiters = self.league_exploiters
+
+                # Update our mapping function accordingly.
+                def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+
+                    # Pick, whether this is ...
+                    type_ = np.random.choice([1, 2])
+
+                    # 1) League exploiter vs any other.
+                    if type_ == 1:
+                        league_exploiter = "league_exploiter_" + str(
+                            np.random.choice(
+                                list(range(num_league_exploiters))))
+                        # This league exploiter is a frozen: Play against a
+                        # trainable policy.
+                        if league_exploiter not in trainable_policies:
+                            opponent = np.random.choice(
+                                list(trainable_policies))
+                        # League exploiter is trainable: Play against any other
+                        # non-trainable policy.
+                        else:
+                            opponent = np.random.choice(
+                                list(non_trainable_policies))
+                        print(f"{league_exploiter} vs {opponent}")
+                        return league_exploiter if \
+                            episode.episode_id % 2 == agent_id else opponent
+
+                    # 2) Main exploiter vs main.
+                    else:
+                        main_exploiter = "main_exploiter_" + str(
+                            np.random.choice(
+                                list(range(num_main_exploiters))))
+                        # Main exploiter is frozen: Play against the main policy.
+                        if main_exploiter not in trainable_policies:
+                            main = "main_0"
+                        # Main exploiter is trainable: Play against any frozen main.
+                        else:
+                            main = "main_{}".format(np.random.choice(
+                                list(range(1, num_main_policies))))
+                        print(f"{main_exploiter} vs {main}")
+                        return main_exploiter if \
+                            episode.episode_id % 2 == agent_id else main
+
+                # Add and initialize the first learning league- and
+                # main-exploiters (copy from `main_0`).
+                if initializing_first_exploiters:
+                    main_state = self.get_policy("main_0").get_state()
+
+                    # Add/initialize `league_exploiter_1`.
+                    self.add_policy(
+                        policy_id="league_exploiter_1",
+                        policy_cls=type(self.get_policy("main_0")),
+                        policy_state=main_state,
+                        policy_mapping_fn=policy_mapping_fn,
+                        policies_to_train=trainable_policies,
+                    )
+                    # Add/initialize `main_exploiter_1`.
+                    self.add_policy(
+                        policy_id="main_exploiter_1",
+                        policy_cls=type(self.get_policy("main_0")),
+                        policy_state=main_state,
+                        policy_mapping_fn=policy_mapping_fn,
+                        policies_to_train=trainable_policies,
+                    )
+
+                # Add and set the weights of the new polic(y/ies).
+                state = self.get_policy(policy_id).get_state()
+                self.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(self.get_policy(policy_id)),
+                    policy_state=state,
+                    policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=trainable_policies,
+                )
+
+            else:
+                print("not good enough; will keep learning ...")
+
+    @override(Trainer)
+    def add_policy(
+            self,
+            policy_id: PolicyID,
+            policy_cls: Type[Policy],
+            **kwargs,
+    ) -> Policy:
+
+        new_policy = super().add_policy(policy_id, policy_cls, **kwargs)
+        # Besides add this policy to our workers (and eval workers),
+        # do we have to create a policy-learner actor from it as well?
+        if policy_id in kwargs.get("policies_to_train", []):
+
+        return new_policy
 
     @staticmethod
     def _sample_and_send_to_buffer(worker: RolloutWorker):
