@@ -5,6 +5,8 @@ authors = ["Jonathan Chuang"]
 license = "Apache-2.0"
 edition = "2018"
 publish = true
+repository = "https://github.com/ray-project/ray"
+description = "Ray Rust language worker API"
 
 [dependencies]
 paste = "1.0.6"
