@@ -36,10 +36,6 @@ const uint64_t kInternalHeartbeatMillis = 1000;
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
-inline bool IsDetachedHelper(ActorLifetime actor_lifetime) {
-  return actor_lifetime == ray::rpc::JobConfig_ActorLifetime_DETACHED;
-}
-
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
@@ -1568,7 +1564,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
     actor_creation_options.is_detached =
-        std::make_optional<bool>(IsDetachedHelper(job_config_->default_actor_lifetime()));
+        std::make_optional<bool>(job_config_->default_actor_lifetime() ==
+                                 ray::rpc::JobConfig_ActorLifetime_DETACHED);
   }
 
   const auto next_task_index = worker_context_.GetNextTaskIndex();

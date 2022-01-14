@@ -17,7 +17,7 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
-        TODO: docstring.
+        default_actor_lifetime (str): The default value of actor lifetime. 
     """
 
     def __init__(self,
