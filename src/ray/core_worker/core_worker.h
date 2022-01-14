@@ -427,7 +427,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
-  /// \param[in] actor_creation_options Options for this actor creation task.
+  /// \param[in] options Options for this actor creation task.
   /// \param[in] extension_data Extension data of the actor handle,
   /// see `ActorHandle` in `core_worker.proto`.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
@@ -435,7 +435,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function,
                      const std::vector<std::unique_ptr<TaskArg>> &args,
-                     ActorCreationOptions actor_creation_options,
+                     const ActorCreationOptions &options,
                      const std::string &extension_data, ActorID *actor_id);
 
   /// Create a placement group.

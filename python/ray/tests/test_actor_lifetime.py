@@ -16,12 +16,8 @@ from ray.exceptions import RayActorError
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
-@pytest.mark.parametrize(
-    "default_actor_lifetime,child_actor_lifetime",
-    [(None, None), (None, "detached"), (None, "non_detached"),
-     ("detached", None), ("detached", "detached"),
-     ("detached", "non_detached"), ("non_detached", None),
-     ("non_detached", "detached"), ("non_detached", "non_detached")])
+@pytest.mark.parametrize("default_actor_lifetime", ["detached", "non_detached"])
+@pytest.mark.parametrize("child_actor_lifetime", [None, "detached", "non_detached"])
 def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     @ray.remote
     class OwnerActor:
@@ -58,35 +54,24 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     wait_for_pid_to_exit(owner_pid)
     # 3. Assert child state.
 
-    def _assert_child_actor_still_alive():
-        time.sleep(4)
-        assert "ok" == ray.get(child.ready.remote())
+    def is_child_actor_dead():
+        try:
+            ray.get(child.ready.remote())
+            return False
+        except RayActorError:
+            return True
 
-    def _assert_child_actor_is_dead():
-        def is_dead():
-            try:
-                ray.get(child.ready.remote())
-                return False
-            except RayActorError:
-                return True
-        wait_for_condition(is_dead, timeout=5)
-
+    actual_lifetime = default_actor_lifetime
     if child_actor_lifetime is not None:
-        # child_actor_lifetime is specifying at runtime.
-        if child_actor_lifetime == "detached":
-            _assert_child_actor_still_alive()
-        else:
-            _assert_child_actor_is_dead()
+        actual_lifetime = child_actor_lifetime
+
+    assert actual_lifetime is not None
+    if actual_lifetime == "detached":
+        time.sleep(5)
+        assert not is_child_actor_dead() 
     else:
-        # Code path of not specifying child_actor_lifetime, so it's
-        # depends on the default actor lifetime.
-        if default_actor_lifetime is None:
-            _assert_child_actor_is_dead()
-        elif default_actor_lifetime == "detached":
-            _assert_child_actor_still_alive()
-        else:
-            # It's not detached, the child should be dead.
-            _assert_child_actor_is_dead()
+        wait_for_condition(is_child_actor_dead, timeout=5)
+
     ray.shutdown()
 
 if __name__ == "__main__":

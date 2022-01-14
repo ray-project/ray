@@ -144,7 +144,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
   std::string name = "";
-  std::shared_ptr<bool> is_detached = nullptr;
+  std::optional<bool> is_detached = nullptr;
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
@@ -162,10 +162,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     auto java_actor_lifetime = (jobject)env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_lifetime);
     if (java_actor_lifetime != nullptr) {
-      jint actor_lifetime_value =
-          env->GetIntField(java_actor_lifetime, java_actor_lifetime_value);
+      is_detached =
+          std::make_optional<bool>(env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
       RAY_CHECK_JAVA_EXCEPTION(env);
-      is_detached = std::make_shared<bool>(actor_lifetime_value == 1);
     }
 
     max_restarts =

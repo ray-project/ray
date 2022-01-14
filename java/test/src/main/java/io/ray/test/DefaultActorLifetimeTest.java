@@ -6,6 +6,7 @@ import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -87,24 +88,14 @@ public class DefaultActorLifetimeTest {
               return true;
             }
           };
-
-      Supplier<Boolean> childNotDead =
-          () -> {
-            try {
-              child.task(ChildActor::ready).remote().get();
-              return true;
-            } catch (RayActorException e) {
-              return false;
-            }
-          };
-
       ActorLifetime actualLifetime = defaultActorLifetime;
       if (childActorLifetime != null) {
         actualLifetime = childActorLifetime;
       }
       Assert.assertNotNull(actualLifetime);
       if (actualLifetime == ActorLifetime.DETACHED) {
-        Assert.assertTrue(TestUtils.waitForCondition(childNotDead, 5000));
+        TimeUnit.SECONDS.sleep(5);
+        Assert.assertFalse(isChildDead.get());
       } else {
         Assert.assertTrue(TestUtils.waitForCondition(isChildDead, 5000));
       }

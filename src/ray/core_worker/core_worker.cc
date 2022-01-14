@@ -1551,9 +1551,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
-                               ActorCreationOptions actor_creation_options,
+                               const ActorCreationOptions &options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
+  auto actor_creation_options = options;
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1563,11 +1564,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   }
 
   RAY_CHECK(job_config_ != nullptr);
-  if (actor_creation_options.is_detached == nullptr) {
+  if (!actor_creation_options.is_detached.has_value()) {
     /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
     actor_creation_options.is_detached =
-        std::make_shared<bool>(IsDetachedHelper(job_config_->default_actor_lifetime()));
+        std::make_optional<bool>(IsDetachedHelper(job_config_->default_actor_lifetime()));
   }
 
   const auto next_task_index = worker_context_.GetNextTaskIndex();
