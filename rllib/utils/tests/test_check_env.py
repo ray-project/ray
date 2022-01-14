@@ -4,9 +4,8 @@ import pytest
 import unittest
 from unittest.mock import Mock, MagicMock
 
-from ray.rllib.env.multi_agent_env import MultiAgentEnvWrapper
+from ray.rllib.env.multi_agent_env import make_multi_agent, MultiAgentEnvWrapper
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.pre_checks.env import check_env, check_gym_environments, \
     check_multiagent_environments, check_base_env
 

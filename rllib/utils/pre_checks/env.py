@@ -30,10 +30,10 @@ def check_env(env: EnvType) -> None:
             "Env must be one of the supported types: BaseEnv, gym.Env, "
             "MultiAgentEnv, VectorEnv, RemoteBaseEnv")
 
-    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
-        check_gym_environments(env)
-    elif isinstance(env, MultiAgentEnv):
+    if isinstance(env, MultiAgentEnv):
         check_multiagent_environments(env)
+    elif isinstance(env, gym.Env):
+        check_gym_environments(env)
     elif isinstance(env, BaseEnv):
         check_base_env(env)
     else:
