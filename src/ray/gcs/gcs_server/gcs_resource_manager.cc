@@ -27,8 +27,7 @@ GcsResourceManager::GcsResourceManager(
       gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
-      max_broadcasting_batch_size_(
-          RayConfig::instance().resource_broadcast_batch_size()) {
+      max_broadcasting_body_size_(RayConfig::instance().resource_broadcast_body_size()) {
   if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
@@ -403,7 +402,8 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
   auto beg = resources_buffer_.begin();
   auto ptr = beg;
   for (size_t cnt = buffer.batch().size();
-       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+       buffer->ByteSizeLong() < max_broadcasting_body_size_ &&
+       cnt < resources_buffer_.size();
        ++ptr, ++cnt) {
     buffer.add_batch()->mutable_data()->Swap(&ptr->second);
   }
@@ -414,8 +414,8 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
     rpc::ResourceUsageBatchData &buffer) {
   auto beg = resources_buffer_.begin();
   auto ptr = beg;
-  for (size_t cnt = 0;
-       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+  for (size_t cnt = 0; buffer->ByteSizeLong() < max_broadcasting_body_size_ &&
+                       cnt < resources_buffer_.size();
        ++ptr, ++cnt) {
     buffer.add_batch()->Swap(&ptr->second);
   }

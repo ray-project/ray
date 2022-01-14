@@ -213,8 +213,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
-  /// Max batch size for broadcasting
-  size_t max_broadcasting_batch_size_;
+  /// Max size for broadcasting.
+  size_t max_broadcasting_body_size_;
 
   /// Debug info.
   enum CountType {
