@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -ex
-
 cd "${0%/*}" || exit 1
 
 reason() {
@@ -93,9 +91,8 @@ RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
-pip uninstall -q -y ray
 pip install -q -r requirements.txt
-pip install -q -U boto3 botocore
+pip install -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
 
 RETRY_NUM=0
