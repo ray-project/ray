@@ -3036,6 +3036,20 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
+def test_groupby_errors(ray_start_regular_shared):
+    ds = ray.data.range(100
+
+    ds.groupby(None).count().show()  # OK
+    ds.groupby(lambda x: x % 2).count().show()  # OK
+    with pytest.raises(TypeError):
+        ds.groupby("foo").count().show()
+
+    ds = ray.data.range_arrow(100)  # OK
+    ds.groupby(None).count().show()  # OK
+    with pytest.raises(NotImplementedError):
+        ds.groupby(lambda x: x % 2).count().show()
+
+
 @pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
