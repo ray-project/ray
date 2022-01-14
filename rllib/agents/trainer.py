@@ -735,7 +735,6 @@ class Trainer(Trainable):
                 "episode_reward_max": np.nan,
                 "episode_reward_min": np.nan,
                 "episode_reward_mean": np.nan,
-                "hist_stats": {},
             }
         }
 
