@@ -748,9 +748,8 @@ def try_create_gcs_client(address: Optional[str], redis_password: Optional[str]
     else:
         if redis_password is None:
             redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        redis_client = ray._private.services.create_redis_client(
+        return GcsClient.connect_to_gcs_by_redis_address(
             address, redis_password)
-        return GcsClient.create_from_redis(redis_client)
 
 
 def main():
