@@ -150,6 +150,7 @@ test_python() {
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_metrics_agent # timeout
