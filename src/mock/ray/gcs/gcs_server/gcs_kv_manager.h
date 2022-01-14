@@ -15,8 +15,31 @@
 namespace ray {
 namespace gcs {
 
-class MockGcsInternalKVManager : public GcsInternalKVManager {
+class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
  public:
+  MockInternalKVInterface() {}
+
+  MOCK_METHOD(void, Get,
+              (const std::string &ns, const std::string &key,
+               std::function<void(std::optional<std::string>)> callback),
+              (override));
+  MOCK_METHOD(void, Put,
+              (const std::string &ns, const std::string &key, const std::string &value,
+               bool overwrite, std::function<void(bool)> callback),
+              (override));
+  MOCK_METHOD(void, Del,
+              (const std::string &ns, const std::string &key, bool del_by_prefix,
+               std::function<void(int64_t)> callback),
+              (override));
+  MOCK_METHOD(void, Exists,
+              (const std::string &ns, const std::string &key,
+               std::function<void(bool)> callback),
+              (override));
+  MOCK_METHOD(void, Keys,
+              (const std::string &ns, const std::string &prefix,
+               std::function<void(std::vector<std::string>)> callback),
+              (override));
+  MOCK_METHOD(instrumented_io_context &, GetEventLoop, (), (override));
 };
 
 }  // namespace gcs

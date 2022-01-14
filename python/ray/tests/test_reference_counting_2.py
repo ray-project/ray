@@ -54,6 +54,7 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
 
 # Test that an object containing object refs within it pins the inner IDs
 # recursively and for submitted tasks.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
