@@ -92,7 +92,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     RAY_LOG(ERROR) << "Failed to connect, server ip and gcs address both are empty.";
     return Status::Invalid("gcs service address is invalid!");
   }
-
   if (options_.gcs_address_.empty()) {
     // Connect to redis.
     // We don't access redis shardings in GCS client, so we set `enable_sharding_conn`
@@ -107,7 +106,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     RAY_CHECK(::RayConfig::instance().gcs_grpc_based_pubsub())
         << "If using gcs_address to start client, gRPC based pubsub has to be enabled";
   }
-
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
     if (!options_.gcs_address_.empty()) {
@@ -122,7 +120,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       };
     }
   }
-
   // Get gcs address
   int i = 0;
   while (current_gcs_server_address_.first.empty() &&
@@ -132,7 +129,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     get_server_address_func_(&current_gcs_server_address_);
     i++;
   }
-
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -147,7 +143,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       current_gcs_server_address_.first, current_gcs_server_address_.second,
       *client_call_manager_,
       [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
-
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
   gcs_address.set_port(current_gcs_server_address_.second);
@@ -171,7 +166,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
         },
         /*callback_service*/ &io_service);
   }
-
   // Init GCS subscriber instance.
   gcs_subscriber_ =
       std::make_unique<GcsSubscriber>(redis_client_, gcs_address, std::move(subscriber));

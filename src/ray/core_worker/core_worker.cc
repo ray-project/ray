@@ -92,7 +92,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         worker_context_, task_execution_service_, execute_task,
         [this] { return local_raylet_client_->TaskDone(); });
   }
-
   // Initialize raylet client.
   // NOTE(edoakes): the core_worker_server_ must be running before registering with
   // the raylet, as the raylet will start sending some RPC messages immediately.
@@ -122,7 +121,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
 
   connected_ = true;
-
   RAY_CHECK(assigned_port >= 0);
 
   // Parse job config from serialized string.
@@ -145,7 +143,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.node_ip_address == "127.0.0.1");
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
-
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
@@ -164,7 +161,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         gcs_server_address_.first = ip;
         gcs_server_address_.second = port;
       });
-
   gcs_client_ = std::make_shared<gcs::GcsClient>(
       options_.gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
@@ -175,10 +171,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         }
         return false;
       });
-
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
-
   // Register a callback to monitor removed nodes.
   auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
@@ -457,6 +451,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 }
 
 void CoreWorker::Shutdown() {
+  RAY_LOG(INFO) << "Shutting down a core worker.";
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     direct_task_receiver_->Stop();
@@ -479,6 +474,7 @@ void CoreWorker::Disconnect(
     rpc::WorkerExitType exit_type,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
+    RAY_LOG(INFO) << "Disconnecting a core worker.";
     connected_ = false;
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(
@@ -566,6 +562,7 @@ void CoreWorker::RunIOService() {
 #endif
   SetThreadName("worker.io");
   io_service_.run();
+  RAY_LOG(INFO) << "Core worker main io service stopped.";
 }
 
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
@@ -595,7 +592,9 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 
 void CoreWorker::WaitForShutdown() {
   // Stop gcs client first since it runs in io_thread_
+  RAY_LOG(INFO) << "Waiting for shutting down a core worker.";
   if (gcs_client_) {
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
     gcs_client_->Disconnect();
   }
   if (io_thread_.joinable()) {

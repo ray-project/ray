@@ -20,7 +20,11 @@ namespace core {
 GcsServerAddressUpdater::GcsServerAddressUpdater(
     const std::string raylet_ip_address, const int port,
     std::function<void(std::string, int)> update_func)
-    : update_func_(update_func) {
+    : client_call_manager_(updater_io_service_),
+      raylet_client_(rpc::NodeManagerWorkerClient::make(raylet_ip_address, port,
+                                                        client_call_manager_)),
+      update_func_(update_func),
+      updater_runner_(updater_io_service_) {
   // Init updater thread and run its io service.
   updater_thread_.reset(new std::thread([this] {
     SetThreadName("gcs_address_updater");
@@ -28,31 +32,24 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
     boost::asio::io_service::work io_service_work_(updater_io_service_);
     updater_io_service_.run();
   }));
-  client_call_manager_.reset(new rpc::ClientCallManager(updater_io_service_));
-  auto grpc_client =
-      rpc::NodeManagerWorkerClient::make(raylet_ip_address, port, *client_call_manager_);
-  raylet_client_ = std::make_shared<raylet::RayletClient>(grpc_client);
-  // Init updater runner.
-  updater_runner_.reset(new PeriodicalRunner(updater_io_service_));
+  UpdateGcsServerAddress();
   // Start updating gcs server address.
-  updater_runner_->RunFnPeriodically(
+  updater_runner_.RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
-  updater_runner_.reset();
   updater_io_service_.stop();
   if (updater_thread_->joinable()) {
     updater_thread_->join();
   }
-  updater_thread_.reset();
-  raylet_client_.reset();
+  RAY_LOG(INFO) << "GcsServerAddressUpdater is destructed";
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
-  raylet_client_->GetGcsServerAddress([this](const Status &status,
-                                             const rpc::GetGcsServerAddressReply &reply) {
+  raylet_client_.GetGcsServerAddress([this](const Status &status,
+                                            const rpc::GetGcsServerAddressReply &reply) {
     const int64_t max_retries =
         RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() * 1000 /
         RayConfig::instance().gcs_service_address_check_interval_milliseconds();

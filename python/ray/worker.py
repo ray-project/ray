@@ -959,7 +959,6 @@ def init(
             shutdown_at_exit=False,
             spawn_reaper=False,
             connect_only=True)
-
     connect(
         _global_node,
         mode=driver_mode,
