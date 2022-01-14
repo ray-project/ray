@@ -115,6 +115,7 @@ class QMixTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["framework"] != "torch":

@@ -195,7 +195,7 @@ class MultiAgentEnv(gym.Env):
         """Returns a set of agent ids in the environment.
 
         Returns:
-            set of agent ids.
+            Set of agent ids.
         """
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
@@ -289,7 +289,7 @@ class MultiAgentEnv(gym.Env):
             Returns:
                 The resulting BaseEnv object.
             """
-        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        from ray.rllib.env.remote_base_env import RemoteBaseEnv
         if remote_envs:
             env = RemoteBaseEnv(
                 make_env,
@@ -405,10 +405,14 @@ def make_multi_agent(
 
         @override(MultiAgentEnv)
         def action_space_contains(self, x: MultiAgentDict) -> bool:
+            if not isinstance(x, dict):
+                return False
             return all(self.action_space.contains(val) for val in x.values())
 
         @override(MultiAgentEnv)
         def observation_space_contains(self, x: MultiAgentDict) -> bool:
+            if not isinstance(x, dict):
+                return False
             return all(
                 self.observation_space.contains(val) for val in x.values())
 

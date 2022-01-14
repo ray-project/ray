@@ -34,8 +34,8 @@ If you want to launch Ray in profiling mode, define the following variables:
 
 .. code-block:: bash
 
-  export RAYLET_PERFTOOLS_PATH=/usr/lib/x86_64-linux-gnu/libprofiler.so
-  export RAYLET_PERFTOOLS_LOGFILE=/tmp/pprof.out
+  export PERFTOOLS_PATH=/usr/lib/x86_64-linux-gnu/libprofiler.so
+  export PERFTOOLS_LOGFILE=/tmp/pprof.out
 
 
 The file ``/tmp/pprof.out`` will be empty until you let the binary run the

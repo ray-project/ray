@@ -106,8 +106,13 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         logp_ratio = torch.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
             train_batch[SampleBatch.ACTION_LOGP])
-        action_kl = prev_action_dist.kl(curr_action_dist)
-        mean_kl_loss = reduce_mean_valid(action_kl)
+
+        # Only calculate kl loss if necessary (kl-coeff > 0.0).
+        if self.config["kl_coeff"] > 0.0:
+            action_kl = prev_action_dist.kl(curr_action_dist)
+            mean_kl_loss = reduce_mean_valid(action_kl)
+        else:
+            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
         curr_entropy = curr_action_dist.entropy()
         mean_entropy = reduce_mean_valid(curr_entropy)
@@ -137,9 +142,13 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             vf_loss = mean_vf_loss = 0.0
 
         total_loss = reduce_mean_valid(-surrogate_loss +
-                                       self.kl_coeff * action_kl +
                                        self.config["vf_loss_coeff"] * vf_loss -
                                        self.entropy_coeff * curr_entropy)
+
+        # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+        # if necessary.
+        if self.config["kl_coeff"] > 0.0:
+            total_loss += self.kl_coeff * mean_kl_loss
 
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
