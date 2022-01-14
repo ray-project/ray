@@ -101,6 +101,10 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   if (it == local_objects_.end() || it->second.second) {
     return;
   }
+  // Mark the object as freed. NOTE(swang): We have to mark this instead of
+  // deleting the entry immediately in case the object is currently being
+  // spilled. In that case, we should process the free event once the object
+  // spill is complete.
   it->second.second = true;
 
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
@@ -496,6 +500,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
     } else {
+      // If the object was not spilled, it gets pinned again. Unpin here to
+      // prevent a memory leak.
       pinned_objects_.erase(object_id);
     }
     local_objects_.erase(object_id);
