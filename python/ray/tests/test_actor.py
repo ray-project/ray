@@ -274,7 +274,6 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-    # TODO: redis-removal kv
     g = ray.worker.global_worker.gcs_client
     actor_keys = g.internal_kv_keys(b"ActorClass",
                                     ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
