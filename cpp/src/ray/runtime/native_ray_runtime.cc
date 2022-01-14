@@ -26,7 +26,7 @@ namespace internal {
 NativeRayRuntime::NativeRayRuntime() {
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore());
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
-  task_executor_ = std::make_unique<TaskExecutor>(*this);
+  task_executor_ = std::make_unique<TaskExecutor>();
 
   auto redis_ip = ConfigInternal::Instance().redis_ip;
   if (redis_ip.empty()) {

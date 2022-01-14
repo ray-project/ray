@@ -667,15 +667,15 @@ class PlacementGroupInfoAccessor {
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  /// Create a placement group to GCS asynchronously.
+  /// Create a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS.
-  /// \return Status.
-  virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback);
+  /// \return Status. The status of the RPC. TimedOut if the RPC times out. Invalid if the
+  /// same name placement group is registered. NotFound if the placement group is removed.
+  virtual Status SyncCreatePlacementGroup(
+      const ray::PlacementGroupSpecification &placement_group_spec);
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -688,10 +688,14 @@ class PlacementGroupInfoAccessor {
   /// Get a placement group data from GCS asynchronously by name.
   ///
   /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \param ray_namespace The ray namespace.
+  /// \param callback The callback that's called when the RPC is replied.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
       const std::string &placement_group_name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get all placement group info from GCS asynchronously.
   ///
@@ -700,22 +704,22 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
-  /// Remove a placement group to GCS asynchronously.
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_id The id for the placement group to remove.
-  /// \param callback Callback that will be called after the placement group is
-  /// removed from GCS.
   /// \return Status
-  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                                           const StatusCallback &callback);
+  virtual Status SyncRemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Wait for a placement group until ready asynchronously.
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param placement_group_id The id for the placement group to wait for until ready.
-  /// \param callback Callback that will be called after the placement group is created.
-  /// \return Status
-  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
-                                     const StatusCallback &callback);
+  /// \return Status. TimedOut if the RPC times out. NotFound if the placement has already
+  /// removed.
+  virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id);
 
  private:
   GcsClient *client_impl_;
@@ -728,45 +732,51 @@ class InternalKVAccessor {
   virtual ~InternalKVAccessor() = default;
   /// Asynchronously list keys with prefix stored in internal kv
   ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
-      const std::string &prefix,
+      const std::string &ns, const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
   ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(const std::string &key,
+  virtual Status AsyncInternalKVGet(const std::string &ns, const std::string &key,
                                     const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
+  /// \param ns The namespace to put the key.
   /// \param key The key in <key, value> pair
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
-                                    bool overwrite,
+  virtual Status AsyncInternalKVPut(const std::string &ns, const std::string &key,
+                                    const std::string &value, bool overwrite,
                                     const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
-  /// \param key The key to check
+  /// \param ns The namespace to check.
+  /// \param key The key to check.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVExists(const std::string &key,
+  virtual Status AsyncInternalKVExists(const std::string &ns, const std::string &key,
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
   ///
-  /// \param key The key to delete
+  /// \param ns The namespace to delete from.
+  /// \param key The key to delete.
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVDel(const std::string &key,
-                                    const StatusCallback &callback);
+  virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
+                                    bool del_by_prefix, const StatusCallback &callback);
 
   // These are sync functions of the async above
 
@@ -774,15 +784,18 @@ class InternalKVAccessor {
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
-  virtual Status Keys(const std::string &prefix, std::vector<std::string> &value);
+  virtual Status Keys(const std::string &ns, const std::string &prefix,
+                      std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to put the key.
   /// \param key The key of the pair
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
@@ -790,35 +803,39 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
-  virtual Status Put(const std::string &key, const std::string &value, bool overwrite,
-                     bool &added);
+  virtual Status Put(const std::string &ns, const std::string &key,
+                     const std::string &value, bool overwrite, bool &added);
 
   /// Retrive the value associated with a key
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
-  virtual Status Get(const std::string &key, std::string &value);
+  virtual Status Get(const std::string &ns, const std::string &key, std::string &value);
 
   /// Delete the key
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to delete from.
   /// \param key The key to delete
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \return Status
-  virtual Status Del(const std::string &key);
+  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
 
   /// Check existence of a key in the store
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to check.
   /// \param key The key to check
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
-  virtual Status Exists(const std::string &key, bool &exist);
+  virtual Status Exists(const std::string &ns, const std::string &key, bool &exist);
 
  private:
   GcsClient *client_impl_;

@@ -120,6 +120,7 @@ class SimpleQTrainer(Trainer):
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Checks and updates the config based on settings.
         """
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["exploration_config"]["type"] == "ParameterNoise":
@@ -185,9 +186,7 @@ class SimpleQTrainer(Trainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
+                _fake_gpus=config["_fake_gpus"])
 
         # (2) Read and train on experiences from the replay buffer.
         replay_op = Replay(local_buffer=local_replay_buffer) \

@@ -347,14 +347,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeBatchResourceUsage(
-      const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> heartbeat) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
@@ -592,13 +584,6 @@ TEST_P(GcsClientTest, TestNodeResources) {
 }
 
 TEST_P(GcsClientTest, TestNodeResourceUsage) {
-  // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> resource_batch_count(0);
-  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
-    ++resource_batch_count;
-  };
-  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
-
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
@@ -612,7 +597,6 @@ TEST_P(GcsClientTest, TestNodeResourceUsage) {
   double resource_value = 1.0;
   (*resource->mutable_resources_total())[resource_name] = resource_value;
   ASSERT_TRUE(ReportResourceUsage(resource));
-  WaitForExpectedCount(resource_batch_count, 1);
 
   // Get and check last report resource usage.
   auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
@@ -621,13 +605,6 @@ TEST_P(GcsClientTest, TestNodeResourceUsage) {
 }
 
 TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
-  // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> resource_batch_count(0);
-  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
-    ++resource_batch_count;
-  };
-  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
-
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
@@ -637,24 +614,15 @@ TEST_P(GcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
   auto resource = std::make_shared<rpc::ResourcesData>();
   resource->set_node_id(node_id.Binary());
   ASSERT_TRUE(ReportResourceUsage(resource));
-  WaitForExpectedCount(resource_batch_count, 0);
 
   // Report changed resource usage of a node to GCS.
   auto resource1 = std::make_shared<rpc::ResourcesData>();
   resource1->set_node_id(node_id.Binary());
   resource1->set_resources_available_changed(true);
   ASSERT_TRUE(ReportResourceUsage(resource1));
-  WaitForExpectedCount(resource_batch_count, 1);
 }
 
 TEST_P(GcsClientTest, TestGetAllAvailableResources) {
-  // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> resource_batch_count(0);
-  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
-    ++resource_batch_count;
-  };
-  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
-
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
@@ -668,7 +636,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
   (*resource->mutable_resources_available())["CPU"] = 1.0;
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   ASSERT_TRUE(ReportResourceUsage(resource));
-  WaitForExpectedCount(resource_batch_count, 1);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -679,13 +646,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResources) {
 }
 
 TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) {
-  // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> resource_batch_count(0);
-  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
-    ++resource_batch_count;
-  };
-  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
-
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
@@ -698,7 +658,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) 
   (*resource->mutable_resources_available())["CPU"] = 1.0;
   (*resource->mutable_resources_available())["GPU"] = 10.0;
   ASSERT_TRUE(ReportResourceUsage(resource));
-  WaitForExpectedCount(resource_batch_count, 1);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -712,7 +671,6 @@ TEST_P(GcsClientTest, TestGetAllAvailableResourcesWithLightResourceUsageReport) 
   resource1->set_node_id(node_id.Binary());
   (*resource1->mutable_resources_available())["GPU"] = 8.0;
   ASSERT_TRUE(ReportResourceUsage(resource1));
-  WaitForExpectedCount(resource_batch_count, 1);
 
   // The value would remain unchanged.
   std::vector<rpc::AvailableResources> resources1 = GetAllAvailableResources();
@@ -869,14 +827,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
       };
   ASSERT_TRUE(SubscribeToResources(resource_subscribe));
 
-  // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> batch_resource_usage_count(0);
-  auto batch_resource_usage_subscribe =
-      [&batch_resource_usage_count](const rpc::ResourceUsageBatchData &result) {
-        ++batch_resource_usage_count;
-      };
-  ASSERT_TRUE(SubscribeBatchResourceUsage(batch_resource_usage_subscribe));
-
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
@@ -887,7 +837,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // Set this flag because GCS won't publish unchanged resources.
   resources->set_should_global_gc(true);
   ASSERT_TRUE(ReportResourceUsage(resources));
-  WaitForExpectedCount(batch_resource_usage_count, 1);
 
   RestartGcsServer();
 
@@ -900,7 +849,6 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 
   WaitForExpectedCount(node_change_count, 2);
   WaitForExpectedCount(resource_change_count, 2);
-  WaitForExpectedCount(batch_resource_usage_count, 2);
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {

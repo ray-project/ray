@@ -300,6 +300,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/metadata.rst
    workflows/events.rst
    workflows/comparison.rst
    workflows/advanced.rst
@@ -357,7 +358,7 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   xgboost-ray.rst
+   xgboost-ray.md
    lightgbm-ray.rst
    ray-lightning.rst
    ray-collective.rst

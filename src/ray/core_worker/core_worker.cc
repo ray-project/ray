@@ -445,7 +445,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
+          RAY_LOG(INFO) << "Event stats:\n\n"
+                        << io_service_.stats().StatsString() << "\n\n";
         },
         event_stats_print_interval_ms);
   }
@@ -594,11 +595,12 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 }
 
 void CoreWorker::WaitForShutdown() {
-  if (io_thread_.joinable()) {
-    io_thread_.join();
-  }
+  // Stop gcs client first since it runs in io_thread_
   if (gcs_client_) {
     gcs_client_->Disconnect();
+  }
+  if (io_thread_.joinable()) {
+    io_thread_.join();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());
@@ -841,9 +843,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
   RAY_RETURN_NOT_OK(WaitForActorRegistered(contained_object_ids));
-  if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
+  if (options_.is_local_mode) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
@@ -904,10 +904,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     status = status_promise.get_future().get();
   }
 
-  if ((options_.is_local_mode ||
-       (RayConfig::instance().put_small_object_in_memory_store() &&
-        static_cast<int64_t>(data_size) < max_direct_call_object_size_)) &&
-      owned_by_us && inline_small_object) {
+  if (options_.is_local_mode && owned_by_us && inline_small_object) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     if (status.ok()) {
@@ -1674,8 +1671,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
@@ -1697,63 +1692,48 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
-      placement_group_spec,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncCreatePlacementGroup(placement_group_spec);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in creating the placement group of id "
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-
-  return status_future.get();
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   // Synchronously wait for placement group removal.
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncRemovePlacementGroup(placement_group_id);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in removing the placement group of id "
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-
-  return status_future.get();
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                            int timeout_seconds) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
-  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::seconds(timeout_seconds)) !=
-      std::future_status::ready) {
+  const auto status =
+      gcs_client_->PlacementGroups().SyncWaitUntilReady(placement_group_id);
+  if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
            << " creation.";
     return Status::TimedOut(stream.str());
+  } else {
+    return status;
   }
-
-  return status_future.get();
 }
 
 std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
@@ -1865,24 +1845,26 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   }
   std::promise<Status> p;
   auto f = p.get_future();
-  io_service_.post([this, p = &p, actor_id, force_kill, no_restart]() {
-    auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
-      if (status.ok()) {
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
-                                                          no_restart, nullptr));
-      }
-      p->set_value(std::move(status));
-    };
-    if (actor_creator_->IsActorInRegistering(actor_id)) {
-      actor_creator_->AsyncWaitForActorRegisterFinish(actor_id, std::move(cb));
-    } else if (actor_manager_->CheckActorHandleExists(actor_id)) {
-      cb(Status::OK());
-    } else {
-      std::stringstream stream;
-      stream << "Failed to find a corresponding actor handle for " << actor_id;
-      cb(Status::Invalid(stream.str()));
-    }
-  });
+  io_service_.post(
+      [this, p = &p, actor_id, force_kill, no_restart]() {
+        auto cb = [this, p, actor_id, force_kill, no_restart](Status status) mutable {
+          if (status.ok()) {
+            RAY_CHECK_OK(gcs_client_->Actors().AsyncKillActor(actor_id, force_kill,
+                                                              no_restart, nullptr));
+          }
+          p->set_value(std::move(status));
+        };
+        if (actor_creator_->IsActorInRegistering(actor_id)) {
+          actor_creator_->AsyncWaitForActorRegisterFinish(actor_id, std::move(cb));
+        } else if (actor_manager_->CheckActorHandleExists(actor_id)) {
+          cb(Status::OK());
+        } else {
+          std::stringstream stream;
+          stream << "Failed to find a corresponding actor handle for " << actor_id;
+          cb(Status::Invalid(stream.str()));
+        }
+      },
+      "CoreWorker.KillActor");
   const auto &status = f.get();
   actor_manager_->OnActorKilled(actor_id);
   return status;
@@ -3167,24 +3149,26 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<Status> ret;
   int counter = 0;
   // Post to service pool to avoid mutex
-  io_service_.post([&, this]() {
-    for (const auto &id : actor_ids) {
-      if (actor_creator_->IsActorInRegistering(id)) {
-        ++counter;
-        actor_creator_->AsyncWaitForActorRegisterFinish(
-            id, [&counter, &promise, &ret](Status status) {
-              ret.push_back(status);
-              --counter;
-              if (counter == 0) {
-                promise.set_value();
-              }
-            });
-      }
-    }
-    if (counter == 0) {
-      promise.set_value();
-    }
-  });
+  io_service_.post(
+      [&, this]() {
+        for (const auto &id : actor_ids) {
+          if (actor_creator_->IsActorInRegistering(id)) {
+            ++counter;
+            actor_creator_->AsyncWaitForActorRegisterFinish(
+                id, [&counter, &promise, &ret](Status status) {
+                  ret.push_back(status);
+                  --counter;
+                  if (counter == 0) {
+                    promise.set_value();
+                  }
+                });
+          }
+        }
+        if (counter == 0) {
+          promise.set_value();
+        }
+      },
+      "CoreWorker.WaitForActorRegistered");
   future.wait();
   for (const auto &s : ret) {
     if (!s.ok()) {

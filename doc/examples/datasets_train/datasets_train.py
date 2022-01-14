@@ -29,7 +29,7 @@ import torch.optim as optim
 from ray import train
 from ray.data.aggregate import Mean, Std
 from ray.train import Trainer
-from ray.train import TrainingCallback
+from ray.train.callbacks.logging import MLflowLoggerCallback
 from ray.train.callbacks import TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 
@@ -775,7 +775,11 @@ if __name__ == "__main__":
     #       and should also create 1 directory per file.
     tbx_logdir = "./runs"
     os.makedirs(tbx_logdir, exist_ok=True)
-    callbacks = [TBXLoggerCallback(logdir=tbx_logdir), MLflowCallback(config)]
+    callbacks = [
+        TBXLoggerCallback(logdir=tbx_logdir),
+        MLflowLoggerCallback(
+            experiment_name="cuj-big-data-training", save_artifact=True)
+    ]
 
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
