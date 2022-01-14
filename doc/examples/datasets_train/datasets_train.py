@@ -108,10 +108,6 @@ def make_and_upload_dataset(
             shuffle=False,
             random_state=seed)
 
-        # NOTE: To make things more interesting and more like "real" tabular data,
-        # we're going to introduce column names, categorical columns, and turn a few
-        # randomly select cells into NULL values. Not all data is clean and purely numeric!
-
         # turn into dataframe with column names
         col_names = ["feature_%0d" % i for i in range(1, d + 1, 1)]
         df = pd.DataFrame(X)
