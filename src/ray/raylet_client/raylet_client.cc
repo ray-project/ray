@@ -438,6 +438,23 @@ void raylet::RayletClient::PinObjectIDs(
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
+void raylet::RayletClient::UnpinObjectIDs(
+    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const rpc::ClientCallback<rpc::UnpinObjectIDsReply> &callback) {
+  rpc::UnpinObjectIDsRequest request;
+  request.mutable_owner_address()->CopyFrom(caller_address);
+  for (const ObjectID &object_id : object_ids) {
+    request.add_object_ids(object_id.Binary());
+  }
+  // No 'unpins_in_flight' counter; should there be?
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::UnpinObjectIDsReply &reply) {
+    callback(status, reply);
+  };
+  grpc_client_->UnpinObjectIDs(request, rpc_callback);
+}
+
+
 void raylet::RayletClient::ShutdownRaylet(
     const NodeID &node_id, bool graceful,
     const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) {

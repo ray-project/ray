@@ -57,6 +57,18 @@ class PinObjectsInterface {
   virtual ~PinObjectsInterface(){};
 };
 
+/// Interface for unpinning objects. Abstract for testing.
+class UnpinObjectsInterface {
+ public:
+  /// Request to a raylet to unpin a plasma object. The callback will be sent via gRPC.
+  virtual void UnpinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::UnpinObjectIDsReply> &callback) = 0;
+
+  virtual ~UnpinObjectsInterface(){};
+};
+
+
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
  public:
@@ -169,6 +181,7 @@ class ResourceTrackingInterface {
 };
 
 class RayletClientInterface : public PinObjectsInterface,
+			      public UnpinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
@@ -424,6 +437,10 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
+  
+  void UnpinObjectIDs(
+      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const ray::rpc::ClientCallback<ray::rpc::UnpinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(
       const NodeID &node_id, bool graceful,

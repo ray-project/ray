@@ -2161,6 +2161,23 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleUnpinObjectIDs(const rpc::UnpinObjectIDsRequest &request,
+                          rpc::UnpinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) {
+  // Get object IDs from message and store in vector object_ids
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id_binary));
+  }
+  // Unpin each object.
+  for (const auto &object_id : object_ids) {
+    local_object_manager_.ReleaseFreedObject(object_id);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &request,
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {

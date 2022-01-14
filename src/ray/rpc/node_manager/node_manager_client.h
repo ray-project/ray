@@ -119,6 +119,10 @@ class NodeManagerWorkerClient
   VOID_RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Notify the raylet to unpin the provided object IDs.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, UnpinObjectIDs, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Trigger global GC across the cluster.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_,
                          /*method_timeout_ms*/ -1, )

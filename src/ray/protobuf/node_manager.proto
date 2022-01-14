@@ -149,6 +149,16 @@ message PinObjectIDsRequest {
 message PinObjectIDsReply {
 }
 
+message UnpinObjectIDsRequest {
+  // Address of the owner to ask when to unpin the objects.
+  Address owner_address = 1;
+  // ObjectIDs to pin.
+  repeated bytes object_ids = 2;
+}
+
+message UnpinObjectIDsReply {
+}
+
 message GetNodeStatsRequest {
   // Whether to include memory stats. This could be large since it includes
   // metadata for all live object references.
@@ -312,6 +322,8 @@ service NodeManagerService {
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  // Unpin the provided object IDs.
+  rpc UnpinObjectIDs(UnpinObjectIDsRequest) returns (UnpinObjectIDsReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
   // Trigger garbage collection in all workers across the cluster.
