@@ -5,8 +5,8 @@ authors = ["Jonathan Chuang"]
 edition = "2018"
 license = "Apache-2.0"
 publish = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/ray-project/ray"
+description = "Low-level bindings to the for the C-ABI Ray CoreWorker (shared library) harness"
 
 [dependencies]
 
