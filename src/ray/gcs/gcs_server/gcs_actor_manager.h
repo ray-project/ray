@@ -23,6 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -199,9 +200,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+      GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::string(const JobID &)> get_ray_namespace,
-      std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
+      std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -529,13 +530,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the namespace an actor belongs to based on its job id. This is
+  /// A callback to get the job config of an actor based on its job id. This is
   /// necessary for actor creation.
-  std::function<std::string(const JobID &)> get_ray_namespace_;
-  /// A callback to get the number of java workers per process config item by the
-  /// given job id. It is necessary for deciding whether we should clear the Java actor.
-  std::function<int32_t(const JobID &)> get_num_java_workers_per_process_;
+  std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
+  /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
+  /// Function manager for GC purpose
+  GcsFunctionManager &function_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>

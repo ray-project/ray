@@ -23,10 +23,9 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   for (auto &pair : gcs_init_data.Jobs()) {
     const auto &job_id = pair.first;
     const auto &job_table_data = pair.second;
-    const auto &ray_namespace = job_table_data.config().ray_namespace();
-    ray_namespaces_[job_id] = ray_namespace;
-    cache_num_java_worker_per_processes_[job_id] =
-        job_table_data.config().num_java_workers_per_process();
+    cached_job_configs_[job_id] =
+        std::make_shared<rpc::JobConfig>(job_table_data.config());
+    function_manager_.AddJobReference(job_id);
   }
 }
 
@@ -53,11 +52,11 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
         runtime_env_manager_.AddURIReference(
             job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
       }
+      function_manager_.AddJobReference(job_id);
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();
-      ray_namespaces_[job_id] = mutable_job_table_data.config().ray_namespace();
-      cache_num_java_worker_per_processes_[job_id] =
-          mutable_job_table_data.config().num_java_workers_per_process();
+      cached_job_configs_[job_id] =
+          std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -88,6 +87,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
+    function_manager_.RemoveJobReference(job_id);
     done_callback(status);
   };
 
@@ -127,6 +127,12 @@ void GcsJobManager::ClearJobInfos(const JobID &job_id) {
   for (auto &listener : job_finished_listeners_) {
     listener(std::make_shared<JobID>(job_id));
   }
+  // Clear cache.
+  // TODO(qwang): This line will cause `test_actor_advanced.py::test_detached_actor`
+  // case fail under GCS HA mode. Because detached actor is still alive after
+  // job is finished. After `DRIVER_EXITED` state being introduced in issue
+  // https://github.com/ray-project/ray/issues/21128, this line should work.
+  // RAY_UNUSED(cached_job_configs_.erase(job_id));
 }
 
 /// Add listener to monitor the add action of nodes.
@@ -171,16 +177,9 @@ void GcsJobManager::HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-std::string GcsJobManager::GetRayNamespace(const JobID &job_id) const {
-  auto it = ray_namespaces_.find(job_id);
-  RAY_CHECK(it != ray_namespaces_.end()) << "Couldn't find job with id: " << job_id;
-  return it->second;
-}
-
-int32_t GcsJobManager::GetNumJavaWorkersPerProcess(const JobID &job_id) const {
-  auto it = cache_num_java_worker_per_processes_.find(job_id);
-  RAY_CHECK(it != cache_num_java_worker_per_processes_.end())
-      << "Couldn't find job with id: " << job_id;
+std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id) const {
+  auto it = cached_job_configs_.find(job_id);
+  RAY_CHECK(it != cached_job_configs_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
 }
 

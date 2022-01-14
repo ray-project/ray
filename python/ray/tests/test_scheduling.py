@@ -16,9 +16,8 @@ import ray.util.accelerators
 import ray.cluster_utils
 from ray._private.test_utils import fetch_prometheus
 
-from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
-                                     Semaphore, object_memory_usage,
-                                     SignalActor)
+from ray._private.test_utils import (wait_for_condition, Semaphore,
+                                     object_memory_usage, SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -193,13 +192,7 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-@pytest.mark.parametrize("fast", [True, False])
-def test_load_balancing_with_dependencies(ray_start_cluster, fast):
-    if fast and new_scheduler_enabled:
-        # Load-balancing on new scheduler can be inefficient if (task
-        # duration:heartbeat interval) is small enough.
-        pytest.skip()
-
+def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -210,17 +203,14 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
 
     @ray.remote
     def f(x):
-        if fast:
-            time.sleep(0.010)
-        else:
-            time.sleep(0.1)
+        time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
     # this doesn't prevent tasks from being scheduled on other raylets.
     x = ray.put(np.zeros(1000000))
 
-    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
+    attempt_to_load_balance(f, [x], 100, num_nodes, 20)
 
 
 @pytest.mark.skipif(

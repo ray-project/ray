@@ -194,9 +194,9 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+    GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    std::function<std::string(const JobID &)> get_ray_namespace,
-    std::function<int32_t(const JobID &)> get_num_java_workers_per_process,
+    std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
@@ -206,9 +206,9 @@ GcsActorManager::GcsActorManager(
       gcs_publisher_(std::move(gcs_publisher)),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
-      get_ray_namespace_(get_ray_namespace),
-      get_num_java_workers_per_process_(std::move(get_num_java_workers_per_process)),
+      get_job_config_(get_job_config),
       runtime_env_manager_(runtime_env_manager),
+      function_manager_(function_manager),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
@@ -438,7 +438,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   // namespace from the job.
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   if (ray_namespace.empty()) {
-    ray_namespace = get_ray_namespace_(job_id);
+    ray_namespace = get_job_config_(job_id)->ray_namespace();
   }
   auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
   if (!actor->GetName().empty()) {
@@ -472,6 +472,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
   registered_actors_.emplace(actor->GetActorID(), actor);
+  function_manager_.AddJobReference(actor_id.JobId());
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = NodeID::FromBinary(owner_address.raylet_id());
@@ -577,9 +578,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // Remove the actor from the unresolved actor map.
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
   const auto &actor_namespace = iter->second->GetRayNamespace();
-  auto actor = std::make_shared<GcsActor>(
-      request.task_spec(),
-      actor_namespace.empty() ? get_ray_namespace_(job_id) : actor_namespace);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(),
+                                          actor_namespace.empty()
+                                              ? get_job_config_(job_id)->ray_namespace()
+                                              : actor_namespace);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.
@@ -686,7 +688,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           // For multiple actors in one process, if one actor is out of scope,
           // We shouldn't force kill the actor because other actors in the process
           // are still alive.
-          auto force_kill = get_num_java_workers_per_process_(actor_id.JobId()) <= 1;
+          auto force_kill =
+              get_job_config_(actor_id.JobId())->num_java_workers_per_process() <= 1;
           DestroyActor(actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), force_kill);
         }
       });
@@ -722,8 +725,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   } else {
-    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
+    runtime_env_manager_.RemoveURIReference(actor_id.Hex());
   }
+  function_manager_.RemoveJobReference(actor_id.JobId());
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
@@ -1115,7 +1119,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     auto actor = std::make_shared<GcsActor>(entry.second);
     if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
       registered_actors_.emplace(entry.first, actor);
-
+      function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
         auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
         actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());

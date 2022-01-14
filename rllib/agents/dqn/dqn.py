@@ -132,6 +132,7 @@ class DQNTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         # Update effective batch size to include n-step
@@ -206,9 +207,7 @@ class DQNTrainer(SimpleQTrainer):
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,
                 num_gpus=config["num_gpus"],
-                shuffle_sequences=True,
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework"))
+                _fake_gpus=config["_fake_gpus"])
 
         replay_op = Replay(local_buffer=local_replay_buffer) \
             .for_each(lambda x: post_fn(x, workers, config)) \
