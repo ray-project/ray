@@ -1235,5 +1235,4 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
