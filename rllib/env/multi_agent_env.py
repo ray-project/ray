@@ -25,13 +25,17 @@ class MultiAgentEnv(gym.Env):
     """
 
     def __init__(self):
-        self.observation_space = None
-        self.action_space = None
-        self._agent_ids = set()
+        if not hasattr(self, "observation_space"):
+            self.observation_space = None
+        if not hasattr(self, "action_space"):
+            self.action_space = None
+        if not hasattr(self, "_agent_ids"):
+            self._agent_ids = set()
 
         # do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
-        self._spaces_in_preferred_format = None
+        if not hasattr(self, "_spaces_in_preferred_format"):
+            self._spaces_in_preferred_format = None
 
     @PublicAPI
     def reset(self) -> MultiAgentDict:
@@ -366,7 +370,7 @@ def make_multi_agent(
 
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config=None):
-            super().__init__()
+            MultiAgentEnv.__init__(self)
             config = config or {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
@@ -468,7 +472,8 @@ class MultiAgentEnvWrapper(BaseEnv):
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
-        self._agent_ids = self.envs[0].get_agent_ids()
+        self._unwrapped_env = self.envs[0].unwrapped
+        self._agent_ids = self._unwrapped_env.get_agent_ids()
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
