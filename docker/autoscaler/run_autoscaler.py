@@ -28,10 +28,10 @@ def setup_logging() -> None:
 
     # Also log at DEBUG level to stdout for debugging with `kubectl logs`.
     root_logger = logging.getLogger("")
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     root_handler = logging.StreamHandler()
-    root_handler.setLevel(logging.DEBUG)
+    root_handler.setLevel(logging.INFO)
     root_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
 
     root_logger.addHandler(root_handler)
