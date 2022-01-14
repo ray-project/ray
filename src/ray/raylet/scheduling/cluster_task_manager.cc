@@ -193,6 +193,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   if (canceled) {
     // Task has been canceled.
     RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
+    RemoveFromRunningTasksIfExists(task);
     // All the cleaning work has been done when canceled task. Just return
     // false without doing anything.
     return false;
@@ -212,6 +213,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
+    RemoveFromRunningTasksIfExists(task);
 
     if (!worker) {
       // Empty worker popped.
@@ -373,14 +375,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
-        auto it = info_by_sched_cls_.find(sched_cls);
-        if (it != info_by_sched_cls_.end()) {
-          it->second.running_tasks.erase(spec.TaskId());
-          if (it->second.running_tasks.size() == 0) {
-            info_by_sched_cls_.erase(it);
-          }
-        }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
@@ -443,6 +437,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
             allocated_instances_serialized_json);
         work_it++;
       }
+    }
+    // In the beginning of the loop, we add scheduling_class
+    // to the `info_by_sched_cls_` map.
+    // In cases like dead owners, we may not add any tasks
+    // to `running_tasks` so we can remove the map entry
+    // for that scheduling_class to prevent memory leaks.
+    if (sched_cls_info.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
@@ -512,20 +514,22 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
+void ClusterTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
+  auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+  auto it = info_by_sched_cls_.find(sched_cls);
+  if (it != info_by_sched_cls_.end()) {
+    it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
+    if (it->second.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(it);
+    }
+  }
+}
+
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  {
-    auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-    auto it = info_by_sched_cls_.find(sched_cls);
-    if (it != info_by_sched_cls_.end()) {
-      it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
-      if (it->second.running_tasks.size() == 0) {
-        info_by_sched_cls_.erase(it);
-      }
-    }
-  }
+  RemoveFromRunningTasksIfExists(*task);
 
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
@@ -683,6 +687,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        RemoveFromRunningTasksIfExists(task);
         (*work_it)->SetStateCancelled();
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -1027,11 +1032,39 @@ void ClusterTaskManager::RecordMetrics() const {
   /// This method intentionally doesn't call RecomputeDebugStats() because
   /// that function is expensive. RecomputeDebugStats is called by DebugStr method
   /// and they are always periodically called by node manager.
-  stats::NumReceivedTasks.Record(internal_stats_.num_tasks_to_schedule);
-  stats::NumDispatchedTasks.Record(internal_stats_.num_tasks_to_dispatch);
   stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
   stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-  stats::NumInfeasibleTasks.Record(internal_stats_.num_infeasible_tasks);
+
+  /// Worker startup failure
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_job_config_not_exist, "JobConfigMissing");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_registration_timeout,
+      "RegistrationTimedOut");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_process_rate_limit, "RateLimited");
+
+  /// Queued tasks.
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_cancelled_tasks,
+                                           "Cancelled");
+  ray::stats::STATS_scheduler_tasks.Record(executing_task_args_.size(), "Executing");
+  ray::stats::STATS_scheduler_tasks.Record(waiting_tasks_index_.size(), "Waiting");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_dispatch,
+                                           "Dispatched");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_schedule,
+                                           "Received");
+
+  /// Pending task count.
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_infeasible_tasks, "Infeasible");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_resource, "WaitingForResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_plasma_memory, "WaitingForPlasmaMemory");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_remote_node_resources, "WaitingForRemoteResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_tasks_waiting_for_workers, "WaitingForWorkers");
 }
 
 std::string ClusterTaskManager::DebugStr() const {

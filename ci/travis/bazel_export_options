@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
 mkdir -p /tmp/bazel_event_logs
-echo "--build_event_json_file $(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)"
+echo "--build_event_json_file=$(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)"

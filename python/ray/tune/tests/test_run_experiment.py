@@ -282,7 +282,7 @@ class RunExperimentTest(unittest.TestCase):
                     lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
         })
-        self.assertEquals(
+        self.assertEqual(
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 

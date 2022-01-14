@@ -6,10 +6,11 @@ import numpy as np
 import platform
 import os
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
     TYPE_CHECKING, Union
 
 import ray
+from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
@@ -46,7 +47,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType
+    SampleBatchType, T
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -55,9 +56,6 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
-
-# Generic type var for foreach_* methods.
-T = TypeVar("T")
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -540,16 +538,16 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+        self.policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec,
             self.env,
             spaces=self.spaces,
             policy_config=policy_config)
 
         # List of IDs of those policies, which should be trained.
-        # By default, these are all policies found in the policy_dict.
+        # By default, these are all policies found in `self.policy_dict`.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
-            policy_dict.keys())
+            self.policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
@@ -586,7 +584,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"is ignored.")
 
         self._build_policy_map(
-            policy_dict,
+            self.policy_dict,
             policy_config,
             session_creator=tf_session_creator,
             seed=seed)
@@ -1114,7 +1112,7 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if policy_id in self.policy_map:
             raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+        policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
                                       action_space, config or {})
@@ -1123,8 +1121,9 @@ class RolloutWorker(ParallelIteratorWorker):
             spaces=self.spaces,
             policy_config=self.policy_config,
         )
+        self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
-            policy_dict,
+            policy_dict_to_add,
             self.policy_config,
             seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
@@ -1389,6 +1388,14 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> # Set `global_vars` (timestep) as well.
             >>> worker.set_weights(weights, {"timestep": 42})
         """
+        # If per-policy weights are object refs, `ray.get()` them first.
+        if weights and isinstance(next(iter(weights.values())), ObjectRef):
+            actual_weights = ray.get(list(weights.values()))
+            weights = {
+                pid: actual_weights[i]
+                for i, pid in enumerate(weights.keys())
+            }
+
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
         if global_vars:
@@ -1436,19 +1443,26 @@ class RolloutWorker(ParallelIteratorWorker):
                 sess.close()
 
     @DeveloperAPI
-    def apply(self, func: Callable[["RolloutWorker", Optional[Any]], T],
-              *args) -> T:
+    def apply(
+            self,
+            func: Callable[["RolloutWorker", Optional[Any], Optional[Any]], T],
+            *args, **kwargs) -> T:
         """Calls the given function with this rollout worker instance.
 
+        Useful for when the RolloutWorker class has been converted into a
+        ActorHandle and the user needs to execute some functionality (e.g.
+        add a property) on the underlying policy object.
+
         Args:
-            func: The function to call with this RolloutWorker as first
-                argument.
+            func: The function to call, with this RolloutWorker as first
+                argument, followed by args, and kwargs.
             args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
 
         Returns:
             The return value of the function call.
         """
-        return func(self, *args)
+        return func(self, *args, **kwargs)
 
     def setup_torch_data_parallel(self, url: str, world_rank: int,
                                   world_size: int, backend: str) -> None:

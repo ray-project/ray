@@ -137,6 +137,9 @@ class GcsServer {
   void InstallEventListeners();
 
  private:
+  /// Gets the type of KV storage to use from config.
+  std::string StorageType() const;
+
   /// Store the address of GCS server in Redis.
   ///
   /// Clients will look up this address in Redis and use it to connect to GCS server.
@@ -156,8 +159,13 @@ class GcsServer {
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
 
+  /// Get or connect to a redis server
+  std::shared_ptr<RedisClient> GetOrConnectRedis();
+
   /// Gcs server configuration.
-  GcsServerConfig config_;
+  const GcsServerConfig config_;
+  // Type of storage to use.
+  const std::string storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
   /// The io service used by heartbeat manager in case of node failure detector being

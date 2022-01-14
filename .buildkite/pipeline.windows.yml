@@ -1,0 +1,44 @@
+prelude_commands: &prelude_commands |-
+    set -ex
+    mkdir ray
+    cd ray
+    git config --global core.symlinks true
+    git config --global core.autocrlf false
+    git init
+    git remote add origin https://github.com/ray-project/ray.git
+    if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}; else export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head; fi
+    git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
+    git checkout -f ${BUILDKITE_COMMIT}
+    export PYTHON="3.6"
+    export RAY_USE_RANDOM_PORTS="1"
+    export RAY_DEFAULT_BUILD="1"
+    export LC_ALL="en_US.UTF-8"
+    export LANG="en_US.UTF-8"
+    powershell ci/travis/fix-windows-container-networking.ps1
+    cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+
+upload_wheels_if_needed: &upload_wheels_if_needed |-
+    if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    pip install -q docker aws_requests_auth boto3
+    python .buildkite/copy_files.py --destination branch_wheels --path python/dist
+    if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path python/dist; fi
+
+
+steps:
+- label: ":windows: Build & Test"
+  parallelism: 6
+  commands:
+    - *prelude_commands
+    - . ./ci/travis/ci.sh init
+    - . ./ci/travis/ci.sh build
+    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/travis/ci.sh test_core; fi
+    # The next command will be sharded into $parallelism shards.
+    - . ./ci/travis/ci.sh test_python
+
+- label: ":windows: Wheels"
+  commands:
+    - *prelude_commands
+    - export WINDOWS_WHEELS="1"
+    - . ./ci/travis/ci.sh init
+    - . ./ci/travis/ci.sh build
+    - *upload_wheels_if_needed
