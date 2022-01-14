@@ -54,6 +54,64 @@ You can define concurrency groups for asyncio actors using the ``concurrency_gro
         a.f4.remote()  # executed in the "compute" group.
         a.f5.remote()  # executed in the default group.
 
+  .. group-tab:: Java
+
+    This defines two concurrency groups, "io" with max_concurrency=2 and
+    "compute" with max_concurrency=4.  The methods ``f1`` and ``f2`` are
+    placed in the "io" group, and the methods ``f3`` and ``f4`` are placed
+    into the "compute" group. Note that there is always a default
+    concurrency group, which has a default concurrency of 1000 in Python and
+    1 in Java.
+
+    .. code-block:: java
+
+        class ConcurrentActor {
+            public long f1() {
+            return Thread.currentThread().getId();
+            }
+
+            public long f2() {
+            return Thread.currentThread().getId();
+            }
+
+            public long f3(int a, int b) {
+            return Thread.currentThread().getId();
+            }
+
+            public long f4() {
+            return Thread.currentThread().getId();
+            }
+
+            public long f5() {
+            return Thread.currentThread().getId();
+            }
+        }
+
+        ConcurrencyGroup group1 =
+            new ConcurrencyGroupBuilder<ConcurrentActor>()
+                .setName("io")
+                .setMaxConcurrency(1)
+                .addMethod(ConcurrentActor::f1)
+                .addMethod(ConcurrentActor::f2)
+                .build();
+        ConcurrencyGroup group2 =
+            new ConcurrencyGroupBuilder<ConcurrentActor>()
+                .setName("compute")
+                .setMaxConcurrency(1)
+                .addMethod(ConcurrentActor::f3)
+                .addMethod(ConcurrentActor::f4)
+                .build();
+
+        ActorHandle<ConcurrentActor> myActor = Ray.actor(ConcurrentActor::new)
+            .setConcurrencyGroups(group1, group2)
+            .remote();
+
+        myActor.task(ConcurrentActor::f1).remote();  // executed in the "io" group.
+        myActor.task(ConcurrentActor::f2).remote();  // executed in the "io" group.
+        myActor.task(ConcurrentActor::f3, 3, 5).remote();  // executed in the "compute" group.
+        myActor.task(ConcurrentActor::f4).remote();  // executed in the "compute" group.
+        myActor.task(ConcurrentActor::f5).remote();  // executed in the "default" group.
+
 
 .. _default-concurrency-group:
 
@@ -78,13 +136,39 @@ The concurrency of the default group can be changed by setting the ``max_concurr
 
         actor = AsyncIOActor.options(max_concurrency=10).remote()
 
+  .. group-tab:: Java
+
+    The following ConcurrentActor has 2 concurrency groups: "io" and "default".
+    The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
+
+    .. code-block:: java
+
+        class ConcurrentActor:
+            public long f1() {
+                return Thread.currentThread().getId();
+            }
+
+        ConcurrencyGroup group =
+            new ConcurrencyGroupBuilder<ConcurrentActor>()
+                .setName("io")
+                .setMaxConcurrency(2)
+                .addMethod(ConcurrentActor::f1)
+                .build();
+
+        ActorHandle<ConcurrentActor> myActor = Ray.actor(ConcurrentActor::new)
+              .setConcurrencyGroups(group1)
+              .setMaxConcurrency(10)
+              .remote();
+
 
 .. _setting-the-concurrency-group-at-runtime:
 
 Setting the Concurrency Group at Runtime
 ----------------------------------------
 
-You can also dispatch actor methods into a specific concurrency group at runtime using the ``.options`` method:
+You can also dispatch actor methods into a specific concurrency group at runtime.
+You can use the ``.options`` method in Python, and use `setConcurrencyGroup`
+in Java.
 
 .. tabs::
   .. group-tab:: Python
@@ -99,3 +183,16 @@ You can also dispatch actor methods into a specific concurrency group at runtime
 
         # Executed in the "compute" group.
         a.f2.options(concurrency_group="compute").remote()
+
+  .. group-tab:: Java
+
+    The following snippet demonstrates setting the concurrency group of the
+    ``f2`` method dynamically at runtime.
+
+    .. code-block:: java
+
+        // Executed in the "io" group (as defined in the actor creation).
+        myActor.task(ConcurrentActor::f2).remote();
+
+        // Executed in the "compute" group.
+        myActor.task(ConcurrentActor::f2).setConcurrencyGroup("compute").remote();
