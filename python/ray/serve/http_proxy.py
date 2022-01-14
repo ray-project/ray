@@ -28,24 +28,6 @@ DISCONNECT_ERROR_CODE = "disconnection"
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
-    headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-    handle = handle.options(
-        method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
-        shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
-        http_method=scope["method"].upper(),
-        http_headers=headers,
-    )
-
-    # scope["router"] and scope["endpoint"] contain references to a router
-    # and endpoint object, respectively, which each in turn contain a
-    # reference to the Serve client, which cannot be serialized.
-    # The solution is to delete these from scope, as they will not be used.
-    # TODO(edoakes): this can be removed once we deprecate the old API.
-    if "router" in scope:
-        del scope["router"]
-    if "endpoint" in scope:
-        del scope["endpoint"]
-
     # NOTE(edoakes): it's important that we defer building the starlette
     # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.

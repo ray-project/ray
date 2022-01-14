@@ -19,20 +19,11 @@ from ray.util import metrics
 class RequestMetadata:
     request_id: str
     endpoint: str
-
     call_method: str = "__call__"
-    shard_key: Optional[str] = None
-
-    http_method: str = "GET"
-    http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
     # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
-
-    def __post_init__(self):
-        self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
-        self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
 
 
 @dataclass
