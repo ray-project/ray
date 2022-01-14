@@ -27,7 +27,6 @@ PeriodicalRunner::~PeriodicalRunner() {
   for (const auto &timer : timers_) {
     timer->cancel();
   }
-  timers_.clear();
 }
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
