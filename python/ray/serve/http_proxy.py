@@ -19,7 +19,6 @@ from ray.serve.utils import logger
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
 from ray.serve.long_poll import LongPollClient
-from ray.serve.handle import DEFAULT
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
