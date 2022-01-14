@@ -176,8 +176,14 @@ def add_time_dimension(padded_inputs: TensorType,
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = (
-            [new_batch_size, max_seq_len] + list(padded_inputs.shape[1:]))
+        new_shape = tf.squeeze(
+            tf.stack(
+                [
+                    tf.expand_dims(new_batch_size, axis=0),
+                    tf.expand_dims(max_seq_len, axis=0),
+                    tf.shape(padded_inputs)[1:]
+                ],
+                axis=0))
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
@@ -288,7 +294,7 @@ def chop_into_sequences(
                 f = np.array(f)
 
             length = len(seq_lens) * max_seq_len
-            if f.dtype == np.object or f.dtype.type is np.str_:
+            if f.dtype == object or f.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.

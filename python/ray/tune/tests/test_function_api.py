@@ -519,7 +519,7 @@ class FunctionApiTest(unittest.TestCase):
 
         trainable = tune.with_parameters(train_fn, extra=8)
         out = tune.run(trainable, metric="metric", mode="max")
-        self.assertEquals(out.best_result["metric"], 8)
+        self.assertEqual(out.best_result["metric"], 8)
 
         self.tearDown()
         self.setUp()
@@ -529,7 +529,7 @@ class FunctionApiTest(unittest.TestCase):
 
         trainable = tune.with_parameters(train_fn_2, extra=9)
         out = tune.run(trainable, metric="metric", mode="max")
-        self.assertEquals(out.best_result["metric"], 9)
+        self.assertEqual(out.best_result["metric"], 9)
 
     def testWithParametersTwoRuns2(self):
         # Makes sure two runs in the same script
@@ -545,8 +545,8 @@ class FunctionApiTest(unittest.TestCase):
 
         out1 = tune.run(trainable1, metric="metric", mode="max")
         out2 = tune.run(trainable2, metric="metric", mode="max")
-        self.assertEquals(out1.best_result["metric"], 8)
-        self.assertEquals(out2.best_result["metric"], 9)
+        self.assertEqual(out1.best_result["metric"], 8)
+        self.assertEqual(out2.best_result["metric"], 9)
 
     def testReturnAnonymous(self):
         def train(config):

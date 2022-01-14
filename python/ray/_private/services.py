@@ -189,13 +189,17 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
     return port
 
 
-def find_redis_address(address=None):
+def _find_address_from_flag(flag: str):
     """
-    Attempts to find all valid Ray redis addresses on this node.
+    Attempts to find all valid Ray addresses on this node, specified by the
+    flag.
 
+    Params:
+        flag: `--redis-address` or `--gcs-address`
     Returns:
-        Set of detected Redis instances.
+        Set of detected addresses.
     """
+    # Using Redis address `--redis-address` as an example:
     # Currently, this extracts the deprecated --redis-address from the command
     # that launched the raylet running on this node, if any. Anyone looking to
     # edit this function should be warned that these commands look like, for
@@ -244,7 +248,7 @@ def find_redis_address(address=None):
     # The --redis-address here is what is now called the --address, but it
     # appears in the default_worker.py and agent.py calls as --redis-address.
     pids = psutil.pids()
-    redis_addresses = set()
+    addresses = set()
     for pid in pids:
         try:
             proc = psutil.Process(pid)
@@ -264,31 +268,40 @@ def find_redis_address(address=None):
                     # every argument on spaces for now.
                     for arg in arglist.split(" "):
                         # TODO(ekl): Find a robust solution for locating Redis.
-                        if arg.startswith("--redis-address="):
+                        if arg.startswith(flag):
                             proc_addr = arg.split("=")[1]
-                            if address is not None and address != proc_addr:
-                                continue
-                            redis_addresses.add(proc_addr)
+                            # TODO(mwtian): remove this workaround after Ray
+                            # no longer sets --redis-address to None.
+                            if proc_addr != "" and proc_addr != "None":
+                                addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
             pass
-    return redis_addresses
+    return addresses
 
 
-def get_ray_address_to_use_or_die():
+def find_redis_address():
+    return _find_address_from_flag("--redis-address")
+
+
+def find_gcs_address():
+    return _find_address_from_flag("--gcs-address")
+
+
+def find_bootstrap_address():
+    if use_gcs_for_bootstrap():
+        return find_gcs_address()
+    else:
+        return find_redis_address()
+
+
+def _find_redis_address_or_die():
+    """Finds one Redis address unambiguously, or raise an error.
+
+    Callers outside of this module should use
+    get_ray_address_from_environment() or canonicalize_bootstrap_address()
     """
-    Attempts to find an address for an existing Ray cluster if it is not
-    already specified as an environment variable.
-    Returns:
-        A string to pass into `ray.init(address=...)`
-    """
-    return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-                          find_redis_address_or_die())
-
-
-def find_redis_address_or_die():
-
     redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
@@ -300,6 +313,43 @@ def find_redis_address_or_die():
             "Could not find any running Ray instance. "
             "Please specify the one to connect to by setting `address`.")
     return redis_addresses.pop()
+
+
+def _find_gcs_address_or_die():
+    """Find one GCS address unambiguously, or raise an error.
+
+    Callers outside of this module should use get_ray_address_to_use_or_die()
+    """
+    gcs_addresses = _find_address_from_flag("--gcs-address")
+    if len(gcs_addresses) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {gcs_addresses}. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable.")
+        sys.exit(1)
+    elif not gcs_addresses:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting `--address` flag "
+            "or `RAY_ADDRESS` environment variable.")
+    return gcs_addresses.pop()
+
+
+def get_ray_address_from_environment():
+    """
+    Attempts to find the address of Ray cluster to use, first from
+    RAY_ADDRESS environment variable, then from the local Raylet.
+
+    Returns:
+        A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
+    """
+    addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if addr is None or addr == "auto":
+        if use_gcs_for_bootstrap():
+            addr = _find_gcs_address_or_die()
+        else:
+            addr = _find_redis_address_or_die()
+    return addr
 
 
 def wait_for_node(redis_address,
@@ -384,35 +434,42 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
-def validate_redis_address(address):
-    """Validates address parameter.
+def canonicalize_bootstrap_address(addr: str):
+    """Canonicalizes Ray cluster bootstrap address to ip:port.
+    Reads address from the environment if needed.
+
+    This function should be used to process user supplied Ray cluster address,
+    via ray.init() or `--address` flags, before using the address to connect.
 
     Returns:
-        redis_address: string containing the full <host:port> address.
-        redis_ip: string representing the host portion of the address.
-        redis_port: integer representing the port portion of the address.
+        Ray cluster address string in <host:port> format.
     """
-
-    if address == "auto":
-        address = find_redis_address_or_die()
-    redis_address = address_to_ip(address)
-
-    redis_address_parts = redis_address.split(":")
-    if len(redis_address_parts) != 2:
-        raise ValueError("Malformed address. Expected '<host>:<port>'.")
-    redis_ip = redis_address_parts[0]
+    if addr is None or addr == "auto":
+        addr = get_ray_address_from_environment()
     try:
-        redis_port = int(redis_address_parts[1])
+        bootstrap_address = address_to_ip(addr)
+    except Exception:
+        logger.exception(f"Failed to convert {addr} to host:port")
+        raise
+    return bootstrap_address
+
+
+def extract_ip_port(bootstrap_address: str):
+    if ":" not in bootstrap_address:
+        raise ValueError(f"Malformed address {bootstrap_address}. "
+                         f"Expected '<host>:<port>'.")
+    ip, _, port = bootstrap_address.rpartition(":")
+    try:
+        port = int(port)
     except ValueError:
-        raise ValueError("Malformed address port. Must be an integer.")
-    if redis_port < 1024 or redis_port > 65535:
-        raise ValueError("Invalid address port. Must "
-                         "be between 1024 and 65535.")
+        raise ValueError(f"Malformed address port {port}. Must be an integer.")
+    if port < 1024 or port > 65535:
+        raise ValueError(f"Invalid address port {port}. Must be between 1024 "
+                         "and 65535 (inclusive).")
+    return ip, port
 
-    return redis_address, redis_ip, redis_port
 
-
-def address_to_ip(address):
+def address_to_ip(address: str):
     """Convert a hostname to a numerical IP addresses in an address.
 
     This should be a no-op if address already contains an actual numerical IP
@@ -426,6 +483,8 @@ def address_to_ip(address):
         The same address but with the hostname replaced by a numerical IP
             address.
     """
+    if not address:
+        raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
@@ -489,22 +548,23 @@ def create_redis_client(redis_address, password=None):
     """
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
-    else:
+
+    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
         cli = create_redis_client.instances.get(redis_address)
-        if cli is not None:
-            try:
-                cli.ping()
-                return cli
-            except Exception:
-                create_redis_client.instances.pop(redis_address)
+        if cli is None:
+            redis_ip_address, redis_port = extract_ip_port(
+                canonicalize_bootstrap_address(redis_address))
+            cli = redis.StrictRedis(
+                host=redis_ip_address, port=int(redis_port), password=password)
+            create_redis_client.instances[redis_address] = cli
+        try:
+            cli.ping()
+            return cli
+        except Exception:
+            create_redis_client.instances.pop(redis_address)
+            time.sleep(2)
 
-    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
-    # For this command to work, some other client (on the same machine
-    # as Redis) must have run "CONFIG SET protected-mode no".
-    create_redis_client.instances[redis_address] = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port), password=password)
-
-    return create_redis_client.instances[redis_address]
+    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
 def start_ray_process(command,
@@ -1359,22 +1419,22 @@ def start_gcs_server(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    gcs_ip_address, gcs_port = redis_address.split(":")
-    redis_password = redis_password or ""
-    config_str = serialize_config(config)
-    if gcs_server_port is None:
-        gcs_server_port = 0
+    assert gcs_server_port > 0
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--redis_address={gcs_ip_address}",
-        f"--redis_port={gcs_port}",
         f"--log_dir={log_dir}",
-        f"--config_list={config_str}",
+        f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
     ]
+    if redis_address:
+        redis_ip_address, redis_port = redis_address.rsplit(":")
+        command += [
+            f"--redis_address={redis_ip_address}",
+            f"--redis_port={redis_port}",
+        ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
     process_info = start_ray_process(
@@ -1426,7 +1486,7 @@ def start_raylet(redis_address,
 
     Args:
         redis_address (str): The address of the primary Redis server.
-        gcs_address (str): The address of cluster.
+        gcs_address (str): The address of GCS server.
         node_ip_address (str): The IP address of this node.
         node_manager_port(int): The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1490,9 +1550,6 @@ def start_raylet(redis_address,
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()])
-
-    # TODO (iycheng): remove redis_ip_address after redis removal
-    redis_ip_address, redis_port = redis_address.split(":")
 
     has_java_command = False
     if shutil.which("java") is not None:
@@ -1593,15 +1650,12 @@ def start_raylet(redis_address,
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
-        f"--gcs-address={gcs_address}",
         f"--store_socket_name={plasma_store_name}",
         f"--object_manager_port={object_manager_port}",
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
         f"--node_ip_address={node_ip_address}",
-        f"--redis_address={redis_ip_address}",
-        f"--redis_port={redis_port}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
@@ -1619,6 +1673,15 @@ def start_raylet(redis_address,
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
     ]
+    if use_gcs_for_bootstrap():
+        command.append(f"--gcs-address={gcs_address}")
+    else:
+        # TODO (iycheng): remove redis_ip_address after redis removal
+        redis_ip_address, redis_port = redis_address.split(":")
+        command.extend([
+            f"--redis_address={redis_ip_address}", f"--redis_port={redis_port}"
+        ])
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
     if start_initial_python_workers_for_first_job:
@@ -1962,7 +2025,7 @@ def start_monitor(redis_address,
 
 
 def start_ray_client_server(
-        redis_address,
+        address,
         ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
@@ -1975,7 +2038,7 @@ def start_ray_client_server(
     """Run the server process of the Ray client.
 
     Args:
-        redis_address: The address of the redis server.
+        address: The address of the cluster.
         ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -2001,7 +2064,7 @@ def start_ray_client_server(
         setup_worker_path,
         "-m",
         "ray.util.client.server",
-        f"--redis-address={redis_address}",
+        f"--address={address}",
         f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",

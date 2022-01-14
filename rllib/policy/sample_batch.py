@@ -76,7 +76,7 @@ class SampleBatch(dict):
             _time_major (Optional[bool]): Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[bool]): The max sequence chunk length
+            _max_seq_len (Optional[int]): The max sequence chunk length
                 if the data contains sequences.
             _zero_padded (Optional[bool]): Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
@@ -455,7 +455,7 @@ class SampleBatch(dict):
                 }
             else:
                 data = {
-                    k: v[start:end]
+                    k: tree.map_structure(lambda s: s[start:end], v)
                     for k, v in self.items() if k != SampleBatch.SEQ_LENS
                     and not k.startswith("state_in_")
                 }
@@ -620,7 +620,7 @@ class SampleBatch(dict):
                     or path[0] == SampleBatch.SEQ_LENS:
                 return
             # Generate zero-filled primer of len=max_seq_len.
-            if value.dtype == np.object or value.dtype.type is np.str_:
+            if value.dtype == object or value.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
                 # Make sure type doesn't change.
@@ -651,13 +651,13 @@ class SampleBatch(dict):
 
         return self
 
-    # Experimental method.
+    @ExperimentalAPI
     def to_device(self, device, framework="torch"):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != np.object:
+                if isinstance(v, np.ndarray) and v.dtype != object:
                     self[k] = torch.from_numpy(v).to(device)
         else:
             raise NotImplementedError
