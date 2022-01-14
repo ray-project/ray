@@ -1,7 +1,8 @@
-- name: single_deployment_1k_noop_replica
+- name: single_deployment_1k_noop_replica_k8s
   cluster:
     app_config: app_config.yaml
-    compute_template: compute_tpl_8_cpu.yaml
+    compute_template: compute_tpl_8_cpu_k8s.yaml
+    compute_on_k8s: True
 
   run:
     timeout: 7200
@@ -11,10 +12,11 @@
   smoke_test:
     timeout: 600
 
-- name: multi_deployment_1k_noop_replica
+- name: multi_deployment_1k_noop_replica_k8s
   cluster:
     app_config: app_config.yaml
-    compute_template: compute_tpl_8_cpu.yaml
+    compute_template: compute_tpl_8_cpu_k8s.yaml
+    compute_on_k8s: True
 
   run:
     timeout: 7200
@@ -24,11 +26,11 @@
   smoke_test:
     timeout: 600
 
-- name: serve_micro_benchmark
+- name: serve_micro_benchmark_k8s
   cluster:
     app_config: app_config.yaml
-    # 16 CPUS
-    compute_template: compute_tpl_single_node.yaml
+    compute_template: compute_tpl_single_node_k8s.yaml
+    compute_on_k8s: True
 
   run:
     timeout: 7200
@@ -38,11 +40,11 @@
   smoke_test:
     timeout: 600
 
-- name: serve_cluster_fault_tolerance
+- name: serve_cluster_fault_tolerance_k8s
   cluster:
     app_config: app_config.yaml
-    # 16 CPUS
-    compute_template: compute_tpl_single_node.yaml
+    compute_template: compute_tpl_single_node_k8s.yaml
+    compute_on_k8s: True
 
   run:
     timeout: 7200

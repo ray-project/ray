@@ -118,8 +118,13 @@ SERVE_NIGHTLY_TESTS = {
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
         "serve_micro_benchmark",
-        "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
+    ],
+    "~/ray/release/serve_tests/serve_tests_k8s.yaml": [
+        "single_deployment_1k_noop_replica_k8s",
+        "multi_deployment_1k_noop_replica_k8s",
+        "serve_micro_benchmark_k8s",
+        "serve_cluster_fault_tolerance_k8s",
     ],
 }
 
