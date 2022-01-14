@@ -5,10 +5,10 @@ use std::path::PathBuf;
 
 fn main() {
     // Tell cargo to invalidate the built crate whenever the wrapper changes
-    println!("cargo:rerun-if-changed=../../src/core_worker/lib/c/c_worker.h");
+    println!("cargo:rerun-if-changed=../includes/c_worker.h");
 
     let bindings = bindgen::Builder::default()
-        .header("../../src/ray/core_worker/lib/c/c_worker.h")
+        .header("../includes/c_worker.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings");

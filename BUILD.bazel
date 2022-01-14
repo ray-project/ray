@@ -2576,10 +2576,17 @@ cc_binary(
     ],
 )
 
+copy_to_workspace(
+    name = "cp_c_worker_includes",
+    srcs = ["src/ray/core_worker/lib/c/c_worker.h"],
+    dstdir = "rust/ray-rs-sys/includes",
+)
+
 cc_library(
   name = "core_worker_library_c_so",
   srcs = [":libcore_worker_library_c.so"],
   hdrs = ["src/ray/core_worker/lib/c/c_worker.h"],
+  copts = COPTS,
   visibility = ["//rust:__subpackages__"],
 )
 

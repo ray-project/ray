@@ -3,6 +3,7 @@ genrule(
     srcs = [
         "//:libcore_worker_library_c.so",
         "//rust/ray-rs-worker:worker",
+        "//:cp_c_worker_includes",
     ],
     outs = ["ray_rust_pkg.out"],
     local = 1,
