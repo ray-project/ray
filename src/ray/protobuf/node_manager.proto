@@ -150,10 +150,8 @@ message PinObjectIDsReply {
 }
 
 message UnpinObjectIDsRequest {
-  // Address of the owner to ask when to unpin the objects.
-  Address owner_address = 1;
   // ObjectIDs to pin.
-  repeated bytes object_ids = 2;
+  repeated bytes object_ids = 1;
 }
 
 message UnpinObjectIDsReply {

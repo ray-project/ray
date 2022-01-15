@@ -439,10 +439,9 @@ void raylet::RayletClient::PinObjectIDs(
 }
 
 void raylet::RayletClient::UnpinObjectIDs(
-    const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+    const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::UnpinObjectIDsReply> &callback) {
   rpc::UnpinObjectIDsRequest request;
-  request.mutable_owner_address()->CopyFrom(caller_address);
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }

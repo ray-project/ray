@@ -62,7 +62,7 @@ class UnpinObjectsInterface {
  public:
   /// Request to a raylet to unpin a plasma object. The callback will be sent via gRPC.
   virtual void UnpinObjectIDs(
-      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::UnpinObjectIDsReply> &callback) = 0;
 
   virtual ~UnpinObjectsInterface(){};
@@ -439,7 +439,7 @@ class RayletClient : public RayletClientInterface {
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
   
   void UnpinObjectIDs(
-      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+      const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::UnpinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(

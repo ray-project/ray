@@ -68,7 +68,8 @@ class PullManager {
       const std::function<double()> get_time_seconds, int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
+      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url,
+      std::function<std::shared_ptr<rpc::ObjectManagerClient>(const NodeID &)> get_rpc_client);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -293,6 +294,8 @@ class PullManager {
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
+  // A callback to get the RPC client corresponding to the given node.
+  const std::function<std::shared_ptr<rpc::ObjectManagerClient>(const NodeID &)> get_rpc_client_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
   /// cancel. Start at 1 because 0 means null.
@@ -352,6 +355,9 @@ class PullManager {
   /// object managers.
   std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
+  /// Last node that each object was pulled from (hack to allow unpinning requests)
+  std::unordered_map<ObjectID, NodeID> object_pull_nodes_;
+
   // Protects state that is shared by the threads used to receive object
   // chunks.
   mutable absl::Mutex active_objects_mu_;
@@ -374,7 +380,7 @@ class PullManager {
   // A callback to get the spilled object URL if the object is spilled locally.
   // It will return an empty string otherwise.
   std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
-
+  
   // A callback to fail a hung pull request.
   std::function<void(const ObjectID &)> fail_pull_request_;
 

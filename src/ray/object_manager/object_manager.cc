@@ -127,10 +127,13 @@ ObjectManager::ObjectManager(
   if (available_memory < 0) {
     available_memory = 0;
   }
+  const auto &get_rpc_client = [this](const NodeID &client_id) {
+    return GetRpcClient(client_id);
+  };
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
-      available_memory, pin_object, get_spilled_object_url));
+      available_memory, pin_object, get_spilled_object_url, get_rpc_client));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
