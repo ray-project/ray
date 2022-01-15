@@ -620,7 +620,6 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
       RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
       // Notify primary copy holder that it can unpin its copy.
       auto it = object_pull_nodes_.find(object_id);
-      // TODO @samyu: what if object_id isn't found? currently, does nothing.
       if (it != object_pull_nodes_.end()) {
         auto node_id = it->second;
         auto rpc_client = get_rpc_client_(node_id);
@@ -631,7 +630,7 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
                                          const rpc::UnpinObjectIDsReply &reply) {
                 if (!status.ok()) {
                   RAY_LOG(WARNING) << "Send unpin " << object_id << " request to client "
-                                   << node_id << " failed due to" << status.message();
+                                   << node_id << " failed due to " << status.message();
                 }
               });
         } else {

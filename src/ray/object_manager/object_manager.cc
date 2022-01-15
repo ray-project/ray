@@ -662,18 +662,18 @@ std::shared_ptr<raylet::RayletClient> ObjectManager::GetRayletClient(
     const NodeID &node_id) {
   auto it = remote_raylet_clients_.find(node_id);
   if (it == remote_raylet_clients_.end()) {
-    RemoteConnectionInfo connection_info(node_id);
-    object_directory_->LookupRemoteConnectionInfo(connection_info);
-    if (!connection_info.Connected()) {
+    RemoteConnectionInfo node_manager_connection_info(node_id);
+    object_directory_->LookupNodeManagerRemoteConnectionInfo(node_manager_connection_info);
+    if (!node_manager_connection_info.Connected()) {
       return nullptr;
     }
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        connection_info.ip, connection_info.port, client_call_manager_);
+        node_manager_connection_info.ip, node_manager_connection_info.port, client_call_manager_);
     auto raylet_client = std::shared_ptr<raylet::RayletClient>(
         new raylet::RayletClient(std::move(grpc_client)));
 
-    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip
-                   << ", port: " << connection_info.port
+    RAY_LOG(DEBUG) << "Get rpc client, address: " << node_manager_connection_info.ip
+                   << ", port: " << node_manager_connection_info.port
                    << ", local port: " << GetServerPort();
 
     it = remote_raylet_clients_.emplace(node_id, std::move(raylet_client)).first;

@@ -2159,6 +2159,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 void NodeManager::HandleUnpinObjectIDs(const rpc::UnpinObjectIDsRequest &request,
                                        rpc::UnpinObjectIDsReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Entered HandleUnpinObjectIDs";
   // Get object IDs from message and store in vector object_ids
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());

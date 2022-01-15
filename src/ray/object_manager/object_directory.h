@@ -59,6 +59,16 @@ class IObjectDirectory {
   virtual void LookupRemoteConnectionInfo(
       RemoteConnectionInfo &connection_info) const = 0;
 
+  /// Lookup how to connect to a remote node manager.
+  ///
+  /// \param connection_info The connection information to fill out. This
+  /// should be pre-populated with the requested node ID. If the directory
+  /// has information about the requested node, then the rest of the fields
+  /// in this struct will be populated accordingly.
+  virtual void LookupNodeManagerRemoteConnectionInfo(
+      RemoteConnectionInfo &connection_info) const = 0;
+
+
   /// Get information for all connected remote object managers.
   ///
   /// \return A vector of information for all connected remote object managers.

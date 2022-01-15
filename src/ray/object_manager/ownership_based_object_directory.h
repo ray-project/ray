@@ -52,6 +52,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 
+  void LookupNodeManagerRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
+  
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
   void HandleNodeRemoved(const NodeID &node_id) override;
