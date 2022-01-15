@@ -33,7 +33,7 @@ http_archive(
 
 load("@rules_rust//rust:repositories.bzl", "rust_repositories")
 
-rust_repositories(version = "nightly", iso_date = "2021-06-16", edition="2018")
+rust_repositories(version = "nightly", iso_date = "2022-01-14", edition="2018")
 
 load("//bazel:crate_universe_defaults.bzl", "DEFAULT_URL_TEMPLATE", "DEFAULT_SHA256_CHECKSUMS")
 
@@ -44,7 +44,6 @@ crate_universe(
     cargo_toml_files = [
         "//rust/ray-rs-sys:Cargo.toml",
         "//rust/ray-rs:Cargo.toml",
-        # "//rust/ray-rs:Cargo.toml",
     ],
     resolver_download_url_template = DEFAULT_URL_TEMPLATE,
     resolver_sha256s = DEFAULT_SHA256_CHECKSUMS,
@@ -66,3 +65,7 @@ rust_bindgen_repositories()
 # When the bazel version is updated, make sure to update it
 # in setup.py as well
 versions.check(minimum_bazel_version = "4.2.1")
+
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
+
+bazel_skylib_workspace()
