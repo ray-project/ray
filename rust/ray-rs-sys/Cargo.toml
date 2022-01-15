@@ -6,7 +6,7 @@ edition = "2018"
 license = "Apache-2.0"
 publish = true
 repository = "https://github.com/ray-project/ray"
-description = "Low-level bindings to the for the C-ABI Ray CoreWorker (shared library) harness"
+description = "Low-level bindings to the C-ABI Ray CoreWorker shared-library harness"
 
 [dependencies]
 

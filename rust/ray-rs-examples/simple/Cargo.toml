@@ -7,7 +7,7 @@ edition = "2018"
 publish = true
 
 [dependencies]
-ray-rs = { path="../../ray-rs" }
+ray-rs = "0.0.0" # { path="../../ray-rs" }
 
 [lib]
 crate-type = ["rlib", "cdylib"]
