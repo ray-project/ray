@@ -30,7 +30,6 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 

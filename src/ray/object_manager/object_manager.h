@@ -172,8 +172,7 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<void()> object_store_full_callback,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      const std::function<void(const ObjectID &)> fail_pull_request,
-      std::function<void(const ObjectID &)> object_pushed_callback);
+      const std::function<void(const ObjectID &)> fail_pull_request);
 
   ~ObjectManager();
 
@@ -462,8 +461,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
-
-  std::function<void(const ObjectID &)> object_pushed_callback_;
 };
 
 }  // namespace ray

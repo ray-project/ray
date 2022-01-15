@@ -94,7 +94,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
   }
 }
 
-void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool no_evict) {
+void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   if (!objects_waiting_for_free_.erase(object_id)) {
     return;
@@ -107,10 +107,6 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool no_e
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
     pinned_objects_.erase(object_id);
-  }
-
-  if (no_evict) {
-    return;
   }
 
   // Try to evict all copies of the object from the cluster.

@@ -261,11 +261,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref},
                                 JobID::Nil());
-          },
-          /*object_pushed_callback=*/
-          [this](const ObjectID &object_id) {
-            RAY_LOG(DEBUG) << "@lsf Unpin because transferred " << object_id;
-            local_object_manager_.ReleaseFreedObject(object_id, true);
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -2162,8 +2157,8 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
 }
 
 void NodeManager::HandleUnpinObjectIDs(const rpc::UnpinObjectIDsRequest &request,
-                          rpc::UnpinObjectIDsReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) {
+                                       rpc::UnpinObjectIDsReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
   // Get object IDs from message and store in vector object_ids
   std::vector<ObjectID> object_ids;
   object_ids.reserve(request.object_ids_size());
@@ -2172,6 +2167,7 @@ void NodeManager::HandleUnpinObjectIDs(const rpc::UnpinObjectIDsRequest &request
   }
   // Unpin each object.
   for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "@lsf Unpinning " << object_id;
     local_object_manager_.ReleaseFreedObject(object_id);
   }
 

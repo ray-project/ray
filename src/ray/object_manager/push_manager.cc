@@ -43,7 +43,6 @@ void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id)
     push_info_.erase(push_id);
     RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
                    << " completed, remaining: " << NumPushesInFlight();
-    object_pushed_callback_(push_id.second);
   }
   ScheduleRemainingPushes();
 }
