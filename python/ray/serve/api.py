@@ -380,19 +380,28 @@ def _check_http_and_checkpoint_options(
         http_options: Union[dict, HTTPOptions],
         checkpoint_path: str,
 ) -> None:
-    client_http_options = client.http_config
-    if checkpoint_path and not checkpoint_path == client.checkpoint_path:
+    if checkpoint_path and checkpoint_path != client.checkpoint_path:
         logger.warn(
             f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'.")
+            f"is different from the existing one '{client.checkpoint_path}'. "
+            "The new checkpoint path is ignored.")
 
     if http_options:
-        http_options_dict = http_options if isinstance(
-            http_options, dict) else http_options.__dict__
-        if not client_http_options.__dict__ == http_options_dict:
+        client_http_options = client.http_config
+        new_http_options = http_options if isinstance(
+            http_options, HTTPOptions) else HTTPOptions.parse_obj(http_options)
+        different_fields = []
+        all_http_option_fields = new_http_options.__dict__
+        for field in all_http_option_fields:
+            if getattr(new_http_options, field) != getattr(
+                    client_http_options, field):
+                different_fields.append(field)
+
+        if len(different_fields):
             logger.warn(
-                "The new client HTTP config is different from the existing one."
-            )
+                "The new client HTTP config differs from the existing one "
+                f"in the following fields: {different_fields}. "
+                "The new HTTP config is ignored.")
 
 
 @PublicAPI(stability="beta")
