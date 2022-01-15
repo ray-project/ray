@@ -41,6 +41,7 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -366,6 +367,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param node_id Remote node id, will send rpc request to it
   std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
 
+  /// Get the Raylet client according to the node ID
+  ///
+  /// \param node_id Remote node id, will send rpc request to it
+  std::shared_ptr<raylet::RayletClient> GetRayletClient(const NodeID &node_id);
+
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
   instrumented_io_context *main_service_;
@@ -417,6 +423,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Client id - object manager gRPC client.
   std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
+
+  /// Client id - node manager gRPC client.
+  std::unordered_map<NodeID, std::shared_ptr<raylet::RayletClient>>
+      remote_raylet_clients_;
 
   /// Callback to trigger direct restoration of an object.
   const RestoreSpilledObjectCallback restore_spilled_object_;

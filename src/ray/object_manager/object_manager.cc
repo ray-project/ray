@@ -17,6 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
@@ -128,7 +129,7 @@ ObjectManager::ObjectManager(
     available_memory = 0;
   }
   const auto &get_rpc_client = [this](const NodeID &client_id) {
-    return GetRpcClient(client_id);
+    return GetRayletClient(client_id);
   };
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
@@ -656,6 +657,29 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
 
     it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
              .first;
+  }
+  return it->second;
+}
+
+std::shared_ptr<raylet::RayletClient> ObjectManager::GetRayletClient(
+    const NodeID &node_id) {
+  auto it = remote_raylet_clients_.find(node_id);
+  if (it == remote_raylet_clients_.end()) {
+    RemoteConnectionInfo connection_info(node_id);
+    object_directory_->LookupRemoteConnectionInfo(connection_info);
+    if (!connection_info.Connected()) {
+      return nullptr;
+    }
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        connection_info.ip, connection_info.port, client_call_manager_);
+    auto raylet_client = std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+
+    RAY_LOG(DEBUG) << "Get rpc client, address: " << connection_info.ip
+                   << ", port: " << connection_info.port
+                   << ", local port: " << GetServerPort();
+
+    it = remote_raylet_clients_.emplace(node_id, std::move(raylet_client)).first;
   }
   return it->second;
 }

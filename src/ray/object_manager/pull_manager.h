@@ -29,8 +29,8 @@
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
-#include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/raylet_client/raylet_client.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -69,7 +69,8 @@ class PullManager {
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url,
-      std::function<std::shared_ptr<rpc::ObjectManagerClient>(const NodeID &)> get_rpc_client);
+      std::function<std::shared_ptr<raylet::RayletClient>(const NodeID &)>
+          get_rpc_client);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -295,7 +296,8 @@ class PullManager {
   const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
   // A callback to get the RPC client corresponding to the given node.
-  const std::function<std::shared_ptr<rpc::ObjectManagerClient>(const NodeID &)> get_rpc_client_;
+  const std::function<std::shared_ptr<raylet::RayletClient>(const NodeID &)>
+      get_rpc_client_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
   /// cancel. Start at 1 because 0 means null.
@@ -380,7 +382,7 @@ class PullManager {
   // A callback to get the spilled object URL if the object is spilled locally.
   // It will return an empty string otherwise.
   std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
-  
+
   // A callback to fail a hung pull request.
   std::function<void(const ObjectID &)> fail_pull_request_;
 

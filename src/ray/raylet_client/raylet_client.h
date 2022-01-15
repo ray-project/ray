@@ -68,7 +68,6 @@ class UnpinObjectsInterface {
   virtual ~UnpinObjectsInterface(){};
 };
 
-
 /// Interface for leasing workers. Abstract for testing.
 class WorkerLeaseInterface {
  public:
@@ -181,7 +180,7 @@ class ResourceTrackingInterface {
 };
 
 class RayletClientInterface : public PinObjectsInterface,
-			      public UnpinObjectsInterface,
+                              public UnpinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
@@ -437,7 +436,7 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
-  
+
   void UnpinObjectIDs(
       const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::UnpinObjectIDsReply> &callback) override;
