@@ -51,10 +51,10 @@ class GroupedDataset(Generic[T]):
         if key is None:
             self._key = key
         elif isinstance(key, str):
-            if fmt and fmt != "arrow":
+            if fmt and fmt == "simple":
                 raise TypeError(
-                    "String key '{}' requires dataset format to be 'arrow', "
-                    "was '{}'.".format(key, fmt))
+                    "String key '{}' requires dataset format to be "
+                    "'arrow' or 'pandas', was '{}'.".format(key, fmt))
             self._key = key
         elif callable(key):
             if fmt and fmt != "simple":
