@@ -729,7 +729,8 @@ def test_use_dynamic_function_and_class():
     # Note, the key format should be kept
     # the same as in `FunctionActorManager.export`.
     key_func = (
-        b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
+        b"RemoteFunction:" +
+        ray.worker.global_worker.current_job_id.hex().encode() +
         b":" + f._function_descriptor.function_id.binary())
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_func, KV_NAMESPACE_FUNCTION_TABLE)
