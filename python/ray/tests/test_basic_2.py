@@ -741,8 +741,7 @@ def test_use_dynamic_function_and_class():
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
         b"ActorClass:" +
-        ray.worker.global_worker.current_job_id.hex().encode() +
-        b":" +
+        ray.worker.global_worker.current_job_id.hex().encode() + b":" +
         foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
