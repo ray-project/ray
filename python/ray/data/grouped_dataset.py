@@ -42,17 +42,22 @@ class GroupedDataset(Generic[T]):
             else:
                 key = key[0]
 
-        fmt = dataset._dataset_format()
+        try:
+            fmt = self._dataset._dataset_format()
+        except ValueError:
+            # Dataset is empty/cleared, let downstream ops handle this.
+            fmt = None
+
         if key is None:
             self._key = key
         elif isinstance(key, str):
-            if fmt != "arrow":
+            if fmt and fmt != "arrow":
                 raise TypeError(
                     "String key '{}' requires dataset format to be 'arrow', "
                     "was '{}'.".format(key, fmt))
             self._key = key
         elif callable(key):
-            if fmt != "simple":
+            if fmt and fmt != "simple":
                 raise NotImplementedError(
                     "Callable key '{}' requires dataset format to be "
                     "'simple', was '{}'.".format(key, fmt))
