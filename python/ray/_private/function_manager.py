@@ -192,8 +192,9 @@ class FunctionActorManager:
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.current_job_id.hex() + b":" +
-               remote_function._function_descriptor.function_id.binary())
+        key = (
+            b"RemoteFunction:" + self._worker.current_job_id.hex().encode() +
+            b":" + remote_function._function_descriptor.function_id.binary())
         if self._worker.gcs_client.internal_kv_exists(
                 key, KV_NAMESPACE_FUNCTION_TABLE):
             return
