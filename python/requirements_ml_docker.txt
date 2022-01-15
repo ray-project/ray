@@ -8,7 +8,7 @@ tblib
 # TODO(amogkam): Remove after https://github.com/tensorflow/tensorflow/issues/52922 is fixed.
 keras==2.6.0
 # In TF >v2, GPU support is included in the base package.
-tensorflow==2.6.0
+tensorflow==2.6.1
 tensorflow-probability==0.14.0
 
 -f https://download.pytorch.org/whl/torch_stable.html
