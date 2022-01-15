@@ -1,6 +1,7 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use rustc_version::{version_meta, Channel};
 
 // It is the job of the downstream user binary to ensure that the linking is to the Ray Rust libraries
 // are included in their rustc flags or via a build script like this one.
@@ -26,7 +27,7 @@ fn main() {
 
     println!("cargo:rustc-link-lib=core_worker_library_c");
     println!("cargo:rustc-link-search={}", link_dir);
-    
+
     println!("cargo:rustc-cdylib-link-args=-Wl,-export-dynamic -nostartfiles");
 
     println!("cargo:rustc-env=LD_LIBRARY_PATH={}:LD_LIBRARY_PATH", link_dir);
@@ -40,4 +41,9 @@ fn main() {
         "cargo:rustc-env=RAY_RUST_LIBRARY_PATHS=--ray_code_search_path={}/libsimple.so",
         out_dir.to_str().unwrap(),
     );
+
+    let is_nightly = version_meta().expect("nightly check failed").channel == Channel::Nightly;
+    if is_nightly {
+        println!("cargo:rustc-cfg=nightly");
+    }
 }

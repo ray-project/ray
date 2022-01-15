@@ -7,7 +7,11 @@ edition = "2018"
 publish = true
 
 [dependencies]
-ray-rs = "0.0.0" # { path="../../ray-rs" }
+# ray-rs = "0.0.0"
+ray-rs = { path="../../ray-rs" }
+
+[build-dependencies]
+rustc_version = "0.4.0"
 
 [lib]
 crate-type = ["rlib", "cdylib"]

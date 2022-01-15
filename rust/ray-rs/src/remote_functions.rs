@@ -17,6 +17,8 @@ macro_rules! impl_ray_function {
                 ffi_lookup_name: CString,
             }
 
+            // Have this be $argpBorrow: Borrow<argp> instead
+            // So that one can accept references as function signature arguments.
             impl<$($argp: serde::Serialize,)* R> [<RayFunction $n>]<$($argp,)* R> {
                 pub fn new(
                     raw_fn: fn($($argty),*) -> R,
@@ -34,8 +36,6 @@ macro_rules! impl_ray_function {
                     (self.raw_fn)($($arg),*)
                 }
 
-                // Return object ref
-                // This should submit the
                 pub fn remote<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
                     &self,
                     $($arg: [<$argp Borrow>]),*
@@ -58,6 +58,7 @@ macro_rules! impl_ray_function {
                 }
             }
 
+            #[cfg(nightly)]
             impl<$($argp,)* R> std::ops::FnOnce<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
                 type Output = R;
                 extern "rust-call" fn call_once(self, ($($arg),*): ($($argty),*)) -> Self::Output {
@@ -65,17 +66,20 @@ macro_rules! impl_ray_function {
                 }
             }
 
+            #[cfg(nightly)]
             impl<$($argp,)* R> std::ops::FnMut<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
                 extern "rust-call" fn call_mut(&mut self, ($($arg),*): ($($argty),*)) -> Self::Output {
                     (self.raw_fn)($($arg),*)
                 }
             }
 
+            #[cfg(nightly)]
             impl<$($argp,)* R> std::ops::Fn<($($argty),*)> for [<RayFunction $n>]<$($argp,)* R> {
                 extern "rust-call" fn call(&self, ($($arg),*): ($($argty),*)) -> Self::Output {
                     (self.raw_fn)($($arg),*)
                 }
             }
+
         }
     };
 }
@@ -152,6 +156,14 @@ macro_rules! remote_internal {
                             // Else, one could also reasonably mangle for Ray namespace using a random string...
                             stringify!([<ray_rust_ffi_ $name>])).unwrap()
                     );
+            }
+
+            // Run this function before main
+            #[ctor]
+            fn [<register_function_name _ray_rust_ffi_ $name>]() {
+                GLOBAL_FUNCTION_NAMES_SET.lock().unwrap().insert(
+                    CString::new(stringify!([<ray_rust_ffi_ $name>])).unwrap()
+                );
             }
         }
     };

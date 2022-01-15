@@ -1,8 +1,10 @@
-#![feature(fn_traits, unboxed_closures, min_specialization)]
+#![cfg_attr(nightly, feature(fn_traits, unboxed_closures, min_specialization))]
+
 #[macro_use]
 pub use paste::paste;
 #[macro_use]
 pub use lazy_static::lazy_static;
+pub use ctor::ctor;
 pub use rmp_serde;
 pub use uniffi::ffi::RustBuffer;
 use core::pin::Pin;
@@ -15,13 +17,11 @@ pub use remote_functions::*;
 
 pub use std::ffi::CString;
 
-use std::{collections::HashMap, sync::Mutex, os::raw::c_char, ops::Deref};
+use std::{collections::{HashMap, HashSet}, sync::Mutex, os::raw::c_char, ops::Deref};
 
 use libloading::{Library, Symbol};
 
 type InvokerFunction = extern "C" fn(RustBuffer) -> RustBuffer;
-
-type FunctionPtrMap = HashMap<CString, Symbol<'static, InvokerFunction>>;
 
 #[macro_export]
 macro_rules! ray_info {
@@ -31,7 +31,13 @@ macro_rules! ray_info {
 }
 
 lazy_static::lazy_static! {
-    static ref GLOBAL_FUNCTION_MAP: Mutex<FunctionPtrMap> = {
+    pub static ref GLOBAL_FUNCTION_NAMES_SET: Mutex<HashSet<CString>> = {
+        Mutex::new(HashSet::new())
+    };
+}
+
+lazy_static::lazy_static! {
+    static ref GLOBAL_FUNCTION_MAP: Mutex<HashMap<CString, Symbol<'static, InvokerFunction>>> = {
         Mutex::new(HashMap::new())
     };
 }
@@ -77,8 +83,27 @@ pub fn load_libraries_from_paths(paths: &Vec<&str>) {
     let mut libs = LIBRARIES.lock().unwrap();
     for path in paths {
         match unsafe { Library::new(path).ok() } {
-            Some(lib) => libs.push(lib),
+            Some(lib) => {
+                load_function_ptrs_from_library(&lib);
+                libs.push(lib)
+            },
             None => panic!("Shared-object library not found at path: {}", path),
+        }
+    }
+}
+
+fn load_function_ptrs_from_library(lib: &Library) {
+    let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
+    for fn_name in GLOBAL_FUNCTION_NAMES_SET.lock().unwrap().iter() {
+        let ret = unsafe {
+                lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
+        };
+        if let Some(symbol) = ret {
+            ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), symbol);
+            let static_symbol = unsafe {
+                std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
+            };
+            fn_map.insert(fn_name.clone(), static_symbol);
         }
     }
 }
@@ -132,8 +157,8 @@ pub extern "C" fn rust_worker_execute(
             let ret = unsafe {
                     lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
             };
-            ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), ret);
             if let Some(symbol) = ret {
+                ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), symbol);
                 let static_symbol = unsafe {
                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
                 };

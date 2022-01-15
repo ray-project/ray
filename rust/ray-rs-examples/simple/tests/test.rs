@@ -1,16 +1,8 @@
 #[cfg(test)]
 mod test {
-    // use uniffi::RustBuffer;
-    // use rmp_serde;
     use ray_rs::{*,
-        // remote,
-        // add_two_vecs, add_two_vecs_nested_remote_outer_get,
-        // add_two_vecs_nested,
-        // add_three_vecs,
-        // put_and_get_nested,
         get,// put,
         rust_worker_execute, load_libraries_from_paths,
-        // byte_vec_to_object_id,
     };
     use simple::*;
     use std::sync::Mutex;
@@ -31,7 +23,7 @@ mod test {
             if env_var.starts_with("--ray_code_search_path=") {
                 args[1] = CString::new(env_var.clone()).unwrap();
                 let (_, path_str) = env_var.split_at("--ray_code_search_path=".len());
-                let paths = path_str.split(":").collect();
+                let paths = path_str.split(":").collect::<Vec<&str>>();
                 println!("{:?}", paths);
                 load_libraries_from_paths(&paths);
             }
@@ -250,36 +242,13 @@ mod test {
         ).unwrap();
         assert_eq!(ret3, (0u64..300).step_by(3).collect::<Vec<u64>>());
 
+        // Can only be called on nightly as fn traits are an unstable feature.
+        #[cfg(nightly)]
         println!("{:?}", add_two_vecs(a.clone(), b.clone()));
-        // println!("{:?}", add_two_vecs.remote(a, b));
+        #[cfg(not(nightly))]
+        println!("{:?}", add_two_vecs.call(a.clone(), b.clone()));
 
         println!("{:?}", add_two_vecs.name());
         println!("{:?}", add_three_vecs.name());
     }
-
-    // #[test]
-    // fn test_cpp_binding() {
-        // println!("{}", IsInitialized());
-        // Init();
-        // // InitAsLocal();
-        // println!("{}", IsInitialized());
-        //
-        // println!("\nPutting Uint64!");
-        // let x = PutUint64(1u64 << 20);
-        // println!("Uint64 ObjectID: {:x?}", x.ID().as_bytes());
-        // let int = *GetUint64(x);
-        // println!("Our integer: {}", int);
-        //
-        // println!("\nPutting string!");
-        // let_cxx_string!(string = "Rust is now on Ray!");
-        // let s = PutString(&string);
-        // println!("String data len: {}", string.len());
-        // println!("String ObjectID: {:x?}", s.ID().as_bytes());
-        // println!("Yipee! {}\n", *GetString(s));
-        //
-        // PutAndGetConfig();
-        //
-        // Shutdown();
-        // println!("{}", IsInitialized());
-    // }
 }
