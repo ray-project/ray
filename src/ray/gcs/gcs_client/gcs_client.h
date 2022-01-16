@@ -54,7 +54,8 @@ class GcsClientOptions {
         enable_sync_conn_(enable_sync_conn),
         enable_async_conn_(enable_async_conn),
         enable_subscribe_conn_(enable_subscribe_conn) {
-    RAY_LOG(DEBUG) << "Connect to gcs server via redis: " << redis_ip << ":" << redis_port;
+    RAY_LOG(DEBUG) << "Connect to gcs server via redis: " << redis_ip << ":"
+                   << redis_port;
   }
 
   /// Constructor of GcsClientOptions from gcs address

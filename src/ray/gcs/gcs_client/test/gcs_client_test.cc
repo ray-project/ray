@@ -43,20 +43,20 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                          enable_gcs_bootstrap_ ? "true" : "false",
                          enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
                          enable_gcs_bootstrap_ ? "true" : "false"));
-    if(!enable_gcs_bootstrap_) {
+    if (!enable_gcs_bootstrap_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
   }
 
   virtual ~GcsClientTest() {
-    if(!enable_gcs_bootstrap_) {
+    if (!enable_gcs_bootstrap_) {
       TestSetupUtil::ShutDownRedisServers();
     }
   }
 
  protected:
   void SetUp() override {
-    if(enable_gcs_bootstrap_) {
+    if (enable_gcs_bootstrap_) {
       config_.grpc_server_port = 5397;
       config_.redis_port = 0;
       config_.redis_address = "";
@@ -73,7 +73,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
     config_.grpc_based_resource_broadcast = false;
-    config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;;
+    config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;
+    ;
 
     client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
@@ -97,7 +98,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
-    if(enable_gcs_bootstrap_) {
+    if (enable_gcs_bootstrap_) {
       gcs::GcsClientOptions options("127.0.0.1:5397");
       gcs_client_.reset(new gcs::GcsClient(options));
     } else {
@@ -117,7 +118,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
-    if(!enable_gcs_bootstrap_) {
+    if (!enable_gcs_bootstrap_) {
       TestSetupUtil::FlushAllRedisServers();
     }
   }
@@ -742,7 +743,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if(RayConfig::instance().gcs_grpc_based_pubsub()) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -771,7 +772,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if(RayConfig::instance().gcs_grpc_based_pubsub()) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -830,7 +831,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if(RayConfig::instance().gcs_grpc_based_pubsub()) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -877,7 +878,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if(RayConfig::instance().gcs_grpc_based_pubsub()) {
+  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
     return;
   }
 
@@ -902,6 +903,10 @@ TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestGcsTableReload) {
+  // Restart gcs only work with redis.
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    return;
+  }
   // Register node to GCS.
   auto node_info = Mocker::GenNodeInfo();
   ASSERT_TRUE(RegisterNode(*node_info));
@@ -916,7 +921,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
 TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  if(RayConfig::instance().bootstrap_with_gcs()) {
+  if (RayConfig::instance().bootstrap_with_gcs()) {
     return;
   }
   TestSetupUtil::ShutDownRedisServers();
@@ -991,7 +996,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
 TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   // Restart doesn't work with in memory storage
-  if(RayConfig::instance().gcs_storage() == "memory") {
+  if (RayConfig::instance().gcs_storage() == "memory") {
     return;
   }
   // Register actors and the actors will be destroyed.
