@@ -919,70 +919,6 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset.")
-
-        try:
-            import pyarrow as pa
-            if isinstance(schema, pa.Schema):
-                return "arrow"
-        except ModuleNotFoundError:
-            pass
-        from ray.data.impl.pandas_block import PandasBlockSchema
-        if isinstance(schema, PandasBlockSchema):
-            return "pandas"
-        return "simple"
-
-    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
-                      *args, **kwargs):
-        """Helper for aggregating on a particular subset of the dataset.
-
-        This validates the `on` argument, and converts a list of column names
-        or lambdas to a multi-aggregation. A null `on` results in a
-        multi-aggregation on all columns for an Arrow Dataset, and a single
-        aggregation on the entire row for a simple Dataset.
-        """
-        aggs = self._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=None, **kwargs)
-        return self.aggregate(*aggs)
-
-    def _build_multicolumn_aggs(self,
-                                agg_cls: type,
-                                on: Union[KeyFn, List[KeyFn]],
-                                *args,
-                                skip_cols: Optional[List[str]] = None,
-                                **kwargs):
-        """Build set of aggregations for applying a single aggregation to
-        multiple columns.
-        """
-        if not isinstance(on, list):
-            on = [on]
-        return [agg_cls(on_, *args, **kwargs) for on_ in on]
-
-    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
-        if len(result) == 1:
-            if isinstance(result, tuple):
-                return result[0]
-            else:
-                # NOTE (kfstorm): We cannot call `result[0]` directly on
-                # `PandasRow` because indexing a column with position is not
-                # supported by pandas.
-                return list(result.values())[0]
-        else:
-            return result
-
     def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
@@ -2513,6 +2449,85 @@ Dict[str, List[str]]]): The names of the columns
         left, right = self._blocks.divide(block_idx)
         return Dataset(left, self._epoch, self._stats), Dataset(
             right, self._epoch, self._stats)
+
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
+
+        try:
+            import pyarrow as pa
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
+
+    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
+                      *args, **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        aggs = self._build_multicolumn_aggs(agg_cls, on, *args, **kwargs)
+        return self.aggregate(*aggs)
+
+    def _build_multicolumn_aggs(self,
+                                agg_cls: type,
+                                on: Union[KeyFn, List[KeyFn]],
+                                skip_cols: Optional[List[str]] = None,
+                                *args,
+                                **kwargs):
+        """Build set of aggregations for applying a single aggregation to
+        multiple columns.
+        """
+
+        # Expand None into an aggregation for each column.
+        if on is None:
+            try:
+                dataset_format = self._dataset_format()
+            except ValueError:
+                dataset_format = None
+            if dataset_format in ["arrow", "pandas"]:
+                # This should be cached from the ._dataset_format() check, so we
+                # don't fetch and we assert that the schema is not None.
+                schema = self.schema(fetch_if_missing=False)
+                if not skip_cols:
+                    skip_cols = []
+                if len(schema.names) > 0:
+                    on = [col for col in schema.names if col not in skip_cols]
+
+        if not isinstance(on, list):
+            on = [on]
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def __repr__(self) -> str:
         schema = self.schema()
