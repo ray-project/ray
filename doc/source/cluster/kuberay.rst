@@ -33,4 +33,4 @@ Now let's deploy a new Ray cluster:
 
 .. code-blocks:: shell
 
-kubectl create -f ray/python/ray/autoscaler/kuberay/config/samples/ray-cluster.complete.yaml
+kubectl create -f ray/python/ray/autoscaler/kuberay/ray-cluster.complete.yaml
