@@ -259,8 +259,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "rules_proto_grpc",
-        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
-        sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/refs/tags/4.0.0.tar.gz",
+        sha256 = "4202a150910712d00d95f11e240ad6da4c92e542d3b9fbb5b3a3d60abba3de77",
     )
 
     auto_http_archive(
