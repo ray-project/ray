@@ -31,13 +31,13 @@ This is the code for the model:
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
 generate summaries of text. 
 
-- The ``summarizer`` variable on line 9 inside ``summarize`` points to a
-   function that uses the `t5-small <https://huggingface.co/t5-small>`_
-   model to summarize text.
+- The ``summarizer`` variable on line 8 inside ``summarize`` points to a
+  function that uses the `t5-small <https://huggingface.co/t5-small>`_
+  model to summarize text.
 - When ``summarizer`` is called on a Python String, it returns summarized text
-   inside a dictionary formatted as ``[{"summary_text": "...", ...}, ...]``. 
-- ``summarize`` then extracts the summarized text on line 15 by indexing into
-   the dictionary.
+  inside a dictionary formatted as ``[{"summary_text": "...", ...}, ...]``. 
+- ``summarize`` then extracts the summarized text on line 14 by indexing into
+  the dictionary.
 
 The file can be run locally by executing the Python script, which uses the
 model to summarize an article about the Apollo 11 moon landing.
@@ -131,13 +131,13 @@ object [#f1]_:
   :start-after: __router_start__
   :end-before: __router_end__
 
-- In line 3, ``router`` uses the ``"txt"`` query parameter in the ``request`` to
-   get the article text to summarize.
-- In line 4, it then passes this article text
-   into the ``summarize`` function and returns the value.
-- In line 1, we also add the decorator ``@serve.deployment``
-   to the ``router`` function to turn the function into a Serve ``Deployment``
-   object.
+- In line 1, we add the decorator ``@serve.deployment``
+  to the ``router`` function to turn the function into a Serve ``Deployment``
+  object.
+- In line 3, ``router`` uses the ``"txt"`` query parameter in the ``request``
+  to get the article text to summarize.
+- In line 4, it then passes this article text into the ``summarize`` function
+  and returns the value.
 
 .. tip::
   This routing function's name doesn't have to be ``router``. 
@@ -167,6 +167,7 @@ With that, we can run our model on Ray Serve!
 Here's the full Ray Serve deployment script that we built for our model:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment_full.py
+  :linenos:
   :language: python
   :start-after: __deployment_full_start__
   :end-before: __deployment_full_end__
@@ -319,6 +320,7 @@ with route options to request a minimum or maximum length of ten words in the
 summaries:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_fastapi_deployment.py
+  :linenos:
   :language: python
   :start-after: __fastapi_start__
   :end-before: __fastapi_end__
