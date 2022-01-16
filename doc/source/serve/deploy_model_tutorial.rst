@@ -140,6 +140,14 @@ object [#f2]_:
 - In line 4, it then passes this article text into the ``summarize`` function
   and returns the value.
 
+Note that lines 3 and 4 have defined our HTTP API schema. The HTTP requests
+sent to this endpoint must have a ``"txt"`` query parameter that contains a
+string. In general, you can accept HTTP data using these query parameters or
+the request body. Additionally, you can add other Serve deployments with
+different names to create more endpoints that can accept different schemas.
+For more complex validation, you can also use FastAPI (see
+:ref:`serve-fastapi-http` for more info).
+
 .. tip::
   This routing function's name doesn't have to be ``router``. 
   It can be any function name as long as the corresponding name is present in 
