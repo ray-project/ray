@@ -17,12 +17,13 @@ to access a model that summarizes text.
 
 
 Example Model
-===========
+=============
 
 Let's first take a look at how the model works, without using Ray Serve.
 This is the code for the model:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_local.py
+  :linenos:
   :language: python
   :start-after: __local_model_start__
   :end-before: __local_model_end__
@@ -30,14 +31,16 @@ This is the code for the model:
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
 generate summaries of text. 
 
-- The ``summarizer`` variable on line X inside ``summarize`` points to a function that uses the
-   `t5-small <https://huggingface.co/t5-small>`_ model to summarize text.
+- The ``summarizer`` variable on line 9 inside ``summarize`` points to a
+   function that uses the `t5-small <https://huggingface.co/t5-small>`_
+   model to summarize text.
 - When ``summarizer`` is called on a Python String, it returns summarized text
-   in a form like ``[{"summary_text": "...", ...}, ...]``. 
-- ``summarize`` then extract the summarized text on line Y. 
+   inside a dictionary formatted as ``[{"summary_text": "...", ...}, ...]``. 
+- ``summarize`` then extracts the summarized text on line 15 by indexing into
+   the dictionary.
 
-The file can be run locally by executing the Python script, which uses the model to summarize an
-article about the Apollo 11 moon landing.
+The file can be run locally by executing the Python script, which uses the
+model to summarize an article about the Apollo 11 moon landing.
 
 .. code-block:: bash
 
@@ -49,10 +52,16 @@ article about the Apollo 11 moon landing.
   rest on a level, rock-strewn plain ."
 
 
-This is the example machine learning models we are using here. You can actually use arbitrary models in any framework with Python API. You can take a look at our tutorials on sckit-learn, PyTorch, Tensorflow, here ADD LINKS.
+Keep in mind that the ``SummarizationPipeline`` is an example machine learning
+model for this tutorial. You can follow along using arbitrary models in any
+framework that has a Python API. Check out our tutorials on sckit-learn,
+PyTorch, and Tensorflow for more info and examples:
+- :ref:`serve-sklearn-tutorial`
+- :ref:`serve-pytorch-tutorial`
+- :ref:`serve-tensorflow-tutorial`
 
 Converting to Ray Serve Deployment
-===========================
+==================================
 
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
 scaled up and queried over HTTP. We'll start by converting the above Python
@@ -77,7 +86,9 @@ can operate on article text sent via HTTP request.
   :start-after: __local_model_start__
   :end-before: __local_model_end__
 
-Ray Serve needs to run on top of a Ray cluster, so we connect to a local one:
+Ray Serve needs to run on top of a Ray cluster, so we connect to a local one.
+See :ref:`Deploying Ray Serve` to learn more about starting a Ray Serve
+instance and deploying to a Ray cluster.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
   :language: python
@@ -115,15 +126,18 @@ define a function called ``router`` that takes in a Starlette ``request``
 object [#f1]_:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
+  :linenos:
   :language: python
   :start-after: __router_start__
   :end-before: __router_end__
 
-``router`` uses the ``"txt"`` query parameter in the ``request`` to find the article
-text to summarize. It then passes the article text into the ``summarize``
-function and returns the value. We also add the decorator ``@serve.deployment``
-to the ``router`` function to turn the function into a Serve ``Deployment``
-object.
+- In line 3, ``router`` uses the ``"txt"`` query parameter in the ``request`` to
+   get the article text to summarize.
+- In line 4, it then passes this article text
+   into the ``summarize`` function and returns the value.
+- In line 1, we also add the decorator ``@serve.deployment``
+   to the ``router`` function to turn the function into a Serve ``Deployment``
+   object.
 
 .. tip::
   This routing function's name doesn't have to be ``router``. 
@@ -131,6 +145,7 @@ object.
   the HTTP request. If you want the function name to be different than the name 
   in the HTTP request, you can add the ``name`` keyword parameter to the
   ``@serve.deployment`` decorator to specify the name sent in the HTTP request.
+  
   For example, if the decorator is ``@serve.deployment(name="responder")`` and
   the function signature is ``def request_manager(request)``, the HTTP request
   should use ``responder``, not ``request_manager``. If no ``name`` is passed
@@ -178,6 +193,10 @@ and begin accepting HTTP requests:
 
   $ python model_on_ray_serve.py
 
+
+Testing the Ray Serve Deployment
+================================
+
 We can now test our model over HTTP. The structure of our HTTP query is:
 
 ``http://127.0.0.1:8000/[Deployment Name]?[Parameter Name-1]=[Parameter Value-1]&[Parameter Name-2]=[Parameter Value-2]&...&[Parameter Name-n]=[Parameter Value-n]``
@@ -187,7 +206,9 @@ refers to a localhost with port 8000. The ``[Deployment Name]`` refers to
 either the name of the function that we called ``.deploy()`` on (in our case,
 this is ``router``), or the ``name`` keyword parameter's value in
 ``@serve.deployment`` (see the Tip under the ``router`` function definition
-above for more info). Each ``[Parameter Name]`` refers to a field's name in the
+above for more info).
+
+Each ``[Parameter Name]`` refers to a field's name in the
 request's ``query_params`` dictionary for our deployed function. In our
 example, the only parameter we need to pass in is ``txt``. This parameter is
 referenced in the ``txt = request.query_params["txt"]`` line in the ``router``
@@ -216,6 +237,10 @@ We can run this script while the model is deployed to get a response over HTTP:
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to 
   rest on a level, rock-strewn plain ."
 
+
+Using Classes in the Ray Serve Deployment
+=========================================
+
 Our application still a bit inefficient though. In particular, the 
 ``summarize`` function loads the model on each call when it sets the
 ``summarizer`` variable. However, the model never changes, so it would be more
@@ -225,17 +250,19 @@ instead of reloading it for each HTTP query.
 We can achieve this by converting our ``summarize`` function into a class:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_class_deployment.py
+  :linenos:
   :language: python
   :start-after: __deployment_class_start__
   :end-before: __deployment_class_end__
 
 In this configuration, we can query the ``Summarizer`` class directly. 
 The ``Summarizer`` is initialized once (after calling ``Summarizer.deploy()``).
-Its ``__init__`` function loads and stores the model in ``self.summarize``.
-HTTP queries for the ``Summarizer`` class are routed to its ``__call__``
-method by default, which takes in the Starlette ``request`` object. The
-``Summarizer`` class can then take the request's ``txt`` data and call the
-``self.summarize`` function on it without loading the model on each query.
+In line 13, its ``__init__`` function loads and stores the model in
+``self.summarize``. HTTP queries for the ``Summarizer`` class are routed to its
+``__call__`` method by default, which takes in the Starlette ``request``
+object. The ``Summarizer`` class can then take the request's ``txt`` data and
+call the ``self.summarize`` function on it without loading the model on each
+query.
 
 .. tip::
   Instance variables can also store state. For example, to
@@ -271,6 +298,10 @@ the model, and query it over HTTP:
   historic landing . the first men to reach the moon -- Armstrong and his 
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to 
   rest on a level, rock-strewn plain ."
+
+
+Adding Functionality with FastAPI
+=================================
 
 Now suppose we want to expose additional functionality in our model. In
 particular, the ``summarize`` function also has ``min_length`` and
