@@ -28,13 +28,15 @@ This is the code for the model:
   :end-before: __local_model_end__
 
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
-generate summaries of text. The ``summarizer`` variable inside ``summarize``
-points to a function that uses the
-`t5-small <https://huggingface.co/t5-small>`_ model to summarize text.
-When ``summarizer`` is called on a Python String, it returns summarized text
-encapsulated within a dictionary and a list. ``summarize`` then removes the
-dictionary and list, and it returns only the summary. The file can be run
-locally by executing the Python script, which uses the model to summarize an
+generate summaries of text. 
+
+- The ``summarizer`` variable on line X inside ``summarize`` points to a function that uses the
+   `t5-small <https://huggingface.co/t5-small>`_ model to summarize text.
+- When ``summarizer`` is called on a Python String, it returns summarized text
+   in a form like ``[{"summary_text": "...", ...}, ...]``. 
+- ``summarize`` then extract the summarized text on line Y. 
+
+The file can be run locally by executing the Python script, which uses the model to summarize an
 article about the Apollo 11 moon landing.
 
 .. code-block:: bash
