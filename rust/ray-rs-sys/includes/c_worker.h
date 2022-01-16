@@ -34,18 +34,18 @@ typedef struct DataValue {
 
 // TODO: Write detailed description of methods
 typedef void (*c_worker_ExecuteCallback)(RayInt task_type, RaySlice ray_function_info,
-                                         RaySlice args, RaySlice return_values);
+                                         const DataValue* const args[], size_t args_len, RaySlice return_values);
 
 int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback);
 
-// Why not char instead of void ptr?
-const DataValue *c_worker_AllocateDataValue(const uint8_t *data_ptr, size_t data_size, const uint8_t *meta_ptr, size_t meta_size);
+const DataValue *c_worker_AllocateDataValue(const uint8_t *data_ptr, size_t data_size,
+                                            const uint8_t *meta_ptr, size_t meta_size);
 
 void c_worker_DeallocateDataValue(const DataValue *dv_ptr);
 
 void c_worker_InitConfig(int workerMode, int language, int num_workers,
-                                    char *code_search_path, char *head_args,
-                                    int argc, char** argv);
+                         char *code_search_path, char *head_args,
+                         int argc, char** argv);
 
 void c_worker_Initialize();
 

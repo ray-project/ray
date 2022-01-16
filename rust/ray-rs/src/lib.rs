@@ -215,19 +215,18 @@ pub extern "C" fn rust_worker_execute(
     let ret = func(args_buffer);
     ray_info!("Executed: {}", fn_name.to_str().unwrap());
 
-    let mut ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
+    let ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
 
     unsafe {
-        let ret_slice = std::slice::from_raw_parts(
-            return_values.data as *mut *mut DataValue,
+        let ret_slice = std::slice::from_raw_parts_mut(
+            return_values.data as *mut *const DataValue,
             return_values.len as usize,
         );
-        let dv_ptr = c_worker_AllocateDataValue(
-            ret_owned.as_mut_ptr(),
+        ret_slice[0] = c_worker_AllocateDataValue(
+            ret_owned.as_ptr(),
             ret_owned.len() as u64,
-            std::ptr::null_mut::<u8>(),
+            std::ptr::null(),
             0,
         );
-        (*ret_slice[0]).data = (*dv_ptr).data;
     }
 }

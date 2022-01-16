@@ -121,7 +121,7 @@ ray::Status ExecutionCallback(
         data->Data(), data->Size(), nullptr, 0));//meta->Data(), meta->Size()));
   }
 
-  std::vector<DataValue *> return_value_list;
+  std::vector<const DataValue *> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
     return_value_list.push_back(nullptr);
   }
@@ -177,7 +177,7 @@ ray::Status ExecutionCallback(
         result_id, value));
   }
   for (auto arg: return_value_list) {
-    c_worker_DeallocateDataValue(&(*arg));
+    c_worker_DeallocateDataValue(arg);
   }
   return ray::Status::OK();
 };
