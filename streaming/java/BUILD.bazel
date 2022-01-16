@@ -178,12 +178,12 @@ java_binary(
 # proto buffer
 java_proto_compile(
     name = "streaming_java_proto",
-    deps = ["//streaming:streaming_proto"],
+    protos = ["//streaming:streaming_proto"],
 )
 
 java_proto_compile(
     name = "remote_call_java_proto",
-    deps = ["//streaming:remote_call_proto"],
+    protos = ["//streaming:remote_call_proto"],
 )
 
 filegroup(
