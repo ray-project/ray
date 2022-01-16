@@ -51,6 +51,26 @@ class MultiNodeSyncTest(unittest.TestCase):
                     num_cpus=1, num_gpus=1, placement_group=pg).remote(5)))
 
         print("Autoscaling worked")
+        ray.util.remove_placement_group(pg)
+
+        time.sleep(2)  # Give some time so nodes.json is updated
+
+        self.cluster.kill_node(num=2)
+        print("Killed GPU node.")
+        pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}] * 2)
+
+        table = ray.util.placement_group_table(pg)
+        assert table["state"] == "PENDING"
+
+        timeout = time.monotonic() + 180
+        while table["state"] != "CREATED":
+            if time.monotonic() > timeout:
+                raise RuntimeError(
+                    "Re-starting killed node failed or too slow.")
+            time.sleep(1)
+            table = ray.util.placement_group_table(pg)
+
+        print("Node was restarted.")
 
 
 if __name__ == "__main__":
