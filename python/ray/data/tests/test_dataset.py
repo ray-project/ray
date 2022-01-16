@@ -3070,12 +3070,12 @@ def test_groupby_errors(ray_start_regular_shared):
 
     ds.groupby(None).count().show()  # OK
     ds.groupby(lambda x: x % 2).count().show()  # OK
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ds.groupby("foo").count().show()
 
-    ds = ray.data.range_arrow(100)  # OK
+    ds = ray.data.range_arrow(100)
     ds.groupby(None).count().show()  # OK
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         ds.groupby(lambda x: x % 2).count().show()
 
 
@@ -3085,7 +3085,15 @@ def test_agg_errors(ray_start_regular_shared):
 
     ds.aggregate(Max())  # OK
     ds.aggregate(Max(lambda x: x))  # OK
-    ds.aggregate(Max("foo"))
+    with pytest.raises(ValueError):
+        ds.aggregate(Max("foo"))
+
+    ds = ray.data.range_arrow(100)
+    with pytest.raises(ValueError):
+        ds.aggregate(Max())
+    with pytest.raises(ValueError):
+        ds.aggregate(Max(lambda x: x))
+    ds.aggregate(Max("value"))
 
 
 @pytest.mark.parametrize("num_parts", [1, 15, 100])

@@ -40,22 +40,21 @@ def _validate_key_fn(ds: "Dataset",
         return
     if isinstance(key, str):
         if fmt == "simple":
-            raise TypeError("String key '{}' requires dataset format to be "
-                            "'arrow' or 'pandas', was '{}'.".format(key, fmt))
+            raise ValueError("String key '{}' requires dataset format to be "
+                             "'arrow' or 'pandas', was '{}'.".format(key, fmt))
         # Raises KeyError if key is not present in the schema.
         ds.schema().field(key)
     elif key is None:
         if fmt != "simple" and not always_allow_none:
-            raise NotImplementedError(
+            raise ValueError(
                 "The `None` key '{}' requires dataset format to be "
                 "'simple', was '{}'.".format(key, fmt))
     elif callable(key):
         if fmt != "simple":
-            raise NotImplementedError(
-                "Callable key '{}' requires dataset format to be "
-                "'simple', was '{}'.".format(key, fmt))
+            raise ValueError("Callable key '{}' requires dataset format to be "
+                             "'simple', was '{}'.".format(key, fmt))
     else:
-        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+        raise ValueError("Invalid key type {} ({}).".format(key, type(key)))
 
 
 # Represents a batch of records to be stored in the Ray object store.

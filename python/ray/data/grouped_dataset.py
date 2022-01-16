@@ -5,15 +5,13 @@ from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, Std, AggregateOnT
+    Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
-
-AggregateOnTs = Union[AggregateOnT, List[AggregateOnT]]
 
 
 @PublicAPI(stability="beta")
@@ -63,6 +61,8 @@ class GroupedDataset(Generic[T]):
         stage_info = {}
         if len(aggs) == 0:
             raise ValueError("Aggregate requires at least one aggregation")
+        for agg in aggs:
+            agg._validate(self._dataset)
         # Handle empty dataset.
         if self._dataset.num_blocks() == 0:
             return self._dataset
@@ -112,8 +112,8 @@ class GroupedDataset(Generic[T]):
             BlockList(blocks, metadata), self._dataset._epoch,
             stats.build_multistage(stage_info))
 
-    def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
-                      **kwargs):
+    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
+                      *args, **kwargs):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -144,7 +144,7 @@ class GroupedDataset(Generic[T]):
         """
         return self.aggregate(Count())
 
-    def sum(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped sum aggregation.
 
         This is a blocking operation.
@@ -197,7 +197,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Sum, on)
 
-    def min(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped min aggregation.
 
         This is a blocking operation.
@@ -250,7 +250,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Min, on)
 
-    def max(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped max aggregation.
 
         This is a blocking operation.
@@ -303,7 +303,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Max, on)
 
-    def mean(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped mean aggregation.
 
         This is a blocking operation.
@@ -357,7 +357,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Mean, on)
 
-    def std(self, on: Optional[AggregateOnTs] = None,
+    def std(self, on: Union[KeyFn, List[KeyFn]] = None,
             ddof: int = 1) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
 
