@@ -861,7 +861,7 @@ class Dataset(Generic[T]):
             dataset_stats)
 
     def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
-        """Group the dataset by the key function or column name (Experimental).
+        """Group the dataset by the key function or column name.
 
         This is a lazy operation.
 
