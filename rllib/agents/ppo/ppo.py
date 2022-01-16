@@ -10,11 +10,11 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import Optional, Type
+from typing import Type
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
@@ -22,6 +22,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
     LEARNER_STATS_KEY
@@ -100,90 +101,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Validates the Trainer's config dict.
-
-    Args:
-        config (TrainerConfigDict): The Trainer's config to check.
-
-    Raises:
-        ValueError: In case something is wrong with the config.
-    """
-    if isinstance(config["entropy_coeff"], int):
-        config["entropy_coeff"] = float(config["entropy_coeff"])
-
-    if config["entropy_coeff"] < 0.0:
-        raise DeprecationWarning("entropy_coeff must be >= 0.0")
-
-    # SGD minibatch size must be smaller than train_batch_size (b/c
-    # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-    # each `sgd_num_iter`).
-    # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-    # to -1 to auto-calculate the actual batch size later).
-    if config["train_batch_size"] > 0 and \
-            config["sgd_minibatch_size"] > config["train_batch_size"]:
-        raise ValueError("`sgd_minibatch_size` ({}) must be <= "
-                         "`train_batch_size` ({}).".format(
-                             config["sgd_minibatch_size"],
-                             config["train_batch_size"]))
-
-    # Check for mismatches between `train_batch_size` and
-    # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
-    # if necessary.
-    # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
-    # to -1 to auto-calculate the actual batch size later).
-    num_workers = config["num_workers"] or 1
-    calculated_min_rollout_size = \
-        num_workers * config["num_envs_per_worker"] * \
-        config["rollout_fragment_length"]
-    if config["train_batch_size"] > 0 and \
-            config["train_batch_size"] % calculated_min_rollout_size != 0:
-        new_rollout_fragment_length = config["train_batch_size"] // (
-            num_workers * config["num_envs_per_worker"])
-        logger.warning(
-            "`train_batch_size` ({}) cannot be achieved with your other "
-            "settings (num_workers={} num_envs_per_worker={} "
-            "rollout_fragment_length={})! Auto-adjusting "
-            "`rollout_fragment_length` to {}.".format(
-                config["train_batch_size"], config["num_workers"],
-                config["num_envs_per_worker"],
-                config["rollout_fragment_length"],
-                new_rollout_fragment_length))
-        config["rollout_fragment_length"] = new_rollout_fragment_length
-
-    # Episodes may only be truncated (and passed into PPO's
-    # `postprocessing_fn`), iff generalized advantage estimation is used
-    # (value function estimate at end of truncated episode to estimate
-    # remaining value).
-    if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
-        raise ValueError(
-            "Episode truncation is not supported without a value "
-            "function (to estimate the return at the end of the truncated "
-            "trajectory). Consider setting batch_mode=complete_episodes.")
-
-    # Multi-agent mode and multi-GPU optimizer.
-    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
-        logger.info(
-            "In multi-agent mode, policies will be optimized sequentially "
-            "by the multi-GPU optimizer. Consider setting "
-            "simple_optimizer=True if this doesn't work for you.")
-
-
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
-        return PPOTorchPolicy
-
-
 class UpdateKL:
     """Callback to update the KL based on optimization info.
 
@@ -253,69 +170,138 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                   **kwargs) -> LocalIterator[dict]:
-    """Execution plan of the PPO algorithm. Defines the distributed dataflow.
+class PPOTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    Args:
-        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-            of the Trainer.
-        config (TrainerConfigDict): The trainer's configuration dict.
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        """Validates the Trainer's config dict.
 
-    Returns:
-        LocalIterator[dict]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    assert len(kwargs) == 0, (
-        "PPO execution_plan does NOT take any additional parameters")
+        Args:
+            config (TrainerConfigDict): The Trainer's config to check.
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+        Raises:
+            ValueError: In case something is wrong with the config.
+        """
+        # Call super's validation method.
+        super().validate_config(config)
 
-    # Collect batches for the trainable policies.
-    rollouts = rollouts.for_each(
-        SelectExperiences(workers.trainable_policies()))
-    # Concatenate the SampleBatches into one.
-    rollouts = rollouts.combine(
-        ConcatBatches(
-            min_batch_size=config["train_batch_size"],
-            count_steps_by=config["multiagent"]["count_steps_by"],
-        ))
-    # Standardize advantages.
-    rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+        if isinstance(config["entropy_coeff"], int):
+            config["entropy_coeff"] = float(config["entropy_coeff"])
 
-    # Perform one training step on the combined + standardized batch.
-    if config["simple_optimizer"]:
-        train_op = rollouts.for_each(
-            TrainOneStep(
-                workers,
-                num_sgd_iter=config["num_sgd_iter"],
-                sgd_minibatch_size=config["sgd_minibatch_size"]))
-    else:
-        train_op = rollouts.for_each(
-            MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config["sgd_minibatch_size"],
-                num_sgd_iter=config["num_sgd_iter"],
-                num_gpus=config["num_gpus"],
-                shuffle_sequences=config["shuffle_sequences"],
-                _fake_gpus=config["_fake_gpus"],
-                framework=config.get("framework")))
+        if config["entropy_coeff"] < 0.0:
+            raise DeprecationWarning("entropy_coeff must be >= 0.0")
 
-    # Update KL after each round of training.
-    train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
+        # SGD minibatch size must be smaller than train_batch_size (b/c
+        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
+        # each `sgd_num_iter`).
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        if config["train_batch_size"] > 0 and \
+                config["sgd_minibatch_size"] > config["train_batch_size"]:
+            raise ValueError("`sgd_minibatch_size` ({}) must be <= "
+                             "`train_batch_size` ({}).".format(
+                                 config["sgd_minibatch_size"],
+                                 config["train_batch_size"]))
 
-    # Warn about bad reward scales and return training metrics.
-    return StandardMetricsReporting(train_op, workers, config) \
-        .for_each(lambda result: warn_about_bad_reward_scales(config, result))
+        # Check for mismatches between `train_batch_size` and
+        # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
+        # if necessary.
+        # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
+        # to -1 to auto-calculate the actual batch size later).
+        num_workers = config["num_workers"] or 1
+        calculated_min_rollout_size = \
+            num_workers * config["num_envs_per_worker"] * \
+            config["rollout_fragment_length"]
+        if config["train_batch_size"] > 0 and \
+                config["train_batch_size"] % calculated_min_rollout_size != 0:
+            new_rollout_fragment_length = config["train_batch_size"] // (
+                num_workers * config["num_envs_per_worker"])
+            logger.warning(
+                "`train_batch_size` ({}) cannot be achieved with your other "
+                "settings (num_workers={} num_envs_per_worker={} "
+                "rollout_fragment_length={})! Auto-adjusting "
+                "`rollout_fragment_length` to {}.".format(
+                    config["train_batch_size"], config["num_workers"],
+                    config["num_envs_per_worker"],
+                    config["rollout_fragment_length"],
+                    new_rollout_fragment_length))
+            config["rollout_fragment_length"] = new_rollout_fragment_length
 
+        # Episodes may only be truncated (and passed into PPO's
+        # `postprocessing_fn`), iff generalized advantage estimation is used
+        # (value function estimate at end of truncated episode to estimate
+        # remaining value).
+        if config["batch_mode"] == "truncate_episodes" and \
+                not config["use_gae"]:
+            raise ValueError(
+                "Episode truncation is not supported without a value "
+                "function (to estimate the return at the end of the truncated"
+                " trajectory). Consider setting "
+                "batch_mode=complete_episodes.")
 
-# Build a child class of `Trainer`, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
-PPOTrainer = build_trainer(
-    name="PPO",
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-    default_policy=PPOTFPolicy,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
-)
+        # Multi-agent mode and multi-GPU optimizer.
+        if config["multiagent"]["policies"] and \
+                not config["simple_optimizer"]:
+            logger.info(
+                "In multi-agent mode, policies will be optimized sequentially"
+                " by the multi-GPU optimizer. Consider setting "
+                "simple_optimizer=True if this doesn't work for you.")
+
+    @override(Trainer)
+    def get_default_policy_class(self,
+                                 config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+            return PPOTorchPolicy
+        else:
+            return PPOTFPolicy
+
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
+        assert len(kwargs) == 0, (
+            "PPO execution_plan does NOT take any additional parameters")
+
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+        # Collect batches for the trainable policies.
+        rollouts = rollouts.for_each(
+            SelectExperiences(workers.trainable_policies()))
+        # Concatenate the SampleBatches into one.
+        rollouts = rollouts.combine(
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            ))
+        # Standardize advantages.
+        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+
+        # Perform one training step on the combined + standardized batch.
+        if config["simple_optimizer"]:
+            train_op = rollouts.for_each(
+                TrainOneStep(
+                    workers,
+                    num_sgd_iter=config["num_sgd_iter"],
+                    sgd_minibatch_size=config["sgd_minibatch_size"]))
+        else:
+            train_op = rollouts.for_each(
+                MultiGPUTrainOneStep(
+                    workers=workers,
+                    sgd_minibatch_size=config["sgd_minibatch_size"],
+                    num_sgd_iter=config["num_sgd_iter"],
+                    num_gpus=config["num_gpus"],
+                    _fake_gpus=config["_fake_gpus"]))
+
+        # Update KL after each round of training.
+        train_op = train_op.for_each(lambda t: t[1]).for_each(
+            UpdateKL(workers))
+
+        # Warn about bad reward scales and return training metrics.
+        return StandardMetricsReporting(train_op, workers, config) \
+            .for_each(lambda result: warn_about_bad_reward_scales(
+                config, result))

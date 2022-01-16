@@ -250,9 +250,10 @@ Papers
    cluster/index.rst
    cluster/quickstart.rst
    cluster/guide.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
+   cluster/ray-client.rst
    cluster/reference.rst
    cluster/cloud.rst
-   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -280,6 +281,7 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/dataset-ml-preprocessing.rst
    data/dataset-execution-model.rst
    data/dataset-tensor-support.rst
    data/package-ref.rst
@@ -298,6 +300,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/metadata.rst
    workflows/events.rst
    workflows/comparison.rst
    workflows/advanced.rst
@@ -332,7 +335,7 @@ Papers
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-package-ref.rst
+   rllib/package_ref/index.rst
    rllib-dev.rst
 
 .. toctree::
@@ -355,7 +358,7 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   xgboost-ray.rst
+   xgboost-ray.md
    lightgbm-ray.rst
    ray-lightning.rst
    ray-collective.rst

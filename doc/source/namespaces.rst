@@ -9,17 +9,30 @@ named, its name must be unique within the namespace.
 In order to set your applications namespace, it should be specified when you
 first connect to the cluster.
 
-.. code-block:: python
+.. tabs::
+  .. group-tab:: Python
 
-   ray.init(namespace="hello")
-   # or using ray client
-   ray.init("ray://<head_node_host>:10001", namespace="world")
+    .. code-block:: python
+
+      ray.init(namespace="hello")
+      # or using ray client
+      ray.init("ray://<head_node_host>:10001", namespace="world")
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+      System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
+      Ray.init();
+
+    Please refer to `Driver Options <configure.html#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
-    # `ray start --head` has been run to launch a local cluster
+    # `ray start --head` has been run to launch a local cluster.
     import ray
 
     @ray.remote
@@ -48,6 +61,47 @@ Named actors are only accessible within their namespaces.
     context.disconnect()
     # We are manually managing the scope of the connection in this example.
 
+  .. code-tab:: java
+
+    // `ray start --head` has been run to launch a local cluster.
+
+    // Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
+    System.setProperty("ray.address", "localhost:10001");
+    System.setProperty("ray.job.namespace", "colors");
+    try {
+      Ray.init();
+      Ray.actor(Actor::new).setName("orange").remote();
+      Ray.actor(Actor::new).setName("purple").remote();
+    } finally {
+      Ray.shutdown();
+    }
+
+    // Job 2 is now connecting to a different namespace.
+    System.setProperty("ray.address", "localhost:10001");
+    System.setProperty("ray.job.namespace", "fruits");
+    try {
+      Ray.init();
+      // This fails because "orange" was defined in the "colors" namespace.
+      Ray.getActor("orange").isPresent(); // return false
+      // This succceeds because the name "orange" is unused in this namespace.
+      Ray.actor(Actor::new).setName("orange").remote();
+      Ray.actor(Actor::new).setName("watermelon").remote();
+    } finally {
+      Ray.shutdown();
+    }
+
+    // Job 3 connects to the original "colors" namespace.
+    System.setProperty("ray.address", "localhost:10001");
+    System.setProperty("ray.job.namespace", "colors");
+    try {
+      Ray.init();
+      // This fails because "watermelon" was in the fruits namespace.
+      Ray.getActor("watermelon").isPresent(); // return false
+      // This returns the "orange" actor we created in the first job, not the second.
+      Ray.getActor("orange").isPresent(); // return true
+    } finally {
+      Ray.shutdown();
+    }
 
 Anonymous namespaces
 --------------------
@@ -56,7 +110,8 @@ When a namespace is not specified, Ray will place your job in an anonymous
 namespace. In an anonymous namespace, your job will have its own namespace and
 will not have access to actors in other namespaces.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
     # `ray start --head` has been run to launch a local cluster
 
@@ -77,6 +132,29 @@ will not have access to actors in other namespaces.
     Actor.options(name="my_actor", lifetime="detached")
     ctx.disconnect()
 
+  .. code-tab:: java
+
+    // `ray start --head` has been run to launch a local cluster.
+
+    // Job 1 connects to an anonymous namespace by default.
+    System.setProperty("ray.address", "localhost:10001");
+    try {
+      Ray.init();
+      Ray.actor(Actor::new).setName("my_actor").remote();
+    } finally {
+      Ray.shutdown();
+    }
+
+    // Job 2 connects to a _different_ anonymous namespace by default
+    System.setProperty("ray.address", "localhost:10001");
+    try {
+      Ray.init();
+      // This succeeds because the second job is in its own namespace.
+      Ray.actor(Actor::new).setName("my_actor").remote();
+    } finally {
+      Ray.shutdown();
+    }
+
 .. note::
 
      Anonymous namespaces are implemented as UUID's. This makes it possible for
@@ -88,10 +166,21 @@ Getting the current namespace
 -----------------------------
 You can access to the current namespace using :ref:`runtime_context APIs <runtime-context-apis>`.
 
-.. code-block:: python
+.. tabs::
+  .. code-tab:: python
 
     import ray
     ray.init(address="auto", namespace="colors")
-    # Will print the information about "colors" namespace
+    # Will print the information about "colors" namespace.
     print(ray.get_runtime_context().namespace)
 
+  .. code-tab:: java
+
+    System.setProperty("ray.job.namespace", "colors");
+    try {
+      Ray.init();
+      // Will print the information about "colors" namespace.
+      System.out.println(Ray.getRuntimeContext().getNamespace());
+    } finally {
+      Ray.shutdown();
+    }

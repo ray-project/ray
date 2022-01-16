@@ -6,14 +6,14 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
-from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
-                            RayActorError, TaskCancelledError,
-                            WorkerCrashedError, ObjectLostError,
-                            ReferenceCountingAssertionError, OwnerDiedError,
-                            ObjectReconstructionFailedError,
-                            ObjectReconstructionFailedMaxAttemptsExceededError,
-                            ObjectReconstructionFailedLineageEvictedError,
-                            RaySystemError, RuntimeEnvSetupError)
+from ray.exceptions import (
+    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
+    TaskCancelledError, WorkerCrashedError, ObjectLostError,
+    ObjectFetchTimedOutError, ReferenceCountingAssertionError, OwnerDiedError,
+    ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError, RaySystemError,
+    RuntimeEnvSetupError, LocalRayletDiedError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -224,12 +224,18 @@ class SerializationContext:
                     if pb_bytes:
                         return RayError.from_bytes(pb_bytes)
                 return RayActorError()
+            elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
+                return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(object_ref.hex(),
                                        object_ref.owner_address(),
                                        object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_FETCH_TIMED_OUT"):
+                return ObjectFetchTimedOutError(object_ref.hex(),
+                                                object_ref.owner_address(),
+                                                object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(),

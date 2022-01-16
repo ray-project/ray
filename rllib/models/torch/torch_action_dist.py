@@ -1,8 +1,9 @@
 import functools
+import gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
-import gym
+from typing import Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -179,10 +180,23 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
 
     @override(ActionDistribution)
-    def __init__(self, inputs: List[TensorType], model: TorchModelV2):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: TorchModelV2,
+                 *,
+                 action_space: Optional[gym.spaces.Space] = None):
         super().__init__(inputs, model)
         mean, log_std = torch.chunk(self.inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
+        # Remember to squeeze action samples in case action space is Box(shape)
+        self.zero_action_dim = action_space and action_space.shape == ()
+
+    @override(TorchDistributionWrapper)
+    def sample(self) -> TensorType:
+        sample = super().sample()
+        if self.zero_action_dim:
+            return torch.squeeze(sample, dim=-1)
+        return sample
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -443,8 +457,16 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             for dist in self.flat_child_distributions:
                 if isinstance(dist, TorchCategorical):
                     split_indices.append(1)
+                elif isinstance(dist, TorchMultiCategorical) and \
+                        dist.action_space is not None:
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
                 else:
-                    split_indices.append(dist.sample().size()[1])
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(sample.size()[1])
             split_x = list(torch.split(x, split_indices, dim=1))
         # Structured or flattened (by single action component) input.
         else:
@@ -453,7 +475,8 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, TorchCategorical):
-                val = torch.squeeze(val, dim=-1).int()
+                val = (torch.squeeze(val, dim=-1)
+                       if len(val.shape) > 1 else val).int()
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

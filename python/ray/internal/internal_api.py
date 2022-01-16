@@ -5,6 +5,8 @@ import ray._private.profiling as profiling
 import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._raylet import GcsClientOptions
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -26,13 +28,14 @@ def memory_summary(address=None,
                    stats_only=False,
                    num_entries=None):
     from ray.dashboard.memory_utils import memory_summary
-    if not address:
-        address = services.get_ray_address_to_use_or_die()
-    if address == "auto":
-        address = services.find_redis_address_or_die()
+    address = services.canonicalize_bootstrap_address(address)
 
     state = GlobalState()
-    state._initialize_global_state(address, redis_password)
+    if use_gcs_for_bootstrap():
+        options = GcsClientOptions.from_gcs_address(address)
+    else:
+        options = GcsClientOptions.from_redis_address(address, redis_password)
+    state._initialize_global_state(options)
     if stats_only:
         return get_store_stats(state)
     return (memory_summary(state, group_by, sort_by, line_wrap, units,

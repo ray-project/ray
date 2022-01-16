@@ -16,7 +16,6 @@
 
 #include <cstdint>
 #include <cstdio>
-
 #include <functional>
 #include <memory>
 
@@ -112,9 +111,9 @@ class LocalMemoryBuffer : public Buffer {
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.
-  size_t size_;
+  size_t size_ = 0;
   /// Whether this buffer holds a copy of data.
-  bool has_data_copy_;
+  bool has_data_copy_ = false;
   /// This is only valid when `should_copy` is true.
   uint8_t *buffer_ = NULL;
 };

@@ -1,16 +1,16 @@
 import logging
-from typing import Optional, Type
+from typing import Type
 
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.util.iter import LocalIterator
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -49,65 +49,45 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+class A3CTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.a3c.a3c_torch_policy import \
-            A3CTorchPolicy
-        return A3CTorchPolicy
-    else:
-        return A3CTFPolicy
+        if config["entropy_coeff"] < 0:
+            raise ValueError("`entropy_coeff` must be >= 0.0!")
+        if config["num_workers"] <= 0 and config["sample_async"]:
+            raise ValueError("`num_workers` for A3C must be >= 1!")
 
+    @override(Trainer)
+    def get_default_policy_class(self,
+                                 config: TrainerConfigDict) -> Type[Policy]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.a3c.a3c_torch_policy import \
+                A3CTorchPolicy
+            return A3CTorchPolicy
+        else:
+            return A3CTFPolicy
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Checks and updates the config based on settings.
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
+        assert len(kwargs) == 0, (
+            "A3C execution_plan does NOT take any additional parameters")
 
-    Rewrites rollout_fragment_length to take into account n_step truncation.
-    """
-    if config["entropy_coeff"] < 0:
-        raise ValueError("`entropy_coeff` must be >= 0.0!")
-    if config["num_workers"] <= 0 and config["sample_async"]:
-        raise ValueError("`num_workers` for A3C must be >= 1!")
+        # For A3C, compute policy gradients remotely on the rollout workers.
+        grads = AsyncGradients(workers)
 
+        # Apply the gradients as they arrive. We set update_all to False so
+        # that only the worker sending the gradient is updated with new
+        # weights.
+        train_op = grads.for_each(ApplyGradients(workers, update_all=False))
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                   **kwargs) -> LocalIterator[dict]:
-    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
-    dataflow.
-
-    Args:
-        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-            of the Trainer.
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        LocalIterator[dict]: A local iterator over training metrics.
-    """
-    assert len(kwargs) == 0, (
-        "A3C execution_plan does NOT take any additional parameters")
-
-    # For A3C, compute policy gradients remotely on the rollout workers.
-    grads = AsyncGradients(workers)
-
-    # Apply the gradients as they arrive. We set update_all to False so that
-    # only the worker sending the gradient is updated with new weights.
-    train_op = grads.for_each(ApplyGradients(workers, update_all=False))
-
-    return StandardMetricsReporting(train_op, workers, config)
-
-
-A3CTrainer = build_trainer(
-    name="A3C",
-    default_config=DEFAULT_CONFIG,
-    default_policy=A3CTFPolicy,
-    get_policy_class=get_policy_class,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+        return StandardMetricsReporting(train_op, workers, config)

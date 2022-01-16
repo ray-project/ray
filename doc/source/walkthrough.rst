@@ -344,7 +344,7 @@ Below are more examples of resource specifications:
 .. tip::
 
   Besides compute resources, you can also specify an environment for a task to run in,
-  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
+  which can include Python packages, local files, environment variables, and more---see :ref:`Runtime Environments <runtime-environments>` for details.
 
 Multiple returns
 ~~~~~~~~~~~~~~~~

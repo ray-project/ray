@@ -19,7 +19,7 @@ def _init_ray():
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
     def ok():
-        s = memory_summary(address=address["redis_address"], stats_only=True)
+        s = memory_summary(address=address["address"], stats_only=True)
         print(s)
         if restored:
             if "Restored {} MiB".format(restored) not in s:
@@ -246,6 +246,31 @@ def test_fallback_allocation_failure(shutdown_only):
 #             ray.get(consume.remote(*refs))
 #     finally:
 #         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Need to fix up for Windows.")
+def test_plasma_allocate(shutdown_only):
+    address = ray.init(
+        object_store_memory=300 * 1024**2,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+        },
+        _temp_dir="/tmp/for_test_plasma_allocate")
+    res = []
+    data = np.random.randint(
+        low=0, high=256, size=(90 * 1024**2, ), dtype=np.uint8)
+    for _ in range(3):
+        res.append(ray.put(data))
+    # keep reference for second and third object, force evict first object
+    _ = ray.get(res[1:])  # noqa
+    # keep reference for fourth object, avoid released by plasma GC.
+    __ = ray.put(data)  # noqa
+
+    # Check fourth object allocate in memory.
+    _check_spilled_mb(address, spilled=180)
+
 
 if __name__ == "__main__":
     import sys

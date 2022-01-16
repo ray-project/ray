@@ -2,10 +2,14 @@ import copy
 import glob
 import logging
 import os
-from typing import Dict, Optional, List
+import warnings
+from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
 
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
+if TYPE_CHECKING:
+    from ray.tune.trial import Trial
+    from ray.tune.analysis import ExperimentAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +216,66 @@ class Searcher:
         """
         raise NotImplementedError
 
+    def add_evaluated_trials(self, trials_or_analysis: Union["Trial", List[
+            "Trial"], "ExperimentAnalysis"], metric: str):
+        """Pass results from trials that have been evaluated separately.
+
+        This method allows for information from outside the
+        suggest - on_trial_complete loop to be passed to the search
+        algorithm.
+        This functionality depends on the underlying search algorithm
+        and may not be always available (same as ``add_evaluated_point``.)
+
+        Args:
+            trials_or_analysis (Trial|List[Trial]|ExperimentAnalysis):
+                Trials to pass results form to the searcher.
+            metric (str): Metric name reported by trials used for
+                determining the objective value.
+
+        """
+        if self.add_evaluated_point == Searcher.add_evaluated_point:
+            raise NotImplementedError
+
+        # lazy imports to avoid circular dependencies
+        from ray.tune.trial import Trial
+        from ray.tune.analysis import ExperimentAnalysis
+        from ray.tune.result import DONE
+
+        if isinstance(trials_or_analysis, Trial):
+            trials_or_analysis = [trials_or_analysis]
+        elif isinstance(trials_or_analysis, ExperimentAnalysis):
+            trials_or_analysis = trials_or_analysis.trials
+
+        any_trial_had_metric = False
+
+        def trial_to_points(trial: Trial) -> Dict[str, Any]:
+            nonlocal any_trial_had_metric
+            has_trial_been_pruned = (trial.status == Trial.TERMINATED and
+                                     not trial.last_result.get(DONE, False))
+            has_trial_finished = (trial.status == Trial.TERMINATED
+                                  and trial.last_result.get(DONE, False))
+            if not any_trial_had_metric:
+                any_trial_had_metric = (metric in trial.last_result
+                                        and has_trial_finished)
+            if Trial.TERMINATED and metric not in trial.last_result:
+                return None
+            return dict(
+                parameters=trial.config,
+                value=trial.last_result.get(metric, None),
+                error=trial.status == Trial.ERROR,
+                pruned=has_trial_been_pruned,
+                intermediate_values=None,  # we do not save those
+            )
+
+        for trial in trials_or_analysis:
+            kwargs = trial_to_points(trial)
+            if kwargs:
+                self.add_evaluated_point(**kwargs)
+
+        if not any_trial_had_metric:
+            warnings.warn("No completed trial returned the specified metric. "
+                          "Make sure the name you have passed is correct. ")
+
     def save(self, checkpoint_path: str):
         """Save state to path for this search algorithm.
 
@@ -265,6 +329,22 @@ class Searcher:
 
         """
         raise NotImplementedError
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        """Set max concurrent trials this searcher can run.
+
+        This method will be called on the wrapped searcher by the
+        ``ConcurrencyLimiter``. It is intended to allow for searchers
+        which have custom, internal logic handling max concurrent trials
+        to inherit the value passed to ``ConcurrencyLimiter``.
+
+        If this method returns False, it signifies that no special
+        logic for handling this case is present in the searcher.
+
+        Args:
+            max_concurrent (int): Number of maximum concurrent trials.
+        """
+        return False
 
     def get_state(self) -> Dict:
         raise NotImplementedError
@@ -343,6 +423,13 @@ class Searcher:
 class ConcurrencyLimiter(Searcher):
     """A wrapper algorithm for limiting the number of concurrent trials.
 
+    Certain Searchers have their own internal logic for limiting
+    the number of concurrent trials. If such a Searcher is passed to a
+    ``ConcurrencyLimiter``, the ``max_concurrent`` of the
+    ``ConcurrencyLimiter`` will override the ``max_concurrent`` value
+    of the Searcher. The ``ConcurrencyLimiter`` will then let the
+    Searcher's internal logic take over.
+
     Args:
         searcher (Searcher): Searcher object that the
             ConcurrencyLimiter will manage.
@@ -372,6 +459,7 @@ class ConcurrencyLimiter(Searcher):
         self.live_trials = set()
         self.num_unfinished_live_trials = 0
         self.cached_results = {}
+        self._limit_concurrency = True
 
         if not isinstance(searcher, Searcher):
             raise RuntimeError(
@@ -379,10 +467,33 @@ class ConcurrencyLimiter(Searcher):
                 f"objects (got {type(searcher)}). Please try to pass "
                 f"`max_concurrent` to the search generator directly.")
 
+        self._set_searcher_max_concurrency()
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
+    def _set_searcher_max_concurrency(self):
+        # If the searcher has special logic for handling max concurrency,
+        # we do not do anything inside the ConcurrencyLimiter
+        self._limit_concurrency = not self.searcher.set_max_concurrency(
+            self.max_concurrent)
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        # Determine if this behavior is acceptable, or if it should
+        # raise an exception.
+        self.max_concurrent = max_concurrent
+        return True
+
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
+        self._set_searcher_max_concurrency()
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config, **spec)
+
     def suggest(self, trial_id: str) -> Optional[Dict]:
+        if not self._limit_concurrency:
+            return self.searcher.suggest(trial_id)
+
         assert trial_id not in self.live_trials, (
             f"Trial ID {trial_id} must be unique: already found in set.")
         if len(self.live_trials) >= self.max_concurrent:
@@ -402,6 +513,10 @@ class ConcurrencyLimiter(Searcher):
                           trial_id: str,
                           result: Optional[Dict] = None,
                           error: bool = False):
+        if not self._limit_concurrency:
+            return self.searcher.on_trial_complete(
+                trial_id, result=result, error=error)
+
         if trial_id not in self.live_trials:
             return
         elif self.batch:
@@ -449,14 +564,3 @@ class ConcurrencyLimiter(Searcher):
 
     def restore(self, checkpoint_path: str):
         self.searcher.restore(checkpoint_path)
-
-    def on_pause(self, trial_id: str):
-        self.searcher.on_pause(trial_id)
-
-    def on_unpause(self, trial_id: str):
-        self.searcher.on_unpause(trial_id)
-
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
-        return set_search_properties_backwards_compatible(
-            self.searcher.set_search_properties, metric, mode, config, **spec)

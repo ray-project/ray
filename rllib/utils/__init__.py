@@ -1,3 +1,4 @@
+import contextlib
 from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
@@ -8,6 +9,7 @@ from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
+from ray.rllib.utils.pre_checks.env import check_env
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
@@ -58,7 +60,7 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
-class NullContextManager:
+class NullContextManager(contextlib.AbstractContextManager):
     """No-op context manager"""
 
     def __init__(self):
@@ -76,6 +78,7 @@ force_tuple = partial(force_list, to_tuple=True)
 __all__ = [
     "add_mixins",
     "check",
+    "check_env",
     "check_compute_single_action",
     "check_train_results",
     "deep_update",

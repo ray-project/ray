@@ -9,10 +9,10 @@ import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
-from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import \
-    AssertNumEvalEpisodesCallback
+    AssertEvalCallback
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -33,15 +33,20 @@ class TestTrainer(unittest.TestCase):
         """
         # Given:
         standard_config = copy.deepcopy(COMMON_CONFIG)
+        trainer = pg.PGTrainer(env="CartPole-v0", config=standard_config)
 
-        # When (we validate config 2 times), ...
-        Trainer._validate_config(standard_config)
+        # When (we validate config 2 times).
+        # Try deprecated `Trainer._validate_config()` method (static).
+        trainer._validate_config(standard_config, trainer)
         config_v1 = copy.deepcopy(standard_config)
-        Trainer._validate_config(standard_config)
+        # Try new method: `Trainer.validate_config()` (non-static).
+        trainer.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
-        # ... then ...
+        # Make sure nothing changed.
         self.assertEqual(config_v1, config_v2)
+
+        trainer.stop()
 
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
@@ -126,13 +131,13 @@ class TestTrainer(unittest.TestCase):
         config.update({
             "env": "CartPole-v0",
             "evaluation_interval": 2,
-            "evaluation_num_episodes": 2,
+            "evaluation_duration": 2,
             "evaluation_config": {
                 "gamma": 0.98,
             },
             # Use a custom callback that asserts that we are running the
             # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
+            "callbacks": AssertEvalCallback,
         })
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
@@ -156,6 +161,39 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("episode_reward_mean" in r1["evaluation"])
             self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
+    def test_evaluation_option_always_attach_eval_metrics(self):
+        config = dqn.DEFAULT_CONFIG.copy()
+        config.update({
+            "env": "CartPole-v0",
+            "evaluation_interval": 2,
+            "evaluation_duration": 2,
+            "evaluation_duration_unit": "episodes",
+            "evaluation_config": {
+                "gamma": 0.98,
+            },
+            "always_attach_evaluation_results": True,
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertEvalCallback,
+        })
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = dqn.DQNTrainer(config=config)
+            # Should always see latest available eval results.
+            r0 = trainer.train()
+            r1 = trainer.train()
+            r2 = trainer.train()
+            r3 = trainer.train()
+            trainer.stop()
+
+            # Eval results are not available at step 0.
+            # But step 3 should still have it, even though no eval was
+            # run during that step.
+            self.assertTrue("evaluation" in r0)
+            self.assertTrue("evaluation" in r1)
+            self.assertTrue("evaluation" in r2)
+            self.assertTrue("evaluation" in r3)
+
     def test_evaluation_wo_evaluation_worker_set(self):
         config = a3c.DEFAULT_CONFIG.copy()
         config.update({
@@ -164,13 +202,13 @@ class TestTrainer(unittest.TestCase):
             "evaluation_interval": None,
             # Use a custom callback that asserts that we are running the
             # configured exact number of episodes per evaluation.
-            "callbacks": AssertNumEvalEpisodesCallback,
+            "callbacks": AssertEvalCallback,
         })
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
-            self.assertRaisesRegexp(
+            self.assertRaisesRegex(
                 ValueError, "Cannot evaluate w/o an evaluation worker set",
                 trainer_wo_env_on_driver.evaluate)
             trainer_wo_env_on_driver.stop()

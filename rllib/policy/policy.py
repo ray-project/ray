@@ -4,8 +4,9 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
+import platform
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -21,7 +22,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+    T, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -98,9 +99,11 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
+        self.observation_space_struct = get_base_struct_from_space(
+            observation_space)
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
@@ -636,6 +639,27 @@ class Policy(metaclass=ABCMeta):
         self.set_weights(state["weights"])
         self.global_timestep = state["global_timestep"]
 
+    @ExperimentalAPI
+    def apply(self,
+              func: Callable[["Policy", Optional[Any], Optional[Any]], T],
+              *args, **kwargs) -> T:
+        """Calls the given function with this Policy instance.
+
+        Useful for when the Policy class has been converted into a ActorHandle
+        and the user needs to execute some functionality (e.g. add a property)
+        on the underlying policy object.
+
+        Args:
+            func: The function to call, with this Policy as first
+                argument, followed by args, and kwargs.
+            args: Optional additional args to pass to the function call.
+            kwargs: Optional additional kwargs to pass to the function call.
+
+        Returns:
+            The return value of the function call.
+        """
+        return func(self, *args, **kwargs)
+
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
         """Called on an update to global vars.
@@ -694,6 +718,15 @@ class Policy(metaclass=ABCMeta):
                 this policy or None.
         """
         return None
+
+    def get_host(self) -> str:
+        """Returns the computer's network name.
+
+        Returns:
+            The computer's networks name or an empty string, if the network
+            name could not be determined.
+        """
+        return platform.node()
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
@@ -909,13 +942,19 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            if not self.config["_disable_preprocessor_api"] and \
-                    isinstance(view_req.space,
-                               (gym.spaces.Dict, gym.spaces.Tuple)):
+            data_col = view_req.data_col or view_col
+            # Flattened dummy batch.
+            if (isinstance(view_req.space,
+                           (gym.spaces.Tuple, gym.spaces.Dict))) and \
+                    ((data_col == SampleBatch.OBS and
+                      not self.config["_disable_preprocessor_api"]) or
+                     (data_col == SampleBatch.ACTIONS and
+                      not self.config.get("_disable_action_flattening"))):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
+            # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:

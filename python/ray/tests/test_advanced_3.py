@@ -1,6 +1,5 @@
 # coding: utf-8
 import glob
-import json
 import logging
 import os
 import sys
@@ -25,6 +24,7 @@ import setproctitle
 
 from ray._private.test_utils import (check_call_ray, wait_for_condition,
                                      wait_for_num_actors)
+from ray._private.runtime_env.utils import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -462,12 +462,28 @@ def test_ray_address_environment_variable(ray_start_cluster):
     # ray cluster and connecting to an existing one.
 
     # Make sure we connect to an existing cluster if
-    # RAY_ADDRESS is set.
+    # RAY_ADDRESS is set to the cluster address.
     os.environ["RAY_ADDRESS"] = address
     ray.init()
     assert "CPU" not in ray.state.cluster_resources()
-    del os.environ["RAY_ADDRESS"]
     ray.shutdown()
+    del os.environ["RAY_ADDRESS"]
+
+    # Make sure we connect to an existing cluster if
+    # RAY_ADDRESS is set to "auto".
+    os.environ["RAY_ADDRESS"] = "auto"
+    ray.init()
+    assert "CPU" not in ray.state.cluster_resources()
+    ray.shutdown()
+    del os.environ["RAY_ADDRESS"]
+
+    # Prefer `address` parameter to the `RAY_ADDRESS` environment variable,
+    # when `address` is not `auto`.
+    os.environ["RAY_ADDRESS"] = "test"
+    ray.init(address=address)
+    assert "CPU" not in ray.state.cluster_resources()
+    ray.shutdown()
+    del os.environ["RAY_ADDRESS"]
 
     # Make sure we start a new cluster if RAY_ADDRESS is not set.
     ray.init()
@@ -582,6 +598,7 @@ def test_accelerator_type_api(shutdown_only):
         lambda: ray.available_resources()[resource_name] < quantity)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 def test_detect_docker_cpus():
     # No limits set
     with tempfile.NamedTemporaryFile(
@@ -738,8 +755,9 @@ def test_sync_job_config(shutdown_only):
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
-    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
+    job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
+                                 runtime_env_info.serialized_runtime_env)
+    assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
     @ray.remote
     def get_job_config():
@@ -751,8 +769,9 @@ def test_sync_job_config(shutdown_only):
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    job_runtime_env = json.loads(job_config.runtime_env.serialized_runtime_env)
-    assert job_runtime_env["env_vars"] == runtime_env["env_vars"]
+    job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
+                                 runtime_env_info.serialized_runtime_env)
+    assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
 
 def test_duplicated_arg(ray_start_cluster):

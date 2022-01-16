@@ -1,19 +1,19 @@
+from collections import defaultdict
 import logging
 import os
-import time
-
-import numpy as np
-import json
 import random
+import time
+from typing import Dict
 import uuid
 
 import ray._private.utils
 
 from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import Trainable
+from ray.tune.callback import Callback
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
-from ray.tune.callback import Callback
+from ray.tune.trial import Trial
 
 MOCK_REMOTE_DIR = os.path.join(ray._private.utils.get_user_temp_dir(),
                                "mock-tune-remote") + os.sep
@@ -80,36 +80,6 @@ class MockDurableTrainer(_MockTrainer):
         return mock_storage_client()
 
 
-class MyTrainableClass(Trainable):
-    """Example agent whose learning curve is a random sigmoid.
-
-    The dummy hyperparameters "width" and "height" determine the slope and
-    maximum reward value reached.
-    """
-
-    def setup(self, config):
-        self.timestep = 0
-
-    def step(self):
-        self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
-        v *= self.config.get("height", 1)
-
-        # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy.
-        return {"episode_reward_mean": v}
-
-    def save_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "w") as f:
-            f.write(json.dumps({"timestep": self.timestep}))
-        return path
-
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path) as f:
-            self.timestep = json.loads(f.read())["timestep"]
-
-
 class FailureInjectorCallback(Callback):
     """Adds random failure injection to the TrialExecutor."""
 
@@ -155,3 +125,60 @@ class FailureInjectorCallback(Callback):
                                      "Retrying {} more times".format(
                                          str(failures),
                                          str(max_failures - failures)))
+
+
+class TrialStatusSnapshot:
+    """A sequence of statuses of trials as they progress.
+
+    If all trials keep previous status, no snapshot is taken.
+    """
+
+    def __init__(self):
+        self._snapshot = []
+
+    def append(self, new_snapshot: Dict[str, str]):
+        """May append a new snapshot to the sequence."""
+        if not new_snapshot:
+            # Don't add an empty snapshot.
+            return
+        if not self._snapshot or new_snapshot != self._snapshot[-1]:
+            self._snapshot.append(new_snapshot)
+
+    def max_running_trials(self) -> int:
+        """Outputs the max number of running trials at a given time.
+
+        Usually used to assert certain number given resource restrictions.
+        """
+        result = 0
+        for snapshot in self._snapshot:
+            count = 0
+            for trial_id in snapshot:
+                if snapshot[trial_id] == Trial.RUNNING:
+                    count += 1
+            result = max(result, count)
+
+        return result
+
+    def all_trials_are_terminated(self) -> bool:
+        """True if all trials are terminated."""
+        if not self._snapshot:
+            return False
+        last_snapshot = self._snapshot[-1]
+        return all(last_snapshot[trial_id] == Trial.TERMINATED
+                   for trial_id in last_snapshot)
+
+
+class TrialStatusSnapshotTaker(Callback):
+    """Collects a sequence of statuses of trials as they progress.
+
+    If all trials keep previous status, no snapshot is taken.
+    """
+
+    def __init__(self, snapshot: TrialStatusSnapshot):
+        self._snapshot = snapshot
+
+    def on_step_end(self, iteration, trials, **kwargs):
+        new_snapshot = defaultdict(str)
+        for trial in trials:
+            new_snapshot[trial.trial_id] = trial.status
+        self._snapshot.append(new_snapshot)

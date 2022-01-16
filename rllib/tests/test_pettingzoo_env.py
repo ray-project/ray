@@ -7,7 +7,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.agents.registry import get_trainer_class
 
-from pettingzoo.butterfly import pistonball_v4
+from pettingzoo.butterfly import pistonball_v5
 from pettingzoo.mpe import simple_spread_v2
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
@@ -19,15 +19,15 @@ class TestPettingZooEnv(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_pettingzoo_pistonball_v4_policies_are_dict_env(self):
+    def test_pettingzoo_pistonball_v5_policies_are_dict_env(self):
         def env_creator(config):
-            env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
+            env = pistonball_v5.env()
             env = dtype_v0(env, dtype=float32)
             env = color_reduction_v0(env, mode="R")
             env = normalize_obs_v0(env)
             return env
 
-        config = deepcopy(get_trainer_class("PPO")._default_config)
+        config = deepcopy(get_trainer_class("PPO").get_default_config())
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
         register_env("pistonball",
@@ -70,7 +70,7 @@ class TestPettingZooEnv(unittest.TestCase):
 
         agent_class = get_trainer_class("PPO")
 
-        config = deepcopy(agent_class._default_config)
+        config = deepcopy(agent_class.get_default_config())
 
         config["multiagent"] = {
             # Set of policy IDs (by default, will use Trainer's

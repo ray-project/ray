@@ -189,8 +189,14 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",
-        sha256 = "d21e155ac9a455831f81608bb06620e4a1d75012a630faf11f4c25ad10cfc9bb",
+        url = "https://github.com/cython/cython/archive/3028e8c7ac296bc848d996e397c3354b3dbbd431.tar.gz",
+        sha256 = "31ea23c2231ddee8572a2a5effd54952e16a1b44e9a4cb3eb645418f8accf20d",
+    )
+
+    auto_http_archive(
+        name = "com_github_johnynek_bazel_jar_jar",
+        url = "https://github.com/johnynek/bazel_jar_jar/archive/171f268569384c57c19474b04aebe574d85fde0d.tar.gz",
+        sha256 = "97c5f862482a05f385bd8f9d28a9bbf684b0cf3fae93112ee96f3fb04d34b193",
     )
 
     auto_http_archive(
@@ -207,8 +213,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20210324.2.tar.gz",
-        sha256 = "59b862f50e710277f8ede96f083a5bb8d7c9595376146838b9580be90374ee1f",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.tar.gz",
+        sha256 = "dcf71b9cba8dc0ca9940c4b316a0c796be8fab42b070bb6b7cab62b48f0e66c4",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -227,23 +233,28 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.38.1.tar.gz",
-        sha256 = "f60e5b112913bf776a22c16a3053cc02cf55e60bf27a959fd54d7aaf8e2da6e8",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.42.0.tar.gz",
+        sha256 = "b2f2620c762427bfeeef96a68c1924319f384e877bc0e084487601e4cc6e434c",
         patches = [
             "//thirdparty/patches:grpc-cython-copts.patch",
+            # Delete after upgrading from 1.42.0
+            "//thirdparty/patches:grpc-default-initialization.patch",
             "//thirdparty/patches:grpc-python.patch",
-            "//thirdparty/patches:grpc-windows-python-header-path.patch",
         ],
     )
 
-    auto_http_archive(
+    http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
+        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
+        # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
-        url = "https://github.com/google/boringssl/archive/688fc5cf5428868679d2ae1072cad81055752068.tar.gz",
-        sha256 = "f8616dff15cb8aad6705af53c7caf7a5f1103b6aaf59c76b55995e179d47f89c",
+        sha256 = "e168777eb0fc14ea5a65749a2f53c095935a6ea65f38899a289808fb0c221dc4",
+        strip_prefix = "boringssl-4fb158925f7753d80fb858cb0239dff893ef9f15",
+        urls = [
+            "https://storage.googleapis.com/grpc-bazel-mirror/github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
+            "https://github.com/google/boringssl/archive/4fb158925f7753d80fb858cb0239dff893ef9f15.tar.gz",
+        ],
     )
 
     auto_http_archive(

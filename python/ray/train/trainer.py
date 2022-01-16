@@ -16,7 +16,9 @@ from ray.train.utils import RayDataset
 from ray.train.checkpoint import CheckpointStrategy, TuneCheckpointManager, \
     CheckpointManager
 from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
-    TUNE_CHECKPOINT_FILE_NAME
+    TUNE_CHECKPOINT_FILE_NAME, ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
@@ -46,6 +48,14 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "horovod": "HorovodConfig",
     "tensorflow": "TensorflowConfig",
     "torch": "TorchConfig"
+}
+
+# The environment variables that need to be propagated from the driver to the
+# `BackendExecutor` actor via runtime env.
+BACKEND_ENV_VARS = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV
 }
 
 
@@ -112,6 +122,15 @@ class Trainer:
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
+        if not ray.is_initialized():
+            ray.init()
+
+        if "GPU" in ray.available_resources() and not use_gpu:
+            logger.info("GPUs are detected in your Ray cluster, but GPU "
+                        "training is not enabled for Ray Train. To enable "
+                        "GPU training, make sure to set `use_gpu` to True "
+                        "when instantiating your Trainer.")
+
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
@@ -143,15 +162,23 @@ class Trainer:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker.")
 
+        runtime_env = {
+            "env_vars": {
+                var_name: os.environ[var_name]
+                for var_name in BACKEND_ENV_VARS if var_name in os.environ
+            }
+        }
+
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
 
-        self._backend_executor_actor = remote_executor.remote(
-            backend_config=self._backend_config,
-            num_workers=num_workers,
-            num_cpus_per_worker=num_cpus,
-            num_gpus_per_worker=num_gpus,
-            additional_resources_per_worker=resources_per_worker,
-            max_retries=max_retries)
+        self._backend_executor_actor = remote_executor.options(
+            runtime_env=runtime_env).remote(
+                backend_config=self._backend_config,
+                num_workers=num_workers,
+                num_cpus_per_worker=num_cpus,
+                num_gpus_per_worker=num_gpus,
+                additional_resources_per_worker=resources_per_worker,
+                max_retries=max_retries)
 
         if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
@@ -201,7 +228,7 @@ class Trainer:
 
     def _is_tune_enabled(self):
         """Whether or not this Trainer is part of a Tune session."""
-        return tune is not None and tune.is_session_enabled()
+        return TUNE_INSTALLED and tune.is_session_enabled()
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
@@ -263,7 +290,8 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.latest_run_dir)
+            callback.start_training(
+                logdir=str(self.latest_run_dir), config=config or {})
 
         train_func = self._get_train_func(train_func, config)
 
@@ -609,7 +637,6 @@ class TrainingIterator:
         self._run_with_error_handling(
             lambda: ray.get(self._backend_executor_actor.start_training.remote(
                 train_func=train_func,
-                run_dir=run_dir,
                 dataset=dataset,
                 checkpoint=checkpoint_dict
             ))

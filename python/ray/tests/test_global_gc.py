@@ -58,6 +58,8 @@ def test_auto_local_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.xfail(
+    ray.cluster_utils.cluster_not_supported, reason="cluster not supported")
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
@@ -108,6 +110,8 @@ def test_global_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.xfail(
+    ray.cluster_utils.cluster_not_supported, reason="cluster not supported")
 def test_global_gc_when_full(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):
