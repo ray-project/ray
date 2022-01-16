@@ -140,7 +140,7 @@ object [#f2]_:
 - In line 4, it then passes this article text into the ``summarize`` function
   and returns the value.
 
-Note that lines 3 and 4 have defined our HTTP API schema. The HTTP requests
+Note that lines 3 and 4 have defined our HTTP request schema. The HTTP requests
 sent to this endpoint must have a ``"txt"`` query parameter that contains a
 string. In general, you can accept HTTP data using these query parameters or
 the request body. Additionally, you can add other Serve deployments with
