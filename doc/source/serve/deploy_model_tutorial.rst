@@ -40,7 +40,7 @@ generate summaries of text.
   the dictionary.
 
 The file can be run locally by executing the Python script, which uses the
-model to summarize an article about the Apollo 11 moon landing.
+model to summarize an article about the Apollo 11 moon landing [#f1]_.
 
 .. code-block:: bash
 
@@ -123,7 +123,7 @@ Now that we have defined our ``summarize`` function, connected to a Ray
 Cluster, and started the Ray Serve runtime, we can define a function that
 accepts HTTP requests and routes them to the ``summarize`` function. We
 define a function called ``router`` that takes in a Starlette ``request``
-object [#f1]_:
+object [#f2]_:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
   :linenos:
@@ -369,6 +369,10 @@ and Python web servers, be sure to check out :doc:`tutorials/index`.
 
 .. rubric:: Footnotes
 
-.. [#f1] `Starlette <https://www.starlette.io/>`_ is a web server framework
+.. [#f1] The article text comes from the New York Times article "Astronauts
+   Land on Plain; Collect Rocks, Plant Flag" archived
+   `here <https://archive.nytimes.com/www.nytimes.com/library/national/science/nasa/072169sci-nasa.html>`_.
+
+.. [#f2] `Starlette <https://www.starlette.io/>`_ is a web server framework
    used by Ray Serve. Its `Request <https://www.starlette.io/requests/>`_ class
    provides a nice interface for incoming HTTP requests.
