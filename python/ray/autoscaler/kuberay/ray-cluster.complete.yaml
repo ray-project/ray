@@ -28,6 +28,7 @@ spec:
       dashboard-host: '0.0.0.0'
       num-cpus: '1' # can be auto-completed from the limits
       node-ip-address: $MY_POD_IP # auto-completed as the head pod IP
+      block: 'true'
     #pod template
     template:
       metadata:
@@ -46,11 +47,6 @@ spec:
         - name: ray-head
           image: rayproject/ray:latest
           imagePullPolicy: Always
-          # you can have any command and args here to run your code. 
-          # the below command/args will be appended after the Ray start command and it args, and executed after Ray start.
-          command: ["python3"]
-          args:
-          - '/opt/example.py'
           env:
           - name: CPU_REQUEST
             valueFrom:
@@ -146,6 +142,7 @@ spec:
     rayStartParams:
       redis-password: '5241590000000000'
       node-ip-address: $MY_POD_IP
+      block: 'true'
     #pod template
     template:
       metadata:
