@@ -1,4 +1,4 @@
-from typing import Union, Generic, Tuple, List, Optional
+from typing import Union, Generic, Tuple, List
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
