@@ -141,17 +141,12 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
-      -python/ray/tests:test_actor_advanced # timeout
-      -python/ray/tests:test_actor_failures # flaky
+      -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
-      -python/ray/tests:test_component_failures
-      -python/ray/tests:test_component_failures_3 # timeout
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_failure
-      -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
@@ -208,7 +203,7 @@ test_large_gcs() {
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
       --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1 --test_env=RAY_gcs_storage=memory \
-      -- python/ray/tests/... -//python/ray/tests:test_failure_2
+      -- python/ray/tests/...
 }
 
 test_cpp() {
