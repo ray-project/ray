@@ -44,6 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -230,11 +231,9 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (isinstance(applied, list)
+                        or isinstance(applied, pa.Table)
+                        or isinstance(applied, pd.core.frame.DataFrame)):
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
@@ -371,6 +370,7 @@ class Dataset(Generic[T]):
                            stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
+        stage_info = {}
         count = self.count()
         indices = []
         cur_idx = 0
@@ -383,6 +383,8 @@ class Dataset(Generic[T]):
             # TODO this saves memory: self._blocks.clear()
         else:
             splits = [self]
+        # TODO(ekl) include stats for the split tasks. We may also want to
+        # consider combining the split and coalesce tasks as an optimization.
 
         # Coalesce each split into a single block.
         reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
@@ -400,26 +402,28 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO)
+                input_files=None, exec_stats=None)  # No stats for empty block.
             empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
                                                   empty_meta)
                                                  for _ in range(num_empties)])
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
-        return Dataset(
-            BlockList(new_blocks, new_metadata), self._epoch,
-            self._stats.child_TODO("repartition"))
+        blocks = BlockList(new_blocks, new_metadata)
+        return Dataset(blocks, self._epoch, stats.build(blocks))
 
     def random_shuffle(
             self,
@@ -814,6 +818,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        start_time = time.perf_counter()
         context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
@@ -848,9 +853,12 @@ class Dataset(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
+        dataset_stats = DatasetStats(
+            stages={"union": []}, parent=[d._stats for d in datasets])
+        dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.child_TODO("union"))
+            dataset_stats)
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -882,6 +890,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max())
             >>> ray.data.range_arrow(100).aggregate(
                 Max("value"), Mean("value"))
@@ -932,7 +941,7 @@ class Dataset(Generic[T]):
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if dataset_format == "arrow":
+        if dataset_format == "arrow" or dataset_format == "pandas":
             # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
@@ -965,32 +974,35 @@ class Dataset(Generic[T]):
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset.")
+                    "use a callable `on` argument or use an Arrow or Pandas"
+                    " Dataset instead of a simple Dataset.")
         return on
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
-        "simple".
+        "pandas", "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
+
         try:
             import pyarrow as pa
-        except ModuleNotFoundError:
-            return "simple"
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine the format"
-                    " of the dataset")
             if isinstance(schema, pa.Schema):
                 return "arrow"
-            return "simple"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -1018,6 +1030,18 @@ class Dataset(Generic[T]):
         if not isinstance(on, list):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
@@ -1069,10 +1093,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1124,10 +1146,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1179,10 +1199,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
@@ -1234,10 +1252,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1299,10 +1315,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -1341,9 +1355,10 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(
-            sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.child_TODO("sort"))
+        stats_builder = self._stats.child_builder("sort")
+        blocks, stage_info = sort_impl(self._blocks, key, descending)
+        return Dataset(blocks, self._epoch,
+                       stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1368,6 +1383,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
+        stats_builder = self._stats.child_builder("zip")
         blocks1 = self.get_internal_block_refs()
         blocks2 = other.get_internal_block_refs()
 
@@ -1378,11 +1394,12 @@ class Dataset(Generic[T]):
                     len(blocks1), len(blocks2)))
 
         def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            stats = BlockExecStats.builder()
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
             return result, br.get_metadata(
-                input_files=[], exec_stats=BlockExecStats.TODO)
+                input_files=[], exec_stats=stats.build())
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
@@ -1395,9 +1412,8 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(
-            BlockList(blocks, metadata), self._epoch,
-            self._stats.child_TODO("zip"))
+        blocks = BlockList(blocks, metadata)
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -2255,10 +2271,10 @@ Dict[str, List[str]]]): The names of the columns
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2662,6 +2678,7 @@ def _sliding_window(iterable: Iterable, n: int):
 def _split_block(
         block: Block, meta: BlockMetadata, count: int, return_right_half: bool
 ) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
+    stats = BlockExecStats.builder()
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
     b0 = block.slice(0, count, copy=True)
@@ -2671,7 +2688,7 @@ def _split_block(
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files,
-        exec_stats=BlockExecStats.TODO)
+        exec_stats=stats.build())
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
         a1 = BlockAccessor.for_block(b1)
@@ -2680,7 +2697,7 @@ def _split_block(
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
-            exec_stats=BlockExecStats.TODO)
+            exec_stats=stats.build())
     else:
         b1 = None
         m1 = None

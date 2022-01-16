@@ -136,8 +136,8 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
                 item.max_len)
         # Numpy arrays.
         if isinstance(item, np.ndarray):
-            # np.object_ type (e.g. info dicts in train batch): leave as-is.
-            if item.dtype == np.object_:
+            # Object type (e.g. info dicts in train batch): leave as-is.
+            if item.dtype == object:
                 return item
             # Non-writable numpy-arrays will cause PyTorch warning.
             elif item.flags.writeable is False:

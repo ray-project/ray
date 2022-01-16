@@ -366,7 +366,7 @@ class ImpalaTrainer(Trainer):
                 {
                     # Evaluation (remote) workers.
                     # Note: The local eval worker is located on the driver
-                    # CPU.
+                    # CPU or not even created iff >0 eval workers.
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",

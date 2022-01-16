@@ -27,7 +27,12 @@ class LocalModeRayRuntime : public AbstractRayRuntime {
 
   ActorID GetNextActorID();
   ActorID GetCurrentActorID();
+  std::string Put(std::shared_ptr<msgpack::sbuffer> data);
+  const WorkerContext &GetWorkerContext();
   bool IsLocalMode() { return true; }
+
+ private:
+  WorkerContext worker_;
 };
 
 }  // namespace internal
