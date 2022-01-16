@@ -34,6 +34,6 @@ tabulate
 tensorflow==2.0.1
 torch
 torchvision
-uvicorn==0.16.0
+uvicorn
 werkzeug
 xlrd
