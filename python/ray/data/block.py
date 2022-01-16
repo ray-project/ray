@@ -23,15 +23,13 @@ AggType = TypeVar("AggType")
 
 # A function that extracts a concrete value from a record in a Dataset, used
 # in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
-# It can either be None (only allowed for the Python block type), the name of
-# a Dataset column or a lambda function that extracts the desired value from
-# the record.
+# It can either be None (intepreted as the identity function), the name
+# of a Dataset column, or a lambda function that extracts the desired value
+# from the object.
 KeyFn = Union[None, str, Callable[[T], Any]]
 
 
-def _validate_key_fn(ds: "Dataset",
-                     key: KeyFn,
-                     always_allow_none: bool = False) -> None:
+def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
     """Check the key function is valid on the given dataset."""
     try:
         fmt = ds._dataset_format()
@@ -45,7 +43,7 @@ def _validate_key_fn(ds: "Dataset",
         # Raises KeyError if key is not present in the schema.
         ds.schema().field(key)
     elif key is None:
-        if fmt != "simple" and not always_allow_none:
+        if fmt != "simple":
             raise ValueError(
                 "The `None` key '{}' requires dataset format to be "
                 "'simple', was '{}'.".format(key, fmt))
