@@ -109,12 +109,6 @@ def _load_kubernetes_defaults_config():
         os.path.dirname(ray_kubernetes.__file__), "defaults.yaml")
 
 
-# def _load_kuberay_defaults_config():
-#     import ray.autoscaler.kuberay as ray_kuberay
-#     return os.path.join(
-#         os.path.dirname(ray_kuberay.__file__), "defaults.yaml")
-
-
 def _load_aws_defaults_config():
     import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(ray_aws.__file__), "defaults.yaml")
