@@ -8,15 +8,16 @@ try:
 except ImportError:
     pandas = None
 
-from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder, SortKeyT, GroupKeyT
+    TableBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pyarrow
     import pandas
+    from ray.data.impl.sort import SortKeyT
 
 T = TypeVar("T")
 
@@ -147,11 +148,11 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _empty_table() -> "pandas.DataFrame":
         return PandasBlockBuilder._empty_table()
 
-    def _sample(self, n_samples: int, key: SortKeyT) -> "pandas.DataFrame":
+    def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
         return self._table[[k[0] for k in key]].sample(
             n_samples, ignore_index=True)
 
-    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+    def sort_and_partition(self, boundaries: List[T], key: "SortKeyT",
                            descending: bool) -> List["pandas.DataFrame"]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         delegated_result = BlockAccessor.for_block(
@@ -160,7 +161,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             BlockAccessor.for_block(_).to_pandas() for _ in delegated_result
         ]
 
-    def combine(self, key: GroupKeyT,
+    def combine(self, key: KeyFn,
                 aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         return BlockAccessor.for_block(self.to_arrow()).combine(
@@ -168,7 +169,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List["pandas.DataFrame"], key: SortKeyT,
+            blocks: List["pandas.DataFrame"], key: "SortKeyT",
             _descending: bool) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
@@ -178,7 +179,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List["pandas.DataFrame"], key: GroupKeyT,
+            blocks: List["pandas.DataFrame"], key: KeyFn,
             aggs: Tuple[AggregateFn]
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         # TODO (kfstorm): A workaround to pass tests. Not efficient.

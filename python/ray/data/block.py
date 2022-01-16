@@ -1,6 +1,6 @@
 import time
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+    Optional, Callable, TYPE_CHECKING
 
 import numpy as np
 
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
-    from ray.data.grouped_dataset import GroupKeyT
+    from ray.data import Dataset
 
 import ray
 from ray.types import ObjectRef
@@ -20,6 +20,43 @@ T = TypeVar("T")
 U = TypeVar("U")
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
+
+# A function that extracts a concrete value from a record in a Dataset, used
+# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
+# It can either be None (only allowed for the Python block type), the name of
+# a Dataset column or a lambda function that extracts the desired value from
+# the record.
+KeyFn = Union[None, str, Callable[[T], Any]]
+
+
+def _validate_key_fn(ds: "Dataset",
+                     key: KeyFn,
+                     always_allow_none: bool = False) -> None:
+    """Check the key function is valid on the given dataset."""
+    try:
+        fmt = ds._dataset_format()
+    except ValueError:
+        # Dataset is empty/cleared, validation not possible.
+        return
+    if isinstance(key, str):
+        if fmt == "simple":
+            raise TypeError("String key '{}' requires dataset format to be "
+                            "'arrow' or 'pandas', was '{}'.".format(key, fmt))
+        # Raises KeyError if key is not present in the schema.
+        ds.schema().field(key)
+    elif key is None:
+        if fmt != "simple" and not always_allow_none:
+            raise NotImplementedError(
+                "The `None` key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt))
+    elif callable(key):
+        if fmt != "simple":
+            raise NotImplementedError(
+                "Callable key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt))
+    else:
+        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+
 
 # Represents a batch of records to be stored in the Ray object store.
 #
@@ -226,7 +263,7 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -239,7 +276,7 @@ class BlockAccessor(Generic[T]):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block], key: "GroupKeyT",
+            blocks: List[Block], key: KeyFn,
             agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

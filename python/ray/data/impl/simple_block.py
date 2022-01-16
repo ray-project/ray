@@ -1,24 +1,20 @@
 import random
 import sys
 import heapq
-from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    TYPE_CHECKING
+from typing import Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
+    from ray.data.impl.sort import SortKeyT
 
-from ray.data.impl.block_builder import BlockBuilder
 from ray.data.aggregate import AggregateFn
-from ray.data.impl.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    T, U, KeyType, AggType, BlockExecStats
-
-# A simple block can be sorted by value (None) or a lambda function (Callable).
-SortKeyT = Union[None, Callable[[T], Any]]
-GroupKeyT = Union[None, Callable[[T], KeyType]]
+    T, U, KeyType, AggType, BlockExecStats, KeyFn
+from ray.data.impl.block_builder import BlockBuilder
+from ray.data.impl.size_estimator import SizeEstimator
 
 
 class SimpleBlockBuilder(BlockBuilder[T]):
@@ -105,7 +101,7 @@ class SimpleBlockAccessor(BlockAccessor):
     def builder() -> SimpleBlockBuilder[T]:
         return SimpleBlockBuilder()
 
-    def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
+    def sample(self, n_samples: int = 1, key: "SortKeyT" = None) -> List[T]:
         if not callable(key) and key is not None:
             raise NotImplementedError(
                 "Python sort key must be either None or a callable "
@@ -116,7 +112,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return ret
         return [key(x) for x in ret]
 
-    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+    def sort_and_partition(self, boundaries: List[T], key: "SortKeyT",
                            descending: bool) -> List["Block[T]"]:
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
@@ -151,7 +147,7 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: GroupKeyT,
+    def combine(self, key: KeyFn,
                 aggs: Tuple[AggregateFn]) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
@@ -212,7 +208,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List[Block[T]], key: SortKeyT,
+            blocks: List[Block[T]], key: "SortKeyT",
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
@@ -222,7 +218,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
+            blocks: List[Block[Tuple[KeyType, AggType]]], key: KeyFn,
             aggs: Tuple[AggregateFn]
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.

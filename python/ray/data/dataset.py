@@ -15,8 +15,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
-        AggregateOnTs
+    from ray.data.grouped_dataset import GroupedDataset, AggregateOnTs
 
 import collections
 import itertools
@@ -26,7 +25,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
-    BlockPartition, BlockPartitionMetadata, BlockExecStats
+    BlockPartition, BlockPartitionMetadata, BlockExecStats, KeyFn, \
+    _validate_key_fn
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
@@ -860,7 +860,7 @@ class Dataset(Generic[T]):
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
             dataset_stats)
 
-    def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
+    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
 
         This is a lazy operation.
@@ -882,6 +882,7 @@ class Dataset(Generic[T]):
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
+        _validate_key_fn(self, key, always_allow_none=True)
         return GroupedDataset(self, key)
 
     def aggregate(self, *aggs: AggregateFn) -> U:
@@ -1319,10 +1320,9 @@ class Dataset(Generic[T]):
             return self._aggregate_result(ret)
 
     def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]] = None,
+             key: Union[KeyFn, List[KeyFn]] = None,
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
-        (experimental support)
 
         This is a blocking operation.
 
@@ -1335,9 +1335,6 @@ class Dataset(Generic[T]):
 
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
-
-            >>> # Sort by multiple columns (not yet supported).
-            >>> ds.sort([("field1", "ascending"), ("field2", "descending")])
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1355,6 +1352,13 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        if isinstance(key, list):
+            if not key:
+                raise ValueError("`key` must be a list of non-zero length")
+            for subkey in key:
+                _validate_key_fn(self, subkey)
+        else:
+            _validate_key_fn(self, key)
         stats_builder = self._stats.child_builder("sort")
         blocks, stage_info = sort_impl(self._blocks, key, descending)
         return Dataset(blocks, self._epoch,
