@@ -249,6 +249,10 @@ TEST(PrintLogTest, TestCheckOp) {
 
   RAY_CHECK_GT(i, 0);
   ASSERT_DEATH(RAY_CHECK_GT(i, 1), "1 vs 1");
+
+  int j = 0;
+  RAY_CHECK_NE(i, j);
+  ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
 }
 
 std::string TestFunctionLevel0() {
