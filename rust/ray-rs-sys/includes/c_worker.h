@@ -49,11 +49,11 @@ void c_worker_Initialize();
 
 void c_worker_Run();
 
-void c_worker_Log(char* msg);
+void c_worker_Log(const char* msg);
 
-void c_worker_AddLocalRef(char* id);
+void c_worker_AddLocalRef(const char* id);
 
-void c_worker_RemoveLocalRef(char* id);
+void c_worker_RemoveLocalRef(const char* id);
 
 // int c_worker_GetNextJobID(void *p);
 //
@@ -69,7 +69,7 @@ int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
                                    int num_input_value,
                                    int num_returns, char **object_ids);
 
-int c_worker_Get(char **object_ids, int object_ids_size, int timeout, DataValue **objects);
+int c_worker_Get(const char* const object_ids[], int object_ids_size, int timeout, DataValue **objects);
 
 int c_worker_Put(char **object_ids, int timeout, DataValue **objects, int objects_size);
 

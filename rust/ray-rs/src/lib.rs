@@ -17,7 +17,12 @@ pub use remote_functions::*;
 
 pub use std::ffi::CString;
 
-use std::{collections::{HashMap, HashSet}, sync::Mutex, os::raw::c_char, ops::Deref};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Mutex, Arc}, clone::Clone, os::raw::c_char,
+    ops::{Deref, Drop}, marker::PhantomData,
+    mem::drop,
+};
 
 use libloading::{Library, Symbol};
 
@@ -59,6 +64,38 @@ pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char) {
             let paths = path_str.split(":").collect();
             load_libraries_from_paths(&paths);
         }
+    }
+}
+
+// ObjectRef ought to be thread-safe (check this)
+pub struct ObjectRef<T>(Arc<ObjectRefInner<T>>);
+
+struct ObjectRefInner<T> {
+    id: ObjectID,
+    _phantom_data: PhantomData<T>,
+}
+
+impl<T> ObjectRef<T> {
+    fn new(id: ObjectID) -> Self {
+        util::add_local_ref(&id);
+        Self(
+            Arc::new(
+                ObjectRefInner::<T> {
+                    id: id,
+                    _phantom_data: PhantomData,
+                }
+            )
+        )
+    }
+
+    fn as_raw(&self) -> &ObjectID {
+        &self.0.as_ref().id
+    }
+}
+
+impl<T> Drop for ObjectRefInner<T> {
+    fn drop(&mut self) {
+        util::remove_local_ref(&self.id);
     }
 }
 
@@ -177,12 +214,6 @@ pub extern "C" fn rust_worker_execute(
     let mut ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
 
     unsafe {
-        let mut dv_ptr = c_worker_AllocateDataValue(
-            ret_owned.as_mut_ptr(),
-            ret_owned.len() as u64,
-            std::ptr::null_mut::<u8>(),
-            0,
-        );
         let ret_slice = std::slice::from_raw_parts(
             return_values.data as *mut *mut DataValue,
             return_values.len as usize,

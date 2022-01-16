@@ -39,14 +39,16 @@ macro_rules! impl_ray_function {
                 pub fn remote<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
                     &self,
                     $($arg: [<$argp Borrow>]),*
-                ) -> CString
+                ) -> ObjectRef<R>
                 {
                     let mut task_args = Vec::new();
                     $(
                         let result = rmp_serde::to_vec($arg.borrow()).unwrap();
                         task_args.push(result);
                     )*
-                    ray_rs_sys::internal::submit(self.ffi_lookup_name.clone(), &mut task_args)
+                    ObjectRef::new(
+                        ray_rs_sys::internal::submit(self.ffi_lookup_name.clone(), &mut task_args)
+                    )
                 }
 
                 pub fn ray_call(&self, args: RustBuffer) -> RustBuffer {
@@ -185,8 +187,8 @@ macro_rules! remote {
     }
 }
 
-pub fn get<R: serde::de::DeserializeOwned>(id : CString) -> R {
-    let buf = ray_rs_sys::internal::get_slice(id, -1);
+pub fn get<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
+    let buf = ray_rs_sys::internal::get_slice(id.as_raw(), -1);
     rmp_serde::from_read_ref::<_, R>(buf).unwrap()
 }
 

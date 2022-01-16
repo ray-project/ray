@@ -31,11 +31,12 @@ int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback) {
     return 1;
 }
 
+// We assume that the byte array is properly allocated, i.e.
+// has len == ID::Size()
 template <typename ID>
-inline ID ByteArrayToId(char *bytes) {
-  std::string id_str(ID::Size(), 0);
-  memcpy(&id_str.front(), bytes, ID::Size());
-  return ID::FromBinary(id_str);
+inline ID ByteArrayToId(const char *bytes) {
+  std::string str(bytes, ID::Size());
+  return ID::FromBinary(str);
 }
 
 DataBuffer *AllocateDataBuffer(uint8_t *ptr, int size) {
@@ -56,7 +57,7 @@ RAY_EXPORT DataValue* c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_
   return dv;
 }
 
-RAY_EXPORT void c_worker_Log(char *msg) {
+RAY_EXPORT void c_worker_Log(const char *msg) {
   RAY_LOG(INFO) << msg;
 }
 
@@ -456,19 +457,19 @@ DataBuffer *RayBufferToDataBuffer(const std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
-RAY_EXPORT void c_worker_AddLocalRef(char* id) {
+RAY_EXPORT void c_worker_AddLocalRef(const char* id) {
   // TODO: again, shouldn't this be uint8_t?
   auto obj_id = ByteArrayToId<ray::ObjectID>(id);
   ray::core::CoreWorkerProcess::GetCoreWorker().AddLocalReference(obj_id);
 }
 
-RAY_EXPORT void c_worker_RemoveLocalRef(char* id) {
+RAY_EXPORT void c_worker_RemoveLocalRef(const char* id) {
   // TODO: again, shouldn't this be uint8_t?
   auto obj_id = ByteArrayToId<ray::ObjectID>(id);
   ray::core::CoreWorkerProcess::GetCoreWorker().RemoveLocalReference(obj_id);
 }
 
-RAY_EXPORT int c_worker_Get(char **object_ids, int object_ids_size, int timeout,
+RAY_EXPORT int c_worker_Get(const char* const object_ids[], int object_ids_size, int timeout,
                             DataValue **objects) {
   std::vector<ray::ObjectID> object_ids_data;
   for (int i = 0; i < object_ids_size; i++) {

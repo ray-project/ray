@@ -1,3 +1,4 @@
+#![allow(non_upper_case_globals)]
 use ray_rs::*;
 
 remote! {
@@ -34,7 +35,7 @@ pub fn add_two_vecs(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
 remote! {
 pub fn add_two_vecs_nested(a: Vec<u64>, b: Vec<u64>) -> Vec<u64> {
     let objr = add_two_vecs.remote(&a, &b);
-    let res = get(objr);
+    let res = get(&objr);
     res
 }
 }

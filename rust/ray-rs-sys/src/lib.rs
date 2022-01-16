@@ -11,6 +11,33 @@ include!(env!("BAZEL_BINDGEN_SOURCE"));
 
 use std::os::raw::*;
 use std::ffi::CString;
+use c_vec::CVec;
+
+const ID_ARRAY_LEN: usize = 28;
+
+pub struct ObjectID(CVec<c_char>);
+
+impl ObjectID {
+    fn new(ptr: *mut c_char) -> Self {
+        Self(
+            unsafe {
+                CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| { libc::free(ptr as *mut c_void); })
+            }
+        )
+    }
+
+    fn as_slice(&self) -> &[c_char] {
+        self.0.as_ref()
+    }
+
+    fn as_ptr(&self) -> *const c_char {
+        self.0.as_ref().as_ptr()
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut c_char {
+        self.0.as_mut().as_mut_ptr()
+    }
+}
 
 // pub type execute_function
 
@@ -71,22 +98,21 @@ pub mod ray {
 }
 
 pub mod util {
-    use super::dv_as_slice;
-    use std::ffi::CString;
-    pub fn add_local_ref(id: CString) {
+    use super::*;
+    pub fn add_local_ref(id: &ObjectID) {
         unsafe {
-            super::c_worker_AddLocalRef(id.into_raw())
+            super::c_worker_AddLocalRef(id.as_ptr())
         }
     }
 
-    pub fn remove_local_ref(id: CString) {
+    pub fn remove_local_ref(id: &ObjectID) {
         unsafe {
-            super::c_worker_RemoveLocalRef(id.into_raw())
+            super::c_worker_RemoveLocalRef(id.as_ptr())
         }
     }
 
-    pub fn pretty_print_id(id: &CString) -> String {
-        id.as_bytes()
+    pub fn pretty_print_id(id: &ObjectID) -> String {
+        id.as_slice()
             .iter()
             .map(|x| format!("{:02x?}", x))
             .collect::<Vec<_>>()
@@ -107,7 +133,7 @@ pub mod util {
 pub mod internal {
     use super::*;
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
-    pub fn submit(fn_name: CString, args: &mut Vec<Vec<u8>>) -> CString {
+    pub fn submit(fn_name: CString, args: &mut Vec<Vec<u8>>) -> ObjectID {
         unsafe {
             // Create data
             let mut meta_vec = vec![0u8];
@@ -137,23 +163,23 @@ pub mod internal {
                 obj_ids.as_mut_ptr()
             );
 
-            let c_str_id = CString::from_raw(obj_ids[0]);
-            println!("ObjectID: {:x?}", util::pretty_print_id(&c_str_id));
-            c_str_id
+            let id = ObjectID::new(obj_ids[0]);
+            println!("ObjectID: {:x?}", util::pretty_print_id(&id));
+            id
         }
     }
 
-    pub fn get_slice<'a>(id: CString, timeout: i32) -> &'a mut [u8] {
+    pub fn get_slice<'a>(id: &ObjectID, timeout: i32) -> &'a mut [u8] {
         dv_as_slice(get(id, timeout))
     }
 
     #[inline]
-    fn get(id: CString, timeout: i32) -> DataValue {
+    fn get(id: &ObjectID, timeout: i32) -> DataValue {
         let mut data = vec![id.as_ptr()];
         let mut d_value: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
         unsafe {
             c_worker_Get(
-                data.as_ptr() as *mut *mut c_char,
+                data.as_ptr(),
                 1,
                 timeout,
                 d_value.as_ptr() as *mut *mut DataValue
@@ -248,7 +274,7 @@ pub mod test {
                 -1, data.as_mut_ptr(), data.len() as i32,
             );
 
-            let c_str_id = CString::from_raw(obj_ids[0]);
+            let c_str_id = CVec::from_raw(obj_ids[0]);
             println!("{:x?}", c_str_id);
 
             let mut get_data: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];

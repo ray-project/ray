@@ -84,16 +84,19 @@ mod test {
             ((0u64..VEC_SIZE as u64).collect(), (0u64..VEC_SIZE as u64).collect());
 
         let now = std::time::Instant::now();
-        let mut ids: Vec<_> = (0..num_jobs).map(|_| {
-            add_two_vecs_nested.remote(&a, &b)
-        }).collect();
+        {
+            let mut ids: Vec<_> = (0..num_jobs).map(|_| {
+                add_two_vecs_nested.remote(&a, &b)
+            }).collect();
 
-        ids.reverse();
-        println!("Submission: {:?}", now.elapsed().as_millis());
+            ids.reverse();
+            println!("Submission: {:?}", now.elapsed().as_millis());
 
-        let results: Vec<_> = (0..num_jobs).map(|_| {
-            get::<Vec<u64>>(ids.pop().unwrap())
-        }).collect();
+            let _results: Vec<_> = (0..num_jobs).map(|_| {
+                let obj_ref = ids.pop().unwrap();
+                (get::<Vec<u64>>(&obj_ref), get::<Vec<u64>>(&obj_ref))
+            }).collect();
+        }
 
         println!("Execute + Get: {:?}", now.elapsed().as_millis());
         try_shutdown();
