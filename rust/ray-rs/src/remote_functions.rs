@@ -44,10 +44,10 @@ macro_rules! impl_ray_function {
                     let mut task_args = Vec::new();
                     $(
                         let result = rmp_serde::to_vec($arg.borrow()).unwrap();
-                        task_args.push(result);
+                        task_args.push(result.as_slice());
                     )*
                     ObjectRef::new(
-                        ray_rs_sys::internal::submit(self.ffi_lookup_name.clone(), &mut task_args)
+                        ray_rs_sys::internal::submit(self.ffi_lookup_name.clone(), &task_args)
                     )
                 }
 

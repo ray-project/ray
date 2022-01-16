@@ -68,6 +68,8 @@ pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char) {
 }
 
 // ObjectRef ought to be thread-safe (check this)
+// An ObjectRef has special treament by the RaySerializer
+
 pub struct ObjectRef<T>(Arc<ObjectRefInner<T>>);
 
 struct ObjectRefInner<T> {
@@ -148,15 +150,17 @@ fn load_function_ptrs_from_library(lib: &Library) {
 pub extern "C" fn rust_worker_execute(
     _task_type: RayInt,
     ray_function_info: RaySlice,
-    args: RaySlice,
+    args: *const *const DataValue,
+    args_len: u64,
     return_values: RaySlice,
 ) {
     // TODO (jon-chuang): One should replace RustBuffer with RaySlice...
     // TODO (jon-chuang): Try to move unsafe into ray_rs_sys
+    // Replace all size_t with u64?
     let args_slice = unsafe {
         std::slice::from_raw_parts(
-            args.data as *mut *mut DataValue,
-            args.len as usize,
+            args,
+            args_len as usize,
         )
     };
 

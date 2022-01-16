@@ -39,7 +39,7 @@ inline ID ByteArrayToId(const char *bytes) {
   return ID::FromBinary(str);
 }
 
-DataBuffer *AllocateDataBuffer(uint8_t *ptr, int size) {
+DataBuffer *AllocateDataBuffer(const uint8_t *ptr, int size) {
   auto db = new DataBuffer();
   db->p = ptr;
   db->size = size;
@@ -49,12 +49,28 @@ DataBuffer *AllocateDataBuffer(uint8_t *ptr, int size) {
 // TODO(jon-chuang): what is the purpose of this RAY_EXPORT?
 
 // How do we ensure that this is destructed...?
-RAY_EXPORT DataValue* c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_size,
-                                                 uint8_t *meta_ptr, size_t meta_size) {
+
+// Data allocated via this method must be owned and not deallocated by the calling context
+// for as long as the resulting pointer lives, and the DataValue must be destructed by calling
+// c_worker_DeallocateDataValue
+RAY_EXPORT const DataValue* c_worker_AllocateDataValue(const uint8_t *data_ptr, size_t data_size,
+                                                       const uint8_t *meta_ptr, size_t meta_size) {
   auto dv = new DataValue();
   dv->data = AllocateDataBuffer(data_ptr, data_size);
   dv->meta = AllocateDataBuffer(meta_ptr, meta_size);
   return dv;
+}
+
+void c_worker_DeallocateDataValue(const DataValue *dv_ptr) {
+  if (dv_ptr != nullptr) {
+    if (dv_ptr->data != nullptr) {
+      delete dv_ptr->data;
+    }
+    if (dv_ptr->meta != nullptr) {
+      delete dv_ptr->meta;
+    }
+    delete dv_ptr;
+  }
 }
 
 RAY_EXPORT void c_worker_Log(const char *msg) {
@@ -97,7 +113,7 @@ ray::Status ExecutionCallback(
   fd_list.len = 1;
   fd_list.cap = 1;
 
-  std::vector<DataValue *> args_array_list;
+  std::vector<const DataValue *> args_array_list;
   for (auto &it : args) {
     auto data = it->GetData();
     // auto meta = it->GetMetadata();
@@ -105,15 +121,9 @@ ray::Status ExecutionCallback(
         data->Data(), data->Size(), nullptr, 0));//meta->Data(), meta->Size()));
   }
 
-  RaySlice execute_args;
-  execute_args.data = &args_array_list[0];
-  execute_args.len = args_array_list.size();
-  execute_args.cap = args_array_list.size();
-
-
-  std::vector<std::shared_ptr<DataValue>> return_value_list;
+  std::vector<DataValue *> return_value_list;
   for (size_t i = 0; i < return_ids.size(); i++) {
-    return_value_list.push_back(make_shared<DataValue>());
+    return_value_list.push_back(nullptr);
   }
   // return_value_list[0].reset(buf);
   RaySlice execute_return_value_list;
@@ -125,7 +135,15 @@ ray::Status ExecutionCallback(
     // TODO (jon-chuang): RAY_THROW.
     assert (false);
   }
-  c_worker_execute(task_type, fd_list, execute_args, execute_return_value_list);
+  c_worker_execute(
+    task_type, fd_list,
+    args_array_list.data(), args_array_list.size(),
+    execute_return_value_list
+  );
+  for (auto arg: args_array_list) {
+    c_worker_DeallocateDataValue(arg);
+  }
+
   results->clear();
   for (size_t i = 0; i < return_value_list.size(); i++) {
     auto &result_id = return_ids[i];
@@ -133,8 +151,11 @@ ray::Status ExecutionCallback(
     // How do you prevent memory bugs without needing to copy data?
     std::shared_ptr<ray::Buffer> data_buffer =
         std::make_shared<ray::LocalMemoryBuffer>(
-            reinterpret_cast<uint8_t *>(return_value->data->p),
-            return_value->data->size, true);
+            // This cast is safe as we are copying the data
+            // In the future, we can make it safe even if we do not copy
+            // the data by passing in a buffer destructor
+            (uint8_t *)return_value->data->p,
+            return_value->data->size, false);
     std::shared_ptr<ray::Buffer> meta_buffer = nullptr;
         // std::make_shared<ray::LocalMemoryBuffer>(
         //     reinterpret_cast<uint8_t *>(return_value->meta->p),
@@ -154,6 +175,9 @@ ray::Status ExecutionCallback(
         contained_object_ids, &task_output_inlined_bytes, &value));
     RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id, value));
+  }
+  for (auto arg: return_value_list) {
+    c_worker_DeallocateDataValue(&(*arg));
   }
   return ray::Status::OK();
 };
@@ -334,12 +358,17 @@ RAY_EXPORT void c_worker_Run() {
 //   return result_length;
 // }
 //
-inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(DataBuffer *db) {
-  return std::make_shared<ray::LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(db->p),
-                                                  db->size, false);
+
+// Should this copy? I don't think it should own the data at this point...
+inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(const DataBuffer *db) {
+  // This is safe as long as the RayBuffer data is not modified...
+  return std::make_shared<ray::LocalMemoryBuffer>((uint8_t *)db->p,
+                                                  db->size, /*copy_data=*/false);
 }
 
-inline std::shared_ptr<ray::RayObject> DataValueToRayObject(DataValue *in) {
+// This should only be created when it is known that the RayObject does not outlive
+// the calling context
+inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue *in) {
   std::vector<ObjectID> contained_object_ids;
   auto contained_object_refs =
       ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
@@ -400,7 +429,7 @@ inline std::shared_ptr<ray::RayObject> DataValueToRayObject(DataValue *in) {
 
 // TODO: make this more generic for char** method_names
 RAY_EXPORT int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
-                                   DataValue **input_values, char **input_refs,
+                                   const DataValue* const input_values[], char **input_refs,
                                    int num_input_value,
                                    int num_returns, char **object_ids) {
   std::vector<std::string> function_descriptor_list = { method_name };
@@ -421,7 +450,8 @@ RAY_EXPORT int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
       args.push_back(std::unique_ptr<ray::TaskArg>(
                      new ray::TaskArgByReference(obj_id, owner_id, /*call_site=*/"")));
     } else {
-      auto value = DataValueToRayObject(static_cast<DataValue *>(input_values[i]));
+      // The
+      auto value = DataValueToRayObjectOwned(static_cast<const DataValue *>(input_values[i]));
       args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
     }
   }
@@ -498,7 +528,8 @@ RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, DataValue **objects,
   ObjectID object_id;
   DataValue* data = objects[0];
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
-      reinterpret_cast<uint8_t *>(data->data->p), data->data->size, true);
+      // This cast is safe as we are copying the data...
+      (uint8_t *)(data->data->p), data->data->size, true);
 
   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ray::rpc::ObjectReference>()), {},

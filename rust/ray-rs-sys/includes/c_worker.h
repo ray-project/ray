@@ -24,7 +24,7 @@ typedef struct RaySlice {
 typedef struct DataBuffer {
   // TODO: replace with standard uint64_t here...
   size_t size;
-  uint8_t *p;
+  const uint8_t *p;
 } DataBuffer;
 
 typedef struct DataValue {
@@ -39,7 +39,9 @@ typedef void (*c_worker_ExecuteCallback)(RayInt task_type, RaySlice ray_function
 int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback);
 
 // Why not char instead of void ptr?
-DataValue *c_worker_AllocateDataValue(uint8_t *data_ptr, size_t data_size, uint8_t *meta_ptr, size_t meta_size);
+const DataValue *c_worker_AllocateDataValue(const uint8_t *data_ptr, size_t data_size, const uint8_t *meta_ptr, size_t meta_size);
+
+void c_worker_DeallocateDataValue(const DataValue *dv_ptr);
 
 void c_worker_InitConfig(int workerMode, int language, int num_workers,
                                     char *code_search_path, char *head_args,
@@ -65,9 +67,9 @@ void c_worker_RemoveLocalRef(const char* id);
 //                               int num_returns, void **object_ids);
 //
 int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
-                                   DataValue **input_values, char **input_refs,
-                                   int num_input_value,
-                                   int num_returns, char **object_ids);
+                        const DataValue* const input_values[], char **input_refs,
+                        int num_input_value,
+                        int num_returns, char **object_ids);
 
 int c_worker_Get(const char* const object_ids[], int object_ids_size, int timeout, DataValue **objects);
 

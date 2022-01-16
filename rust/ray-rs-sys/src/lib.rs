@@ -17,6 +17,20 @@ const ID_ARRAY_LEN: usize = 28;
 
 pub struct ObjectID(CVec<c_char>);
 
+impl std::fmt::Debug for ObjectID {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.as_slice()
+                .iter()
+                .map(|x| format!("{:02x?}", x))
+                .collect::<Vec<_>>()
+                .join(""),
+        )
+    }
+}
+
 impl ObjectID {
     fn new(ptr: *mut c_char) -> Self {
         Self(
@@ -133,22 +147,22 @@ pub mod util {
 pub mod internal {
     use super::*;
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
-    pub fn submit(fn_name: CString, args: &mut Vec<Vec<u8>>) -> ObjectID {
+    pub fn submit<'a>(fn_name: CString, args: &[&[u8]]) -> ObjectID {
         unsafe {
             // Create data
             let mut meta_vec = vec![0u8];
             let mut data = args
-                .iter_mut()
+                .iter()
                 .map(|data_vec| {
                     c_worker_AllocateDataValue(
                         // Why is this a void pointer, not a void/char ptr?
-                        (*data_vec).as_mut_ptr(),
+                        (*data_vec).as_ptr(),
                         data_vec.len() as u64,
-                        std::ptr::null_mut(),
+                        std::ptr::null(),
                         0u64,
                     )
                 })
-                .collect::<Vec<*mut DataValue>>();
+                .collect::<Vec<*const DataValue>>();
 
             let mut obj_ids = vec![std::ptr::null_mut()];
             let mut is_refs = vec![false; args.len()];
@@ -156,12 +170,16 @@ pub mod internal {
             c_worker_SubmitTask(
                 fn_name.into_raw(),
                 is_refs.as_mut_ptr(),
-                data.as_mut_ptr(),
+                data.as_ptr(),
                 std::ptr::null_mut::<*mut c_char>(),
                 data.len() as i32,
                 1,
                 obj_ids.as_mut_ptr()
             );
+
+            for &dv in data.iter() {
+                c_worker_DeallocateDataValue(dv);
+            }
 
             let id = ObjectID::new(obj_ids[0]);
             println!("ObjectID: {:x?}", util::pretty_print_id(&id));
@@ -169,7 +187,7 @@ pub mod internal {
         }
     }
 
-    pub fn get_slice<'a>(id: &ObjectID, timeout: i32) -> &'a mut [u8] {
+    pub fn get_slice<'a>(id: &ObjectID, timeout: i32) -> &'a [u8] {
         dv_as_slice(get(id, timeout))
     }
 
@@ -189,9 +207,9 @@ pub mod internal {
     }
 }
 
-pub fn dv_as_slice<'a>(data: DataValue) -> &'a mut [u8] {
+pub fn dv_as_slice<'a>(data: DataValue) -> &'a [u8] {
     unsafe {
-        std::slice::from_raw_parts_mut::<u8>(
+        std::slice::from_raw_parts::<u8>(
             (*data.data).p,
             (*data.data).size as usize,
         )
@@ -208,15 +226,16 @@ pub mod test {
         unsafe {
             let data =
                 c_worker_AllocateDataValue(
-                    data_vec.as_mut_ptr(),
+                    data_vec.as_ptr(),
                     data_vec.len() as u64,
-                    meta_vec.as_mut_ptr(),
+                    meta_vec.as_ptr(),
                     meta_vec.len() as u64,
                 );
             assert_eq!((*(*data).data).p, data_vec.as_mut_ptr());
             assert_eq!((*(*data).meta).p, meta_vec.as_mut_ptr());
             assert_eq!((*(*data).data).size, data_vec.len() as u64);
             assert_eq!((*(*data).meta).size, data_vec.len() as u64);
+            c_worker_DeallocateDataValue(data);
         }
     }
 
@@ -259,9 +278,9 @@ pub mod test {
             let mut meta_vec = vec![3u8, 4];
             let mut data = vec![
                 c_worker_AllocateDataValue(
-                    data_vec.as_mut_ptr() as *mut c_void,
+                    data_vec.as_ptr(),
                     data_vec.len() as u64,
-                    meta_vec.as_mut_ptr() as *mut c_void,
+                    meta_vec.as_ptr(),
                     meta_vec.len() as u64,
                 )
             ];
@@ -271,16 +290,16 @@ pub mod test {
 
             c_worker_Put(
                 obj_ids.as_mut_ptr() as *mut *mut c_char,
-                -1, data.as_mut_ptr(), data.len() as i32,
+                -1, data.as_mut_ptr() as *mut *mut DataValue, data.len() as i32,
             );
 
-            let c_str_id = CVec::from_raw(obj_ids[0]);
-            println!("{:x?}", c_str_id);
+            let id = ObjectID::new(obj_ids[0]);
+            println!("{:?}", id);
 
             let mut get_data: Vec<*mut DataValue> = vec![std::ptr::null_mut() as *mut _];
 
             c_worker_Get(
-                obj_ids.as_mut_ptr() as *mut *mut c_char,
+                obj_ids.as_ptr() as *const *const c_char,
                 1, -1,
                 get_data.as_mut_ptr() as *mut *mut DataValue
             );
@@ -291,7 +310,11 @@ pub mod test {
             );
             assert_eq!(slice, &data_vec);
 
-            assert_eq!(dv_as_slice(get(c_str_id, -1)), &data_vec);
+            assert_eq!(internal::get_slice(&id, -1), &data_vec);
+
+            for &d in data.iter() {
+                c_worker_DeallocateDataValue(d);
+            }
 
             c_worker_Shutdown();
         }

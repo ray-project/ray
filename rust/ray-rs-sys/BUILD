@@ -21,7 +21,6 @@ rust_test(
     crate_features = ["bazel"],
     data = [
         "//:ray_rs_sys_bindgen.rs",
-        "//:libcore_worker_library_c.so",
     ],
     rustc_env = {
         "BAZEL_BINDGEN_SOURCE": "$(execpath //:ray_rs_sys_bindgen.rs)",
