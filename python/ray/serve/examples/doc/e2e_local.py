@@ -1,6 +1,5 @@
 # __local_model_start__
 # File name: local_model.py
-
 from transformers import pipeline
 
 

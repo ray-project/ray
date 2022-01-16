@@ -31,12 +31,12 @@ This is the code for the model:
 The Python file, called ``local_model.py`` uses the ``summarize`` function to
 generate summaries of text. 
 
-- The ``summarizer`` variable on line 8 inside ``summarize`` points to a
+- The ``summarizer`` variable on line 7 inside ``summarize`` points to a
   function that uses the `t5-small <https://huggingface.co/t5-small>`_
   model to summarize text.
 - When ``summarizer`` is called on a Python String, it returns summarized text
   inside a dictionary formatted as ``[{"summary_text": "...", ...}, ...]``. 
-- ``summarize`` then extracts the summarized text on line 14 by indexing into
+- ``summarize`` then extracts the summarized text on line 13 by indexing into
   the dictionary.
 
 The file can be run locally by executing the Python script, which uses the
