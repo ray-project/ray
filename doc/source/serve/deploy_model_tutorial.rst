@@ -13,7 +13,13 @@ command in your terminal:
   $ pip install "ray[serve]"
 
 For this tutorial, we'll use `HuggingFace's SummarizationPipeline <https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.SummarizationPipeline>`_
-to access a model that summarizes text. Let's take a look at how it works.
+to access a model that summarizes text. 
+
+
+Example Model
+===========
+
+Let's first take a look at how the model works, without using Ray Serve.
 This is the code for the model:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_local.py
