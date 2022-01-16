@@ -40,7 +40,7 @@ pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette
 aiorwlock
