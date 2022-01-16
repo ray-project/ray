@@ -34,7 +34,7 @@ proto_library(
 proto_library(
     name = "runtime_env_common_proto",
     srcs = ["runtime_env_common.proto"],
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//java:__subpackages__", "//rust:__subpackages__"],
 )
 
 cc_proto_library(

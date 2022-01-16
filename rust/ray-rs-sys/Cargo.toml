@@ -11,6 +11,7 @@ description = "Low-level bindings to the C-ABI Ray CoreWorker shared-library har
 [dependencies]
 c_vec = "2.0.0"
 libc = "0.2.112"
+protobuf = "2.25.2"
 
 [build-dependencies]
 bindgen = "0.53.1"

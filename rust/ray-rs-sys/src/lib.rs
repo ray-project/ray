@@ -13,7 +13,11 @@ use std::os::raw::*;
 use std::ffi::CString;
 use c_vec::CVec;
 
+#[cfg(not(feature = "bazel"))]
+mod proto;
+
 const ID_ARRAY_LEN: usize = 28;
+const NUM_WORKERS: i32 = 1;
 
 pub struct ObjectID(CVec<c_char>);
 
@@ -35,7 +39,9 @@ impl ObjectID {
     fn new(ptr: *mut c_char) -> Self {
         Self(
             unsafe {
-                CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| { libc::free(ptr as *mut c_void); })
+                CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| {
+                    libc::free(ptr as *mut c_void);
+                })
             }
         )
     }
@@ -66,7 +72,8 @@ pub type MaybeExecuteCallback = c_worker_ExecuteCallback;
 pub extern "C" fn rust_worker_execute_dummy(
     _task_type: RayInt,
     _ray_function_info: RaySlice,
-    _args: RaySlice,
+    _args: *const *const DataValue,
+    _num_args: u64,
     _return_values: RaySlice,
 ) {
 }
@@ -89,7 +96,12 @@ pub mod ray {
             let (argc, argv) = argc_v.unwrap_or((0, std::ptr::null()));
 
             c_worker_InitConfig(
-                if is_driver { 1 } else { 0 }, 3, 1,
+                if is_driver {
+                    proto::WorkerType::DRIVER
+                } else {
+                    proto::WorkerType::WORKER
+                } as i32,
+                proto::Language::RUST as i32, NUM_WORKERS,
                 code_search_path.as_ptr() as *mut c_char,
                 head_args.as_ptr() as *mut c_char,
                 argc, argv as *mut *mut c_char,

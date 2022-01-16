@@ -69,3 +69,9 @@ versions.check(minimum_bazel_version = "4.2.1")
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 
 bazel_skylib_workspace()
+
+load("@rules_proto_grpc//rust/raze:crates.bzl",
+    "raze_fetch_remote_crates",
+)
+
+raze_fetch_remote_crates()

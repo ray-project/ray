@@ -1,6 +1,6 @@
 package(default_visibility = ["//visibility:public"])
 
-load("@ray-rs-toml//:defs.bzl", "crates_from")
+load("@ray-rs-toml//:defs.bzl", "crates_from", "crate")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
@@ -8,7 +8,10 @@ rust_library(
     srcs = glob(["src/**/*.rs"]),
     crate_features = ["bazel"],
     data = ["//:ray_rs_sys_bindgen.rs"],
-    deps = ["//:core_worker_library_c_so"]
+    deps = [
+      "//:core_worker_library_c_so",
+      ":proto",
+    ]
     + crates_from("//rust/ray-rs-sys:Cargo.toml"),
     rustc_env = {
         "BAZEL_BINDGEN_SOURCE": "$(execpath //:ray_rs_sys_bindgen.rs)",
@@ -28,4 +31,10 @@ rust_test(
     env = {
         "RUST_TEST_NOCAPTURE": "1",
     }
+)
+
+rust_library(
+    name = "proto",
+    srcs = glob(["generated/proto/*.rs"]),
+    deps = [crate("protobuf")],
 )
