@@ -242,7 +242,7 @@ We can run this script while the model is deployed to get a response over HTTP:
 Using Classes in the Ray Serve Deployment
 =========================================
 
-Our application still a bit inefficient though. In particular, the 
+Our application is still a bit inefficient though. In particular, the 
 ``summarize`` function loads the model on each call when it sets the
 ``summarizer`` variable. However, the model never changes, so it would be more
 efficient to define ``summarizer`` only once and keep its value in memory
