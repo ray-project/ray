@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Optional, Union, Any, List, TYPE_CHECKING
+from typing import Callable, Optional, List, TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType, KeyFn, _validate_key_fn
@@ -88,6 +88,7 @@ class Min(_AggregateOnKeyBase):
 
     def __init__(self, on: Optional[KeyFn] = None):
         self._set_key_fn(on)
+        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
             accumulate=(
