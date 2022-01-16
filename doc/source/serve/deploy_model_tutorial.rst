@@ -119,7 +119,7 @@ object [#f1]_:
   :start-after: __router_start__
   :end-before: __router_end__
 
-``router`` uses the ``"txt"`` parameter in the ``request`` to find the article
+``router`` uses the ``"txt"`` query parameter in the ``request`` to find the article
 text to summarize. It then passes the article text into the ``summarize``
 function and returns the value. We also add the decorator ``@serve.deployment``
 to the ``router`` function to turn the function into a Serve ``Deployment``
