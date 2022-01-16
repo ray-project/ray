@@ -24,15 +24,13 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
       raylet_client_(rpc::NodeManagerWorkerClient::make(raylet_ip_address, port,
                                                         client_call_manager_)),
       update_func_(update_func),
-      updater_runner_(updater_io_service_) {
-  // Init updater thread and run its io service.
-  updater_thread_.reset(new std::thread([this] {
-    SetThreadName("gcs_address_updater");
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(updater_io_service_);
-    updater_io_service_.run();
-  }));
-  UpdateGcsServerAddress();
+      updater_runner_(updater_io_service_),
+      updater_thread_([this] {
+        SetThreadName("gcs_address_updater");
+        /// The asio work to keep io_service_ alive.
+        boost::asio::io_service::work io_service_work_(updater_io_service_);
+        updater_io_service_.run();
+      }) {
   // Start updating gcs server address.
   updater_runner_.RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
@@ -41,8 +39,11 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
   updater_io_service_.stop();
-  if (updater_thread_->joinable()) {
-    updater_thread_->join();
+  if (updater_thread_.joinable()) {
+    updater_thread_.join();
+  } else {
+    RAY_LOG(WARNING)
+        << "Could not join updater thread. This can cause segfault upon destruction.";
   }
   RAY_LOG(INFO) << "GcsServerAddressUpdater is destructed";
 }

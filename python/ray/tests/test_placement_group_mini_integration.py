@@ -120,7 +120,7 @@ def test_placement_group_create_only(ray_start_cluster, execution_number):
     run_mini_integration_test(ray_start_cluster, pg_removal=False, num_pgs=333)
 
 
-@pytest.mark.parametrize("execution_number", range(10))
+@pytest.mark.parametrize("execution_number", range(100))
 def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     """Full PG mini integration test that runs many
         concurrent remove_placement_group

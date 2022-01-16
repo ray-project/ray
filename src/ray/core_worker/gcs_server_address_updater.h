@@ -42,8 +42,8 @@ class GcsServerAddressUpdater {
   raylet::RayletClient raylet_client_;
   std::function<void(std::string, int)> update_func_;
   instrumented_io_context updater_io_service_;
-  std::unique_ptr<std::thread> updater_thread_;
   PeriodicalRunner updater_runner_;
+  std::thread updater_thread_;
   int32_t failed_ping_count_ = 0;
 };
 
