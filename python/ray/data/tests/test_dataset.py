@@ -3081,16 +3081,11 @@ def test_groupby_errors(ray_start_regular_shared):
 
 def test_agg_errors(ray_start_regular_shared):
     ds = ray.data.range(100)
+    from ray.data.aggregate import Max
 
-    ds.groupby(None).count().show()  # OK
-    ds.groupby(lambda x: x % 2).count().show()  # OK
-    with pytest.raises(TypeError):
-        ds.groupby("foo").count().show()
-
-    ds = ray.data.range_arrow(100)  # OK
-    ds.groupby(None).count().show()  # OK
-    with pytest.raises(NotImplementedError):
-        ds.groupby(lambda x: x % 2).count().show()
+    ds.aggregate(Max())  # OK
+    ds.aggregate(Max(lambda x: x))  # OK
+    ds.aggregate(Max("foo"))
 
 
 @pytest.mark.parametrize("num_parts", [1, 15, 100])
