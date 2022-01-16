@@ -41,7 +41,11 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
             raise ValueError("String key '{}' requires dataset format to be "
                              "'arrow' or 'pandas', was '{}'.".format(key, fmt))
         # Raises KeyError if key is not present in the schema.
-        ds.schema().field(key)
+        schema = ds.schema()
+        if schema and key not in schema.names:
+            raise ValueError(
+                "The column '{}' does not exist in the "
+                "schema '{}'.".format(key, schema))
     elif key is None:
         if fmt != "simple":
             raise ValueError(

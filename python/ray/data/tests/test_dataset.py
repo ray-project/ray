@@ -3093,10 +3093,12 @@ def test_agg_errors(ray_start_regular_shared):
         ds.aggregate(Max())
     with pytest.raises(ValueError):
         ds.aggregate(Max(lambda x: x))
+    with pytest.raises(ValueError):
+        ds.aggregate(Max("bad_field"))
     ds.aggregate(Max("value"))
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
     xs = list(range(100))
@@ -3124,7 +3126,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
          {"A": 2, "foo": 50.0, "foo_2": 50.0}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3142,7 +3144,7 @@ def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
          {"A": 2, "count()": 33}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3166,7 +3168,7 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         "value") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3190,7 +3192,7 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3214,7 +3216,7 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3239,7 +3241,7 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
             "value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3276,7 +3278,7 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation on multiple columns
     seed = int(time.time())
@@ -3322,9 +3324,9 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         "C": [2 * x for x in xs]
     })
     # Wrong type.
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ray.data.from_pandas(df).groupby("A").mean(5)
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ray.data.from_pandas(df).groupby("A").mean([5])
     # Empty list.
     with pytest.raises(ValueError):
@@ -3340,9 +3342,9 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
 
     # Test bad on for global aggregation
     # Wrong type.
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ray.data.from_pandas(df).mean(5)
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ray.data.from_pandas(df).mean([5])
     # Empty list.
     with pytest.raises(ValueError):
@@ -3357,7 +3359,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_items(xs).mean("A")
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
@@ -3453,7 +3455,7 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3468,7 +3470,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
                                                                           33)]
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3486,7 +3488,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3504,7 +3506,7 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3523,7 +3525,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3542,7 +3544,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3585,7 +3587,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([3]).std() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3611,7 +3613,7 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
             .mean([lambda x: x[0], lambda x: x[1]])
 
 
-@pytest.mark.parametrize("num_parts", [1, 15, 100])
+@pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_multi_agg with: {seed}")
@@ -3863,8 +3865,6 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
                 if n > 0]) == parallelism
     assert_sorted(ds.sort(key="b"), zip(a, b))
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
-    assert_sorted(
-        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 def test_sort_arrow_with_empty_blocks(ray_start_regular):
