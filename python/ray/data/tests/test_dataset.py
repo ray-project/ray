@@ -3089,13 +3089,13 @@ def test_agg_errors(ray_start_regular_shared):
         ds.aggregate(Max("foo"))
 
     ds = ray.data.range_arrow(100)
+    ds.aggregate(Max("value"))  # OK
     with pytest.raises(ValueError):
         ds.aggregate(Max())
     with pytest.raises(ValueError):
         ds.aggregate(Max(lambda x: x))
     with pytest.raises(ValueError):
         ds.aggregate(Max("bad_field"))
-    ds.aggregate(Max("value"))
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
