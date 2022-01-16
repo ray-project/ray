@@ -40,9 +40,30 @@ class GroupedDataset(Generic[T]):
                 raise NotImplementedError(
                     "Multi-key groupby is not supported yet")
             else:
-                self._key = key[0]
-        else:
+                key = key[0]
+
+        try:
+            fmt = self._dataset._dataset_format()
+        except ValueError:
+            # Dataset is empty/cleared, let downstream ops handle this.
+            fmt = None
+
+        if key is None:
             self._key = key
+        elif isinstance(key, str):
+            if fmt and fmt == "simple":
+                raise TypeError(
+                    "String key '{}' requires dataset format to be "
+                    "'arrow' or 'pandas', was '{}'.".format(key, fmt))
+            self._key = key
+        elif callable(key):
+            if fmt and fmt != "simple":
+                raise NotImplementedError(
+                    "Callable key '{}' requires dataset format to be "
+                    "'simple', was '{}'.".format(key, fmt))
+            self._key = key
+        else:
+            raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
