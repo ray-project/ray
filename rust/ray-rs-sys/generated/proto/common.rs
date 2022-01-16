@@ -4113,6 +4113,7 @@ pub struct TaskSpec {
     pub retry_exceptions: bool,
     pub depth: i64,
     pub scheduling_strategy: ::protobuf::SingularPtrField<SchedulingStrategy>,
+    pub attempt_number: u64,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -4703,6 +4704,21 @@ impl TaskSpec {
     pub fn take_scheduling_strategy(&mut self) -> SchedulingStrategy {
         self.scheduling_strategy.take().unwrap_or_else(|| SchedulingStrategy::new())
     }
+
+    // uint64 attempt_number = 28;
+
+
+    pub fn get_attempt_number(&self) -> u64 {
+        self.attempt_number
+    }
+    pub fn clear_attempt_number(&mut self) {
+        self.attempt_number = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_attempt_number(&mut self, v: u64) {
+        self.attempt_number = v;
+    }
 }
 
 impl ::protobuf::Message for TaskSpec {
@@ -4845,6 +4861,13 @@ impl ::protobuf::Message for TaskSpec {
                 27 => {
                     ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.scheduling_strategy)?;
                 },
+                28 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_uint64()?;
+                    self.attempt_number = tmp;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -4931,6 +4954,9 @@ impl ::protobuf::Message for TaskSpec {
         if let Some(ref v) = self.scheduling_strategy.as_ref() {
             let len = v.compute_size();
             my_size += 2 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        }
+        if self.attempt_number != 0 {
+            my_size += ::protobuf::rt::value_size(28, self.attempt_number, ::protobuf::wire_format::WireTypeVarint);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
@@ -5019,6 +5045,9 @@ impl ::protobuf::Message for TaskSpec {
             os.write_tag(27, ::protobuf::wire_format::WireTypeLengthDelimited)?;
             os.write_raw_varint32(v.get_cached_size())?;
             v.write_to_with_cached_sizes(os)?;
+        }
+        if self.attempt_number != 0 {
+            os.write_uint64(28, self.attempt_number)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -5178,6 +5207,11 @@ impl ::protobuf::Message for TaskSpec {
                 |m: &TaskSpec| { &m.scheduling_strategy },
                 |m: &mut TaskSpec| { &mut m.scheduling_strategy },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
+                "attempt_number",
+                |m: &TaskSpec| { &m.attempt_number },
+                |m: &mut TaskSpec| { &mut m.attempt_number },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<TaskSpec>(
                 "TaskSpec",
                 fields,
@@ -5218,6 +5252,7 @@ impl ::protobuf::Clear for TaskSpec {
         self.retry_exceptions = false;
         self.depth = 0;
         self.scheduling_strategy.clear();
+        self.attempt_number = 0;
         self.unknown_fields.clear();
     }
 }
@@ -12190,11 +12225,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\tR\rnodeIpAddress\x12\x10\n\x03pid\x18\x05\x20\x01(\rR\x03pid\x12\
     \x12\n\x04name\x18\x06\x20\x01(\tR\x04name\x12#\n\rray_namespace\x18\x07\
     \x20\x01(\tR\x0crayNamespace\x12\x1d\n\nclass_name\x18\x08\x20\x01(\tR\t\
-    className\x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\x07actorId\"\xd9\n\n\
-    \x08TaskSpec\x12%\n\x04type\x18\x01\x20\x01(\x0e2\x11.ray.rpc.TaskTypeR\
-    \x04type\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12-\n\x08languag\
-    e\x18\x03\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x12L\n\x13func\
-    tion_descriptor\x18\x04\x20\x01(\x0b2\x1b.ray.rpc.FunctionDescriptorR\
+    className\x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\x07actorId\"\x80\x0b\
+    \n\x08TaskSpec\x12%\n\x04type\x18\x01\x20\x01(\x0e2\x11.ray.rpc.TaskType\
+    R\x04type\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12-\n\x08langua\
+    ge\x18\x03\x20\x01(\x0e2\x11.ray.rpc.LanguageR\x08language\x12L\n\x13fun\
+    ction_descriptor\x18\x04\x20\x01(\x0b2\x1b.ray.rpc.FunctionDescriptorR\
     \x12functionDescriptor\x12\x15\n\x06job_id\x18\x05\x20\x01(\x0cR\x05jobI\
     d\x12\x17\n\x07task_id\x18\x06\x20\x01(\x0cR\x06taskId\x12$\n\x0eparent_\
     task_id\x18\x07\x20\x01(\x0cR\x0cparentTaskId\x12%\n\x0eparent_counter\
@@ -12216,148 +12251,148 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     me\x18\x18\x20\x01(\tR\x14concurrencyGroupName\x12)\n\x10retry_exception\
     s\x18\x19\x20\x01(\x08R\x0fretryExceptions\x12\x14\n\x05depth\x18\x1a\
     \x20\x01(\x03R\x05depth\x12L\n\x13scheduling_strategy\x18\x1b\x20\x01(\
-    \x0b2\x1b.ray.rpc.SchedulingStrategyR\x12schedulingStrategy\x1aD\n\x16Re\
-    quiredResourcesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\
-    \n\x05value\x18\x02\x20\x01(\x01R\x05value:\x028\x01\x1aM\n\x1fRequiredP\
-    lacementResourcesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\x01R\x05value:\x028\x01\"\xd2\x02\n\x06\
-    Bundle\x12=\n\tbundle_id\x18\x01\x20\x01(\x0b2\x20.ray.rpc.Bundle.Bundle\
-    IdentifierR\x08bundleId\x12I\n\x0eunit_resources\x18\x02\x20\x03(\x0b2\"\
-    .ray.rpc.Bundle.UnitResourcesEntryR\runitResources\x12\x17\n\x07node_id\
-    \x18\x03\x20\x01(\x0cR\x06nodeId\x1ac\n\x10BundleIdentifier\x12,\n\x12pl\
-    acement_group_id\x18\x01\x20\x01(\x0cR\x10placementGroupId\x12!\n\x0cbun\
-    dle_index\x18\x02\x20\x01(\x05R\x0bbundleIndex\x1a@\n\x12UnitResourcesEn\
-    try\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\x01R\x05value:\x028\x01\"\x82\x03\n\x12PlacementGroupSpec\
-    \x12,\n\x12placement_group_id\x18\x01\x20\x01(\x0cR\x10placementGroupId\
-    \x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12)\n\x07bundles\x18\x03\
-    \x20\x03(\x0b2\x0f.ray.rpc.BundleR\x07bundles\x126\n\x08strategy\x18\x04\
-    \x20\x01(\x0e2\x1a.ray.rpc.PlacementStrategyR\x08strategy\x12$\n\x0ecrea\
-    tor_job_id\x18\x05\x20\x01(\x0cR\x0ccreatorJobId\x12(\n\x10creator_actor\
-    _id\x18\x06\x20\x01(\x0cR\x0ecreatorActorId\x12(\n\x10creator_job_dead\
-    \x18\x07\x20\x01(\x08R\x0ecreatorJobDead\x12,\n\x12creator_actor_dead\
-    \x18\x08\x20\x01(\x08R\x10creatorActorDead\x12\x1f\n\x0bis_detached\x18\
-    \t\x20\x01(\x08R\nisDetached\"\x82\x01\n\x0fObjectReference\x12\x1b\n\to\
-    bject_id\x18\x01\x20\x01(\x0cR\x08objectId\x125\n\rowner_address\x18\x02\
-    \x20\x01(\x0b2\x10.ray.rpc.AddressR\x0cownerAddress\x12\x1b\n\tcall_site\
-    \x18\x03\x20\x01(\tR\x08callSite\"\xbf\x02\n\x14ObjectReferenceCount\x12\
-    6\n\treference\x18\x01\x20\x01(\x0b2\x18.ray.rpc.ObjectReferenceR\trefer\
-    ence\x12\"\n\rhas_local_ref\x18\x02\x20\x01(\x08R\x0bhasLocalRef\x12.\n\
-    \tborrowers\x18\x03\x20\x03(\x0b2\x10.ray.rpc.AddressR\tborrowers\x12D\n\
-    \x11stored_in_objects\x18\x04\x20\x03(\x0b2\x18.ray.rpc.ObjectReferenceR\
-    \x0fstoredInObjects\x129\n\x19contained_in_borrowed_ids\x18\x05\x20\x03(\
-    \x0cR\x16containedInBorrowedIds\x12\x1a\n\x08contains\x18\x06\x20\x03(\
-    \x0cR\x08contains\"\xbc\x01\n\x07TaskArg\x127\n\nobject_ref\x18\x01\x20\
-    \x01(\x0b2\x18.ray.rpc.ObjectReferenceR\tobjectRef\x12\x12\n\x04data\x18\
-    \x02\x20\x01(\x0cR\x04data\x12\x1a\n\x08metadata\x18\x03\x20\x01(\x0cR\
-    \x08metadata\x12H\n\x13nested_inlined_refs\x18\x04\x20\x03(\x0b2\x18.ray\
-    .rpc.ObjectReferenceR\x11nestedInlinedRefs\"\xe8\x04\n\x15ActorCreationT\
-    askSpec\x12\x19\n\x08actor_id\x18\x02\x20\x01(\x0cR\x07actorId\x12,\n\
-    \x12max_actor_restarts\x18\x03\x20\x01(\x03R\x10maxActorRestarts\x12(\n\
-    \x10max_task_retries\x18\x04\x20\x01(\x03R\x0emaxTaskRetries\x124\n\x16d\
-    ynamic_worker_options\x18\x05\x20\x03(\tR\x14dynamicWorkerOptions\x12'\n\
-    \x0fmax_concurrency\x18\x06\x20\x01(\x05R\x0emaxConcurrency\x12\x1f\n\
-    \x0bis_detached\x18\x07\x20\x01(\x08R\nisDetached\x12\x12\n\x04name\x18\
-    \x08\x20\x01(\tR\x04name\x12#\n\rray_namespace\x18\t\x20\x01(\tR\x0crayN\
-    amespace\x12\x1d\n\nis_asyncio\x18\n\x20\x01(\x08R\tisAsyncio\x12%\n\x0e\
-    extension_data\x18\x0b\x20\x01(\tR\rextensionData\x126\n\x17serialized_a\
-    ctor_handle\x18\x0c\x20\x01(\x0cR\x15serializedActorHandle\x12H\n\x12con\
-    currency_groups\x18\r\x20\x03(\x0b2\x19.ray.rpc.ConcurrencyGroupR\x11con\
-    currencyGroups\x12/\n\x14execute_out_of_order\x18\x0e\x20\x01(\x08R\x11e\
-    xecuteOutOfOrder\x12*\n\x11max_pending_calls\x18\x0f\x20\x01(\x05R\x0fma\
-    xPendingCalls\"\xe0\x01\n\rActorTaskSpec\x12\x19\n\x08actor_id\x18\x02\
-    \x20\x01(\x0cR\x07actorId\x12B\n\x1eactor_creation_dummy_object_id\x18\
-    \x04\x20\x01(\x0cR\x1aactorCreationDummyObjectId\x12#\n\ractor_counter\
-    \x18\x05\x20\x01(\x04R\x0cactorCounter\x12K\n#previous_actor_task_dummy_\
-    object_id\x18\x07\x20\x01(\x0cR\x1epreviousActorTaskDummyObjectId\"]\n\
-    \x11TaskExecutionSpec\x12%\n\x0elast_timestamp\x18\x01\x20\x01(\x01R\rla\
-    stTimestamp\x12!\n\x0cnum_forwards\x18\x02\x20\x01(\x04R\x0bnumForwards\
-    \"\x82\x01\n\x04Task\x12.\n\ttask_spec\x18\x01\x20\x01(\x0b2\x11.ray.rpc\
-    .TaskSpecR\x08taskSpec\x12J\n\x13task_execution_spec\x18\x02\x20\x01(\
-    \x0b2\x1a.ray.rpc.TaskExecutionSpecR\x11taskExecutionSpec\">\n\nResource\
-    Id\x12\x14\n\x05index\x18\x01\x20\x01(\x03R\x05index\x12\x1a\n\x08quanti\
-    ty\x18\x02\x20\x01(\x01R\x08quantity\"^\n\x10ResourceMapEntry\x12\x12\n\
-    \x04name\x18\x01\x20\x01(\tR\x04name\x126\n\x0cresource_ids\x18\x02\x20\
-    \x03(\x0b2\x13.ray.rpc.ResourceIdR\x0bresourceIds\"\xf4\x03\n\x08ViewDat\
-    a\x12\x1b\n\tview_name\x18\x01\x20\x01(\tR\x08viewName\x125\n\x08measure\
-    s\x18\x02\x20\x03(\x0b2\x19.ray.rpc.ViewData.MeasureR\x08measures\x1a\
-    \x93\x03\n\x07Measure\x12\x12\n\x04tags\x18\x01\x20\x01(\tR\x04tags\x12\
-    \x1b\n\tint_value\x18\x02\x20\x01(\x03R\x08intValue\x12!\n\x0cdouble_val\
-    ue\x18\x03\x20\x01(\x01R\x0bdoubleValue\x12)\n\x10distribution_min\x18\
-    \x04\x20\x01(\x01R\x0fdistributionMin\x12+\n\x11distribution_mean\x18\
-    \x05\x20\x01(\x01R\x10distributionMean\x12)\n\x10distribution_max\x18\
-    \x06\x20\x01(\x01R\x0fdistributionMax\x12-\n\x12distribution_count\x18\
-    \x07\x20\x01(\x01R\x11distributionCount\x12D\n\x1edistribution_bucket_bo\
-    undaries\x18\x08\x20\x03(\x01R\x1cdistributionBucketBoundaries\x12<\n\
-    \x1adistribution_bucket_counts\x18\t\x20\x03(\x01R\x18distributionBucket\
-    Counts\"\xa3\x02\n\rObjectRefInfo\x12\x1b\n\tobject_id\x18\x01\x20\x01(\
-    \x0cR\x08objectId\x12\x1b\n\tcall_site\x18\x02\x20\x01(\tR\x08callSite\
-    \x12\x1f\n\x0bobject_size\x18\x03\x20\x01(\x03R\nobjectSize\x12&\n\x0flo\
-    cal_ref_count\x18\x04\x20\x01(\x03R\rlocalRefCount\x127\n\x18submitted_t\
-    ask_ref_count\x18\x05\x20\x01(\x03R\x15submittedTaskRefCount\x12,\n\x12c\
-    ontained_in_owned\x18\x06\x20\x03(\x0cR\x10containedInOwned\x12(\n\x10pi\
-    nned_in_memory\x18\x07\x20\x01(\x08R\x0epinnedInMemory\"\xab\x01\n\x13Re\
-    sourceAllocations\x12P\n\x0eresource_slots\x18\x01\x20\x03(\x0b2).ray.rp\
-    c.ResourceAllocations.ResourceSlotR\rresourceSlots\x1aB\n\x0cResourceSlo\
-    t\x12\x12\n\x04slot\x18\x01\x20\x01(\x03R\x04slot\x12\x1e\n\nallocation\
-    \x18\x02\x20\x01(\x01R\nallocation\"\xfe\x08\n\x0fCoreWorkerStats\x12*\n\
-    \x11current_task_desc\x18\x01\x20\x01(\tR\x0fcurrentTaskDesc\x12*\n\x11n\
-    um_pending_tasks\x18\x02\x20\x01(\x05R\x0fnumPendingTasks\x126\n\x18num_\
-    object_refs_in_scope\x18\x03\x20\x01(\x05R\x14numObjectRefsInScope\x12*\
-    \n\x11current_task_name\x18\x04\x20\x01(\tR\x0fcurrentTaskName\x123\n\
-    \x16current_task_func_desc\x18\x05\x20\x01(\tR\x13currentTaskFuncDesc\
-    \x12\x1d\n\nip_address\x18\x07\x20\x01(\tR\tipAddress\x12\x12\n\x04port\
-    \x18\x08\x20\x01(\x03R\x04port\x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\
-    \x07actorId\x12R\n\x0eused_resources\x18\n\x20\x03(\x0b2+.ray.rpc.CoreWo\
-    rkerStats.UsedResourcesEntryR\rusedResources\x12O\n\rwebui_display\x18\
-    \x0b\x20\x03(\x0b2*.ray.rpc.CoreWorkerStats.WebuiDisplayEntryR\x0cwebuiD\
-    isplay\x12\"\n\rnum_in_plasma\x18\x0c\x20\x01(\x05R\x0bnumInPlasma\x12*\
-    \n\x11num_local_objects\x18\r\x20\x01(\x05R\x0fnumLocalObjects\x127\n\
-    \x18used_object_store_memory\x18\x0e\x20\x01(\x03R\x15usedObjectStoreMem\
-    ory\x12*\n\x11task_queue_length\x18\x0f\x20\x01(\x05R\x0ftaskQueueLength\
-    \x12,\n\x12num_executed_tasks\x18\x10\x20\x01(\x05R\x10numExecutedTasks\
-    \x12\x1f\n\x0bactor_title\x18\x11\x20\x01(\tR\nactorTitle\x127\n\x0bobje\
-    ct_refs\x18\x12\x20\x03(\x0b2\x16.ray.rpc.ObjectRefInfoR\nobjectRefs\x12\
-    \x15\n\x06job_id\x18\x13\x20\x01(\x0cR\x05jobId\x12\x1b\n\tworker_id\x18\
-    \x14\x20\x01(\x0cR\x08workerId\x12-\n\x08language\x18\x15\x20\x01(\x0e2\
-    \x11.ray.rpc.LanguageR\x08language\x12\x10\n\x03pid\x18\x16\x20\x01(\rR\
-    \x03pid\x124\n\x0bworker_type\x18\x17\x20\x01(\x0e2\x13.ray.rpc.WorkerTy\
-    peR\nworkerType\x1a^\n\x12UsedResourcesEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x122\n\x05value\x18\x02\x20\x01(\x0b2\x1c.ray.rpc.Re\
-    sourceAllocationsR\x05value:\x028\x01\x1a?\n\x11WebuiDisplayEntry\x12\
+    \x0b2\x1b.ray.rpc.SchedulingStrategyR\x12schedulingStrategy\x12%\n\x0eat\
+    tempt_number\x18\x1c\x20\x01(\x04R\rattemptNumber\x1aD\n\x16RequiredReso\
+    urcesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05valu\
+    e\x18\x02\x20\x01(\x01R\x05value:\x028\x01\x1aM\n\x1fRequiredPlacementRe\
+    sourcesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05va\
+    lue\x18\x02\x20\x01(\x01R\x05value:\x028\x01\"\xd2\x02\n\x06Bundle\x12=\
+    \n\tbundle_id\x18\x01\x20\x01(\x0b2\x20.ray.rpc.Bundle.BundleIdentifierR\
+    \x08bundleId\x12I\n\x0eunit_resources\x18\x02\x20\x03(\x0b2\".ray.rpc.Bu\
+    ndle.UnitResourcesEntryR\runitResources\x12\x17\n\x07node_id\x18\x03\x20\
+    \x01(\x0cR\x06nodeId\x1ac\n\x10BundleIdentifier\x12,\n\x12placement_grou\
+    p_id\x18\x01\x20\x01(\x0cR\x10placementGroupId\x12!\n\x0cbundle_index\
+    \x18\x02\x20\x01(\x05R\x0bbundleIndex\x1a@\n\x12UnitResourcesEntry\x12\
     \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\
-    \x01(\tR\x05value:\x028\x01\"\x87\x02\n\x0bMetricPoint\x12\x1f\n\x0bmetr\
-    ic_name\x18\x01\x20\x01(\tR\nmetricName\x12\x1c\n\ttimestamp\x18\x02\x20\
-    \x01(\x03R\ttimestamp\x12\x14\n\x05value\x18\x03\x20\x01(\x01R\x05value\
-    \x122\n\x04tags\x18\x04\x20\x03(\x0b2\x1e.ray.rpc.MetricPoint.TagsEntryR\
-    \x04tags\x12\x20\n\x0bdescription\x18\x05\x20\x01(\tR\x0bdescription\x12\
-    \x14\n\x05units\x18\x06\x20\x01(\tR\x05units\x1a7\n\tTagsEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\t\
-    R\x05value:\x028\x01\"I\n\x0eNamedActorInfo\x12#\n\rray_namespace\x18\
-    \x01\x20\x01(\tR\x0crayNamespace\x12\x12\n\x04name\x18\x02\x20\x01(\tR\
-    \x04name*3\n\x08Language\x12\n\n\x06PYTHON\x10\0\x12\x08\n\x04JAVA\x10\
-    \x01\x12\x07\n\x03CPP\x10\x02\x12\x08\n\x04RUST\x10\x03*J\n\nWorkerType\
-    \x12\n\n\x06WORKER\x10\0\x12\n\n\x06DRIVER\x10\x01\x12\x10\n\x0cSPILL_WO\
-    RKER\x10\x02\x12\x12\n\x0eRESTORE_WORKER\x10\x03*U\n\x08TaskType\x12\x0f\
-    \n\x0bNORMAL_TASK\x10\0\x12\x17\n\x13ACTOR_CREATION_TASK\x10\x01\x12\x0e\
-    \n\nACTOR_TASK\x10\x02\x12\x0f\n\x0bDRIVER_TASK\x10\x03*\xb7\x03\n\tErro\
-    rType\x12\x0f\n\x0bWORKER_DIED\x10\0\x12\x0e\n\nACTOR_DIED\x10\x01\x12\
-    \x1c\n\x18OBJECT_UNRECONSTRUCTABLE\x10\x02\x12\x1c\n\x18TASK_EXECUTION_E\
-    XCEPTION\x10\x03\x12\x14\n\x10OBJECT_IN_PLASMA\x10\x04\x12\x12\n\x0eTASK\
-    _CANCELLED\x10\x05\x12\x19\n\x15ACTOR_CREATION_FAILED\x10\x06\x12\x1c\n\
-    \x18RUNTIME_ENV_SETUP_FAILED\x10\x07\x12\x0f\n\x0bOBJECT_LOST\x10\x08\
-    \x12\x0e\n\nOWNER_DIED\x10\t\x12\x12\n\x0eOBJECT_DELETED\x10\n\x12\x20\n\
-    \x1cDEPENDENCY_RESOLUTION_FAILED\x10\x0b\x122\n.OBJECT_UNRECONSTRUCTABLE\
-    _MAX_ATTEMPTS_EXCEEDED\x10\x0c\x12,\n(OBJECT_UNRECONSTRUCTABLE_LINEAGE_E\
-    VICTED\x10\r\x12\x1a\n\x16OBJECT_FETCH_TIMED_OUT\x10\x0e\x12\x15\n\x11LO\
-    CAL_RAYLET_DIED\x10\x0f*\xac\x01\n\x0eWorkerExitType\x12\x15\n\x11SYSTEM\
-    _ERROR_EXIT\x10\0\x12\x11\n\rINTENDED_EXIT\x10\x01\x12\x1c\n\x18UNUSED_R\
-    ESOURCE_RELEASED\x10\x02\x12\x1b\n\x17PLACEMENT_GROUP_REMOVED\x10\x03\
-    \x12\x17\n\x13CREATION_TASK_ERROR\x10\x04\x12\r\n\tIDLE_EXIT\x10\x05\x12\
-    \r\n\tNODE_DIED\x10\x06*M\n\x11PlacementStrategy\x12\x08\n\x04PACK\x10\0\
-    \x12\n\n\x06SPREAD\x10\x01\x12\x0f\n\x0bSTRICT_PACK\x10\x02\x12\x11\n\rS\
-    TRICT_SPREAD\x10\x03B\x1d\n\x18io.ray.runtime.generated\xf8\x01\x01b\x06\
-    proto3\
+    \x01(\x01R\x05value:\x028\x01\"\x82\x03\n\x12PlacementGroupSpec\x12,\n\
+    \x12placement_group_id\x18\x01\x20\x01(\x0cR\x10placementGroupId\x12\x12\
+    \n\x04name\x18\x02\x20\x01(\tR\x04name\x12)\n\x07bundles\x18\x03\x20\x03\
+    (\x0b2\x0f.ray.rpc.BundleR\x07bundles\x126\n\x08strategy\x18\x04\x20\x01\
+    (\x0e2\x1a.ray.rpc.PlacementStrategyR\x08strategy\x12$\n\x0ecreator_job_\
+    id\x18\x05\x20\x01(\x0cR\x0ccreatorJobId\x12(\n\x10creator_actor_id\x18\
+    \x06\x20\x01(\x0cR\x0ecreatorActorId\x12(\n\x10creator_job_dead\x18\x07\
+    \x20\x01(\x08R\x0ecreatorJobDead\x12,\n\x12creator_actor_dead\x18\x08\
+    \x20\x01(\x08R\x10creatorActorDead\x12\x1f\n\x0bis_detached\x18\t\x20\
+    \x01(\x08R\nisDetached\"\x82\x01\n\x0fObjectReference\x12\x1b\n\tobject_\
+    id\x18\x01\x20\x01(\x0cR\x08objectId\x125\n\rowner_address\x18\x02\x20\
+    \x01(\x0b2\x10.ray.rpc.AddressR\x0cownerAddress\x12\x1b\n\tcall_site\x18\
+    \x03\x20\x01(\tR\x08callSite\"\xbf\x02\n\x14ObjectReferenceCount\x126\n\
+    \treference\x18\x01\x20\x01(\x0b2\x18.ray.rpc.ObjectReferenceR\treferenc\
+    e\x12\"\n\rhas_local_ref\x18\x02\x20\x01(\x08R\x0bhasLocalRef\x12.\n\tbo\
+    rrowers\x18\x03\x20\x03(\x0b2\x10.ray.rpc.AddressR\tborrowers\x12D\n\x11\
+    stored_in_objects\x18\x04\x20\x03(\x0b2\x18.ray.rpc.ObjectReferenceR\x0f\
+    storedInObjects\x129\n\x19contained_in_borrowed_ids\x18\x05\x20\x03(\x0c\
+    R\x16containedInBorrowedIds\x12\x1a\n\x08contains\x18\x06\x20\x03(\x0cR\
+    \x08contains\"\xbc\x01\n\x07TaskArg\x127\n\nobject_ref\x18\x01\x20\x01(\
+    \x0b2\x18.ray.rpc.ObjectReferenceR\tobjectRef\x12\x12\n\x04data\x18\x02\
+    \x20\x01(\x0cR\x04data\x12\x1a\n\x08metadata\x18\x03\x20\x01(\x0cR\x08me\
+    tadata\x12H\n\x13nested_inlined_refs\x18\x04\x20\x03(\x0b2\x18.ray.rpc.O\
+    bjectReferenceR\x11nestedInlinedRefs\"\xe8\x04\n\x15ActorCreationTaskSpe\
+    c\x12\x19\n\x08actor_id\x18\x02\x20\x01(\x0cR\x07actorId\x12,\n\x12max_a\
+    ctor_restarts\x18\x03\x20\x01(\x03R\x10maxActorRestarts\x12(\n\x10max_ta\
+    sk_retries\x18\x04\x20\x01(\x03R\x0emaxTaskRetries\x124\n\x16dynamic_wor\
+    ker_options\x18\x05\x20\x03(\tR\x14dynamicWorkerOptions\x12'\n\x0fmax_co\
+    ncurrency\x18\x06\x20\x01(\x05R\x0emaxConcurrency\x12\x1f\n\x0bis_detach\
+    ed\x18\x07\x20\x01(\x08R\nisDetached\x12\x12\n\x04name\x18\x08\x20\x01(\
+    \tR\x04name\x12#\n\rray_namespace\x18\t\x20\x01(\tR\x0crayNamespace\x12\
+    \x1d\n\nis_asyncio\x18\n\x20\x01(\x08R\tisAsyncio\x12%\n\x0eextension_da\
+    ta\x18\x0b\x20\x01(\tR\rextensionData\x126\n\x17serialized_actor_handle\
+    \x18\x0c\x20\x01(\x0cR\x15serializedActorHandle\x12H\n\x12concurrency_gr\
+    oups\x18\r\x20\x03(\x0b2\x19.ray.rpc.ConcurrencyGroupR\x11concurrencyGro\
+    ups\x12/\n\x14execute_out_of_order\x18\x0e\x20\x01(\x08R\x11executeOutOf\
+    Order\x12*\n\x11max_pending_calls\x18\x0f\x20\x01(\x05R\x0fmaxPendingCal\
+    ls\"\xe0\x01\n\rActorTaskSpec\x12\x19\n\x08actor_id\x18\x02\x20\x01(\x0c\
+    R\x07actorId\x12B\n\x1eactor_creation_dummy_object_id\x18\x04\x20\x01(\
+    \x0cR\x1aactorCreationDummyObjectId\x12#\n\ractor_counter\x18\x05\x20\
+    \x01(\x04R\x0cactorCounter\x12K\n#previous_actor_task_dummy_object_id\
+    \x18\x07\x20\x01(\x0cR\x1epreviousActorTaskDummyObjectId\"]\n\x11TaskExe\
+    cutionSpec\x12%\n\x0elast_timestamp\x18\x01\x20\x01(\x01R\rlastTimestamp\
+    \x12!\n\x0cnum_forwards\x18\x02\x20\x01(\x04R\x0bnumForwards\"\x82\x01\n\
+    \x04Task\x12.\n\ttask_spec\x18\x01\x20\x01(\x0b2\x11.ray.rpc.TaskSpecR\
+    \x08taskSpec\x12J\n\x13task_execution_spec\x18\x02\x20\x01(\x0b2\x1a.ray\
+    .rpc.TaskExecutionSpecR\x11taskExecutionSpec\">\n\nResourceId\x12\x14\n\
+    \x05index\x18\x01\x20\x01(\x03R\x05index\x12\x1a\n\x08quantity\x18\x02\
+    \x20\x01(\x01R\x08quantity\"^\n\x10ResourceMapEntry\x12\x12\n\x04name\
+    \x18\x01\x20\x01(\tR\x04name\x126\n\x0cresource_ids\x18\x02\x20\x03(\x0b\
+    2\x13.ray.rpc.ResourceIdR\x0bresourceIds\"\xf4\x03\n\x08ViewData\x12\x1b\
+    \n\tview_name\x18\x01\x20\x01(\tR\x08viewName\x125\n\x08measures\x18\x02\
+    \x20\x03(\x0b2\x19.ray.rpc.ViewData.MeasureR\x08measures\x1a\x93\x03\n\
+    \x07Measure\x12\x12\n\x04tags\x18\x01\x20\x01(\tR\x04tags\x12\x1b\n\tint\
+    _value\x18\x02\x20\x01(\x03R\x08intValue\x12!\n\x0cdouble_value\x18\x03\
+    \x20\x01(\x01R\x0bdoubleValue\x12)\n\x10distribution_min\x18\x04\x20\x01\
+    (\x01R\x0fdistributionMin\x12+\n\x11distribution_mean\x18\x05\x20\x01(\
+    \x01R\x10distributionMean\x12)\n\x10distribution_max\x18\x06\x20\x01(\
+    \x01R\x0fdistributionMax\x12-\n\x12distribution_count\x18\x07\x20\x01(\
+    \x01R\x11distributionCount\x12D\n\x1edistribution_bucket_boundaries\x18\
+    \x08\x20\x03(\x01R\x1cdistributionBucketBoundaries\x12<\n\x1adistributio\
+    n_bucket_counts\x18\t\x20\x03(\x01R\x18distributionBucketCounts\"\xa3\
+    \x02\n\rObjectRefInfo\x12\x1b\n\tobject_id\x18\x01\x20\x01(\x0cR\x08obje\
+    ctId\x12\x1b\n\tcall_site\x18\x02\x20\x01(\tR\x08callSite\x12\x1f\n\x0bo\
+    bject_size\x18\x03\x20\x01(\x03R\nobjectSize\x12&\n\x0flocal_ref_count\
+    \x18\x04\x20\x01(\x03R\rlocalRefCount\x127\n\x18submitted_task_ref_count\
+    \x18\x05\x20\x01(\x03R\x15submittedTaskRefCount\x12,\n\x12contained_in_o\
+    wned\x18\x06\x20\x03(\x0cR\x10containedInOwned\x12(\n\x10pinned_in_memor\
+    y\x18\x07\x20\x01(\x08R\x0epinnedInMemory\"\xab\x01\n\x13ResourceAllocat\
+    ions\x12P\n\x0eresource_slots\x18\x01\x20\x03(\x0b2).ray.rpc.ResourceAll\
+    ocations.ResourceSlotR\rresourceSlots\x1aB\n\x0cResourceSlot\x12\x12\n\
+    \x04slot\x18\x01\x20\x01(\x03R\x04slot\x12\x1e\n\nallocation\x18\x02\x20\
+    \x01(\x01R\nallocation\"\xfe\x08\n\x0fCoreWorkerStats\x12*\n\x11current_\
+    task_desc\x18\x01\x20\x01(\tR\x0fcurrentTaskDesc\x12*\n\x11num_pending_t\
+    asks\x18\x02\x20\x01(\x05R\x0fnumPendingTasks\x126\n\x18num_object_refs_\
+    in_scope\x18\x03\x20\x01(\x05R\x14numObjectRefsInScope\x12*\n\x11current\
+    _task_name\x18\x04\x20\x01(\tR\x0fcurrentTaskName\x123\n\x16current_task\
+    _func_desc\x18\x05\x20\x01(\tR\x13currentTaskFuncDesc\x12\x1d\n\nip_addr\
+    ess\x18\x07\x20\x01(\tR\tipAddress\x12\x12\n\x04port\x18\x08\x20\x01(\
+    \x03R\x04port\x12\x19\n\x08actor_id\x18\t\x20\x01(\x0cR\x07actorId\x12R\
+    \n\x0eused_resources\x18\n\x20\x03(\x0b2+.ray.rpc.CoreWorkerStats.UsedRe\
+    sourcesEntryR\rusedResources\x12O\n\rwebui_display\x18\x0b\x20\x03(\x0b2\
+    *.ray.rpc.CoreWorkerStats.WebuiDisplayEntryR\x0cwebuiDisplay\x12\"\n\rnu\
+    m_in_plasma\x18\x0c\x20\x01(\x05R\x0bnumInPlasma\x12*\n\x11num_local_obj\
+    ects\x18\r\x20\x01(\x05R\x0fnumLocalObjects\x127\n\x18used_object_store_\
+    memory\x18\x0e\x20\x01(\x03R\x15usedObjectStoreMemory\x12*\n\x11task_que\
+    ue_length\x18\x0f\x20\x01(\x05R\x0ftaskQueueLength\x12,\n\x12num_execute\
+    d_tasks\x18\x10\x20\x01(\x05R\x10numExecutedTasks\x12\x1f\n\x0bactor_tit\
+    le\x18\x11\x20\x01(\tR\nactorTitle\x127\n\x0bobject_refs\x18\x12\x20\x03\
+    (\x0b2\x16.ray.rpc.ObjectRefInfoR\nobjectRefs\x12\x15\n\x06job_id\x18\
+    \x13\x20\x01(\x0cR\x05jobId\x12\x1b\n\tworker_id\x18\x14\x20\x01(\x0cR\
+    \x08workerId\x12-\n\x08language\x18\x15\x20\x01(\x0e2\x11.ray.rpc.Langua\
+    geR\x08language\x12\x10\n\x03pid\x18\x16\x20\x01(\rR\x03pid\x124\n\x0bwo\
+    rker_type\x18\x17\x20\x01(\x0e2\x13.ray.rpc.WorkerTypeR\nworkerType\x1a^\
+    \n\x12UsedResourcesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
+    2\n\x05value\x18\x02\x20\x01(\x0b2\x1c.ray.rpc.ResourceAllocationsR\x05v\
+    alue:\x028\x01\x1a?\n\x11WebuiDisplayEntry\x12\x10\n\x03key\x18\x01\x20\
+    \x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\
+    \x01\"\x87\x02\n\x0bMetricPoint\x12\x1f\n\x0bmetric_name\x18\x01\x20\x01\
+    (\tR\nmetricName\x12\x1c\n\ttimestamp\x18\x02\x20\x01(\x03R\ttimestamp\
+    \x12\x14\n\x05value\x18\x03\x20\x01(\x01R\x05value\x122\n\x04tags\x18\
+    \x04\x20\x03(\x0b2\x1e.ray.rpc.MetricPoint.TagsEntryR\x04tags\x12\x20\n\
+    \x0bdescription\x18\x05\x20\x01(\tR\x0bdescription\x12\x14\n\x05units\
+    \x18\x06\x20\x01(\tR\x05units\x1a7\n\tTagsEntry\x12\x10\n\x03key\x18\x01\
+    \x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x02\
+    8\x01\"I\n\x0eNamedActorInfo\x12#\n\rray_namespace\x18\x01\x20\x01(\tR\
+    \x0crayNamespace\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name*3\n\x08La\
+    nguage\x12\n\n\x06PYTHON\x10\0\x12\x08\n\x04JAVA\x10\x01\x12\x07\n\x03CP\
+    P\x10\x02\x12\x08\n\x04RUST\x10\x03*J\n\nWorkerType\x12\n\n\x06WORKER\
+    \x10\0\x12\n\n\x06DRIVER\x10\x01\x12\x10\n\x0cSPILL_WORKER\x10\x02\x12\
+    \x12\n\x0eRESTORE_WORKER\x10\x03*U\n\x08TaskType\x12\x0f\n\x0bNORMAL_TAS\
+    K\x10\0\x12\x17\n\x13ACTOR_CREATION_TASK\x10\x01\x12\x0e\n\nACTOR_TASK\
+    \x10\x02\x12\x0f\n\x0bDRIVER_TASK\x10\x03*\xb7\x03\n\tErrorType\x12\x0f\
+    \n\x0bWORKER_DIED\x10\0\x12\x0e\n\nACTOR_DIED\x10\x01\x12\x1c\n\x18OBJEC\
+    T_UNRECONSTRUCTABLE\x10\x02\x12\x1c\n\x18TASK_EXECUTION_EXCEPTION\x10\
+    \x03\x12\x14\n\x10OBJECT_IN_PLASMA\x10\x04\x12\x12\n\x0eTASK_CANCELLED\
+    \x10\x05\x12\x19\n\x15ACTOR_CREATION_FAILED\x10\x06\x12\x1c\n\x18RUNTIME\
+    _ENV_SETUP_FAILED\x10\x07\x12\x0f\n\x0bOBJECT_LOST\x10\x08\x12\x0e\n\nOW\
+    NER_DIED\x10\t\x12\x12\n\x0eOBJECT_DELETED\x10\n\x12\x20\n\x1cDEPENDENCY\
+    _RESOLUTION_FAILED\x10\x0b\x122\n.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_\
+    EXCEEDED\x10\x0c\x12,\n(OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED\x10\r\
+    \x12\x1a\n\x16OBJECT_FETCH_TIMED_OUT\x10\x0e\x12\x15\n\x11LOCAL_RAYLET_D\
+    IED\x10\x0f*\xac\x01\n\x0eWorkerExitType\x12\x15\n\x11SYSTEM_ERROR_EXIT\
+    \x10\0\x12\x11\n\rINTENDED_EXIT\x10\x01\x12\x1c\n\x18UNUSED_RESOURCE_REL\
+    EASED\x10\x02\x12\x1b\n\x17PLACEMENT_GROUP_REMOVED\x10\x03\x12\x17\n\x13\
+    CREATION_TASK_ERROR\x10\x04\x12\r\n\tIDLE_EXIT\x10\x05\x12\r\n\tNODE_DIE\
+    D\x10\x06*M\n\x11PlacementStrategy\x12\x08\n\x04PACK\x10\0\x12\n\n\x06SP\
+    READ\x10\x01\x12\x0f\n\x0bSTRICT_PACK\x10\x02\x12\x11\n\rSTRICT_SPREAD\
+    \x10\x03B\x1d\n\x18io.ray.runtime.generated\xf8\x01\x01b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;
