@@ -48,6 +48,12 @@ article about the Apollo 11 moon landing.
   co-pilot, col. Edwin E. Aldrin Jr. of the air force -- brought their ship to
   rest on a level, rock-strewn plain ."
 
+
+This is the example machine learning models we are using here. You can actually use arbitrary models in any framework with Python API. You can take a look at our tutorials on sckit-learn, PyTorch, Tensorflow, here ADD LINKS.
+
+Converting to Ray Serve Deployment
+===========================
+
 This tutorial's goal is to deploy this model using Ray Serve, so it can be
 scaled up and queried over HTTP. We'll start by converting the above Python
 function into a Ray Serve deployment that can be launched locally on a laptop.
