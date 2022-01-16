@@ -262,7 +262,6 @@ Papers
    :caption: Ray Serve
 
    serve/index.rst
-   serve/tutorial.rst
    serve/deploy_model_tutorial.rst
    serve/core-apis.rst
    serve/http-servehandle.rst
