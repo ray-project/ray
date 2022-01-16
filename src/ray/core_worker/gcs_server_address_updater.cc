@@ -45,7 +45,7 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
     RAY_LOG(WARNING)
         << "Could not join updater thread. This can cause segfault upon destruction.";
   }
-  RAY_LOG(INFO) << "GcsServerAddressUpdater is destructed";
+  RAY_LOG(DEBUG) << "GcsServerAddressUpdater is destructed";
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {

@@ -28,7 +28,7 @@ PeriodicalRunner::~PeriodicalRunner() {
     timer->cancel();
   }
   timers_.clear();
-  RAY_LOG(INFO) << "PeriodicalRunner is destructed";
+  RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
 }
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
