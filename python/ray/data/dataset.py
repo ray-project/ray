@@ -876,13 +876,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function or Arrow column name.
+            key: A key function or Arrow column name. If this is None, the
+                grouping is global.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
+
+        # Always allow None since groupby interprets that as grouping all
+        # records into a single global group.
         _validate_key_fn(self, key, always_allow_none=True)
+
         return GroupedDataset(self, key)
 
     def aggregate(self, *aggs: AggregateFn) -> U:
