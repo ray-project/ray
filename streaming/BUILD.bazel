@@ -384,12 +384,12 @@ cc_test(
 
 python_proto_compile(
     name = "streaming_py_proto",
-    deps = [":streaming_proto"],
+    protos = [":streaming_proto"],
 )
 
 python_proto_compile(
     name = "remote_call_py_proto",
-    deps = [":remote_call_proto"],
+    protos = [":remote_call_proto"],
 )
 
 filegroup(

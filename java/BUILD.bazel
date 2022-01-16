@@ -189,22 +189,22 @@ java_binary(
 
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@//src/ray/protobuf:common_proto"],
+    protos = ["@//src/ray/protobuf:common_proto"],
 )
 
 java_proto_compile(
     name = "runtime_env_common_java_proto",
-    deps = ["@//src/ray/protobuf:runtime_env_common_proto"],
+    protos = ["@//src/ray/protobuf:runtime_env_common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@//src/ray/protobuf:gcs_proto"],
+    protos = ["@//src/ray/protobuf:gcs_proto"],
 )
 
 java_proto_compile(
     name = "serve_java_proto",
-    deps = ["@//src/ray/protobuf:serve_proto"],
+    protos = ["@//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
