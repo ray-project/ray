@@ -21,6 +21,11 @@ python_grpc_compile(
     protos = [":common_proto"],
 )
 
+python_grpc_compile(
+    name = "pubsub_py_proto",
+    protos = [":pubsub_proto"],
+)
+
 proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
@@ -110,6 +115,16 @@ proto_library(
         ":common_proto",
         "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"
     ],
+)
+
+python_grpc_compile(
+    name = "metrics_py_proto",
+    protos = ["@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"]
+)
+
+python_grpc_compile(
+    name = "resource_py_proto",
+    protos = ["@io_opencensus_proto//opencensus/proto/resource/v1:resource_proto"]
 )
 
 cc_proto_library(
@@ -305,4 +320,27 @@ proto_library(
 python_grpc_compile(
     name = "serve_py_proto",
     protos = [":serve_proto"],
+)
+
+filegroup(
+    name = "all_py_proto",
+    srcs = [
+        ":agent_manager_py_proto",
+        ":common_py_proto",
+        ":core_worker_py_proto",
+        ":dependency_py_proto",
+        ":event_py_proto",
+        ":gcs_py_proto",
+        ":gcs_service_py_proto",
+        ":job_agent_py_proto",
+        ":logging_py_proto",
+        ":metrics_py_proto",
+        ":node_manager_py_proto",
+        ":pubsub_py_proto",
+        ":ray_client_py_proto",
+        ":reporter_py_proto",
+        ":resource_py_proto",
+        ":runtime_env_agent_py_proto",
+        ":runtime_env_common_py_proto",
+    ],
 )
