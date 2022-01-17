@@ -503,19 +503,27 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
         ray.get(ret)
 
 def test_locality_aware_scheduling_when_driver_local_raylet_dies(ray_start_cluster):
+    """Test that locality-ware scheduling can handle dead nodes."""
+    # See https://github.com/ray-project/ray/pull/21548#issuecomment-1014190548
+    # Create a node with 2 nodes.
     cluster = ray_start_cluster
     node1 = cluster.add_node(num_cpus=4, resources={"node1": 1})
     node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+    # Put an object in the driver local node (node1).
     obj = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    # Kill node1.
     node1.kill_raylet()
 
     @ray.remote
     def func_with_obj_arg(obj):
         return "ok"
 
+    # Submit a task that requires the object.
+    # Locality-aware scheduler should know that node1 is dead,
+    # and schedule the task to node2.
     assert ray.get(func_with_obj_arg.remote(obj)) == "ok"
 
 
