@@ -54,8 +54,7 @@ const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its node has died. Node Id: ", node_id.Hex()));
+      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
   return death_cause;
 }
 
@@ -66,8 +65,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its worker process has died. Worker exit type: ",
+      "The actor is dead because its worker process has died. Worker exit type: ",
       ray::rpc::WorkerExitType_Name(disconnect_type)));
   return death_cause;
 }
