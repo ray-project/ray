@@ -113,7 +113,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
         super().__init__(provider_config, cluster_name)
 
-    def _url(self, path, api_group):
+    def _url(self, path):
         if path.startswith("pods"):
             api_group = "/api/v1"
         elif path.startswith("rayclusters"):

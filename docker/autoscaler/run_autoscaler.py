@@ -42,7 +42,7 @@ if __name__ == "__main__":
     cluster_name = yaml.safe_load(open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
     head_ip = get_node_ip_address()
     Monitor(
-        redis_address=f"{head_ip}:6379",
+        address=f"{head_ip}:6379",
         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         autoscaling_config=AUTOSCALING_CONFIG_PATH,
         monitor_ip=head_ip,
