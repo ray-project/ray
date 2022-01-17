@@ -469,11 +469,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             "GCS server port on head node.", cf.bold("--gcs-server-port"),
             cf.bold("--port"))
 
-    explicit_node_ip_address = False
+    # Whether the original arguments include node_ip_address.
+    include_node_ip_address = False
     if node_ip_address is not None:
-        explicit_node_ip_address = True
-        node_ip_address = services.convert_local_host_if_needed(
-            node_ip_address)
+        include_node_ip_address = True
+        node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     try:
         resources = json.loads(resources)
@@ -656,6 +656,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
+                # Note: In the case of joining an existing cluster using
+                # `address="auto"`, the _node_ip_address parameter is
+                # unnecessary.
                 cli_logger.print(
                     "ray{}init(address{}{}{}{})", cf.magenta("."),
                     cf.magenta("="), cf.yellow("'auto'"),
@@ -664,7 +667,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     if redis_password else "", ", _node_ip_address{}{}".format(
                         cf.magenta("="),
                         cf.yellow("'" + node_ip_address + "'"))
-                    if explicit_node_ip_address else "")
+                    if include_node_ip_address else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")

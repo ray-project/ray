@@ -435,7 +435,7 @@ def remaining_processes_alive():
 
 
 def canonicalize_bootstrap_address(addr: str):
-    """Canonicalizes Ray cluster bootstrap address to ip:port.
+    """Canonicalizes Ray cluster bootstrap address to host:port.
     Reads address from the environment if needed.
 
     This function should be used to process user supplied Ray cluster address,
@@ -447,7 +447,7 @@ def canonicalize_bootstrap_address(addr: str):
     if addr is None or addr == "auto":
         addr = get_ray_address_from_environment()
     try:
-        bootstrap_address = convert_local_host_if_needed(addr)
+        bootstrap_address = resolve_ip_for_localhost(addr)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
@@ -469,19 +469,17 @@ def extract_ip_port(bootstrap_address: str):
     return ip, port
 
 
-def convert_local_host_if_needed(address: str):
-    """Convert to a reachable across nodes IP if the address is "localhost"
-            or "127.0.0.1".
-
-    This should be a no-op if address isn't a local host.
+def resolve_ip_for_localhost(address: str):
+    """Convert to a remotely reachable IP if the address is "localhost"
+            or "127.0.0.1". Otherwise do nothing.
 
     Args:
         address: This can be either a string containing a hostname (or an IP
             address) and a port or it can be just an IP address.
 
     Returns:
-        The same address but with the local host replaced by reachable across
-            nodes IP.
+        The same address but with the local host replaced by remotely
+            reachable IP.
     """
     if not address:
         raise ValueError(f"Malformed address: {address}")
