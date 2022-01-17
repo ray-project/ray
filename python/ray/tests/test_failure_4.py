@@ -6,6 +6,7 @@ import ray
 import pytest
 import grpc
 from grpc._channel import _InactiveRpcError
+import numpy as np
 import psutil
 import subprocess
 
@@ -500,6 +501,22 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+def test_locality_aware_scheduling_when_driver_local_raylet_dies(ray_start_cluster):
+    cluster = ray_start_cluster
+    node1 = cluster.add_node(num_cpus=4, resources={"node1": 1})
+    node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    obj = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+    node1.kill_raylet()
+
+    @ray.remote
+    def func_with_obj_arg(obj):
+        return "ok"
+
+    assert ray.get(func_with_obj_arg.remote(obj)) == "ok"
 
 
 if __name__ == "__main__":
