@@ -74,9 +74,6 @@ void PeriodicalRunner::DoRunFnPeriodically(
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     const std::function<void()> &fn, boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer, const std::string name) {
-  if (name == "GcsClient.deadline_timer.check_gcs_service_address") {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
@@ -84,11 +81,11 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
-  timer.async_wait([this, fn = std::move(fn), period, &timer,
-                    stats_handle = std::move(stats_handle),
-                    name](const boost::system::error_code &error) {
+  timer->async_wait([this, fn = std::move(fn), period, timer = std::move(timer),
+                     stats_handle = std::move(stats_handle),
+                     name](const boost::system::error_code &error) {
     io_service_.stats().RecordExecution(
-        [this, fn = std::move(fn), error, period, &timer, name]() {
+        [this, fn = std::move(fn), error, period, timer = std::move(timer), name]() {
           if (error == boost::asio::error::operation_aborted) {
             // `operation_aborted` is set when `timer` is canceled or destroyed.
             // The Monitor lifetime may be short than the object who use it. (e.g.

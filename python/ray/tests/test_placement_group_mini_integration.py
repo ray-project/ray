@@ -39,7 +39,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     cluster.wait_for_nodes()
     num_nodes = len(nodes)
 
-    print(ray.init(address=cluster.address))
+    ray.init(address=cluster.address)
     while not ray.is_initialized():
         time.sleep(0.1)
     bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
@@ -120,7 +120,7 @@ def test_placement_group_create_only(ray_start_cluster, execution_number):
     run_mini_integration_test(ray_start_cluster, pg_removal=False, num_pgs=333)
 
 
-@pytest.mark.parametrize("execution_number", range(100))
+@pytest.mark.parametrize("execution_number", range(3))
 def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     """Full PG mini integration test that runs many
         concurrent remove_placement_group

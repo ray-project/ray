@@ -75,8 +75,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Shutdown API must be called before deallocating a core worker.
   /// Otherwise, it can have various destruction order related memory corruption.
-  /// This can only happen if the core worker is destroyed by unexpected error (e.g.,
-  /// SEGSEGV).
   ///
   /// If the core worker is initiated at a driver, the driver is responsible for calling
   /// the shutdown API before terminating. If the core worker is initated at a worker,
@@ -105,7 +103,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shut down the worker completely.
   ///
-  /// This must be called before expected termination of a worker / driver.
+  /// This must be called before deallocating a worker / driver's core worker for memory
+  /// safety.
   ///
   /// \return void.
   void Shutdown();
