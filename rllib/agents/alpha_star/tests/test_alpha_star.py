@@ -19,7 +19,7 @@ register_env("connect_four",
 class TestAlphaStar(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=10)#, local_mode=True)  #TODO
+        ray.init(num_cpus=10, local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -60,7 +60,7 @@ class TestAlphaStar(unittest.TestCase):
         config["vf_loss_coeff"] = 0.01
         config["entropy_coeff"] = 0.004
 
-        config["win_rate_threshold_for_new_snapshot"] = 0.8#TEST: 0.8 or 0.9 are good values
+        config["win_rate_threshold_for_new_snapshot"] = 0.6#TEST: 0.8 or 0.9 are good values
         config["keep_new_snapshot_training_prob"] = 0.3
 
         #config["num_sgd_iter"] = 5#TEST
@@ -77,12 +77,6 @@ class TestAlphaStar(unittest.TestCase):
         # Two GPUs -> 2 policies per GPU.
         config["num_gpus"] = 1
         config["_fake_gpus"] = True
-        # Let the algo know about our 4 policies.
-        #config["multiagent"] = {
-        #    "policies": {"p0", "p1", "p2", "p3"},
-        #    # Agent IDs are 0, 1 (ints) -> Map to "p0" to "p3" randomly.
-        #    "policy_mapping_fn": policy_mapping_fn,
-        #}
 
         num_iterations = 1000
 

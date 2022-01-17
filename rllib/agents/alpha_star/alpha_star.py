@@ -10,6 +10,7 @@ from typing import Callable, Container, Dict, List, Optional, Type, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.rllib.agents.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.agents.trainer import Trainer
 import ray.rllib.agents.ppo.appo as appo
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -19,7 +20,6 @@ from ray.rllib.execution.buffers.mixin_replay_buffer import \
     MixInMultiAgentReplayBuffer
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
     LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
@@ -168,31 +168,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         ma_cfg = self.config["multiagent"]
         max_num_policies_to_train = self.config["max_num_policies_to_train"]
 
-        # Examples:
-        # 4 GPUs + max. 10 policies to train -> 4 shards (1 GPU each).
-        # 8 GPUs + max. 3 policies to train -> 3 shards (2.7 GPUs each).
-        # 8 GPUs + max. 2 policies to train -> 2 shards (4 GPUs each).
-        # 2 GPUs + max. 5 policies to train -> 2 shards (0.4 GPUs each).
-        if self.config["num_gpus"]:
-            num_learner_shards = min(self.config["num_gpus"], max_num_policies_to_train)
-            num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
-        else:
-            num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
-            num_gpus_per_shard = 0
-
-        num_policies_per_shard = max_num_policies_to_train / num_learner_shards
-        num_gpus_per_policy = num_gpus_per_shard / num_policies_per_shard
-        num_policies_per_shard = math.ceil(num_policies_per_shard)
-
-        # Map from policy ID to a) respective policy learner actor handle
-        # and b) the co-located replay actor handle for that policy.
-        # We'll keep this map synched across the algorithm's workers.
-        _policy_learners = {}
-        _pol_actor_to_pid = {}
-        for pid, policy_spec in ma_cfg["policies"].items():
-            if pid in self.workers.local_worker().policies_to_train:
-                _policy_learners[pid] = [None, None]
-
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
         ReplayActor = ray.remote(
@@ -207,83 +182,36 @@ class AlphaStarTrainer(appo.APPOTrainer):
             self.config["replay_buffer_capacity"],
             self.config["replay_buffer_replay_ratio"]
         ]
-        self._replay_actors = []
 
-        for shard_idx in range(num_learner_shards):
-            # Which policies should be placed in this learner shard?
-            policies = list(_policy_learners.keys())[slice(
-                int(shard_idx * num_policies_per_shard),
-                int((shard_idx + 1) * num_policies_per_shard))]
-            # Merge the policies config overrides with the main config.
-            # Also, adjust `num_gpus` (to indicate an individual policy's
-            # num_gpus, not the total number of GPUs).
-            configs = [
-                self.merge_trainer_configs(
-                    self.config,
-                    dict(ma_cfg["policies"][pid].config,
-                         **{"num_gpus": num_gpus_per_policy}))
-                for pid in policies
-            ]
+        # Create a DistributedLearners utility object and set it up with
+        # the initial first n learnable policies (found in the config).
+        distributed_learners = DistributedLearners(
+            config=self.config,
+            max_num_policies=max_num_policies_to_train,
+            replay_actor_class=ReplayActor,
+            replay_actor_args=replay_actor_args,
+        )
+        for pid, policy_spec in ma_cfg["policies"].items():
+            if pid in self.workers.local_worker().policies_to_train:
+                distributed_learners.add_policy(pid, policy_spec)
 
-            colocated = create_colocated_actors(
-                actor_specs=[
-                    (ReplayActor, replay_actor_args, {}, 1),
-                ] + [
-                    (
-                        ray.remote(
-                            num_cpus=1,
-                            num_gpus=num_gpus_per_policy
-                            if not self.config["_fake_gpus"] else 0)(
-                                ma_cfg["policies"][pid].policy_class),
-                        # Policy c'tor args.
-                        (ma_cfg["policies"][pid].observation_space,
-                         ma_cfg["policies"][pid].action_space, cfg),
-                        # Policy c'tor kwargs={}.
-                        {},
-                        # Count=1,
-                        1) for pid, cfg in zip(policies, configs)
-                ],
-                node=None)  # None
-
-            # Store replay actor (shard) in our list.
-            replay_actor = colocated[0][0]
-            self._replay_actors.append(replay_actor)
-            # Store policy actors together with their respective (co-located)
-            # replay actor.
-            for co, pid in zip(colocated[1:], policies):
-                policy_actor = co[0]
-                _policy_learners[pid] = [policy_actor, replay_actor]
-                _pol_actor_to_pid[policy_actor] = pid
-
-        # Store policy actor -> replay actor mapping on each RolloutWorker
+        # Store distributed_learners on all RolloutWorkers
         # so they know, to which replay shard to send samples to.
 
         def _set_policy_learners(worker):
-            worker._policy_learners = _policy_learners
+            worker._distributed_learners = distributed_learners
 
         ray.get([
             w.apply.remote(_set_policy_learners)
             for w in self.workers.remote_workers()
         ])
 
-        # Setup important properties for this trainer:
-        # Map of PolicyID -> Tuple[policy actor, corresponding replay actor]
-        self._policy_learners = _policy_learners
-        # Map of policy actor -> PolicyID.
-        self._pol_actor_to_pid = _pol_actor_to_pid
+        self.distributed_learners = distributed_learners
 
         # Policy groups (main, main_exploit, league_exploit):
-        self.main_policies = 1 #: Set[PolicyID] = set()
-        self.main_exploiters = 1 #: Set[PolicyID] = set()
-        self.league_exploiters = 1 #: Set[PolicyID] = set()
-        # Sets of currently trainable/non-trainable policies in the league.
-        #self.trainable_policies: Set[PolicyID] = set()
-        #self.non_trainable_policies: Set[PolicyID] = set()
-        #for pid in self.config["multiagent"]["policies"]:
-        #    if pid in self.config["multiagent"]["policies_to_train"]:
-        #        self.trainable_policies.add(pid)
-        #    else:
-        #        self.non_trainable_policies.add(pid)
+        self.main_policies = 1
+        self.main_exploiters = 1
+        self.league_exploiters = 1
         # Store the win rates for league overview printouts.
         self.win_rates: Dict[PolicyID, float] = {}
 
@@ -322,8 +250,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             pol_actors = []
             args = []
-            for i, (pid, (pol_actor, repl_actor)) in enumerate(
-                    self._policy_learners.items()):
+            for i, (pid, pol_actor, repl_actor) in enumerate(self.distributed_learners):
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
@@ -352,10 +279,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
             policy_weights = {}
             for pol_actor, policy_result in train_results.items():
                 if policy_result:
-                    pid = self._pol_actor_to_pid[pol_actor]
+                    pid = self.distributed_learners.get_policy_id(pol_actor)
                     train_infos[pid] = policy_result
-                    policy_weights[pid] = self._policy_learners[pid][
-                        0].get_weights.remote()
+                    policy_weights[pid] = pol_actor.get_weights.remote()
 
             policy_weights_ref = ray.put(policy_weights)
 
@@ -468,17 +394,18 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         league_exploiter = "league_exploiter_" + str(
                             np.random.choice(
                                 list(range(num_league_exploiters))))
-                        # This league exploiter is a frozen: Play against a
+                        # This league exploiter is frozen: Play against a
                         # trainable policy.
                         if league_exploiter not in trainable_policies:
                             opponent = np.random.choice(
                                 list(trainable_policies))
+                            print(f"{league_exploiter} (frozen) vs {opponent} (training)")
                         # League exploiter is trainable: Play against any other
                         # non-trainable policy.
                         else:
                             opponent = np.random.choice(
                                 list(non_trainable_policies))
-                        print(f"{league_exploiter} vs {opponent}")
+                            print(f"{league_exploiter} (training) vs {opponent} (frozen)")
                         return league_exploiter if \
                             episode.episode_id % 2 == agent_id else opponent
 
@@ -487,14 +414,18 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         main_exploiter = "main_exploiter_" + str(
                             np.random.choice(
                                 list(range(num_main_exploiters))))
-                        # Main exploiter is frozen: Play against the main policy.
+                        # Main exploiter is frozen: Play against a trainable main
+                        # policy.
                         if main_exploiter not in trainable_policies:
+                            #TODO: Any main, not just idx=0
                             main = "main_0"
-                        # Main exploiter is trainable: Play against any frozen main.
+                            print(f"{main_exploiter} (frozen) vs {main} (training)")
+                        # Main exploiter is trainable: Play against any main.
                         else:
                             main = "main_{}".format(np.random.choice(
-                                list(range(1, num_main_policies))))
-                        print(f"{main_exploiter} vs {main}")
+                                list(range(num_main_policies))))
+                            training = "training" if main in trainable_policies else "frozen"
+                            print(f"{main_exploiter} (training) vs {main} ({training})")
                         return main_exploiter if \
                             episode.episode_id % 2 == agent_id else main
 
@@ -538,15 +469,32 @@ class AlphaStarTrainer(appo.APPOTrainer):
             self,
             policy_id: PolicyID,
             policy_cls: Type[Policy],
+            *,
+            observation_space: Optional[gym.spaces.Space] = None,
+            action_space: Optional[gym.spaces.Space] = None,
+            config: Optional[PartialTrainerConfigDict] = None,
+            policy_state: Optional[PolicyState] = None,
             **kwargs,
     ) -> Policy:
         # Add the new policy to all our train- and eval RolloutWorkers
         # (including the local worker).
-        new_policy = super().add_policy(policy_id, policy_cls, **kwargs)
+        new_policy = super().add_policy(
+            policy_id, policy_cls,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            **kwargs,
+        )
 
         # Do we have to create a policy-learner actor from it as well?
         if policy_id in kwargs.get("policies_to_train", []):
-
+            new_policy_actor = self.distributed_learners.add_policy(
+                policy_id,
+                PolicySpec(policy_cls, new_policy.observation_space, new_policy.action_space, self.config))
+            # Set state of new policy actor, if provided.
+            if policy_state is not None:
+                ray.get(new_policy_actor.set_state.remote(policy_state))
 
         return new_policy
 
@@ -557,10 +505,18 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Send the per-agent SampleBatches to the correct buffer(s),
         # depending on which policies participated in the episode.
         assert isinstance(sample, MultiAgentBatch)
+        assert len(sample.policy_batches) == 2
         for pid, batch in sample.policy_batches.items():
-            # Don't send data, if policy is not trainable.
-            if pid in worker._policy_learners:
-                replay_actor = worker._policy_learners[pid][1]
+            # Don't send data, if:
+            # - Policy is not trainable.
+            # - Data was generated by a main-exploiter playing against
+            #   a league-exploiter.
+            replay_actor, _ = worker._distributed_learners.get_replay_and_policy_actors(pid)
+            if replay_actor is not None and (
+                not pid.startswith("main_exploiter_") or
+                next(iter(set(sample.policy_batches.keys()) - {pid})).startswith(
+                    "main_")
+            ):
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
                 replay_actor.add_batch.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
