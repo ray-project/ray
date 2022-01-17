@@ -165,6 +165,12 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
+- label: ":redis: Worker"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub= RAY_gcs_storage=memory ./ci/travis/ci.sh test_cpp
+
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:

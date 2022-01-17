@@ -55,6 +55,10 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  std::string gcs_ip = "";
+
+  int gcs_port = 6397;
+
   StartupToken startup_token;
 
   std::vector<std::string> head_args = {};
@@ -66,7 +70,7 @@ class ConfigInternal {
 
   void Init(RayConfig &config, int argc, char **argv);
 
-  void SetRedisAddress(const std::string address);
+  void SetBootstrapAddress(const std::string& address);
 
   ConfigInternal(ConfigInternal const &) = delete;
 
