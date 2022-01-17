@@ -144,18 +144,9 @@ Status TaskExecutor::ExecuteTask(
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   ArgsBufferList ray_args_buffer;
   for (size_t i = 0; i < args_buffer.size(); i++) {
-    auto &ref = arg_refs.at(i);
-    bool is_ref_arg = (ref.object_id() != ray::ObjectID::Nil().Binary());
-
+    auto &arg = args_buffer.at(i);
     msgpack::sbuffer sbuf;
-
-    if (is_ref_arg) {
-      sbuf.write(ref.object_id().data(), ref.object_id().size());
-    } else {
-      auto &arg = args_buffer.at(i);
-      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
-    }
-
+    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {

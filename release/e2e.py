@@ -449,19 +449,19 @@ class S3SyncSessionController(SessionController):
         remote_upload_to = self._generate_tmp_s3_path()
         # pack local dir
         _, local_path = tempfile.mkstemp()
-        shutil.make_archive(local_path, "zip", os.getcwd())
+        shutil.make_archive(local_path, "gztar", os.getcwd())
         # local source -> s3
         self.s3_client.upload_file(
-            Filename=local_path + ".zip",
+            Filename=local_path + ".tar.gz",
             Bucket=self.bucket,
             Key=remote_upload_to,
         )
         # s3 -> remote target
         cid = global_command_runner.run_command(
-            session_name,
-            ("pip install -q awscli && "
-             f"aws s3 cp s3://{self.bucket}/{remote_upload_to} archive.zip && "
-             "unzip archive.zip"), {})
+            session_name, ("pip install -q awscli && "
+                           f"aws s3 cp s3://{self.bucket}/{remote_upload_to} "
+                           f"archive.tar.gz && "
+                           "tar xf archive.tar.gz"), {})
         global_command_runner.wait_command(cid)
 
     def push(self, session_name, source, target):
