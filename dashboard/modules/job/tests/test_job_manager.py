@@ -357,9 +357,8 @@ class TestAsyncAPI:
             assert job_manager.stop_job(job_id) is True
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
-
             # Assert re-stopping a stopped job also returns False
-            assert job_manager.stop_job(job_id) is False
+            wait_for_condition(lambda: job_manager.stop_job(job_id) is False)
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 

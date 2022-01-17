@@ -794,7 +794,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
       const std::string &concurrency_group_name = "");
-  void SetCurrentTaskId(const TaskID &task_id);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   void SetActorId(const ActorID &actor_id);
 

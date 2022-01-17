@@ -118,6 +118,7 @@ SERVE_NIGHTLY_TESTS = {
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
         "serve_micro_benchmark",
+        "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }

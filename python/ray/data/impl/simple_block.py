@@ -71,7 +71,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
-        return pandas.DataFrame(self._items)
+        return pandas.DataFrame({"value": self._items})
 
     def to_numpy(self, column: str = None) -> np.ndarray:
         if column:
@@ -129,8 +129,8 @@ class SimpleBlockAccessor(BlockAccessor):
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
         key_fn = key if key else lambda x: x
-        comp_fn = lambda x, b: key_fn(x) > b \
-            if descending else lambda x, b: key_fn(x) < b  # noqa E731
+        comp_fn = (lambda x, b: key_fn(x) > b) \
+            if descending else (lambda x, b: key_fn(x) < b)  # noqa E731
 
         # Compute the boundary indices in O(n) time via scan.
         boundary_indices = []

@@ -67,10 +67,12 @@ void RedisInternalKV::Get(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HGET", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if (!redis_reply->IsNil()) {
-          callback(redis_reply->ReadAsString());
-        } else {
-          callback(std::nullopt);
+        if (callback) {
+          if (!redis_reply->IsNil()) {
+            callback(redis_reply->ReadAsString());
+          } else {
+            callback(std::nullopt);
+          }
         }
       }));
 }
@@ -83,8 +85,10 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
                                   value};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        auto added_num = redis_reply->ReadAsInteger();
-        callback(added_num != 0);
+        if (callback) {
+          auto added_num = redis_reply->ReadAsInteger();
+          callback(added_num != 0);
+        }
       }));
 }
 
@@ -96,21 +100,33 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [this, callback = std::move(callback)](auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
-          std::vector<std::string> del_cmd = {"DEL"};
-          for (const auto &r : reply) {
-            RAY_CHECK(r.has_value());
-            del_cmd.emplace_back(*r);
+          // If there are no keys with this prefix, we don't need to send
+          // another delete.
+          if (reply.size() == 0) {
+            if (callback) {
+              callback(0);
+            }
+          } else {
+            std::vector<std::string> del_cmd = {"DEL"};
+            for (const auto &r : reply) {
+              RAY_CHECK(r.has_value());
+              del_cmd.emplace_back(*r);
+            }
+            RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+                del_cmd, [callback = std::move(callback)](auto redis_reply) {
+                  if (callback) {
+                    callback(redis_reply->ReadAsInteger());
+                  }
+                }));
           }
-          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-              del_cmd, [callback = std::move(callback)](auto redis_reply) {
-                callback(redis_reply->ReadAsInteger());
-              }));
         }));
   } else {
     std::vector<std::string> cmd = {"DEL", true_key};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [callback = std::move(callback)](auto redis_reply) {
-          callback(redis_reply->ReadAsInteger());
+          if (callback) {
+            callback(redis_reply->ReadAsInteger());
+          }
         }));
   }
 }
@@ -121,8 +137,10 @@ void RedisInternalKV::Exists(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HEXISTS", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        bool exists = redis_reply->ReadAsInteger() > 0;
-        callback(exists);
+        if (callback) {
+          bool exists = redis_reply->ReadAsInteger() > 0;
+          callback(exists);
+        }
       }));
 }
 
@@ -132,13 +150,15 @@ void RedisInternalKV::Keys(const std::string &ns, const std::string &prefix,
   std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        const auto &reply = redis_reply->ReadAsStringArray();
-        std::vector<std::string> results;
-        for (const auto &r : reply) {
-          RAY_CHECK(r.has_value());
-          results.emplace_back(ExtractKey(*r));
+        if (callback) {
+          const auto &reply = redis_reply->ReadAsStringArray();
+          std::vector<std::string> results;
+          for (const auto &r : reply) {
+            RAY_CHECK(r.has_value());
+            results.emplace_back(ExtractKey(*r));
+          }
+          callback(std::move(results));
         }
-        callback(std::move(results));
       }));
 }
 
@@ -149,7 +169,8 @@ void MemoryInternalKV::Get(const std::string &ns, const std::string &key,
   auto it = map_.find(true_prefix);
   auto val = it == map_.end() ? std::nullopt : std::make_optional(it->second);
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), std::move(val)));
+    io_context_.post(std::bind(std::move(callback), std::move(val)),
+                     "MemoryInternalKV.Get");
   }
 }
 
@@ -169,7 +190,7 @@ void MemoryInternalKV::Put(const std::string &ns, const std::string &key,
     inserted = true;
   }
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), inserted));
+    io_context_.post(std::bind(std::move(callback), inserted), "MemoryInternalKV.Put");
   }
 }
 
@@ -197,7 +218,7 @@ void MemoryInternalKV::Del(const std::string &ns, const std::string &key,
   }
 
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), del_num));
+    io_context_.post(std::bind(std::move(callback), del_num), "MemoryInternalKV.Del");
   }
 }
 
@@ -207,7 +228,7 @@ void MemoryInternalKV::Exists(const std::string &ns, const std::string &key,
   auto true_key = MakeKey(ns, key);
   bool existed = map_.find(true_key) != map_.end();
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), existed));
+    io_context_.post(std::bind(std::move(callback), existed), "MemoryInternalKV.Exists");
   }
 }
 
@@ -222,7 +243,8 @@ void MemoryInternalKV::Keys(const std::string &ns, const std::string &prefix,
     iter++;
   }
   if (callback != nullptr) {
-    io_context_.post(std::bind(std::move(callback), std::move(keys)));
+    io_context_.post(std::bind(std::move(callback), std::move(keys)),
+                     "MemoryInternalKV.Keys");
   }
 }
 
