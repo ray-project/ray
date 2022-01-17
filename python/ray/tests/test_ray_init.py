@@ -106,7 +106,7 @@ def test_tmpdir_env_var(shutdown_only):
         """
 import ray
 context = ray.init()
-assert context["session_dir"].startswith("/tmp/qqq/"), context
+assert context["session_dir"].startswith("/tmp/qqq"), context
 print("passed")
 """,
         env={"RAY_TMPDIR": "/tmp/qqq"})
