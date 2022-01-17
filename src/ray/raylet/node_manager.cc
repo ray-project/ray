@@ -508,7 +508,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] {
           std::stringstream debug_msg;
           debug_msg << "Event stats:\n\n"
-                    << io_service_.StatsString() << "\n\n"
+                    << io_service_.stats().StatsString() << "\n\n"
                     << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
         },
@@ -2082,7 +2082,7 @@ std::string NodeManager::DebugString() const {
   }
 
   // Event stats.
-  result << "\nEvent stats:" << io_service_.StatsString();
+  result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();

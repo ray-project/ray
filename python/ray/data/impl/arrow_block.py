@@ -79,7 +79,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             view = _copy_table(view)
         return view
 
-    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+    def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
         random = np.random.RandomState(random_seed)
         return self._table.take(random.permutation(self.num_rows()))
 
