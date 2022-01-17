@@ -70,7 +70,7 @@ class ConfigInternal {
 
   void Init(RayConfig &config, int argc, char **argv);
 
-  void SetBootstrapAddress(const std::string& address);
+  void SetBootstrapAddress(const std::string &address);
 
   ConfigInternal(ConfigInternal const &) = delete;
 

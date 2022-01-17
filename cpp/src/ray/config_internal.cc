@@ -147,10 +147,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
 };
 
-void ConfigInternal::SetBootstrapAddress(const std::string& address) {
+void ConfigInternal::SetBootstrapAddress(const std::string &address) {
   auto pos = address.find(':');
   RAY_CHECK(pos != std::string::npos);
-  if(::RayConfig::instance().bootstrap_with_gcs()) {
+  if (::RayConfig::instance().bootstrap_with_gcs()) {
     gcs_ip = address.substr(0, pos);
     redis_port = std::stoi(address.substr(pos + 1, address.length()));
   } else {

@@ -31,7 +31,7 @@ NativeRayRuntime::NativeRayRuntime() {
 
   if (::RayConfig::instance().bootstrap_with_gcs()) {
     auto gcs_address = ConfigInternal::Instance().gcs_ip;
-    if(gcs_address.empty()) {
+    if (gcs_address.empty()) {
       gcs_address = GetNodeIpAddress();
     }
     global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(

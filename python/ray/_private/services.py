@@ -1579,9 +1579,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", gcs_address if use_gcs_for_bootstrap() else redis_address,
-            plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", gcs_address
+            if use_gcs_for_bootstrap() else redis_address, plasma_store_name,
+            raylet_name, redis_password, session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
