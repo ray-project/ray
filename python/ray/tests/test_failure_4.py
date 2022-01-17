@@ -513,7 +513,7 @@ def test_locality_aware_scheduling_when_driver_local_raylet_dies(
         "raylet_heartbeat_period_milliseconds": 50,
     }
     cluster = Cluster()
-    cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
+    node1 = cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -549,14 +549,14 @@ def test_locality_aware_scheduling_when_driver_local_raylet_dies(
 
     @ray.remote
     def func(obj1, obj2):
-        return ray.worker.global_worker.node.node_ip_address
+        return ray.worker.global_worker.node.unique_id
 
-    assert ray.get(func.remote(obj1, obj2)) == node2.node_ip_address
+    assert ray.get(func.options(num_cpus=0.1).remote(obj1, obj2)) == node2.unique_id
 
     node2.kill_raylet()
     time.sleep(1)
-    target_node = ray.get(func.remote(obj1, obj2))
-    assert target_node == node3.node_ip_address or target_node == node4.node_ip_address
+    target_node = ray.get(func.options(num_cpus=0.2).remote(obj1, obj2))
+    assert target_node == node3.unique_id or target_node == node4.unique_id
 
 
 if __name__ == "__main__":
