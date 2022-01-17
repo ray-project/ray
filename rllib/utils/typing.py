@@ -10,11 +10,20 @@ if TYPE_CHECKING:
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
 
+# Represents a generic tensor type.
+# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
+TensorType = Any
+
+# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
+TensorStructType = Union[TensorType, dict, tuple]
+
+# A shape of a tensor.
+TensorShape = Union[Tuple[int], List[int]]
+
 # Represents a fully filled out config of a Trainer class.
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Trainer.
-
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with
@@ -45,6 +54,10 @@ PolicyID = str
 
 # Type of the config["multiagent"]["policies"] dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
+
+# State dict of a Policy, mapping strings (e.g. "weights") to some state
+# data (TensorStructType).
+PolicyState = Dict[str, TensorStructType]
 
 # Represents an environment id. These could be:
 # - An int index for a sub-env within a vectorized env.
@@ -98,10 +111,6 @@ GradInfoDict = dict
 # policy id.
 LearnerStatsDict = dict
 
-# Represents a generic tensor type.
-# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Any
-
 # List of grads+var tuples (tf) or list of gradient tensors (torch)
 # representing model gradients and returned by compute_gradients().
 ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
@@ -114,12 +123,6 @@ ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
-
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-TensorStructType = Union[TensorType, dict, tuple]
-
-# A shape of a tensor.
-TensorShape = Union[Tuple[int], List[int]]
 
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.

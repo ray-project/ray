@@ -1,6 +1,6 @@
 import collections
 import platform
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import ray
@@ -13,7 +13,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.util.iter import ParallelIteratorWorker
 
 
@@ -195,7 +195,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                             time_slice, weight=weight)
         self.num_added += batch.count
 
-    def replay(self) -> SampleBatchType:
+    def replay(self, policy_id: Optional[PolicyID] = None) -> SampleBatchType:
         """If this buffer was given a fake batch, return it, otherwise return
         a MultiAgentBatch with samples.
         """
@@ -211,7 +211,12 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.
             if self.replay_mode == "lockstep":
+                assert policy_id is None, \
+                    "`policy_id` specifier not allowed in `locksetp` mode!"
                 return self.replay_buffers[_ALL_POLICIES].sample(
+                    self.replay_batch_size, beta=self.prioritized_replay_beta)
+            elif policy_id is not None:
+                return self.replay_buffers[policy_id].sample(
                     self.replay_batch_size, beta=self.prioritized_replay_beta)
             else:
                 samples = {}
