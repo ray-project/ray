@@ -3,6 +3,7 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import gym
+import math
 import numpy as np
 import re
 from typing import Callable, Container, Dict, List, Optional, Type, Union
@@ -60,7 +61,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Each trainable policy will exist as a independent remote actor, co-locate
         # with a replay buffer. This is besides its existence inside
         # the RolloutWorkers for training and evaluation.
-        "max_policies_to_train": 10,
+        "max_num_policies_to_train": 10,
 
         # Basic "multiagent" setup for league-building AlphaStar:
         # Start with "main_0" (the policy we would like to use in the very end),
@@ -107,10 +108,9 @@ class AlphaStarTrainer(appo.APPOTrainer):
     def default_resource_request(cls, config):
         cf = dict(cls.get_default_config(), **config)
 
-        num_policies = len(cf["multiagent"]["policies"])
+        num_policies = len(cf["max_num_policies_to_train"])
         if cf["num_gpus"]:
-            num_learner_shards = max(cf["num_gpus"] / num_policies,
-                                     cf["num_gpus"])
+            num_learner_shards = min(cf["num_gpus"], num_policies)
             num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
         else:
             num_learner_shards = cf.get("num_replay_buffer_shards", 1)
@@ -155,9 +155,34 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
     @override(appo.APPOTrainer)
     def setup(self, config: PartialTrainerConfigDict):
+        # Call super's setup to validate config, create RolloutWorkers
+        # (train and eval), etc..
         super().setup(config)
 
+        # AlphaStar specific setup:
+        # - Create n policy learner actors (@ray.remote-converted Policies) on
+        #   one or more GPU nodes.
+        # - On each such node, also locate one replay buffer shard.
+        # -
+
         ma_cfg = self.config["multiagent"]
+        max_num_policies_to_train = self.config["max_num_policies_to_train"]
+
+        # Examples:
+        # 4 GPUs + max. 10 policies to train -> 4 shards (1 GPU each).
+        # 8 GPUs + max. 3 policies to train -> 3 shards (2.7 GPUs each).
+        # 8 GPUs + max. 2 policies to train -> 2 shards (4 GPUs each).
+        # 2 GPUs + max. 5 policies to train -> 2 shards (0.4 GPUs each).
+        if self.config["num_gpus"]:
+            num_learner_shards = min(self.config["num_gpus"], max_num_policies_to_train)
+            num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
+        else:
+            num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
+            num_gpus_per_shard = 0
+
+        num_policies_per_shard = max_num_policies_to_train / num_learner_shards
+        num_gpus_per_policy = num_gpus_per_shard / num_policies_per_shard
+        num_policies_per_shard = math.ceil(num_policies_per_shard)
 
         # Map from policy ID to a) respective policy learner actor handle
         # and b) the co-located replay actor handle for that policy.
@@ -167,21 +192,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         for pid, policy_spec in ma_cfg["policies"].items():
             if pid in self.workers.local_worker().policies_to_train:
                 _policy_learners[pid] = [None, None]
-
-        # Examples:
-        # 4 GPUs 2 Policies -> 2 shards.
-        # 2 GPUs 4 Policies -> 2 shards.
-        if self.config["num_gpus"]:
-            num_learner_shards = int(
-                max(self.config["num_gpus"] / len(_policy_learners),
-                    self.config["num_gpus"]))
-            num_gpus_per_shard = self.config["num_gpus"] / num_learner_shards
-        else:
-            num_learner_shards = self.config.get("num_replay_buffer_shards", 1)
-            num_gpus_per_shard = 0
-
-        num_policies_per_shard = len(_policy_learners) / num_learner_shards
-        num_gpus_per_policy = num_gpus_per_shard / num_policies_per_shard
 
         # Single CPU replay shard (co-located with GPUs so we can place the
         # policies on the same machine(s)).
@@ -205,7 +215,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 int(shard_idx * num_policies_per_shard),
                 int((shard_idx + 1) * num_policies_per_shard))]
             # Merge the policies config overrides with the main config.
-            # Also, wdjust `num_gpus` (to indicate an individual policy's
+            # Also, adjust `num_gpus` (to indicate an individual policy's
             # num_gpus, not the total number of GPUs).
             configs = [
                 self.merge_trainer_configs(
@@ -284,15 +294,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         # Based on the (train + evaluate) results, perform a step of
         # league building.
-        self.build_league(
-            result=result,
-            #config=self.config,
-            #main_policies=self.main_policies,
-            #main_exploiters=self.main_exploiters,
-            #league_exploiters=self.league_exploiters,
-            #trainable_policies=self.trainable_policies,
-            #non_trainable_policies=self.non_trainable_policies,
-        )
+        self.build_league(result=result)
 
         return result
 
@@ -538,11 +540,13 @@ class AlphaStarTrainer(appo.APPOTrainer):
             policy_cls: Type[Policy],
             **kwargs,
     ) -> Policy:
-
+        # Add the new policy to all our train- and eval RolloutWorkers
+        # (including the local worker).
         new_policy = super().add_policy(policy_id, policy_cls, **kwargs)
-        # Besides add this policy to our workers (and eval workers),
-        # do we have to create a policy-learner actor from it as well?
+
+        # Do we have to create a policy-learner actor from it as well?
         if policy_id in kwargs.get("policies_to_train", []):
+
 
         return new_policy
 
