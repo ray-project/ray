@@ -26,7 +26,7 @@ def setup_logging() -> None:
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
     )
 
-    # Also log at DEBUG level to stdout for debugging with `kubectl logs`.
+    # Also log to stdout for debugging with `kubectl logs`.
     root_logger = logging.getLogger("")
     root_logger.setLevel(logging.INFO)
 
