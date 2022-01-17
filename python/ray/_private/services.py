@@ -549,23 +549,23 @@ def create_redis_client(redis_address, password=None):
     """
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
-    else:
+
+    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
         cli = create_redis_client.instances.get(redis_address)
-        if cli is not None:
-            try:
-                cli.ping()
-                return cli
-            except Exception:
-                create_redis_client.instances.pop(redis_address)
+        if cli is None:
+            redis_ip_address, redis_port = extract_ip_port(
+                canonicalize_bootstrap_address(redis_address))
+            cli = redis.StrictRedis(
+                host=redis_ip_address, port=int(redis_port), password=password)
+            create_redis_client.instances[redis_address] = cli
+        try:
+            cli.ping()
+            return cli
+        except Exception:
+            create_redis_client.instances.pop(redis_address)
+            time.sleep(2)
 
-    redis_ip_address, redis_port = extract_ip_port(
-        canonicalize_bootstrap_address(redis_address))
-    # For this command to work, some other client (on the same machine
-    # as Redis) must have run "CONFIG SET protected-mode no".
-    create_redis_client.instances[redis_address] = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port), password=password)
-
-    return create_redis_client.instances[redis_address]
+    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
 def start_ray_process(command,
