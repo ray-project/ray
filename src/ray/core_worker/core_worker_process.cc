@@ -323,10 +323,7 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
   auto global_worker = GetGlobalWorker();
-  if (global_worker == nullptr) {
-    RAY_LOG(ERROR) << "Driver already shut down.";
-    return;
-  }
+  RAY_CHECK(global_worker);
   global_worker->Disconnect();
   global_worker->Shutdown();
   RemoveWorker(global_worker);
