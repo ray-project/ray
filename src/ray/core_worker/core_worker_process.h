@@ -113,8 +113,6 @@ class CoreWorkerProcess {
   /// crash.
   /// \return Void.
   static void EnsureInitialized(bool quick_exit);
-
-  static void HandleAtExit();
 };
 
 class CoreWorkerProcessImpl {

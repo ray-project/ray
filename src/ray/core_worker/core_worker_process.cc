@@ -21,25 +21,19 @@ namespace ray {
 namespace core {
 namespace {
 
-std::unique_ptr<CoreWorkerProcessImpl> core_worker_process;
+CoreWorkerProcessImpl* core_worker_process;
+
+void ResetCoreWorkerProcess(CoreWorkerProcessImpl* process) {
+  delete core_worker_process;
+  core_worker_process = process;
+}
 
 }  // namespace
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcessImpl(options));
-
-#ifndef _WIN32
-  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
-  // constructor. We assume that spdlog has been initialized before this line. When the
-  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
-  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
-  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
-  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
-  // `CoreWorkerProcess` destructor.
-  RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
-#endif
+  ResetCoreWorkerProcess(new CoreWorkerProcessImpl(options));
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -48,12 +42,10 @@ void CoreWorkerProcess::Shutdown() {
     return;
   }
   core_worker_process->ShutdownDriver();
-  core_worker_process.reset();
+  ResetCoreWorkerProcess(nullptr);
 }
 
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
-
-void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
 
 CoreWorker &CoreWorkerProcess::GetCoreWorker() {
   EnsureInitialized(/*quick_exit*/ true);
@@ -68,7 +60,7 @@ void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
 void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized(/*quick_exit*/ false);
   core_worker_process->RunWorkerTaskExecutionLoop();
-  core_worker_process.reset();
+  ResetCoreWorkerProcess(nullptr);
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
@@ -331,7 +323,10 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(options_.worker_type == WorkerType::DRIVER)
       << "The `Shutdown` interface is for driver only.";
   auto global_worker = GetGlobalWorker();
-  RAY_CHECK(global_worker);
+  if (global_worker == nullptr) {
+    RAY_LOG(ERROR) << "Driver already shut down.";
+    return;
+  }
   global_worker->Disconnect();
   global_worker->Shutdown();
   RemoveWorker(global_worker);
