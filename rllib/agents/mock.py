@@ -27,7 +27,12 @@ class _MockTrainer(Trainer):
     def default_resource_request(cls, config):
         return None
 
-    def _init(self, config, env_creator):
+    @override(Trainer)
+    def setup(self, config):
+        # Call super's setup().
+        super().setup(config)
+
+        # Add needed properties.
         self.info = None
         self.restored = False
 

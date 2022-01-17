@@ -228,10 +228,17 @@ class ARSTrainer(Trainer):
                 "`NoFilter` for ARS!")
 
     @override(Trainer)
-    def _init(self, config, env_creator):
+    def setup(self, config):
+        # Validate our config dict.
         self.validate_config(config)
+
+        # Generate `self.env_creator` callable to create an env instance.
+        self._get_env_creator_from_env_id(self._env_id)
+        # Generate the local env.
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
-        env = env_creator(env_context)
+        env = self.env_creator(env_context)
+
+        self.callbacks = config.get("callbacks")()
 
         self._policy_class = get_policy_class(config)
         self.policy = self._policy_class(env.observation_space,
@@ -250,7 +257,7 @@ class ARSTrainer(Trainer):
         # Create the actors.
         logger.info("Creating actors.")
         self.workers = [
-            Worker.remote(config, env_creator, noise_id, idx + 1)
+            Worker.remote(config, self.env_creator, noise_id, idx + 1)
             for idx in range(config["num_workers"])
         ]
 
@@ -375,7 +382,7 @@ class ARSTrainer(Trainer):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="compute_single_action", error=True)
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 
