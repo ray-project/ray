@@ -1,5 +1,4 @@
-# ray
-https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+ray
 click
 anyscale>0.5.0
 slackclient
