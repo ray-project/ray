@@ -285,6 +285,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     if (options != null) {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+        // bundleIndex == -1 indicates using any available bundle.
         Preconditions.checkArgument(
             options.bundleIndex == -1
                 || options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
