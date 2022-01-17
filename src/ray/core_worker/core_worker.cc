@@ -2138,9 +2138,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const std::vector<ObjectID> &contained_object_ids,
                                         int64_t &task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
+  auto spec = worker_context_.GetCurrentTask();
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
-                                 : worker_context_.GetCurrentTask()->CallerAddress());
+                                 : spec->CallerAddress());
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
@@ -2163,9 +2164,9 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
       RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__
-                     << "] CreateExisting is called. Priority is not set this case";
+                     << "] CreateExisting is called. Priority set is: " << spec->GetPriority();
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
-                                       Priority(), &data_buffer,
+                                       spec->GetPriority(), &data_buffer,
                                        /*created_by_worker=*/true));
       object_already_exists = !data_buffer;
     }

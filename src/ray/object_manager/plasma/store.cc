@@ -385,6 +385,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     }
     // TODO(Jae) Went up the function calls to here. It seems this gets a dummy priority.
     // Check the log and remove this if it gets a correct value
+    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] reqyest->priority(): " << request->priority();
     RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] priority passed is " << priority;
     ray::TaskKey key(priority, ObjectID::FromRandom().TaskId());
 
