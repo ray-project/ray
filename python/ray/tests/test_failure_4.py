@@ -505,7 +505,7 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
 def test_locality_aware_scheduling_when_driver_local_raylet_dies(ray_start_cluster):
     """Test that locality-ware scheduling can handle dead nodes."""
     # See https://github.com/ray-project/ray/pull/21548#issuecomment-1014190548
-    # Create a node with 2 nodes.
+    # Create a cluster with 2 nodes.
     cluster = ray_start_cluster
     node1 = cluster.add_node(num_cpus=4, resources={"node1": 1})
     node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
