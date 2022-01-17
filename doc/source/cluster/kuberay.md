@@ -1,4 +1,16 @@
-# Using Kuberay
+# Deploying with Kuberay (experimental)
+
+```{admonition} What is Kuberay?
+[Kuberay](https://github.com/ray-project/kuberay) is a set of tools for running Ray on Kubernetes.
+It has been used by some larger corporations to deploy Ray on their infrastructure.
+Going forward, we would like to make this way of deployment accessible and seamless for
+all Ray users and standardize Ray deployment on Kubernetes around Kuberay's operator.
+Presently you should consider this integration a minimal viable product that is not polished
+enough for general use and prefer the [Kubernetes integration](kubernetes.rst) for running
+Ray on Kubernetes. If you are brave enought to try the Kuberay integration out, this documentation
+is for you! We would love your feedback as a [Github issue](https://github.com/ray-project/ray/issues)
+including `[Kuberay]` in the title.
+```
 
 Here we describe how you can deploy a Ray cluster on Kuberay. The following instructions are for
 Minikube but the deployment works the same way on a real Kubernetes cluster. First we make sure
