@@ -563,6 +563,7 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     # Kill node2, and re-schedule the function.
     # It should be scheduled to either node3 or node4.
     node2.kill_raylet()
+    # Waits for the driver to receive the NodeRemoved notification.
     time.sleep(1)
     target_node = ray.get(func.options(num_cpus=0.2).remote(obj1, obj2))
     assert target_node == node3.unique_id or target_node == node4.unique_id
