@@ -113,14 +113,23 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
         super().__init__(provider_config, cluster_name)
 
+    def _url(self, path, api_group):
+        if path.startswith("pods"):
+            api_group = "/api/v1"
+        elif path.startswith("rayclusters"):
+            api_group="/apis/ray.io/v1alpha1"
+        else:
+            raise NotImplementedError("Tried to access unknown entity at {}".format(path))
+        return "https://kubernetes.default:443" + api_group + "/namespaces/" + self.namespace + "/" + path
+
     def _get(self, path):
-        result = requests.get("https://kubernetes.default:443" + path, headers=self.headers, verify=self.verify)
+        result = requests.get(self._url(path), headers=self.headers, verify=self.verify)
         assert result.status_code == 200
         return result.json()
 
     def _patch(self, path, payload):
         result = requests.patch(
-            "https://kubernetes.default:443" + path,
+            self._url(path),
             json.dumps(payload),
             headers={**self.headers, "Content-type": "application/json-patch+json"},
             verify=self.verify
@@ -142,7 +151,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     def _wait_for_pods(self, group_name: str, replicas: int):
         label_filters = to_label_selector({"ray.io/cluster": self.cluster_name, "ray.io/group": group_name})
         while True:
-            pods = self._get("/api/v1/namespaces/default/pods?labelSelector=" + requests.utils.quote(label_filters))
+            pods = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
             logger.info("Currently have {} replicas of group {}, requested {}.".format(len(pods["items"]), group_name, replicas))
             if len(pods["items"]) == replicas:
                 break
@@ -155,7 +164,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     ) -> Dict[str, Dict[str, str]]:
         """Creates a number of nodes within the namespace."""
         with self._lock:
-            url = "/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
+            url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
             group_index, group_spec = self._get_worker_group(raycluster, group_name)
@@ -169,18 +178,18 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return {}
 
     def internal_ip(self, node_id: str) -> str:
-        data = self._get("/api/v1/namespaces/default/pods/{}".format(node_id))
+        data = self._get("pods/{}".format(node_id))
         return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
-        data = self._get("/api/v1/namespaces/default/pods/{}".format(node_id))
+        data = self._get("pods/{}".format(node_id))
         return make_node_tags(data["metadata"]["labels"], status_tag(data))
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
         Also updates caches of ips and tags.
         """
-        data = self._get("/api/v1/namespaces/default/pods/")
+        data = self._get("pods/")
 
         logger.info("Called non_terminated_nodes with tag_filters {}".format(tag_filters))
 
@@ -212,12 +221,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # most likely not worth optimizing this code to batch the requests to the API server.
             groups = {}
             label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
-            pods = self._get("/api/v1/namespaces/default/pods?labelSelector=" + requests.utils.quote(label_filters))
+            pods = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
             for pod in pods["items"]:
                 if pod["metadata"]["name"] in node_ids:
                     groups.setdefault(pod["metadata"]["labels"]["ray.io/group"], []).append(pod["metadata"]["name"])
 
-            url = "/apis/ray.io/v1alpha1/namespaces/default/rayclusters/{}".format(self.cluster_name)
+            url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             for group_name, nodes in groups.items():
                 group_index, group_spec = self._get_worker_group(raycluster, group_name)

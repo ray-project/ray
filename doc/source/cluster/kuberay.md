@@ -44,3 +44,22 @@ import ray.autoscaler.sdk
 ray.init("auto")
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
+
+## Developing the Kuberay integration (advanced)
+
+In order to maximize development iteration speed, we recommend using a Linux machine with Python 3.7 for
+development, since that will simplify building wheels incrementally.
+Make the desired modification to Ray and/or the autoscaler and build the Ray wheels by running
+the following command in the `ray/python` directory:
+
+```shell
+python setup.py bdist_wheel
+```
+
+Then in the `ray/docker/autoscaler` directory run:
+
+```shell
+cp ../../python/dist/ray-2.0.0.dev0-cp37-cp37m-linux_x86_64.whl ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t pcmoritz/autoscaler --no-cache .
+docker push pcmoritz/autoscaler
+```
