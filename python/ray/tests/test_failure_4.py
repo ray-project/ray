@@ -502,29 +502,61 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
 
-def test_locality_aware_scheduling_when_driver_local_raylet_dies(ray_start_cluster):
+
+def test_locality_aware_scheduling_when_driver_local_raylet_dies(
+        shutdown_only):
     """Test that locality-ware scheduling can handle dead nodes."""
     # See https://github.com/ray-project/ray/pull/21548#issuecomment-1014190548
     # Create a cluster with 2 nodes.
-    cluster = ray_start_cluster
-    node1 = cluster.add_node(num_cpus=4, resources={"node1": 1})
-    node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
+    config = {
+        "num_heartbeats_timeout": 5,
+        "raylet_heartbeat_period_milliseconds": 50,
+    }
+    cluster = Cluster()
+    cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
-    # Put an object in the driver local node (node1).
-    obj = ray.put(np.zeros(10 * 1024 * 1024, dtype=np.uint8))
-    # Kill node1.
-    node1.kill_raylet()
+    node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
+    node3 = cluster.add_node(num_cpus=4, resources={"node3": 1})
+    node4 = cluster.add_node(num_cpus=4, resources={"node4": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote(resources={"node2": 0.1})
+    def create_object():
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    obj1 = create_object.remote()
+    obj2 = create_object.remote()
 
     @ray.remote
-    def func_with_obj_arg(obj):
-        return "ok"
+    class MyActor:
 
-    # Submit a task that requires the object.
-    # Locality-aware scheduler should know that node1 is dead,
-    # and schedule the task to node2.
-    assert ray.get(func_with_obj_arg.remote(obj)) == "ok"
+        def __init__(self, obj_refs):
+            self.obj_refs = obj_refs
+            self.obj = ray.get(obj_refs)
+
+        def ready(self):
+            return True
+
+    actors = [
+        MyActor.options(resources={"node2": 0.1}).remote([obj1, obj2]),
+        MyActor.options(resources={"node3": 0.1}).remote([obj1]),
+        MyActor.options(resources={"node4": 0.1}).remote([obj2]),
+    ]
+
+    assert all(ray.get(actor.ready.remote()) is True for actor in actors)
+
+    @ray.remote
+    def func(obj1, obj2):
+        return ray.worker.global_worker.node.node_ip_address
+
+    assert ray.get(func.remote(obj1, obj2)) == node2.node_ip_address
+
+    node2.kill_raylet()
+    time.sleep(1)
+    target_node = ray.get(func.remote(obj1, obj2))
+    assert target_node == node3.node_ip_address or target_node == node4.node_ip_address
 
 
 if __name__ == "__main__":
