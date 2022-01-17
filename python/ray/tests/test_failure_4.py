@@ -534,7 +534,6 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
     # node4 will have obj2.
     @ray.remote
     class MyActor:
-
         def __init__(self, obj_refs):
             # Note, we need to keep obj_refs to prevent the objects from
             # being garbage collected.
@@ -545,9 +544,15 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
             return True
 
     actors = [
-        MyActor.options(resources={"node2": 0.1}).remote([obj1, obj2]),
-        MyActor.options(resources={"node3": 0.1}).remote([obj1]),
-        MyActor.options(resources={"node4": 0.1}).remote([obj2]),
+        MyActor.options(resources={
+            "node2": 0.1
+        }).remote([obj1, obj2]),
+        MyActor.options(resources={
+            "node3": 0.1
+        }).remote([obj1]),
+        MyActor.options(resources={
+            "node4": 0.1
+        }).remote([obj2]),
     ]
 
     assert all(ray.get(actor.ready.remote()) is True for actor in actors)
@@ -558,14 +563,14 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
         return ray.worker.global_worker.node.unique_id
 
     # This function should be scheduled to node2. As node2 has both objects.
-    assert ray.get(func.options(num_cpus=0.1).remote(obj1, obj2)) == node2.unique_id
+    assert ray.get(func.remote(obj1, obj2)) == node2.unique_id
 
     # Kill node2, and re-schedule the function.
     # It should be scheduled to either node3 or node4.
     node2.kill_raylet()
     # Waits for the driver to receive the NodeRemoved notification.
     time.sleep(1)
-    target_node = ray.get(func.options(num_cpus=0.2).remote(obj1, obj2))
+    target_node = ray.get(func.remote(obj1, obj2))
     assert target_node == node3.unique_id or target_node == node4.unique_id
 
 
