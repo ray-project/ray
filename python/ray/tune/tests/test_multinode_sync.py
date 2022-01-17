@@ -111,7 +111,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             resources_per_trial={"cpu": 4},
             fail_fast=True)
 
-    def testFaultTolerence(self):
+    def testFaultTolerance(self):
         """Test that Tune run can recover from a failed node.
 
         When `max_failures` is set to larger than zero.
