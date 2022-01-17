@@ -52,7 +52,7 @@ def auto_http_archive(
         name = "_".join(url_parts["netloc"][::-1] + url_path_parts[:2]).replace("-", "_")
 
     if build_file == True:
-        build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
+        build_file = "@com_github_ray_project_ray//%s:%s" % ("bazel", "BUILD." + name)
 
     if urls == True:
         prefer_url_over_mirrors = is_github
