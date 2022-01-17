@@ -73,7 +73,6 @@ def get_filter_config(shape):
         List[list]: The Conv2D filter configuration usable as `conv_filters`
             inside a model config dict.
     """
-    shape = list(shape)
     # VizdoomGym (large 480x640).
     filters_480x640 = [
         [16, [24, 32], [14, 18]],
@@ -85,6 +84,12 @@ def get_filter_config(shape):
         [16, [12, 16], [7, 9]],
         [32, [6, 6], 4],
         [256, [9, 9], 1],
+    ]
+    # 96x96x3 (e.g. CarRacing-v0).
+    filters_96x96 = [
+        [16, [8, 8], 4],
+        [32, [4, 4], 2],
+        [256, [11, 11], 2],
     ]
     # Atari.
     filters_84x84 = [
@@ -103,12 +108,17 @@ def get_filter_config(shape):
         [16, [5, 5], 2],
         [32, [5, 5], 2],
     ]
+
+    shape = list(shape)
     if len(shape) in [2, 3] and (shape[:2] == [480, 640]
                                  or shape[1:] == [480, 640]):
         return filters_480x640
     elif len(shape) in [2, 3] and (shape[:2] == [240, 320]
                                    or shape[1:] == [240, 320]):
         return filters_240x320
+    elif len(shape) in [2, 3] and (shape[:2] == [96, 96]
+                                   or shape[1:] == [96, 96]):
+        return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84]
                                    or shape[1:] == [84, 84]):
         return filters_84x84

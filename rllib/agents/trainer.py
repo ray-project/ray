@@ -724,10 +724,19 @@ class Trainer(Trainable):
         self._episode_history = []
         self._episodes_to_be_collected = []
 
-        # Evaluation WorkerSet.
+        # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
-        # Metrics most recently returned by `self.evaluate()`.
-        self.evaluation_metrics = {}
+        # Initialize common evaluation_metrics to nan, before they become
+        # available. We want to make sure the metrics are always present
+        # (although their values may be nan), so that Tune does not complain
+        # when we use these as stopping criteria.
+        self.evaluation_metrics = {
+            "evaluation": {
+                "episode_reward_max": np.nan,
+                "episode_reward_min": np.nan,
+                "episode_reward_mean": np.nan,
+            }
+        }
 
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)

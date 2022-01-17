@@ -38,6 +38,21 @@
   smoke_test:
     timeout: 600
 
+- name: serve_micro_benchmark_k8s
+  cluster:
+    app_config: app_config.yaml
+    # 16 CPUS
+    compute_template: compute_tpl_single_node_k8s.yaml
+    compute_on_k8s: True
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/serve_micro_benchmark.py
+
+  smoke_test:
+    timeout: 600
+
 - name: serve_cluster_fault_tolerance
   cluster:
     app_config: app_config.yaml

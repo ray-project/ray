@@ -1217,6 +1217,13 @@ py_test(
 )
 
 py_test(
+    name = "test_conv2d_default_stacks",
+    tags = ["team:ml", "models"],
+    size = "medium",
+    srcs = ["models/tests/test_conv2d_default_stacks.py"]
+)
+
+py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:ml", "models"],
     size = "small",
