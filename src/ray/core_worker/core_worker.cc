@@ -2667,6 +2667,7 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
     RAY_LOG(DEBUG) << "Attempting to add object location for a dead node. "
                    << "Ignoring this request. object_id: " << object_id
                    << ", node_id: " << node_id;
+    return;
   }
   auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
   if (!reference_exists) {
