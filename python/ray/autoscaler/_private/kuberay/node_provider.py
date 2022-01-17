@@ -9,6 +9,7 @@ import kubernetes
 from kubernetes.config.config_exception import ConfigException
 
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import (STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED)
 
 ## Terminology:
 
@@ -59,11 +60,11 @@ def status_tag(pod: Dict[str, Any]):
     if "pending" in state:
         return "pending"
     if "running" in state:
-        return "up-to-date"
+        return STATUS_UP_TO_DATE
     if "waiting" in state:
         return "waiting"
     if "terminated" in state:
-        return "update-failed"
+        return STATUS_UPDATE_FAILED
     raise ValueError("Unexpected container state.")
 
 def make_node_tags(labels: Dict[str, str], status_tag: str):
@@ -87,7 +88,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         cluster_name: str,
         _allow_multiple: bool = False,
     ):
-        logger.info("Creating ClientNodeProvider.")
+        logger.info("Creating KuberayNodeProvider.")
         self.namespace = provider_config["namespace"]
         self.cluster_name = cluster_name
         self._lock = threading.RLock()
@@ -105,10 +106,10 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         if not _allow_multiple:
             assert (
                 not provider_exists
-            ), "Only one ClientNodeProvider allowed per process."
+            ), "Only one KuberayNodeProvider allowed per process."
         assert (
             provider_config.get("disable_node_updaters", False) is True
-        ), "Must disable node updaters to use ClientNodeProvider."
+        ), "Must disable node updaters to use KuberayNodeProvider."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
@@ -145,6 +146,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             if spec["groupName"] == group_name:
                 group_index = index
                 group_spec = spec
+                break
         assert group_index is not None and group_spec is not None
         return group_index, group_spec
 
