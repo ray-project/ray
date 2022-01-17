@@ -268,7 +268,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     }
   }
 
-  io_context_.post([this] { SchedulePendingPlacementGroups(); });
+  io_context_.post([this] { SchedulePendingPlacementGroups(); },
+                   "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
   MarkSchedulingDone();
 }
 
@@ -313,7 +314,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
           placement_group_to_create_callbacks_.erase(pg_to_create_iter);
         }
       }));
-  io_context_.post([this] { SchedulePendingPlacementGroups(); });
+  io_context_.post([this] { SchedulePendingPlacementGroups(); },
+                   "GcsPlacementGroupManager.SchedulePendingPlacementGroups");
   MarkSchedulingDone();
 }
 

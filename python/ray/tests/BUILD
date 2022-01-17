@@ -54,12 +54,20 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "client_tests", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+    
+py_test_module_list(
+  files = [
     "test_client_builder.py",
     "test_client_compat.py",
     "test_client_init.py",
     "test_client_multi.py",
     "test_client_proxy.py",
-    "test_client_server.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
