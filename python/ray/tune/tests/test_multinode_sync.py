@@ -1,4 +1,3 @@
-import subprocess
 import sys
 import time
 import unittest
@@ -6,6 +5,8 @@ import unittest
 import ray
 from ray import tune
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
+from ray.tune.callback import Callback
+from ray.tune.trial import Trial
 
 
 @ray.remote
@@ -144,15 +145,27 @@ class MultiNodeSyncTest(unittest.TestCase):
             time.sleep(120)
             tune.report(1.)
 
-        cmd = "sleep 80 && docker kill fake_docker-fffffffffffffffffffffffffffffffffffffffffffffffffff00001-1"  # noqa
-        subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        class FailureInjectionCallback(Callback):
+            def __init__(self, cluster):
+                self._cluster = cluster
+                self._killed = False
+
+            def on_step_begin(self, iteration, trials, **info):
+                if not self._killed and len(trials) == 3 and all(
+                        trial.status == Trial.RUNNING for trial in trials):
+                    self._cluster.kill_node(num=2)
+                    self._killed = True
 
         tune.run(
             train,
             num_samples=3,
             resources_per_trial={"cpu": 4},
             max_failures=1,
+            callbacks=[FailureInjectionCallback(self.cluster)],
+            # The following two are to be removed once we have proper setup
+            # for killing nodes while in ray client mode.
+            _remote=False,
+            local_dir="/tmp/ray_results/",
         )
 
 
