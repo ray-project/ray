@@ -167,6 +167,8 @@ class MADDPGTrainer(DQNTrainer):
         This hook is called explicitly prior to TrainOneStep() in the execution
         setups for DQN and APEX.
         """
+        # Call super's validation method.
+        super().validate_config(config)
 
         def f(batch, workers, config):
             policies = dict(workers.local_worker()
