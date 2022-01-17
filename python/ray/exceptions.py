@@ -5,9 +5,9 @@ from typing import Union
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
-from ray.core.generated.common_pb2 import Address, ActorDeathCause
+from ray.core.generated.common_pb2 import Address, ActorDiedErrorContext
 import ray.ray_constants as ray_constants
-from ray._raylet import WorkerID
+from ray._raylet import WorkerID, ActorID
 import colorama
 import setproctitle
 
@@ -226,75 +226,59 @@ class RayActorError(RayError):
     If the actor is dead because of an exception thrown in its creation tasks,
     RayActorError will contain the creation_task_error, which is used to
     reconstruct the exception on the caller side.
+
+    cause: The cause of the actor error. `RayTaskError` type means
+        the actor has died because of an exception within `__init__`.
+        `ActorDiedErrorContext` means the actor has died because of
+        unexepected system error. None means the cause is not known.
+        Theoretically, this should not happen,
+        but it is there as a safety check.
     """
 
     def __init__(self,
-                 function_name: str = None,
-                 traceback_str: str = None,
-                 cause: Union[Exception, ActorDeathCause] = None,
-                 proctitle: str = None,
-                 pid: int = None,
-                 ip: str = None):
-        # Traceback handling is similar to RayTaskError, so we create a
-        # RayTaskError to reuse its function.
-        # But we don't want RayActorError to inherit from RayTaskError, since
-        # they have different meanings.
-        self.creation_task_error = None
+                 cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+        # -- If the actor has failed in the middle of __init__, this is set. --
+        self._actor_init_failed = False
+        # -- The base actor error message. --
         self.base_error_msg = (
             "The actor died unexpectedly before finishing this task.")
-        if function_name and traceback_str and cause:
-            # Only when actor init has failed.
-            self.creation_task_error = RayTaskError(
-                function_name, traceback_str, cause, proctitle, pid, ip)
+
+        if not cause:
+            self.error_msg = self.base_error_msg
+        elif isinstance(cause, RayTaskError):
+            self._actor_init_failed = True
             self.error_msg = ("The actor died because of an error"
                               " raised in its creation task, "
-                              f"{self.creation_task_error.__str__()}")
+                              f"{cause.__str__()}")
         else:
-            # Normal actor failure except actor init failure.
-            self.error_msg = self._gen_error_msg_from_cause(cause)
+            # Inidicating system-level actor failures.
+            assert isinstance(cause, ActorDiedErrorContext)
+            error_msg_lines = [self.base_error_msg]
+            error_msg_lines.append(f"\tclass_name: {cause.class_name}")
+            error_msg_lines.append(
+                f"\tactor_id: {ActorID(cause.actor_id).hex()}")
+            # Below items are optional fields.
+            if cause.pid != 0:
+                error_msg_lines.append(f"\tpid: {cause.pid}")
+            if cause.name != "":
+                error_msg_lines.append(f"\tname: {cause.name}")
+            if cause.ray_namespace != "":
+                error_msg_lines.append(f"\tnamespace: {cause.ray_namespace}")
+            if cause.node_ip_address != "":
+                error_msg_lines.append(f"\tip: {cause.node_ip_address}")
+            error_msg_lines.append(cause.error_message)
+            self.error_msg = "\n".join(error_msg_lines)
 
-    def has_creation_task_error(self):
-        return self.creation_task_error is not None
+    @property
+    def actor_init_failed(self) -> bool:
+        return self._actor_init_failed
 
-    def get_creation_task_error(self):
-        if self.creation_task_error is not None:
-            return self.creation_task_error
-        return None
-
-    def __str__(self):
+    def __str__(self) -> str:
         return self.error_msg
 
-    def _gen_error_msg_from_cause(self, cause: ActorDeathCause):
-        """Generate the error message from the
-        actor died error cause protobuf message.
-        """
-        if not cause:
-            return (f"{self.base_error_msg} due to an unknown reason.")
-
-        if cause.HasField("worker_died_context"):
-            return (f"{self.base_error_msg} "
-                    f"{cause.worker_died_context.error_message}")
-        elif cause.HasField("node_died_context"):
-            return (f"{self.base_error_msg} "
-                    f"{cause.node_died_context.error_message}")
-        elif cause.HasField("owner_died_context"):
-            return (f"{self.base_error_msg} "
-                    f"{cause.owner_died_context.error_message}")
-        elif cause.HasField("killed_by_app_context"):
-            return (f"{self.base_error_msg} "
-                    f"{cause.killed_by_app_context.error_message}")
-        elif cause.HasField("out_of_scope_context"):
-            return (f"{self.base_error_msg} "
-                    f"{cause.out_of_scope_context.error_message}")
-        else:
-            assert False, f"Unknown death cause. {cause}"
-
     @staticmethod
-    def from_task_error(task_error):
-        return RayActorError(task_error.function_name,
-                             task_error.traceback_str, task_error.cause,
-                             task_error.proctitle, task_error.pid,
-                             task_error.ip)
+    def from_task_error(task_error: RayTaskError):
+        return RayActorError(task_error)
 
 
 class RaySystemError(RayError):

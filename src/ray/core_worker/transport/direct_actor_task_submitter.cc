@@ -123,8 +123,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     rpc::RayErrorInfo error_info;
     {
       absl::MutexLock lock(&mu_);
-      const auto queue = client_queues_.find(task_spec.ActorId());
-      const auto &death_cause = queue->second.death_cause;
+      const auto queue_it = client_queues_.find(task_spec.ActorId());
+      const auto &death_cause = queue_it->second.death_cause;
       error_type = GenErrorTypeFromDeathCause(death_cause);
       error_info = GetErrorInfoFromActorDeathCause(death_cause);
     }

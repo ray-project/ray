@@ -200,7 +200,10 @@ class SerializationContext:
                 ray_error_info.actor_died_error.creation_task_failure_context.
                 creation_task_exception)
         else:
-            return RayActorError(cause=ray_error_info.actor_died_error)
+            assert ray_error_info.actor_died_error.HasField(
+                "actor_died_error_context")
+            return RayActorError(
+                cause=ray_error_info.actor_died_error.actor_died_error_context)
 
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
