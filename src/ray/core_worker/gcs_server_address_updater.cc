@@ -27,6 +27,8 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
       updater_runner_(updater_io_service_),
       updater_thread_([this] {
         SetThreadName("gcs_address_updater");
+        std::thread::id this_id = std::this_thread::get_id();
+        RAY_LOG(INFO) << "GCS Server updater thread id: " << this_id;
         /// The asio work to keep io_service_ alive.
         boost::asio::io_service::work io_service_work_(updater_io_service_);
         updater_io_service_.run();
@@ -34,7 +36,7 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
   // Start updating gcs server address.
   updater_runner_.RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(), "ABCDE");
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {

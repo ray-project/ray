@@ -71,6 +71,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorker const &) = delete;
 
+  /// Core worker's deallocation lifecycle
+  ///
+  /// Shutdown API must be called before deallocating a core worker.
+  /// Otherwise, it can have various destruction order related memory corruption.
+  /// This can only happen if the core worker is destroyed by unexpected error (e.g.,
+  /// SEGSEGV).
+  ///
+  /// If the core worker is initiated at a driver, the driver is responsible for calling
+  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// shutdown must be called before terminating the task execution loop.
+  ~CoreWorker();
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -93,11 +105,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shut down the worker completely.
   ///
+  /// This must be called before expected termination of a worker / driver.
+  ///
   /// \return void.
   void Shutdown();
-
-  /// Block the current thread until the worker is shut down.
-  void WaitForShutdown();
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -1166,6 +1177,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.
   std::atomic<bool> exiting_ = false;
+
+  std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 
