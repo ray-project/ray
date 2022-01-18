@@ -1549,10 +1549,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
-                               const ActorCreationOptions &options,
+                               const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
                                ActorID *return_actor_id) {
-  auto actor_creation_options = options;
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1562,12 +1561,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   }
 
   RAY_CHECK(job_config_ != nullptr);
+  bool is_detached = false;
   if (!actor_creation_options.is_detached.has_value()) {
     /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
-    actor_creation_options.is_detached =
-        std::make_optional<bool>(job_config_->default_actor_lifetime() ==
-                                 ray::rpc::JobConfig_ActorLifetime_DETACHED);
+    is_detached = job_config_->default_actor_lifetime() ==
+                                 ray::rpc::JobConfig_ActorLifetime_DETACHED;
+  } else {
+      is_detached = actor_creation_options.is_detached.value();
   }
 
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -1614,7 +1615,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
       actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, *actor_creation_options.is_detached,
+      actor_creation_options.max_concurrency, is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
       actor_creation_options.concurrency_groups, extension_data,
       actor_creation_options.execute_out_of_order);
@@ -1622,8 +1623,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), CurrentCallSite(),
-                                              rpc_address_,
-                                              *actor_creation_options.is_detached))
+                                              rpc_address_, is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();

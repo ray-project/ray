@@ -144,7 +144,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
   std::string name = "";
-  std::optional<bool> is_detached = nullptr;
+  std::optional<bool> is_detached = std::nullopt;
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
