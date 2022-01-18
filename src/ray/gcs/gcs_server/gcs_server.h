@@ -175,6 +175,8 @@ class GcsServer {
   /// The io service used by heartbeat manager in case of node failure detector being
   /// blocked by main thread.
   instrumented_io_context heartbeat_manager_io_service_;
+  /// The io service used by Pubsub, for isolation from other workload.
+  instrumented_io_context pubsub_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
