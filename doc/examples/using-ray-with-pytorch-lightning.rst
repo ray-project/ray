@@ -74,7 +74,7 @@ First, use Ray's :ref:`Cluster Launcher <ref-cluster-quick-start>` to start a Ra
 Then, run your Ray script using one of the following options:
 
 1. on the head node of the cluster (``python train_script.py``)
-2. via ``ray submit`` (:ref:`docs <ray-submit-doc>`) from your laptop (``ray submit my_cluster_config.yaml train.py``)
+2. via ``ray job submit`` (:ref:`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
 3. via the :ref:`Ray Client<ray-client>` from your laptop.
 
 Distributed Hyperparameter Optimization with Ray Tune

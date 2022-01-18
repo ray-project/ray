@@ -237,10 +237,12 @@
     - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
     - pip install -U docker aws_requests_auth boto3
     - python ./ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
+    - python ./ci/travis/build-multinode-image.py rayproject/ray:nightly-py37-cpu rayproject/ray:multinode-py37
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
       python/ray/tune/...
-      --test_env=RAY_DOCKER_IMAGE="rayproject/ray:nightly-py37-cpu"
+      --test_env=RAY_HAS_SSH="1"
+      --test_env=RAY_DOCKER_IMAGE="rayproject/ray:multinode-py37"
       --test_env=RAY_TEMPDIR="/ray-mount"
       --test_env=RAY_HOSTDIR="/ray"
       --test_env=RAY_TESTHOST="dind-daemon"
