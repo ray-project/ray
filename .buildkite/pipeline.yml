@@ -348,7 +348,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- python/ray/tests/...
-      -//python/ray/tests:test_autoscaler_drain_node_api -//python/ray/tests:test_client_reconnect
 - label: ":redis: HA GCS (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   parallelism: 3
@@ -365,7 +364,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_healthcheck
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -376,7 +374,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_ray_debugger
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]

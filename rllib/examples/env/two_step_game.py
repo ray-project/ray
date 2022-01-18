@@ -8,6 +8,8 @@ class TwoStepGame(MultiAgentEnv):
     action_space = Discrete(2)
 
     def __init__(self, env_config):
+        super().__init__()
+        self.action_space = Discrete(2)
         self.state = None
         self.agent_1 = 0
         self.agent_2 = 1
@@ -113,6 +115,7 @@ class TwoStepGame(MultiAgentEnv):
 
 class TwoStepGameWithGroupedAgents(MultiAgentEnv):
     def __init__(self, env_config):
+        super().__init__()
         env = TwoStepGame(env_config)
         tuple_obs_space = Tuple([env.observation_space, env.observation_space])
         tuple_act_space = Tuple([env.action_space, env.action_space])

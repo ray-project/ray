@@ -208,7 +208,7 @@ def test_function_table_gc(call_ray_start):
     # It's not working on win32.
     if sys.platform != "win32":
         assert get_gcs_memory_used() > 500 * 1024 * 1024
-    job_id = ray.worker.global_worker.current_job_id.binary()
+    job_id = ray.worker.global_worker.current_job_id.hex().encode()
     assert function_entry_num(job_id) > 0
     ray.shutdown()
 
@@ -233,7 +233,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is a detached actor, the function won't be deleted.
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.binary()
+    job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
     ray.init(address="auto", namespace="b")
@@ -246,7 +246,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is not a detached actor, it'll be deleted when the job finishes.
     a = Actor.remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.binary()
+    job_id = ray.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
     ray.init(address="auto", namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
