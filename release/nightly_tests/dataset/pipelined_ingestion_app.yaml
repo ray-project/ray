@@ -3,6 +3,7 @@ env_vars: {"RAY_lineage_pinning_enabled": "1", "RAY_record_ref_creation_sites": 
 python:
   pip_packages:
     - pyarrow
+    - cmake
   conda_packages: []
 
 post_build_cmds:
