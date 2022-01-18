@@ -5,7 +5,6 @@ import functools
 import importlib
 import json
 import logging
-from modulefinder import Module
 import pkgutil
 import socket
 from abc import ABCMeta, abstractmethod
@@ -107,7 +106,7 @@ def get_all_modules(module_type):
             ray.dashboard.modules.__name__ + "."):
         try:
             importlib.import_module(name)
-        except ModuleNotFoundError as e:
+        except ModuleNotFoundError:
             pass
 
     should_load_minimal_modules = (

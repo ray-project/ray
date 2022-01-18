@@ -11,7 +11,6 @@ import traceback
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
