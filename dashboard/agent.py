@@ -105,7 +105,7 @@ class DashboardAgent(object):
         # If the agent is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
         self.http_server = None
-    
+
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server.http_server_agent import HttpServerAgent
         http_server = HttpServerAgent(self.ip, self.listen_port)

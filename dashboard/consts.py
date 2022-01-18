@@ -31,11 +31,7 @@ SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
 
-# The below 
-OPTIONAL_DASHBOARD_MODULES = [
-    "actor_head.py"
-]
+# The below
+OPTIONAL_DASHBOARD_MODULES = ["actor_head.py"]
 
-OPTIONAL_AGENT_MODULES = [
-    ""
-]
+OPTIONAL_AGENT_MODULES = [""]

@@ -49,7 +49,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                    f"Requested actor with id {actor_id} to terminate. " +
                    "It will exit once running tasks complete")
 
-        return dashboard_optional_utils.rest_response(success=True, message=message)
+        return dashboard_optional_utils.rest_response(
+            success=True, message=message)
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):

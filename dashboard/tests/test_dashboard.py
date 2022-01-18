@@ -279,18 +279,21 @@ def test_class_method_route_table(enable_test_module):
     assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
 
     # Test bind()
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert len(bound_routes) == 0
     dashboard_optional_utils.ClassMethodRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls))
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
     assert all(
         not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
 
     # Static def should be in bound routes.
     routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert any(
         _has_static(r, "/path", "/test/route_static") for r in bound_routes)
 

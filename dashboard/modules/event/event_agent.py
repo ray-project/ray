@@ -90,7 +90,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
             source_types=event_consts.EVENT_AGENT_MONITOR_SOURCE_TYPES)
         # Start reporting events.
         await self.report_events()
-    
+
     @staticmethod
     def is_optional():
         return True

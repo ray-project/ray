@@ -46,7 +46,7 @@ class DashboardAgentModule(abc.ABC):
 
         :param server: Asyncio GRPC server.
         """
-    
+
     @staticmethod
     @abc.abstractclassmethod
     def is_optional():

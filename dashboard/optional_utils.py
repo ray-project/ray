@@ -25,10 +25,8 @@ except AttributeError:
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import (aiohttp, hdrs,
-                                         PathLike, RouteDef)
+from ray.dashboard.optional_deps import (aiohttp, hdrs, PathLike, RouteDef)
 from ray.dashboard.utils import to_google_style, CustomEncoder
-
 
 logger = logging.getLogger(__name__)
 
