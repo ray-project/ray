@@ -38,7 +38,8 @@ logger = logging.getLogger(__name__)
 provider_exists = False
 
 
-def to_label_selector(tags):
+def to_label_selector(tags: Dict[str, str]) -> str:
+    "Convert tags to label selector to embed in query to K8s API server."
     label_selector = ""
     for k, v in tags.items():
         if label_selector != "":
@@ -47,7 +48,8 @@ def to_label_selector(tags):
     return label_selector
 
 
-def status_tag(pod: Dict[str, Any]):
+def status_tag(pod: Dict[str, Any]) -> str:
+    """Convert pod state to Ray autoscaler status tag."""
     if "containerStatuses" not in pod["status"]:
         return "pending"
 
@@ -64,7 +66,7 @@ def status_tag(pod: Dict[str, Any]):
     raise ValueError("Unexpected container state.")
 
 
-def make_node_tags(labels: Dict[str, str], status_tag: str):
+def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
     """Convert Kuberay labels to Ray autoscaler tags."""
     tags = {"ray-node-status": status_tag}
 
@@ -110,7 +112,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
         super().__init__(provider_config, cluster_name)
 
-    def _url(self, path):
+    def _url(self, path: str) -> str:
         """Convert resource path to REST URL for Kubernetes API server."""
         if path.startswith("pods"):
             api_group = "/api/v1"
@@ -122,14 +124,14 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return ("https://kubernetes.default:443" + api_group + "/namespaces/" +
                 self.namespace + "/" + path)
 
-    def _get(self, path):
+    def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
         result = requests.get(
             self._url(path), headers=self.headers, verify=self.verify)
         assert result.status_code == 200
         return result.json()
 
-    def _patch(self, path, payload):
+    def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         result = requests.patch(
             self._url(path),
@@ -155,7 +157,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert group_index is not None and group_spec is not None
         return group_index, group_spec
 
-    def _wait_for_pods(self, group_name: str, replicas: int):
+    def _wait_for_pods(self, group_name: str, replicas: int) -> None:
         """Wait until `replicas` pods of type group_name are posted."""
         label_filters = to_label_selector({
             "ray.io/cluster": self.cluster_name,
