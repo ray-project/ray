@@ -229,17 +229,17 @@ DOCKER_TEST_CONFIG_PATH = str(
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
-def test_ray_start(configure_lang):
+def test_ray_start(configure_lang, tmp_path):
     runner = CliRunner()
-    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    temp_dir = tmp_path / uuid.uuid4().hex
     result = runner.invoke(scripts.start, [
         "--head", "--log-style=pretty", "--log-color", "False", "--port", "0",
-        "--temp-dir", temp_dir
+        "--temp-dir", str(temp_dir)
     ])
 
     # Check that --temp-dir arg worked:
-    assert os.path.isfile(os.path.join(temp_dir, "ray_current_cluster"))
-    assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
+    assert (temp_dir / "ray_current_cluster").is_file()
+    assert (temp_dir / "session_latest").is_dir()
 
     _die_on_error(runner.invoke(scripts.stop))
 
