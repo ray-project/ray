@@ -111,6 +111,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         super().__init__(provider_config, cluster_name)
 
     def _url(self, path):
+        """Convert resource path to REST URL for Kubernetes API server."""
         if path.startswith("pods"):
             api_group = "/api/v1"
         elif path.startswith("rayclusters"):
@@ -122,12 +123,14 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 self.namespace + "/" + path)
 
     def _get(self, path):
+        """Wrapper for REST GET of resource with proper headers."""
         result = requests.get(
             self._url(path), headers=self.headers, verify=self.verify)
         assert result.status_code == 200
         return result.json()
 
     def _patch(self, path, payload):
+        """Wrapper for REST PATCH of resource with proper headers."""
         result = requests.patch(
             self._url(path),
             json.dumps(payload),
@@ -140,6 +143,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def _get_worker_group(self, raycluster: Dict[str, Any],
                           group_name: str) -> Tuple[int, Dict[str, Any]]:
+        """Extract group index and group definition from RayCluster."""
         group_index = None
         group_spec = None
         worker_group_specs = raycluster["spec"]["workerGroupSpecs"]
@@ -152,6 +156,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return group_index, group_spec
 
     def _wait_for_pods(self, group_name: str, replicas: int):
+        """Wait until `replicas` pods of type group_name are posted."""
         label_filters = to_label_selector({
             "ray.io/cluster": self.cluster_name,
             "ray.io/group": group_name
@@ -194,21 +199,18 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return {}
 
     def internal_ip(self, node_id: str) -> str:
+        """Get internal IP of a node (= Kubernetes pod)."""
         data = self._get("pods/{}".format(node_id))
         return data["status"].get("podIP", "IP not yet assigned")
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
+        """Get tags of a node (= Kubernetes pod)."""
         data = self._get("pods/{}".format(node_id))
         return make_node_tags(data["metadata"]["labels"], status_tag(data))
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
-        """Return a list of node ids filtered by the specified tags dict.
-        Also updates caches of ips and tags.
-        """
+        """Return a list of node ids filtered by the specified tags dict."""
         data = self._get("pods/")
-
-        logger.info("Called non_terminated_nodes with tag_filters {}".format(
-            tag_filters))
 
         result = []
         for pod in data["items"]:
@@ -225,16 +227,15 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 if matches(tags, tag_filters):
                     result.append(pod["metadata"]["name"])
 
-        logger.info("Result is {}".format(result))
-
         return result
 
     def terminate_node(self, node_id: str) -> None:
-        """Terminates the specified node."""
+        """Terminates the specified node (= Kubernetes pod)."""
         self.terminate_nodes([node_id])
 
     def terminate_nodes(self,
                         node_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        """Batch terminates the specified nodes (= Kubernetes pods)."""
         with self._lock:
             # Split node_ids into groups according to node type and terminate
             # them individually. Note that in most cases, node_ids contains
