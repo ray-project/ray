@@ -347,7 +347,7 @@
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
-      -- python/ray/tests/... -//python/ray/tests:test_client_reconnect
+      -- python/ray/tests/...
 - label: ":redis: HA GCS (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   parallelism: 3
