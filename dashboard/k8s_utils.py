@@ -4,8 +4,8 @@ import ray._private.utils
 
 logger = logging.getLogger(__name__)
 
-CPU_SHARES_PATH = "/sys/fs/cgroup/cpu/cpu.shares"
 CPU_USAGE_PATH = "/sys/fs/cgroup/cpuacct/cpuacct.usage"
+CPU_USAGE_PATH_V2 = "/sys/fs/cgroup/cpu.stat"
 PROC_STAT_PATH = "/proc/stat"
 
 container_num_cpus = None
@@ -27,7 +27,7 @@ def cpu_percent():
            rather than 200%.
 
     Step (1) above works by
-        dividing delta in cgroup's cpuacct.usage by
+        dividing delta in cpu usage by
         delta in total host cpu usage, averaged over host's cpus.
 
     Since deltas are not initially available, return 0.0 on first call.
@@ -60,8 +60,19 @@ def cpu_percent():
 
 def _cpu_usage():
     """Compute total cpu usage of the container in nanoseconds
-    by reading from cgroup/cpuacct."""
-    return int(open(CPU_USAGE_PATH).read())
+    by reading from cpuacct in cgroups v1 or cpu.stat in cgroups v2."""
+    try:
+        # cgroups v1
+        return int(open(CPU_USAGE_PATH).read())
+    except FileNotFoundError:
+        # cgroups v2
+        cpu_stat_text = open(CPU_USAGE_PATH_V2).read()
+        # e.g. "usage_usec 16089294616"
+        cpu_stat_first_line = cpu_stat_text.split("\n")[0]
+        # return the second word of the first line, cast as an integer
+        return int(
+            cpu_stat_first_line.split()[1]
+        )
 
 
 def _system_usage():
