@@ -329,7 +329,7 @@ def test_batch_tensors(ray_start_regular_shared):
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
-    assert df.to_dict().keys() == {"value"}
+    assert df.to_dict().keys() == {0, 1}
 
 
 def test_arrow_block_slice_copy():
@@ -1156,56 +1156,34 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
-    ctx = ray.data.context.DatasetContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-        ds = ray.data.from_pandas([df1, df2])
-        assert ds._dataset_format(
-        ) == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(6)]
-        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-        assert values == rows
+def test_from_pandas(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
 
-        # test from single pandas dataframe
-        ds = ray.data.from_pandas(df1)
-        assert ds._dataset_format(
-        ) == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(3)]
-        rows = [(r.one, r.two) for _, r in df1.iterrows()]
-        assert values == rows
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
+    # test from single pandas dataframe
+    ds = ray.data.from_pandas(df1)
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
 
 
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
-    ctx = ray.data.context.DatasetContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-        ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        assert ds._dataset_format(
-        ) == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(6)]
-        rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
-        assert values == rows
+def test_from_pandas_refs(ray_start_regular_shared):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
 
-        # test from single pandas dataframe ref
-        ds = ray.data.from_pandas_refs(ray.put(df1))
-        assert ds._dataset_format(
-        ) == "pandas" if enable_pandas_block else "arrow"
-        values = [(r["one"], r["two"]) for r in ds.take(3)]
-        rows = [(r.one, r.two) for _, r in df1.iterrows()]
-        assert values == rows
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
+    # test from single pandas dataframe ref
+    ds = ray.data.from_pandas_refs(ray.put(df1))
+    values = [(r["one"], r["two"]) for r in ds.take(3)]
+    rows = [(r.one, r.two) for _, r in df1.iterrows()]
+    assert values == rows
 
 
 def test_from_numpy(ray_start_regular_shared):
@@ -1316,7 +1294,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
     # Conversion.
-    df = pd.DataFrame({"value": list(range(n))})
+    df = pd.DataFrame({0: list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
@@ -1699,8 +1677,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block):
-        df = BlockAccessor.for_block(block).to_pandas().copy()
+    def _block_udf(block: pa.Table):
+        df = block.to_pandas()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1887,7 +1865,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
+        assert batch.to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
@@ -2049,10 +2027,8 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(
-        lambda df: df + 1, batch_size=1, batch_format="pandas")
-    assert ds2._dataset_format() == "pandas"
-    ds_list = ds2.take()
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=1, batch_format="pandas").take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -2060,9 +2036,8 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
 
     # Test Pyarrow
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
-    assert ds2._dataset_format() == "arrow"
-    ds_list = ds2.take()
+    ds_list = ds.map_batches(
+        lambda pa: pa, batch_size=1, batch_format="pyarrow").take()
     values = [s["one"] for s in ds_list]
     assert values == [1, 2, 3]
     values = [s["two"] for s in ds_list]
@@ -2071,31 +2046,27 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.data.range(size)
-    ds2 = ds.map_batches(
-        lambda df: df + 1, batch_size=17, batch_format="pandas")
-    assert ds2._dataset_format() == "pandas"
-    ds_list = ds2.take(limit=size)
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=17,
+        batch_format="pandas").take(limit=size)
     for i in range(size):
-        # The pandas column is "value", and it originally has rows from 0~299.
+        # The pandas column is "0", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["value"] == i + 1
+        assert row["0"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: [1], batch_size=1)
-    assert ds2._dataset_format() == "simple"
-    ds_list = ds2.take()
+    ds_list = ds.map_batches(lambda df: [1], batch_size=1).take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
     # pyarrow => list block
     ds = ray.data.read_parquet(str(tmp_path))
-    ds2 = ds.map_batches(lambda df: [1], batch_size=1, batch_format="pyarrow")
-    assert ds2._dataset_format() == "simple"
-    ds_list = ds2.take()
+    ds_list = ds.map_batches(
+        lambda df: [1], batch_size=1, batch_format="pyarrow").take()
     assert ds_list == [1, 1, 1]
     assert ds.count() == 3
 
@@ -3674,17 +3645,6 @@ def test_sort_simple(ray_start_regular_shared):
     assert s1 == ds
     ds = ray.data.range(10).filter(lambda r: r > 10).sort()
     assert ds.count() == 0
-
-
-def test_column_name_type_check(ray_start_regular_shared):
-    df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
-    ds = ray.data.from_pandas(df)
-    expected_str = ("Dataset(num_blocks=1, num_rows=10, "
-                    "schema={1: float64, a: float64})")
-    assert str(ds) == expected_str, str(ds)
-    df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
-    with pytest.raises(ValueError):
-        ray.data.from_pandas(df)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
