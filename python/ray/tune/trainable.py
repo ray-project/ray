@@ -406,15 +406,15 @@ class Trainable:
             trainable_state=trainable_state)
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud(checkpoint_path)
+        self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
 
-    def _maybe_save_to_cloud(self, checkpoint_path):
+    def _maybe_save_to_cloud(self, checkpoint_dir):
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_up(checkpoint_path,
-                                        self._storage_path(checkpoint_path))
+            self.storage_client.sync_up(checkpoint_dir,
+                                        self._storage_path(checkpoint_dir))
             self.storage_client.wait()
 
     def save_to_object(self):
