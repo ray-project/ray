@@ -362,13 +362,13 @@ void GcsClient::DoReconnect(absl::Time start) {
 
     RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                    << address.second;
-    gcs_rpc_client_->ResetPingClient(address.first, address.second,
-                                     *client_call_manager_);
-    rpc::PingRequest ping_request;
-    gcs_rpc_client_->Ping(
-        ping_request,
-        [this, start, address](const Status &status, const rpc::PingReply &reply) {
-          RAY_LOG(DEBUG) << "Ping GcsService returns " << status;
+    gcs_rpc_client_->ResetHeartBeatInfoClient(address.first, address.second,
+                                              *client_call_manager_);
+    rpc::CheckAliveRequest request;
+    gcs_rpc_client_->CheckAlive(
+        request,
+        [this, start, address](const Status &status, const rpc::CheckAliveReply &reply) {
+          RAY_LOG(DEBUG) << "CheckAlive returns " << status;
           OnReconnectionFinished(status, start, address);
         });
   } else {

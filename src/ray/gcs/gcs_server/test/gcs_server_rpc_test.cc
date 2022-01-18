@@ -466,31 +466,6 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
               worker_data->worker_address().worker_id());
 }
 
-TEST_F(GcsServerTest, TestPing) {
-  rpc::PingRequest ping_request;
-  std::promise<bool> returned;
-  client_->Ping(ping_request,
-                [&returned](const Status &status, const rpc::PingReply &reply) {
-                  if (status.ok()) {
-                    returned.set_value(true);
-                  }
-                });
-  EXPECT_TRUE(WaitReady(returned.get_future(), timeout_ms_));
-}
-
-TEST_F(GcsServerTest, TestPingTimeout) {
-  ShutdownServer();
-  rpc::PingRequest ping_request;
-  std::promise<bool> returned;
-  client_->Ping(ping_request,
-                [&returned](const Status &status, const rpc::PingReply &reply) {
-                  EXPECT_TRUE(status.IsGrpcUnavailable());
-                  if (status.ok()) {
-                    returned.set_value(true);
-                  }
-                });
-  EXPECT_FALSE(WaitReady(returned.get_future(), timeout_ms_));
-}
 // TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray

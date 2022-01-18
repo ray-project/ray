@@ -70,10 +70,6 @@ namespace rpc {
   reply->mutable_status()->set_message(status.message());      \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
-#define PING_SERVICE_RPC_HANDLER(HANDLER)      \
-  RPC_SERVICE_HANDLER(PingGcsService, HANDLER, \
-                      RayConfig::instance().gcs_max_active_rpcs_per_handler())
-
 class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
@@ -585,40 +581,6 @@ class InternalPubSubGrpcService : public GrpcService {
   InternalPubSubGcsServiceHandler &service_handler_;
 };
 
-class PingGcsServiceHandler {
- public:
-  virtual ~PingGcsServiceHandler() = default;
-
-  virtual void HandlePing(const PingRequest &request, PingReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `PingGcsService`.
-class PingGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit PingGrpcService(instrumented_io_context &io_service,
-                           PingGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    PING_SERVICE_RPC_HANDLER(Ping);
-  }
-
- private:
-  /// The grpc async service object.
-  PingGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  PingGcsServiceHandler &service_handler_;
-};
-
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
@@ -629,7 +591,6 @@ using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
 using InternalKVHandler = InternalKVGcsServiceHandler;
 using InternalPubSubHandler = InternalPubSubGcsServiceHandler;
-using PingHandler = PingGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

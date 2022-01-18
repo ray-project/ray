@@ -98,9 +98,6 @@ class Executor {
         callback(status, reply);                                                       \
         delete executor;                                                               \
       } else {                                                                         \
-        /* NOTE(wanxing): Different from synchronous failure handling,                 \
-        retry executor operation in failure handler callback under asynchronous        \
-        failure handling.*/                                                            \
         gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT,           \
                                       [executor]() { executor->Retry(); });            \
       }                                                                                \
@@ -167,17 +164,15 @@ class GcsRpcClient {
         address, port, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         address, port, client_call_manager);
-    ping_grpc_client_ =
-        std::make_unique<GrpcClient<PingGcsService>>(address, port, client_call_manager);
   }
 
-  /// Reset the ping client with a new address and port. During the GCS client
-  /// reconnection, the address and port of GCS server may have changed, so the ping
+  /// Reset the heart beat client with a new address and port. During the GCS client
+  /// reconnection, the address and port of GCS server may have changed, so the heart beat
   /// client needs to be updated with the new address and port.
-  void ResetPingClient(const std::string &address, const int port,
-                       ClientCallManager &client_call_manager) {
-    ping_grpc_client_ =
-        std::make_unique<GrpcClient<PingGcsService>>(address, port, client_call_manager);
+  void ResetHeartBeatInfoClient(const std::string &address, const int port,
+                                ClientCallManager &client_call_manager) {
+    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
+        address, port, client_call_manager);
   }
 
   /// Add job info to GCS Service.
@@ -273,8 +268,8 @@ class GcsRpcClient {
                              heartbeat_info_grpc_client_, /*method_timeout_ms*/ -1, )
 
   /// Check GCS is alive.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
-                             heartbeat_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive, heartbeat_info_grpc_client_,
+                         /*method_timeout_ms*/ 100, )
 
   /// Add profile data to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_,
@@ -349,8 +344,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
 
-  VOID_RPC_CLIENT_METHOD(PingGcsService, Ping, ping_grpc_client_,
-                         /*method_timeout_ms*/ 100, )
  private:
   std::function<void(GcsServiceFailureType, const std::function<void()> callback)>
       gcs_service_failure_detected_;
@@ -367,7 +360,6 @@ class GcsRpcClient {
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
-  std::unique_ptr<GrpcClient<PingGcsService>> ping_grpc_client_;
 };
 
 }  // namespace rpc

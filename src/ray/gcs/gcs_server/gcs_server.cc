@@ -164,8 +164,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Install event listeners.
   InstallEventListeners();
 
-  InitPingManager();
-
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -480,14 +478,6 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
-}
-
-void GcsServer::InitPingManager() {
-  gcs_ping_manager_ = std::make_unique<GcsPingManager>();
-
-  ping_service_ =
-      std::make_unique<rpc::PingGrpcService>(main_service_, *gcs_ping_manager_);
-  rpc_server_.RegisterService(*ping_service_);
 }
 
 void GcsServer::InstallEventListeners() {
