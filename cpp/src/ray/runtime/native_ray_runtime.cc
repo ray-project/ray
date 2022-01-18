@@ -33,10 +33,11 @@ NativeRayRuntime::NativeRayRuntime() {
   if (bootstrap_address.empty()) {
     bootstrap_address = GetNodeIpAddress();
   }
-  bootstrap_address = bootstrap_address + ":" + std::to_string(ConfigInternal::Instance().bootstrap_port);
+  bootstrap_address =
+      bootstrap_address + ":" + std::to_string(ConfigInternal::Instance().bootstrap_port);
   if (::RayConfig::instance().bootstrap_with_gcs()) {
-    global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-        bootstrap_address);
+    global_state_accessor_ =
+        ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
   } else {
     global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
         bootstrap_address, ConfigInternal::Instance().redis_password);
