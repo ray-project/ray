@@ -146,7 +146,7 @@ You can also get started by visiting our `Tutorials <https://github.com/ray-proj
 Getting Involved
 ================
 
-.. include:: ray-overview/involvement.rst
+.. include:: contribute/involvement.rst
 
 If you're interested in contributing to Ray, visit our page on :ref:`Getting Involved <getting-involved>` to read about the contribution process and see what you can work on!
 
@@ -226,21 +226,21 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
-   ray-libraries.rst
-   installation.rst
+   ray-overview/ray-libraries.rst
+   ray-overview/installation.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Core
 
-   walkthrough.rst
-   using-ray.rst
-   configure.rst
-   ray-dashboard.rst
-   Tutorial and Examples <auto_examples/overview.rst>
+   ray-core/walkthrough.rst
+   ray-core/using-ray.rst
+   ray-core/configure.rst
+   ray-core/ray-dashboard.rst
+   Tutorial and Examples <ray-core/examples/overview.rst>
    Design patterns and anti-patterns <ray-design-patterns/index.rst>
-   package-ref.rst
+   ray-core/package-ref.rst
 
 .. toctree::
    :hidden:
@@ -250,7 +250,7 @@ Papers
    cluster/index.rst
    cluster/quickstart.rst
    cluster/guide.rst
-   Ray Job Submission <ray-job-submission/overview.rst>
+   Ray Job Submission <cluster/job-submission.rst>
    cluster/ray-client.rst
    cluster/reference.rst
    cluster/cloud.rst
@@ -261,126 +261,126 @@ Papers
    :maxdepth: -1
    :caption: Ray Serve
 
-   serve/index.rst
-   serve/tutorial.rst
-   serve/core-apis.rst
-   serve/http-servehandle.rst
-   serve/deployment.rst
-   serve/ml-models.rst
-   serve/pipeline.rst
-   serve/performance.rst
-   serve/architecture.rst
-   serve/tutorials/index.rst
-   serve/faq.rst
-   serve/package-ref.rst
+   ray-serve/index.rst
+   ray-serve/tutorial.rst
+   ray-serve/core-apis.rst
+   ray-serve/http-servehandle.rst
+   ray-serve/deployment.rst
+   ray-serve/ml-models.rst
+   ray-serve/pipeline.rst
+   ray-serve/performance.rst
+   ray-serve/architecture.rst
+   ray-serve/tutorials/index.rst
+   ray-serve/faq.rst
+   ray-serve/package-ref.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Data
 
-   data/dataset.rst
-   data/dataset-pipeline.rst
-   data/dataset-ml-preprocessing.rst
-   data/dataset-execution-model.rst
-   data/dataset-tensor-support.rst
-   data/package-ref.rst
-   data/examples/big_data_ingestion
-   data/dask-on-ray.rst
-   data/mars-on-ray.rst
-   data/modin/index.rst
-   data/raydp.rst
+   ray-data/dataset.rst
+   ray-data/dataset-pipeline.rst
+   ray-data/dataset-ml-preprocessing.rst
+   ray-data/dataset-execution-model.rst
+   ray-data/dataset-tensor-support.rst
+   ray-data/package-ref.rst
+   ray-data/examples/big_data_ingestion
+   ray-data/dask-on-ray.rst
+   ray-data/mars-on-ray.rst
+   ray-data/modin/index.rst
+   ray-data/raydp.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Workflows
 
-   workflows/concepts.rst
-   workflows/basics.rst
-   workflows/management.rst
-   workflows/actors.rst
-   workflows/metadata.rst
-   workflows/events.rst
-   workflows/comparison.rst
-   workflows/advanced.rst
-   workflows/package-ref.rst
+   ray-workflows/concepts.rst
+   ray-workflows/basics.rst
+   ray-workflows/management.rst
+   ray-workflows/actors.rst
+   ray-workflows/metadata.rst
+   ray-workflows/events.rst
+   ray-workflows/comparison.rst
+   ray-workflows/advanced.rst
+   ray-workflows/package-ref.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Tune
 
-   tune/index.rst
-   tune/key-concepts.rst
-   tune/user-guide.rst
-   tune/tutorials/overview.rst
-   tune/examples/index.rst
-   tune/api_docs/overview.rst
-   tune/contrib.rst
+   ray-tune/index.rst
+   ray-tune/key-concepts.rst
+   ray-tune/user-guide.rst
+   ray-tune/tutorials/overview.rst
+   ray-tune/examples/index.rst
+   ray-tune/api_docs/overview.rst
+   ray-tune/contrib.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray RLlib
 
-   rllib/index.rst
-   rllib-toc.rst
-   rllib/core-concepts.rst
-   rllib-training.rst
-   rllib-env.rst
-   rllib-models.rst
-   rllib-algorithms.rst
-   rllib-sample-collection.rst
-   rllib-offline.rst
-   rllib-concepts.rst
-   rllib-examples.rst
-   rllib/package_ref/index.rst
-   rllib-dev.rst
+   ray-rllib/index.rst
+   ray-rllib/rllib-toc.rst
+   ray-rllib/core-concepts.rst
+   ray-rllib/rllib-training.rst
+   ray-rllib/rllib-env.rst
+   ray-rllib/rllib-models.rst
+   ray-rllib/rllib-algorithms.rst
+   ray-rllib/rllib-sample-collection.rst
+   ray-rllib/rllib-offline.rst
+   ray-rllib/rllib-concepts.rst
+   ray-rllib/rllib-examples.rst
+   ray-rllib/package_ref/index.rst
+   ray-rllib/rllib-dev.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Train
 
-   train/train.rst
-   train/user_guide.rst
-   train/examples.rst
-   train/architecture.rst
-   train/api.rst
-   train/migration-guide.rst
-   RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
+   ray-train/train.rst
+   ray-train/user_guide.rst
+   ray-train/examples.rst
+   ray-train/architecture.rst
+   ray-train/api.rst
+   ray-train/migration-guide.rst
+   RaySGD v1: Distributed Training Wrappers <ray-train/raysgd.rst>
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: More Libraries
 
-   multiprocessing.rst
-   joblib.rst
-   xgboost-ray.md
-   lightgbm-ray.rst
-   ray-lightning.rst
-   ray-collective.rst
+   ray-more-libs/multiprocessing.rst
+   ray-more-libs/joblib.rst
+   ray-more-libs/xgboost-ray.md
+   ray-more-libs/lightgbm-ray.rst
+   ray-more-libs/ray-lightning.rst
+   ray-more-libs/ray-collective.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Observability
 
-   ray-metrics.rst
-   ray-debugging.rst
-   ray-logging.rst
-   ray-tracing.rst
+   ray-observability/ray-metrics.rst
+   ray-observability/ray-debugging.rst
+   ray-observability/ray-logging.rst
+   ray-observability/ray-tracing.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Contributor Guide
 
-   getting-involved.rst
-   development.rst
-   fake-autoscaler.rst
-   whitepaper.rst
-   debugging.rst
-   profiling.rst
+   contribute/getting-involved.rst
+   contribute/development.rst
+   contribute/fake-autoscaler.rst
+   contribute/whitepaper.rst
+   contribute/debugging.rst
+   contribute/profiling.rst

@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/cluster_we_are_hiring.rst
 
 .. _cluster-reference:
 

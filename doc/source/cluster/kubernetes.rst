@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/cluster_we_are_hiring.rst
 
 .. _ray-k8s-deploy:
 
@@ -194,7 +194,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
 .. code-block:: shell
 
-  $ python ray/doc/kubernetes/example_scripts/run_local_example.py
+  $ python ray/doc/tools/kubernetes/example_scripts/run_local_example.py
 
 The program in this example uses ``ray.init("ray://127.0.0.1:10001")`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
@@ -213,7 +213,7 @@ The following command submits a Job which executes an `example Ray program`_.
 
 .. code-block:: yaml
 
-  $ kubectl -n ray create -f https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/job-example.yaml
+  $ kubectl -n ray create -f https://raw.githubusercontent.com/ray-project/ray/master/doc/tools/kubernetes/job-example.yaml
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
@@ -282,7 +282,7 @@ Next steps
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`Kubernetes`: https://kubernetes.io/
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
@@ -304,7 +304,7 @@ Questions or Issues?
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
-.. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/job_example.py
-.. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
+.. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/tools/kubernetes/example_scripts/job_example.py
+.. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/tools/kubernetes/example_scripts/run_local_example.py
 .. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
 .. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray

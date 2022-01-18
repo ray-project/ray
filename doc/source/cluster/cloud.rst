@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/cluster_we_are_hiring.rst
 
 .. _cluster-cloud:
 
@@ -79,7 +79,7 @@ Ray with cloud providers
         The head node conveniently exposes both SSH as well as JupyterLab.
 
         .. image:: https://aka.ms/deploytoazurebutton
-           :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
+           :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Ftools%2Fazure%2Fazure-ray-template.json
            :alt: Deploy to Azure
 
         Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
@@ -90,7 +90,7 @@ Ray with cloud providers
             import ray
             ray.init(address='auto')
 
-        Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs the following actions:
+        Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/tools/azure/azure-init.sh>`_ script is executed and performs the following actions:
 
         1. Activates one of the conda environments available on DSVM
         2. Installs Ray and any other user-specified dependencies
@@ -464,4 +464,4 @@ Now that you have a working understanding of the cluster launcher, check out:
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

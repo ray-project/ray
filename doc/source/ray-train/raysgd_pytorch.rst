@@ -9,7 +9,7 @@ Distributed PyTorch
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch.
 
 
-.. image:: raysgd-actors.svg
+.. image:: images/raysgd-actors.svg
     :align: center
 
 .. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!

@@ -8,7 +8,7 @@ RaySGD's ``TFTrainer`` simplifies distributed model training for Tensorflow. The
 
 Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
-.. image:: raysgd-actors.svg
+.. image:: images/raysgd-actors.svg
     :align: center
 
 .. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!

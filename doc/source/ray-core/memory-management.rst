@@ -357,4 +357,4 @@ In the above example, the memory quota is specified statically by the decorator,
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

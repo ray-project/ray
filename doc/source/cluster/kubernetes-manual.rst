@@ -1,6 +1,6 @@
 :orphan:
 
-.. include:: we_are_hiring.rst
+.. include:: /_includes/cluster_we_are_hiring.rst
 
 .. _ray-k8s-static:
 
@@ -29,7 +29,7 @@ Starting a Ray Cluster
 
 
 A Ray cluster consists of a single head node and a set of worker nodes (the
-provided `ray-cluster.yaml <https://github.com/ray-project/ray/blob/master/doc/kubernetes/ray-cluster.yaml>`__ file will start 3 worker nodes). In the example
+provided `ray-cluster.yaml <https://github.com/ray-project/ray/blob/master/doc/tools/kubernetes/ray-cluster.yaml>`__ file will start 3 worker nodes). In the example
 Kubernetes configuration, this is implemented as:
 
 - A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the location of the head node on start up.
@@ -49,7 +49,7 @@ following command:
 
 .. code-block:: shell
 
-  $ kubectl apply -f ray/doc/kubernetes/ray-cluster.yaml
+  $ kubectl apply -f ray/doc/tools/kubernetes/ray-cluster.yaml
 
 Verify that the pods are running by running ``kubectl get pods -n ray``. You
 may have to wait up to a few minutes for the pods to enter the 'Running'
@@ -76,11 +76,11 @@ the config as follows:
 
 .. code-block:: shell
 
-  # Edit 'ray/doc/kubernetes/ray-cluster.yaml' and change the 'replicas'
+  # Edit 'ray/doc/tools/kubernetes/ray-cluster.yaml' and change the 'replicas'
   # field under the ray-worker deployment to, e.g., 4.
 
   # Re-apply the new configuration to the running deployment.
-  $ kubectl apply -f ray/doc/kubernetes/ray-cluster.yaml
+  $ kubectl apply -f ray/doc/tools/kubernetes/ray-cluster.yaml
   service/ray-head unchanged
   deployment.apps/ray-head unchanged
   deployment.apps/ray-worker configured
@@ -142,13 +142,13 @@ To delete a running Ray cluster, you can run the following command:
 
 .. code-block:: shell
 
-  kubectl delete -f ray/doc/kubernetes/ray-cluster.yaml
+  kubectl delete -f ray/doc/tools/kubernetes/ray-cluster.yaml
 
 
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 
 .. _`Kubernetes Namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/

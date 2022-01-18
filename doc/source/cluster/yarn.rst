@@ -1,4 +1,4 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/cluster_we_are_hiring.rst
 
 .. _ray-yarn-deploy:
 
@@ -83,7 +83,7 @@ Use the ``files`` option to specify files that will be copied into the YARN cont
                 vcores: 1
                 memory: 2048
             files:
-                # ray/doc/yarn/example.py
+                # ray/doc/tools/yarn/example.py
                 example.py: example.py
             #     # A packaged python environment using `conda-pack`. Note that Skein
             #     # doesn't require any specific way of distributing files, but this
@@ -133,7 +133,7 @@ Clean up all started processes even if the application fails or is killed.
 
 Putting things together, we have:
 
-.. literalinclude:: /../yarn/ray-skein.yaml
+.. literalinclude:: /../tools/yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Head service
    :end-before: # Worker service
@@ -156,7 +156,7 @@ Start all of the processes needed on a ray worker node, blocking until killed by
 
 Putting things together, we have:
 
-.. literalinclude:: /../yarn/ray-skein.yaml
+.. literalinclude:: /../tools/yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Worker service
 
@@ -165,7 +165,7 @@ Running a Job
 
 Within your Ray script, use the following to connect to the started Ray cluster:
 
-.. literalinclude:: /../yarn/example.py
+.. literalinclude:: /../tools/yarn/example.py
     :language: python
     :start-after: if __name__ == "__main__"
 
@@ -191,6 +191,6 @@ To clean up a running job, use the following (using the application ID):
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`Skein`: https://jcrist.github.io/skein/
