@@ -10,7 +10,7 @@ from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     get_uri_for_package, upload_package_to_gcs, parse_uri, Protocol,
     upload_package_if_needed)
-from ray._private.utils import try_to_create_directory
+from ray._private.utils import get_directory_size, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
