@@ -2,7 +2,6 @@ import os
 import subprocess
 import time
 
-
 here = os.path.dirname(os.path.abspath(__file__))
 run_autoscaler_script = os.path.join(here, "run_autoscaler.py")
 
