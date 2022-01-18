@@ -575,3 +575,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 await aioredis_client.publish(key, data)
 
         await self._perform_iteration(publish)
+
+    @staticmethod
+    def is_optional():
+        return True

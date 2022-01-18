@@ -1300,9 +1300,7 @@ def start_dashboard(require_dashboard,
                     raise e
 
         # Make sure the process can start.
-        try:
-            import ray.dashboard.optional_deps  # noqa: F401
-        except ImportError:
+        if not ray._private.utils.check_dashboard_dependencies_installed():
             if require_dashboard:
                 logger.exception("dashboard dependency error")
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
@@ -1619,33 +1617,35 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    if not ray._private.utils.check_dashboard_dependencies_installed():
-        # An empty agent command will cause the raylet not to start it.
-        agent_command = []
-    else:
-        agent_command = [
-            sys.executable,
-            "-u",
-            os.path.join(RAY_PATH, "dashboard", "agent.py"),
-            f"--node-ip-address={node_ip_address}",
-            f"--redis-address={redis_address}",
-            f"--metrics-export-port={metrics_export_port}",
-            f"--dashboard-agent-port={metrics_agent_port}",
-            f"--listen-port={dashboard_agent_listen_port}",
-            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-            f"--object-store-name={plasma_store_name}",
-            f"--raylet-name={raylet_name}",
-            f"--temp-dir={temp_dir}",
-            f"--session-dir={session_dir}",
-            f"--runtime-env-dir={resource_dir}",
-            f"--log-dir={log_dir}",
-            f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}",
-        ]
+    agent_command = [
+        sys.executable,
+        "-u",
+        os.path.join(RAY_PATH, "dashboard", "agent.py"),
+        f"--node-ip-address={node_ip_address}",
+        f"--redis-address={redis_address}",
+        f"--metrics-export-port={metrics_export_port}",
+        f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--log-dir={log_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--gcs-address={gcs_address}",
+    ]
 
-        if redis_password is not None and len(redis_password) != 0:
-            agent_command.append("--redis-password={}".format(redis_password))
+    if redis_password is not None and len(redis_password) != 0:
+        agent_command.append("--redis-password={}".format(redis_password))
+
+    if not ray._private.utils.check_dashboard_dependencies_installed():
+        # If dependencies are not installed, it is the minimally packaged
+        # ray. We should restrict the features within dashboard agent
+        # that requires additional dependencies to be downloaded.
+        agent_command.append("--minimal")
 
     command = [
         RAYLET_EXECUTABLE,

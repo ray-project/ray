@@ -12,6 +12,7 @@ import traceback
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services
@@ -29,7 +30,7 @@ from ray.dashboard.optional_deps import aiohttp
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class FrontendNotFoundError(OSError):
@@ -101,7 +102,7 @@ class Dashboard:
                 logger.warning(ex)
             else:
                 raise ex
-        dashboard_utils.ClassMethodRouteTable.bind(self)
+        dashboard_optional_utils.ClassMethodRouteTable.bind(self)
 
     @routes.get("/")
     async def get_index(self, req) -> aiohttp.web.FileResponse:
@@ -203,6 +204,14 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--minimal",
+        type=bool,
+        action="store_true",
+        help=(
+            "Minimal dashboard only contains a subset of features that don't "
+            "require additional dependencies installed when ray is installed "
+            "by `pip install ray[default]`."))
 
     args = parser.parse_args()
 

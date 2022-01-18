@@ -30,3 +30,12 @@ SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
+
+# The below 
+OPTIONAL_DASHBOARD_MODULES = [
+    "actor_head.py"
+]
+
+OPTIONAL_AGENT_MODULES = [
+    ""
+]
