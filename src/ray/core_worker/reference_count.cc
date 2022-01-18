@@ -468,7 +468,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
              "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
              "as "
-             "a task argument because Ray does not know which task will create them. "
+             "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
