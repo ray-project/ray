@@ -1194,8 +1194,7 @@ class Dataset(Generic[T]):
         else:
             return self._aggregate_result(ret)
 
-    def sort(self,
-             key: Union[KeyFn, List[KeyFn]] = None,
+    def sort(self, key: KeyFn = None,
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
 
