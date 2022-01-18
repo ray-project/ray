@@ -577,10 +577,8 @@ Status NodeInfoAccessor::AsyncReportHeartbeat(
     const StatusCallback &callback) {
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  RAY_LOG(INFO) << "AsyncReportHeartbeat ReportHeartbeat";
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
       request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        RAY_LOG(INFO) << "AsyncReportHeartbeat ReportHeartbeat callback";
         if (callback) {
           callback(status);
         }

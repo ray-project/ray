@@ -1,11 +1,11 @@
 import collections
 import platform
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import ray
 from ray.rllib import SampleBatch
-from ray.rllib.execution import PrioritizedReplayBuffer
+from ray.rllib.execution import PrioritizedReplayBuffer, ReplayBuffer
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
 from ray.rllib.policy.rnn_sequencing import \
     timeslice_along_seq_lens_with_overlap
@@ -54,7 +54,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                 `self.replay_batch_size` will be set to the number of
                 sequences sampled (B).
             prioritized_replay_alpha (float): Alpha parameter for a prioritized
-                replay buffer.
+                replay buffer. Use 0.0 for no prioritization.
             prioritized_replay_beta (float): Beta parameter for a prioritized
                 replay buffer.
             prioritized_replay_eps (float): Epsilon parameter for a prioritized
@@ -108,8 +108,11 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         ParallelIteratorWorker.__init__(self, gen_replay, False)
 
         def new_buffer():
-            return PrioritizedReplayBuffer(
-                self.capacity, alpha=prioritized_replay_alpha)
+            if prioritized_replay_alpha == 0.0:
+                return ReplayBuffer(self.capacity)
+            else:
+                return PrioritizedReplayBuffer(
+                    self.capacity, alpha=prioritized_replay_alpha)
 
         self.replay_buffers = collections.defaultdict(new_buffer)
 
