@@ -107,7 +107,7 @@ class DashboardAgent(object):
         self.http_server = None
     
     async def _configure_http_server(self, modules):
-        from ray.dashboard.http.http_server_agent import HttpServerAgent
+        from ray.dashboard.http_server.http_server_agent import HttpServerAgent
         http_server = HttpServerAgent(self.ip, self.listen_port)
         await http_server.start(modules)
         return http_server

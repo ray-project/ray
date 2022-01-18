@@ -206,7 +206,6 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory use by Ray process.")
     parser.add_argument(
         "--minimal",
-        type=bool,
         action="store_true",
         help=(
             "Minimal dashboard only contains a subset of features that don't "

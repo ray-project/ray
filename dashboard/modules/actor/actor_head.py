@@ -228,3 +228,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
 
         await asyncio.gather(self._update_actors())
+
+    @staticmethod
+    def is_optional():
+        return True

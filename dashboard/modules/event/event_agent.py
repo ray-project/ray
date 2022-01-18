@@ -93,4 +93,4 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
     
     @staticmethod
     def is_optional():
-        return False
+        return True
