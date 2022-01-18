@@ -115,10 +115,7 @@ scripts/nodes.txt
 **/MNIST_data/
 **/cifar-10-batches-bin/
 
-# Generated documentation files
-/doc/_build
-/doc/source/_static/thumbs
-/doc/source/tune/generated_guides/
+
 
 # User-specific stuff:
 .idea/**/workspace.xml
