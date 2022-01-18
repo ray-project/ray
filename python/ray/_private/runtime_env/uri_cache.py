@@ -5,7 +5,28 @@ default_logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
 
+
 class URICache:
+    """
+    Caches URIs up to a specified total size limit.
+
+    URIs are represented by strings.  Each URI has an associated size on disk.
+
+    When a URI is added to the URICache, it is marked as "in use".
+    When a URI is no longer in use, the user of this class should call
+    `mark_unused` to signal that the URI is safe for deletion.
+
+    URIs in the cache can be marked as "in use" by calling `mark_used`.
+
+    Deletion of URIs on disk does not occur until the size limit is exceeded.
+    When this happens, URIs that are not in use are deleted randomly until the
+    size limit is satisfied, or there are no more URIs that are not in use.
+
+    It is possible for the total size on disk to exceed the size limit if all
+    the URIs are in use.
+
+    """
+
     def __init__(
             self,
             delete_fn: Callable[[str, logging.Logger], int] = lambda x, y: 0,
@@ -45,12 +66,18 @@ class URICache:
             uri: str,
             size_bytes: int,
             logger: logging.Logger = default_logger):
+        """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:
             if size_bytes != self._unused_uris[uri]:
-                logger.debug(f"Added URI {uri} with size {size_bytes}, which "
-                             "doesn't match the existing size "
-                             f"{self._unused_uris[uri]}.")
+                logger.warning(f"Added URI {uri} with size {size_bytes}, which"
+                               " doesn't match the existing size "
+                               f"{self._unused_uris[uri]}.")
             del self._unused_uris[uri]
+        if uri in self._used_uris:
+            if size_bytes != self._used_uris[uri]:
+                logger.warning(f"Added URI {uri} with size {size_bytes}, which"
+                               " doesn't match the existing size "
+                               f"{self._used_uris[uri]}.")
         self._used_uris[uri] = size_bytes
         self._evict_if_needed(logger)
         self._check_valid()
