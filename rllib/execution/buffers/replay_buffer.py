@@ -127,11 +127,12 @@ class ReplayBuffer:
         return out
 
     @DeveloperAPI
-    def sample(self, num_items: int) -> SampleBatchType:
+    def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
         """Sample a batch of experiences.
 
         Args:
             num_items: Number of items to sample from this buffer.
+            beta: This is ignored (only used by prioritized replay buffers).
 
         Returns:
             Concatenated batch of items.
@@ -140,8 +141,9 @@ class ReplayBuffer:
             random.randint(0,
                            len(self._storage) - 1) for _ in range(num_items)
         ]
-        self._num_sampled += num_items
-        return self._encode_sample(idxes)
+        sample = self._encode_sample(idxes)
+        self._num_timesteps_sampled += len(sample)
+        return sample
 
     @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
