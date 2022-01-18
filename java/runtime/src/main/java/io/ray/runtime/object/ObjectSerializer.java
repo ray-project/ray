@@ -248,9 +248,7 @@ public class ObjectSerializer {
           io.ray.runtime.generated.Common.RayErrorInfo.parseFrom(pbData);
       if (rayErrorInfo.getActorDiedError().hasCreationTaskFailureContext()) {
         return RayException.fromRayExceptionPB(
-            rayErrorInfo
-                .getActorDiedError()
-                .getCreationTaskFailureContext());
+            rayErrorInfo.getActorDiedError().getCreationTaskFailureContext());
       } else {
         // TODO(lixin) Generate friendly error message from RayErrorInfo.ActorDiedError's field
         // type.
