@@ -53,8 +53,6 @@ def status_tag(pod: Dict[str, Any]):
 
     state = pod["status"]["containerStatuses"][0]["state"]
 
-    logger.info("status_tag: state = {}".format(state))
-
     if "pending" in state:
         return "pending"
     if "running" in state:
