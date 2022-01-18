@@ -151,7 +151,14 @@ extensions = [
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_parser",
+    "sphinx.ext.doctest",
+    "sphinx.ext.coverage",
 ]
+
+# There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
+# or imports.
+autodoc_mock_imports = ["ray.experimental"]
+
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
@@ -172,15 +179,21 @@ versionwarning_messages = {
 }
 
 versionwarning_body_selector = "#main-content"
+
 sphinx_gallery_conf = {
+    # Example sources are taken from these folders:
     "examples_dirs": [
-        "../examples",
-        "tune/_tutorials",
-        "data/_examples",
-    ],  # path to example scripts
-    # path where to save generated examples
-    "gallery_dirs": ["auto_examples", "tune/tutorials", "data/examples"],
-    "ignore_pattern": "../examples/doc_code/",
+        "ray-core/_examples",
+        "ray-tune/_tutorials",
+        "ray-data/_examples",
+    ],
+    # and then generated into these respective target folders:
+    "gallery_dirs": [
+        "ray-core/examples",
+        "ray-tune/tutorials",
+        "ray-data/examples"
+    ],
+    "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
@@ -245,6 +258,17 @@ language = None
 # directories to ignore when looking for source files.
 exclude_patterns = ["_build"]
 exclude_patterns += sphinx_gallery_conf["examples_dirs"]
+
+# If "DOC_LIB" is found, only build that top-level navigation item.
+build_one_lib = os.getenv("DOC_LIB")
+all_toc_libs = ["cluster", "contribute", "ray-core", "ray-data", "ray-design-patterns", "ray-more-libs",
+                "ray-observability", "ray-overview", "ray-rllib",  "ray-serve", "ray-train",
+                "ray-tune", "ray-workflows"]
+
+if build_one_lib and build_one_lib in all_toc_libs:
+    all_toc_libs.remove(build_one_lib)
+    exclude_patterns += all_toc_libs
+
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
