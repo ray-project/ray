@@ -281,31 +281,25 @@ void GcsClient::PeriodicallyCheckGcsServerAddress() {
   }
 }
 
-bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
-                                          const std::function<void()> callback) {
+bool GcsClient::GcsServiceFailureDetected(
+    rpc::GcsServiceFailureType type,
+    const std::function<void()> failure_handled_callback) {
   RAY_LOG(INFO) << "Gcs service failure detected, reason "
                 << GcsServiceFailureType_Name(type);
   bool accepted = false;
   switch (type) {
   case rpc::GcsServiceFailureType::RPC_DISCONNECT:
     // If the GCS server address does not change, reconnect to GCS server.
-    accepted = ReconnectGcsServerAsync([callback]() {
-      if (callback) {
-        callback();
-      }
-    });
+    accepted = ReconnectGcsServerAsync(failure_handled_callback);
     break;
   case rpc::GcsServiceFailureType::GCS_SERVER_RESTART:
     // If GCS sever address has changed, reconnect to GCS server and redo
     // subscription.
-    accepted = ReconnectGcsServerAsync([this, callback]() {
+    accepted = ReconnectGcsServerAsync([this]() {
       // If using GCS server for pubsub, resubscribe to GCS publishers.
       resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
       // Resend resource usage after reconnected, needed by resource view in GCS.
       node_resource_accessor_->AsyncReReportResourceUsage();
-      if (callback) {
-        callback();
-      }
     });
     break;
   default:
@@ -316,14 +310,15 @@ bool GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
   return accepted;
 }
 
-bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
+bool GcsClient::ReconnectGcsServerAsync(
+    const std::function<void()> reconnected_callback) {
   absl::MutexLock l(&reconnect_flag_mutex_);
   if (disconnected_) {
     return false;
   }
   {
     absl::MutexLock l(&reconnect_callbacks_mutex_);
-    pending_reconnect_callbacks_.emplace_back(callback);
+    reconnected_callbacks_.emplace_back(reconnected_callback);
   }
   if (reconnect_in_progress_) {
     RAY_LOG(DEBUG) << "GcsClient reconnect in progress, the callback is pended.";
@@ -336,7 +331,7 @@ bool GcsClient::ReconnectGcsServerAsync(const std::function<void()> callback) {
 
 void GcsClient::DoReconnect(absl::Time start) {
   if (disconnected_) {
-    ExecutePendingCallbacks();
+    ExecuteReconnectedCallbacks();
     reconnect_in_progress_ = false;
     return;
   }
@@ -355,7 +350,7 @@ void GcsClient::DoReconnect(absl::Time start) {
           << "Repeated reconnection in "
           << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
           << " milliseconds, return directly.";
-      ExecutePendingCallbacks();
+      ExecuteReconnectedCallbacks();
       reconnect_in_progress_ = false;
       return;
     }
@@ -373,7 +368,7 @@ void GcsClient::DoReconnect(absl::Time start) {
         });
   } else {
     RAY_LOG(WARNING) << "Can not get gcs server address.";
-    ExecutePendingCallbacks();
+    ExecuteReconnectedCallbacks();
     reconnect_in_progress_ = false;
   }
 }
@@ -388,7 +383,7 @@ void GcsClient::OnReconnectionFinished(const Status &status, absl::Time start,
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();
-    ExecutePendingCallbacks();
+    ExecuteReconnectedCallbacks();
     reconnect_in_progress_ = false;
   } else {
     std::this_thread::sleep_for(
@@ -405,14 +400,12 @@ void GcsClient::OnReconnectionFinished(const Status &status, absl::Time start,
   }
 }
 
-void GcsClient::ExecutePendingCallbacks() {
+void GcsClient::ExecuteReconnectedCallbacks() {
   absl::MutexLock l(&reconnect_callbacks_mutex_);
-  for (const auto &callback : pending_reconnect_callbacks_) {
-    if (callback) {
-      callback();
-    }
+  for (const auto &callback : reconnected_callbacks_) {
+    callback();
   }
-  pending_reconnect_callbacks_.clear();
+  reconnected_callbacks_.clear();
 }
 
 }  // namespace gcs

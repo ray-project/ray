@@ -216,20 +216,22 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// service failure is detected.
   ///
   /// \param type The type of GCS service failure.
-  /// \param callback The callback function to be called after reconnected to gcs
-  /// successfully. \return Returns true if the reconnect request is accepted, false if
-  /// the client is
-  // in reconnecting process and the reconnect request is rejected.
-  bool GcsServiceFailureDetected(rpc::GcsServiceFailureType type,
-                                 const std::function<void()> callback = nullptr);
+  /// \param failure_handled_callback The callback function to be called after reconnected
+  /// to gcs successfully. \return Returns true if the reconnect request is accepted,
+  /// false if the client is in reconnecting process and the reconnect request is
+  /// rejected.
+  bool GcsServiceFailureDetected(
+      rpc::GcsServiceFailureType type,
+      const std::function<void()> failure_handled_callback = nullptr);
 
   /// Reconnect to GCS RPC server asynchronously.
   ///
   /// \param callback The callback function to be called after reconnected to gcs
-  /// successfully. \return Returns true if the reconnect request is accepted, false if
+  /// successfully.
+  /// \return Returns true if the reconnect request is accepted, false if
   /// the client is
   // in reconnecting process and the reconnect request is rejected.
-  bool ReconnectGcsServerAsync(const std::function<void()> callback);
+  bool ReconnectGcsServerAsync(const std::function<void()> reconnected_callback);
 
   /// Get new Gcs server address and try to ping it.
   void DoReconnect(absl::Time start) EXCLUSIVE_LOCKS_REQUIRED(reconnect_flag_mutex_);
@@ -239,7 +241,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
                               std::pair<std::string, int> address);
 
   /// Execute all the pending callbacks during reconnection and clear it.
-  void ExecutePendingCallbacks();
+  void ExecuteReconnectedCallbacks();
 
   std::shared_ptr<RedisClient> redis_client_;
 
@@ -275,7 +277,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   mutable absl::Mutex reconnect_callbacks_mutex_;
   // Stash the reconnecting request callback functions, erased and called after
   // reconnecting successfully.
-  std::list<std::function<void()>> pending_reconnect_callbacks_
+  std::list<std::function<void()>> reconnected_callbacks_
       GUARDED_BY(reconnect_callbacks_mutex_);
 
   friend struct GcsClientReconnectionTest;

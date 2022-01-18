@@ -1057,7 +1057,7 @@ TEST_P(GcsClientReconnectionTest, TestReconnectionNormally) {
   /// Test reconnect normally.
   bool callback_called = false;
   EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
-      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      rpc::GcsServiceFailureType::RPC_DISCONNECT,
       [&callback_called]() { callback_called = true; }));
   auto condition = [&callback_called]() { return callback_called; };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
@@ -1066,13 +1066,13 @@ TEST_P(GcsClientReconnectionTest, TestReconnectionNormally) {
 TEST_P(GcsClientReconnectionTest, TestReconnectionInProgress) {
   /// Test reject to reconnect when reconnection in progress.
   EXPECT_TRUE(gcs_client_->GcsServiceFailureDetected(
-      rpc::GcsServiceFailureType::GCS_SERVER_RESTART, []() {
+      rpc::GcsServiceFailureType::RPC_DISCONNECT, []() {
         /// Sleep 1000ms to block the following reconnect requests.
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       }));
   bool callback_called = false;
   EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
-      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      rpc::GcsServiceFailureType::RPC_DISCONNECT,
       [&callback_called]() { callback_called = true; }));
   auto condition = [&callback_called]() { return callback_called; };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
@@ -1083,7 +1083,7 @@ TEST_P(GcsClientReconnectionTest, TestReconnectionWhenDisconnected) {
   gcs_client_->Disconnect();
   bool callback_called = false;
   EXPECT_FALSE(gcs_client_->GcsServiceFailureDetected(
-      rpc::GcsServiceFailureType::GCS_SERVER_RESTART,
+      rpc::GcsServiceFailureType::RPC_DISCONNECT,
       [&callback_called]() { callback_called = true; }));
   auto condition = [&callback_called]() { return callback_called; };
   EXPECT_FALSE(WaitForCondition(condition, timeout_ms_.count()));
