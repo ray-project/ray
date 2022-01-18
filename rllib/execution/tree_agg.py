@@ -9,7 +9,7 @@ from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.typing import SampleBatchType, ModelWeights
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
     from_actors, LocalIterator
@@ -91,11 +91,22 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     ]
 
     # This spawns |num_aggregation_workers| intermediate actors that aggregate
-    # experiences in parallel. We force colocation on the same node to maximize
-    # data bandwidth between them and the driver.
-    train_batches = from_actors([
-        create_colocated(Aggregator, [config, g], 1)[0] for g in rollout_groups
-    ])
+    # experiences in parallel. We force colocation on the same node (localhost)
+    # to maximize data bandwidth between them and the driver.
+    localhost = platform.node()
+    assert localhost != "", \
+        "ERROR: Cannot determine local node name! " \
+        "`platform.node()` returned empty string."
+    all_co_located = create_colocated_actors(
+        actor_specs=[
+            # (class, args, kwargs={}, count=1)
+            (Aggregator, [config, g], {}, 1) for g in rollout_groups
+        ],
+        node=localhost)
+
+    # Use the first ([0]) of each created group (each group only has one
+    # actor: count=1).
+    train_batches = from_actors([group[0] for group in all_co_located])
 
     # TODO(ekl) properly account for replay.
     def record_steps_sampled(batch):

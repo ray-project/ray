@@ -142,7 +142,6 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
-    RAY_bootstrap_with_gcs: "1"
 
   stable: false
 
@@ -163,7 +162,6 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
-    RAY_bootstrap_with_gcs: "1"
 
   stable: false
 
@@ -184,7 +182,6 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
-    RAY_bootstrap_with_gcs: "1"
 
   stable: false
 
@@ -205,6 +202,5 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
-    RAY_bootstrap_with_gcs: "1"
 
   stable: false

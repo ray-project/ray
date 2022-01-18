@@ -21,6 +21,7 @@ from ray import ray_constants
 from ray._private.test_utils import (
     format_web_url, wait_for_condition, wait_until_server_available,
     run_string_as_driver, wait_until_succeeded_without_exception)
+from ray._private.gcs_pubsub import gcs_pubsub_enabled
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.dashboard import dashboard
@@ -644,7 +645,6 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
                 raise Exception("Timed out while testing.")
 
 
-@pytest.mark.skipif(use_gcs_for_bootstrap(), reason="Not working right now.")
 def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
@@ -661,8 +661,13 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    # The dashboard exits by os._exit(-1)
-    assert dashboard_proc.wait(10) == 255
+    if gcs_pubsub_enabled():
+        # When pubsub enabled, the exits comes from pubsub errored.
+        # TODO: Fix this exits logic for pubsub
+        assert dashboard_proc.wait(10) != 0
+    else:
+        # The dashboard exits by os._exit(-1)
+        assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

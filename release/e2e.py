@@ -187,6 +187,9 @@ Release test yaml example
 """  # noqa: E501
 import argparse
 import enum
+import random
+import string
+import shlex
 
 import boto3
 import collections
@@ -230,7 +233,7 @@ def _format_link(link: str):
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    return r"\033]1339;url='" + link + r"'\a\n"
+    return "\033]1339;url='" + link + "'\a\n"
 
 
 def getenv_default(key: str, default: Optional[str] = None):
@@ -374,6 +377,113 @@ class State:
         self.state = state
         self.timestamp = timestamp
         self.data = data
+
+
+class CommandRunnerHack:
+    def __init__(self):
+        self.subprocess_pool: Dict[int, subprocess.Popen] = dict()
+        self.start_time: Dict[int, float] = dict()
+        self.counter = 0
+
+    def run_command(self, session_name, cmd_to_run, env_vars) -> int:
+        self.counter += 1
+        command_id = self.counter
+        env = os.environ.copy()
+        env["RAY_ADDRESS"] = f"anyscale://{session_name}"
+        env["ANYSCALE_CLI_TOKEN"] = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        env["ANYSCALE_HOST"] = GLOBAL_CONFIG["ANYSCALE_HOST"]
+        full_cmd = " ".join(f"{k}={v}"
+                            for k, v in env_vars.items()) + " " + cmd_to_run
+        logger.info(
+            f"Executing {cmd_to_run} with {env_vars} via ray job submit")
+        proc = subprocess.Popen(
+            " ".join(["ray", "job", "submit",
+                      shlex.quote(full_cmd)]),
+            shell=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            env=env)
+        self.subprocess_pool[command_id] = proc
+        self.start_time[command_id] = time.time()
+        return command_id
+
+    def wait_command(self, command_id: int):
+        retcode = self.subprocess_pool[command_id].wait()
+        duration = time.time() - self.start_time[command_id]
+        return retcode, duration
+
+
+global_command_runner = CommandRunnerHack()
+
+
+class S3SyncSessionController(SessionController):
+    def __init__(self, sdk, result_queue):
+        self.sdk = sdk
+        self.result_queue = result_queue
+        self.s3_client = boto3.client("s3")
+        self.bucket = GLOBAL_CONFIG["RELEASE_AWS_BUCKET"]
+        super().__init__()
+
+    def _generate_tmp_s3_path(self):
+        fn = "".join(random.choice(string.ascii_lowercase) for i in range(10))
+        location = f"tmp/{fn}"
+        return location
+
+    def pull(self, session_name, source, target):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # remote source -> s3
+        cid = global_command_runner.run_command(
+            session_name, (f"pip install -q awscli && aws s3 cp {source} "
+                           f"s3://{self.bucket}/{remote_upload_to} "
+                           "--acl bucket-owner-full-control"), {})
+        global_command_runner.wait_command(cid)
+
+        # s3 -> local target
+        self.s3_client.download_file(
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+            Filename=target,
+        )
+
+    def _push_local_dir(self, session_name):
+        remote_upload_to = self._generate_tmp_s3_path()
+        # pack local dir
+        _, local_path = tempfile.mkstemp()
+        shutil.make_archive(local_path, "gztar", os.getcwd())
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=local_path + ".tar.gz",
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name, ("pip install -q awscli && "
+                           f"aws s3 cp s3://{self.bucket}/{remote_upload_to} "
+                           f"archive.tar.gz && "
+                           "tar xf archive.tar.gz"), {})
+        global_command_runner.wait_command(cid)
+
+    def push(self, session_name, source, target):
+        if source is None and target is None:
+            self._push_local_dir(session_name)
+            return
+
+        assert isinstance(source, str)
+        assert isinstance(target, str)
+
+        remote_upload_to = self._generate_tmp_s3_path()
+        # local source -> s3
+        self.s3_client.upload_file(
+            Filename=source,
+            Bucket=self.bucket,
+            Key=remote_upload_to,
+        )
+        # s3 -> remote target
+        cid = global_command_runner.run_command(
+            session_name, "pip install -q awscli && "
+            f"aws s3 cp s3://{self.bucket}/{remote_upload_to} {target}", {})
+        global_command_runner.wait_command(cid)
 
 
 sys.path.insert(0, anyscale.ANYSCALE_RAY_DIR)
@@ -915,7 +1025,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
     next_report = start_wait + REPORT_S
     logger.info(f"Waiting for build {build_id} to finish...")
     logger.info(f"Track progress here: "
-                f"{anyscale_app_config_build_url(build_id)}")
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
     while not completed:
         now = time.time()
         if now > next_report:
@@ -1310,7 +1420,7 @@ def run_test_config(
     get_auth_api_client(
         cli_token=GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"],
         host=GLOBAL_CONFIG["ANYSCALE_HOST"])
-    session_controller = SessionController()
+    session_controller = S3SyncSessionController(sdk, result_queue)
 
     cloud_id = test_config["cluster"].get("cloud_id", None)
     cloud_name = test_config["cluster"].get("cloud_name", None)
@@ -1572,6 +1682,7 @@ def run_test_config(
                     "test_name": test_name
                 }, f)
 
+            on_k8s = test_config["cluster"].get("compute_on_k8s")
             if prepare_command or not test_uses_ray_connect:
                 if test_uses_ray_connect:
                     logger.info("Found a prepare command, so pushing it "
@@ -1582,8 +1693,6 @@ def run_test_config(
                     session_name=session_name,
                     source=None,
                     target=None,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 logger.info("Syncing test state to session...")
@@ -1591,8 +1700,6 @@ def run_test_config(
                     session_name=session_name,
                     source=test_state_file,
                     target=state_json,
-                    config=None,
-                    all_nodes=False,
                 )
 
                 session_url = anyscale_session_url(
@@ -1604,19 +1711,27 @@ def run_test_config(
                 if prepare_command:
                     logger.info(
                         f"Running preparation command: {prepare_command}")
-                    scd_id, result = run_session_command(
-                        sdk=sdk,
-                        session_id=session_id,
-                        cmd_to_run=prepare_command,
-                        result_queue=result_queue,
-                        env_vars=env_vars,
-                        state_str="CMD_PREPARE")
-                    _, _ = wait_for_session_command_to_complete(
-                        result,
-                        sdk=sdk,
-                        scd_id=scd_id,
-                        stop_event=stop_event,
-                        state_str="CMD_PREPARE")
+                    if on_k8s:
+                        cid = global_command_runner.run_command(
+                            session_name, prepare_command, env_vars)
+                        status_code, _ = global_command_runner.wait_command(
+                            cid)
+                        if status_code != 0:
+                            raise PrepareCommandRuntimeError()
+                    else:
+                        scd_id, result = run_session_command(
+                            sdk=sdk,
+                            session_id=session_id,
+                            cmd_to_run=prepare_command,
+                            result_queue=result_queue,
+                            env_vars=env_vars,
+                            state_str="CMD_PREPARE")
+                        _, _ = wait_for_session_command_to_complete(
+                            result,
+                            sdk=sdk,
+                            scd_id=scd_id,
+                            stop_event=stop_event,
+                            state_str="CMD_PREPARE")
 
             if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
@@ -1650,27 +1765,43 @@ def run_test_config(
             if smoke_test:
                 cmd_to_run += " --smoke-test"
 
-            scd_id, result = run_session_command(
-                sdk=sdk,
-                session_id=session_id,
-                cmd_to_run=cmd_to_run,
-                result_queue=result_queue,
-                env_vars=env_vars,
-                state_str="CMD_RUN")
+            if on_k8s:
+                cmd_id = global_command_runner.run_command(
+                    session_name, cmd_to_run, env_vars=env_vars)
+            else:
+                scd_id, result = run_session_command(
+                    sdk=sdk,
+                    session_id=session_id,
+                    cmd_to_run=cmd_to_run,
+                    result_queue=result_queue,
+                    env_vars=env_vars,
+                    state_str="CMD_RUN")
 
             if not kick_off_only:
-                _, runtime = wait_for_session_command_to_complete(
-                    result,
-                    sdk=sdk,
-                    scd_id=scd_id,
-                    stop_event=stop_event,
-                    state_str="CMD_RUN")
-                _process_finished_command(
-                    session_controller=session_controller,
-                    scd_id=scd_id,
-                    runtime=runtime,
-                    session_url=session_url,
-                    commit_url=commit_url)
+                if on_k8s:
+                    retcode, runtime = global_command_runner.wait_command(
+                        cmd_id)
+                    if retcode != 0:
+                        raise RuntimeError("Command errored")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id="",
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
+                else:
+                    _, runtime = wait_for_session_command_to_complete(
+                        result,
+                        sdk=sdk,
+                        scd_id=scd_id,
+                        stop_event=stop_event,
+                        state_str="CMD_RUN")
+                    _process_finished_command(
+                        session_controller=session_controller,
+                        scd_id=scd_id,
+                        runtime=runtime,
+                        session_url=session_url,
+                        commit_url=commit_url)
             else:
                 result_queue.put(
                     State("END", time.time(), {
