@@ -61,7 +61,9 @@ class TrackedBuffer : public Buffer {
                 const std::shared_ptr<BufferTracker> &tracker, const ObjectID &object_id)
       : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
 
-  uint8_t *Data() const override { return buffer_->Data(); }
+  const uint8_t *Data() const override { return buffer_->Data(); }
+
+  uint8_t *MutableData() const override { return buffer_->MutableData(); }
 
   size_t Size() const override { return buffer_->Size(); }
 

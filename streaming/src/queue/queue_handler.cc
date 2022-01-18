@@ -15,7 +15,8 @@ std::shared_ptr<DownstreamQueueMessageHandler>
 
 std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
-  uint8_t *bytes = buffer->Data();
+  // This is the previous behaviour (unsafe non-const cast) which we retain.
+  uint8_t *bytes = const_cast<uint8_t *>(buffer->Data());
   uint8_t *p_cur = bytes;
   uint32_t *magic_num = (uint32_t *)p_cur;
   STREAMING_CHECK(*magic_num == Message::MagicNum)

@@ -205,7 +205,8 @@ StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint8_t *&data,
     return StreamingStatus::OK;
   }
 
-  data = item.Buffer()->Data();
+  // This is the previous behaviour (unsafe non-const cast) which we retain.
+  data = (uint8_t *)item.Buffer()->Data();
   data_size = item.Buffer()->Size();
 
   STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << channel_info_.channel_id

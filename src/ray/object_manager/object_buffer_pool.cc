@@ -229,7 +229,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   }
 
   // Read object into store.
-  uint8_t *mutable_data = data->Data();
+  uint8_t *mutable_data = data->MutableData();
   uint64_t num_chunks = GetNumChunks(data_size);
   create_buffer_state_.emplace(
       std::piecewise_construct, std::forward_as_tuple(object_id),

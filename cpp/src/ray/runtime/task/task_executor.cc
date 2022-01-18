@@ -203,7 +203,7 @@ Status TaskExecutor::ExecuteTask(
     auto result = *result_ptr;
     if (result != nullptr) {
       if (result->HasData()) {
-        memcpy(result->GetData()->Data(), data->data(), data_size);
+        memcpy(result->GetData()->MutableData(), data->data(), data_size);
       }
     }
 

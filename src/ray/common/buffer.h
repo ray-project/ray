@@ -29,8 +29,11 @@ namespace ray {
 /// The interface that represents a buffer of bytes.
 class Buffer {
  public:
-  /// Pointer to the data.
-  virtual uint8_t *Data() const = 0;
+  /// Const pointer to the data.
+  virtual const uint8_t *Data() const = 0;
+
+  /// Mutable pointer to the data.
+  virtual uint8_t *MutableData() const = 0;
 
   /// Size of this buffer.
   virtual size_t Size() const = 0;
@@ -66,7 +69,7 @@ class LocalMemoryBuffer : public Buffer {
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
   ///                  otherwise the buffer only points to the given address.
-  LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
+  LocalMemoryBuffer(const uint8_t *data, size_t size, bool copy_data = false)
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
@@ -87,7 +90,13 @@ class LocalMemoryBuffer : public Buffer {
     size_ = size;
   }
 
-  uint8_t *Data() const override { return data_; }
+  const uint8_t *Data() const override { return data_; }
+
+  uint8_t *MutableData() const {
+    // Cannot get mutable ptr to non-owned data
+    RAY_CHECK(OwnsData());
+    return buffer_;
+  }
 
   size_t Size() const override { return size_; }
 
@@ -109,7 +118,7 @@ class LocalMemoryBuffer : public Buffer {
   LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
   /// Pointer to the data.
-  uint8_t *data_;
+  const uint8_t *data_;
   /// Size of the buffer.
   size_t size_ = 0;
   /// Whether this buffer holds a copy of data.
@@ -119,6 +128,7 @@ class LocalMemoryBuffer : public Buffer {
 };
 
 /// Represents a byte buffer in shared memory.
+/// The underlying data must always be mutable (however, check this. Is this always true?).
 class SharedMemoryBuffer : public Buffer {
  public:
   /// Constructor.
@@ -135,23 +145,25 @@ class SharedMemoryBuffer : public Buffer {
     size_ = size;
   }
 
-  /// Make a slice.
-  SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size)
+  /// Make a slice. You can only make a SharedMemoryBuffer slice from another SharedMemoryBuffer.
+  SharedMemoryBuffer(const std::shared_ptr<SharedMemoryBuffer> &buffer, int64_t offset, int64_t size)
       : size_(size), parent_(buffer) {
-    data_ = buffer->Data() + offset;
+    data_ = buffer->MutableData() + offset;
     RAY_CHECK(size_ <= parent_->Size());
   }
 
-  static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,
+  static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<SharedMemoryBuffer> &buffer,
                                                    int64_t offset, int64_t size) {
     return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
   }
 
-  uint8_t *Data() const override { return data_; }
+  const uint8_t *Data() const override { return data_; }
+
+  uint8_t *MutableData() const override { return data_; }
 
   size_t Size() const override { return size_; }
 
-  bool OwnsData() const override { return true; }
+  bool OwnsData() const override { return false; }
 
   bool IsPlasmaBuffer() const override { return true; }
 
@@ -168,7 +180,9 @@ class SharedMemoryBuffer : public Buffer {
   /// Size of the buffer.
   size_t size_;
   /// Keep the parent where the buffer is sliced from.
-  std::shared_ptr<Buffer> parent_;
+  std::shared_ptr<SharedMemoryBuffer> parent_;
+  /// Whether the source of the data is mutable
+  bool is_mutable_;
 };
 
 }  // namespace ray

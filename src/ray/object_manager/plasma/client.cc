@@ -57,7 +57,7 @@ class PlasmaBuffer : public SharedMemoryBuffer {
   ~PlasmaBuffer();
 
   PlasmaBuffer(std::shared_ptr<PlasmaClient::Impl> client, const ObjectID &object_id,
-               const std::shared_ptr<Buffer> &buffer)
+               const std::shared_ptr<SharedMemoryBuffer> &buffer)
       : SharedMemoryBuffer(buffer, 0, buffer->Size()),
         client_(client),
         object_id_(object_id) {}
@@ -174,8 +174,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   /// Common helper for Get() variants
   Status GetBuffers(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-                    const std::function<std::shared_ptr<Buffer>(
-                        const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
+                    const std::function<std::shared_ptr<SharedMemoryBuffer>(
+                        const ObjectID &, const std::shared_ptr<SharedMemoryBuffer> &)> &wrap_buffer,
                     ObjectBuffer *object_buffers, bool is_from_worker);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val);
@@ -315,7 +315,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // from the transfer.
     if (metadata != NULL) {
       // Copy the metadata to the buffer.
-      memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
+      memcpy((*data)->MutableData() + object.data_size, metadata, object.metadata_size);
     }
   } else {
     RAY_LOG(FATAL) << "GPU is not enabled.";
@@ -378,7 +378,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
-                 << data_size << " and metadata size " << metadata_size;
+                   << data_size << " and metadata size " << metadata_size;
   RAY_RETURN_NOT_OK(SendCreateRequest(store_conn_, object_id, owner_address, data_size,
                                       metadata_size, source, device_num,
                                       /*try_immediately=*/true));
@@ -387,8 +387,8 @@ Status PlasmaClient::Impl::TryCreateImmediately(
 
 Status PlasmaClient::Impl::GetBuffers(
     const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-    const std::function<std::shared_ptr<Buffer>(
-        const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
+    const std::function<std::shared_ptr<SharedMemoryBuffer>(
+        const ObjectID &, const std::shared_ptr<SharedMemoryBuffer> &)> &wrap_buffer,
     ObjectBuffer *object_buffers, bool is_from_worker) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
@@ -409,7 +409,7 @@ Status PlasmaClient::Impl::GetBuffers(
       all_present = false;
     } else {
       PlasmaObject *object = &object_entry->second->object;
-      std::shared_ptr<Buffer> physical_buf;
+      std::shared_ptr<SharedMemoryBuffer> physical_buf;
 
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
@@ -469,7 +469,7 @@ Status PlasmaClient::Impl::GetBuffers(
     // If we are here, the object was not currently in use, so we need to
     // process the reply from the object store.
     if (object->data_size != -1) {
-      std::shared_ptr<Buffer> physical_buf;
+      std::shared_ptr<SharedMemoryBuffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
         physical_buf = std::make_shared<SharedMemoryBuffer>(
@@ -503,7 +503,7 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
+                               const std::shared_ptr<SharedMemoryBuffer> &buffer) {
     return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
   };
   const size_t num_objects = object_ids.size();

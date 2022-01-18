@@ -74,12 +74,12 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializeErrorBuffer(
       std::make_unique<ray::LocalMemoryBuffer>(msgpack_serialized_exception.size() +
                                                kMessagePackOffset);
   // copy msgpack-serialized bytes
-  std::memcpy(final_buffer->Data() + kMessagePackOffset,
+  std::memcpy(final_buffer->MutableData() + kMessagePackOffset,
               msgpack_serialized_exception.data(), msgpack_serialized_exception.size());
   // copy offset
   msgpack::sbuffer msgpack_int;
   msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
-  std::memcpy(final_buffer->Data(), msgpack_int.data(), msgpack_int.size());
+  std::memcpy(final_buffer->MutableData(), msgpack_int.data(), msgpack_int.size());
   RAY_CHECK(final_buffer->Data() != nullptr);
   RAY_CHECK(final_buffer->Size() != 0);
 
