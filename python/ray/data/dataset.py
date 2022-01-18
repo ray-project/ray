@@ -888,6 +888,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max())
             >>> ray.data.range_arrow(100).aggregate(
                 Max("value"), Mean("value"))

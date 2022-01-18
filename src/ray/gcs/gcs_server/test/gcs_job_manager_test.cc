@@ -16,11 +16,15 @@
 
 #include <memory>
 
+// clang-format off
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
+// clang-format on
 
 namespace ray {
 
@@ -52,6 +56,8 @@ class GcsJobManagerTest : public ::testing::Test {
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
+    kv_ = std::make_unique<gcs::MockInternalKVInterface>();
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
   }
 
   ~GcsJobManagerTest() {
@@ -66,13 +72,15 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
+  std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_, gcs_publisher_,
-                                     runtime_env_manager_);
+                                     runtime_env_manager_, *function_manager_);
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
