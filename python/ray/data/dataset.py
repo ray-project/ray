@@ -44,6 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -230,11 +231,9 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (isinstance(applied, list)
+                        or isinstance(applied, pa.Table)
+                        or isinstance(applied, pd.core.frame.DataFrame)):
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
@@ -371,6 +370,7 @@ class Dataset(Generic[T]):
                            stats.build_multistage(stage_info))
 
         # Compute the (n-1) indices needed for an equal split of the data.
+        stage_info = {}
         count = self.count()
         indices = []
         cur_idx = 0
@@ -383,6 +383,8 @@ class Dataset(Generic[T]):
             # TODO this saves memory: self._blocks.clear()
         else:
             splits = [self]
+        # TODO(ekl) include stats for the split tasks. We may also want to
+        # consider combining the split and coalesce tasks as an optimization.
 
         # Coalesce each split into a single block.
         reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
@@ -400,26 +402,28 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None, exec_stats=BlockExecStats.TODO)
+                input_files=None, exec_stats=None)  # No stats for empty block.
             empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
                                                   empty_meta)
                                                  for _ in range(num_empties)])
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
-        return Dataset(
-            BlockList(new_blocks, new_metadata), self._epoch,
-            self._stats.child_TODO("repartition"))
+        blocks = BlockList(new_blocks, new_metadata)
+        return Dataset(blocks, self._epoch, stats.build(blocks))
 
     def random_shuffle(
             self,
@@ -814,6 +818,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        start_time = time.perf_counter()
         context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
@@ -848,9 +853,12 @@ class Dataset(Generic[T]):
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
+        dataset_stats = DatasetStats(
+            stages={"union": []}, parent=[d._stats for d in datasets])
+        dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.child_TODO("union"))
+            dataset_stats)
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -882,6 +890,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> from ray.data.aggregate import Max, Mean
             >>> ray.data.range(100).aggregate(Max())
             >>> ray.data.range_arrow(100).aggregate(
                 Max("value"), Mean("value"))
@@ -932,7 +941,7 @@ class Dataset(Generic[T]):
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if dataset_format == "arrow":
+        if dataset_format == "arrow" or dataset_format == "pandas":
             # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
@@ -965,32 +974,35 @@ class Dataset(Generic[T]):
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset.")
+                    "use a callable `on` argument or use an Arrow or Pandas"
+                    " Dataset instead of a simple Dataset.")
         return on
 
     def _dataset_format(self) -> str:
         """Determine the format of the dataset. Possible values are: "arrow",
-        "simple".
+        "pandas", "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
+
         try:
             import pyarrow as pa
-        except ModuleNotFoundError:
-            return "simple"
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine the format"
-                    " of the dataset")
             if isinstance(schema, pa.Schema):
                 return "arrow"
-            return "simple"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -1018,6 +1030,18 @@ class Dataset(Generic[T]):
         if not isinstance(on, list):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
 
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
@@ -1069,10 +1093,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1124,10 +1146,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1179,10 +1199,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
@@ -1234,10 +1252,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1299,10 +1315,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -1341,9 +1355,10 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(
-            sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.child_TODO("sort"))
+        stats_builder = self._stats.child_builder("sort")
+        blocks, stage_info = sort_impl(self._blocks, key, descending)
+        return Dataset(blocks, self._epoch,
+                       stats_builder.build_multistage(stage_info))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1368,6 +1383,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
+        stats_builder = self._stats.child_builder("zip")
         blocks1 = self.get_internal_block_refs()
         blocks2 = other.get_internal_block_refs()
 
@@ -1378,11 +1394,12 @@ class Dataset(Generic[T]):
                     len(blocks1), len(blocks2)))
 
         def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
+            stats = BlockExecStats.builder()
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
             return result, br.get_metadata(
-                input_files=[], exec_stats=BlockExecStats.TODO)
+                input_files=[], exec_stats=stats.build())
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 
@@ -1395,9 +1412,8 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(
-            BlockList(blocks, metadata), self._epoch,
-            self._stats.child_TODO("zip"))
+        blocks = BlockList(blocks, metadata)
+        return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -1905,13 +1921,18 @@ class Dataset(Generic[T]):
 
     def to_torch(self,
                  *,
-                 label_column: str,
-                 feature_columns: Optional[List[str]] = None,
+                 label_column: Optional[str] = None,
+                 feature_columns: Union[None, List[str],
+                                        List[List[str]],
+                                        Dict[str, List[str]]] = None,
                  label_column_dtype: Optional["torch.dtype"] = None,
-                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 feature_column_dtypes: Union[None, "torch.dtype",
+                                              List["torch.dtype"],
+                                              Dict[str, "torch.dtype"]] = None,
                  batch_size: int = 1,
                  prefetch_blocks: int = 0,
-                 drop_last: bool = False) -> \
+                 drop_last: bool = False,
+                 unsqueeze_label_tensor: bool = True) -> \
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -1921,10 +1942,32 @@ class Dataset(Generic[T]):
         instead of passing it into a torch ``DataLoader``.
 
         Each element in IterableDataset will be a tuple consisting of 2
-        elements. The first item is the features tensor, and the second item
-        is the label tensor. The features tensor will be of shape (N, n),
-        and the label tensor will be of shape (N, 1), where N is the
-        ``batch_size`` used by the DataLoader, and n is the number of features.
+        elements. The first item contains the feature tensor(s), and the
+        second item is the label tensor. Those can take on different
+        forms, depending on the specified arguments.
+
+        For the features tensor (N is the ``batch_size`` and n, m, k
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, m),...,(N, k)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, m),..., keyN: (N, k)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
+
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
+        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``label_column`` is specified as ``None``, then no column from the
+        ``Dataset`` will be treated as the label, and the output label tensor
+        will be ``None``.
 
         Note that you probably want to call ``.split()`` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -1932,18 +1975,24 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Args:
-            label_column (str): The name of the column used as the label
-                (second element of the output list).
-            feature_columns (Optional[List[str]]): The names of the columns
-                to use as the features. If None, then use all columns
-                except the label columns as the features.
+            label_column (Optional[str]): The name of the column used as the
+                label (second element of the output list). Can be None for
+                prediction, in which case the second element of returned
+                tuple will also be None.
+            feature_columns (Union[None, List[str], List[List[str]], \
+Dict[str, List[str]]]): The names of the columns
+                to use as the features. Can be a list of lists or
+                a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label columns as
+                the features.
             label_column_dtype (Optional[torch.dtype]): The torch dtype to
                 use for the label column. If None, then automatically infer
                 the dtype.
-            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
-                to use for the feature columns. The len of this list must
-                be equal to the len of ``feature_columns``. If None,
-                then automatically infer the dtype.
+            feature_column_dtypes (Union[None, torch.dtype, List[torch.dtype],\
+ Dict[str, torch.dtype]]): The dtypes to use for the feature
+                tensors. This should match the format of ``feature_columns``,
+                or be a single dtype, in which case it will be applied to
+                all tensors. If None, then automatically infer the dtype.
             batch_size (int): How many samples per batch to yield at a time.
                 Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
@@ -1952,6 +2001,11 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            unsqueeze_label_tensor (bool): If set to True, the label tensor
+                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                be left as is, that is (N, ). In general, regression loss
+                functions expect an unsqueezed tensor, while classification
+                loss functions expect a squeezed one. Defaults to True.
 
         Returns:
             A torch IterableDataset.
@@ -1961,13 +2015,36 @@ class Dataset(Generic[T]):
         from ray.data.impl.torch_iterable_dataset import \
             TorchIterableDataset
 
-        if feature_columns and feature_column_dtypes:
-            if len(feature_columns) != len(feature_column_dtypes):
-                raise ValueError("The lengths of `feature_columns` "
-                                 f"({len(feature_columns)}) and "
-                                 f"`feature_column_dtypes` ("
-                                 f"{len(feature_column_dtypes)}) do not "
-                                 "match!")
+        multi_input = feature_columns and (isinstance(feature_columns, dict) or
+                                           isinstance(feature_columns[0],
+                                                      (list, tuple)))
+
+        # If an empty collection is passed in, treat it the same as None
+        if not feature_columns:
+            feature_columns = None
+
+        if (feature_column_dtypes
+                and not isinstance(feature_column_dtypes, torch.dtype)):
+            if isinstance(feature_columns, dict):
+                if not isinstance(feature_column_dtypes, dict):
+                    raise TypeError(
+                        "If `feature_columns` is a dict, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or dict, got {type(feature_column_dtypes)}.")
+                if set(feature_columns) != set(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same keys.")
+            elif isinstance(feature_columns[0], (list, tuple)):
+                if not isinstance(feature_column_dtypes, (list, tuple)):
+                    raise TypeError(
+                        "If `feature_columns` is a list of lists, "
+                        "`feature_column_dtypes` must be None, `torch.dtype`,"
+                        f" or a sequence, got {type(feature_column_dtypes)}.")
+                if len(feature_columns) != len(feature_column_dtypes):
+                    raise ValueError(
+                        "`feature_columns` and `feature_column_dtypes` "
+                        "must have the same length.")
 
         def make_generator():
             for batch in self.iter_batches(
@@ -1975,27 +2052,63 @@ class Dataset(Generic[T]):
                     batch_format="pandas",
                     prefetch_blocks=prefetch_blocks,
                     drop_last=drop_last):
-                label_vals = batch.pop(label_column).values
-                label_tensor = torch.as_tensor(
-                    label_vals, dtype=label_column_dtype)
-                label_tensor = label_tensor.view(-1, 1)
-
-                feature_tensors = []
-                if feature_columns:
-                    batch = batch[feature_columns]
-
-                if feature_column_dtypes:
-                    dtypes = feature_column_dtypes
+                if label_column:
+                    label_vals = batch.pop(label_column).values
+                    label_tensor = torch.as_tensor(
+                        label_vals, dtype=label_column_dtype)
+                    if unsqueeze_label_tensor:
+                        label_tensor = label_tensor.view(-1, 1)
                 else:
-                    dtypes = [None] * len(batch.columns)
+                    label_tensor = None
 
-                for col, dtype in zip(batch.columns, dtypes):
-                    col_vals = batch[col].values
-                    t = torch.as_tensor(col_vals, dtype=dtype)
-                    t = t.view(-1, 1)
-                    feature_tensors.append(t)
+                def get_feature_tensors(
+                        batch,
+                        feature_columns: List[str],
+                        feature_column_dtype: "torch.dtype",
+                        assert_feature_columns_not_empty: bool = False
+                ) -> torch.Tensor:
+                    feature_tensors = []
+                    if (assert_feature_columns_not_empty
+                            and not feature_columns):
+                        raise ValueError("`feature_columns` may not be empty")
+                    if feature_columns:
+                        batch = batch[feature_columns]
 
-                features_tensor = torch.cat(feature_tensors, dim=1)
+                    for col in batch.columns:
+                        col_vals = batch[col].values
+                        t = torch.as_tensor(
+                            col_vals, dtype=feature_column_dtype)
+                        t = t.view(-1, 1)
+                        feature_tensors.append(t)
+
+                    return torch.cat(feature_tensors, dim=1)
+
+                if not multi_input:
+                    features_tensor = get_feature_tensors(
+                        batch, feature_columns, feature_column_dtypes)
+                else:
+                    if isinstance(feature_columns, dict):
+                        features_tensor = {
+                            key: get_feature_tensors(
+                                batch,
+                                feature_columns[key],
+                                feature_column_dtypes[key]
+                                if isinstance(feature_column_dtypes, dict) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
+                            for key in feature_columns
+                        }
+                    else:
+                        features_tensor = [
+                            get_feature_tensors(
+                                batch,
+                                feature_columns[idx],
+                                feature_column_dtypes[idx] if isinstance(
+                                    feature_column_dtypes, (list, tuple)) else
+                                feature_column_dtypes,
+                                assert_feature_columns_not_empty=True)
+                            for idx in range(len(feature_columns))
+                        ]
                 yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
@@ -2158,10 +2271,10 @@ class Dataset(Generic[T]):
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2565,6 +2678,7 @@ def _sliding_window(iterable: Iterable, n: int):
 def _split_block(
         block: Block, meta: BlockMetadata, count: int, return_right_half: bool
 ) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
+    stats = BlockExecStats.builder()
     block = BlockAccessor.for_block(block)
     logger.debug("Truncating last block to size: {}".format(count))
     b0 = block.slice(0, count, copy=True)
@@ -2574,7 +2688,7 @@ def _split_block(
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
         input_files=meta.input_files,
-        exec_stats=BlockExecStats.TODO)
+        exec_stats=stats.build())
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
         a1 = BlockAccessor.for_block(b1)
@@ -2583,7 +2697,7 @@ def _split_block(
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
-            exec_stats=BlockExecStats.TODO)
+            exec_stats=stats.build())
     else:
         b1 = None
         m1 = None

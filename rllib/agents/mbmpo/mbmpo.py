@@ -345,6 +345,9 @@ class MBMPOTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
+
         if config["num_gpus"] > 1:
             raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
         if config["framework"] != "torch":

@@ -23,6 +23,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -199,8 +200,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+      GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -289,7 +291,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// owned an actor, those actors will be destroyed.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const NodeID &node_id);
+  /// \param node_ip_address The ip address of the dead node.
+  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -301,9 +304,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const rpc::RayException *creation_task_exception = nullptr);
 
+  /// Testing only.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
   /// Handle actor creation task failure. This should be called
@@ -384,7 +389,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
+  /// \param[in] force_kill Whether destory the actor forcelly.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+                    bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -462,6 +469,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
                                const TaskID &task_id);
 
+  /// Get the alive or dead actor of the actor id.
+  /// NOTE: The return value is not meant to be passed to other scope.
+  /// This return value should be used only for a short-time usage.
+  ///
+  /// \param actor_id The id of the actor.
+  /// \return Actor instance. The nullptr if the actor doesn't exist.
+  ///
+  const GcsActor *GetActor(const ActorID &actor_id) const;
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.
@@ -514,10 +530,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the namespace an actor belongs to based on its job id. This is
+  /// A callback to get the job config of an actor based on its job id. This is
   /// necessary for actor creation.
-  std::function<std::string(const JobID &)> get_ray_namespace_;
+  std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
+  /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
+  /// Function manager for GC purpose
+  GcsFunctionManager &function_manager_;
   /// Run a function on a delay. This is useful for guaranteeing data will be
   /// accessible for a minimum amount of time.
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>

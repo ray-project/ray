@@ -169,14 +169,16 @@ def wait_for_children_names_of_pid(pid, children_names, timeout=20):
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
     start_time = time.time()
+    alive = []
     while time.time() - start_time < timeout:
-        num_alive = len(p.children(recursive=False))
+        alive = p.children(recursive=False)
+        num_alive = len(alive)
         if num_alive >= num_children:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process {} children to start "
-        "({}/{} started).".format(pid, num_alive, num_children))
+        f"Timed out while waiting for process {pid} children to start "
+        f"({num_alive}/{num_children} started: {alive}).")
 
 
 def wait_for_children_of_pid_to_exit(pid, timeout=20):
@@ -548,7 +550,7 @@ def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsErrorSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -590,7 +592,7 @@ def init_log_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
         s = GcsLogSubscriber(
-            channel=ray.worker.global_worker.gcs_channel.channel())
+            address=ray.worker.global_worker.gcs_client.address)
         s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -678,10 +680,6 @@ def format_web_url(url):
     if not url.startswith("http://"):
         return "http://" + url
     return url
-
-
-def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
 
 
 def client_test_enabled() -> bool:

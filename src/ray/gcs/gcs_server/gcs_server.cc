@@ -34,6 +34,7 @@ namespace gcs {
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                      instrumented_io_context &main_service)
     : config_(config),
+      storage_type_(StorageType()),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
@@ -46,19 +47,17 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
-  // Init gcs table storage.
-  RAY_LOG(INFO) << "GCS Storage is set to " << RayConfig::instance().gcs_storage();
+  // Init GCS table storage.
+  RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   RAY_LOG(INFO) << "gRPC based pubsub is"
                 << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
                 << "enabled";
-  if (RayConfig::instance().gcs_storage() == "redis") {
+  if (storage_type_ == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
-  } else if (RayConfig::instance().gcs_storage() == "memory") {
+  } else if (storage_type_ == "memory") {
     RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
         << " grpc pubsub has to be enabled when using storage other than redis";
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
-  } else {
-    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
   }
 
   auto on_done = [this](const ray::Status &status) {
@@ -135,6 +134,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init KV Manager
   InitKVManager();
 
+  // Init function manager
+  InitFunctionManager();
+
   // Init Pub/Sub handler
   InitPubSubHandler();
 
@@ -169,13 +171,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  // Store gcs rpc server address in redis.
-  // TODO (iycheng): Don't write once redis removal is done
-  //   if (!RayConfig::instance().bootstrap_with_gcs()) {
-  //     // Store gcs rpc server address in redis.
-  //     StoreGcsServerAddressInRedis();
-  //   }
-  StoreGcsServerAddressInRedis();
+  if (!RayConfig::instance().bootstrap_with_gcs()) {
+    StoreGcsServerAddressInRedis();
+  }
+
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
   // some living nodes as dead as the timer inside node failure
@@ -276,8 +275,8 @@ void GcsServer::InitGcsResourceScheduler() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_publisher_,
-                                                     *runtime_env_manager_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(
+      gcs_table_storage_, gcs_publisher_, *runtime_env_manager_, *function_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -320,11 +319,12 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       main_service_, std::move(scheduler), gcs_table_storage_, gcs_publisher_,
-      *runtime_env_manager_,
+      *runtime_env_manager_, *function_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); },
+      /*get_job_config_func=*/
+      [this](const JobID &job_id) { return gcs_job_manager_->GetJobConfig(job_id); },
       [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
         boost::asio::deadline_timer timer(main_service_);
         timer.expires_from_now(delay);
@@ -359,13 +359,32 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_,
-      [this](const JobID &job_id) { return gcs_job_manager_->GetRayNamespace(job_id); });
+      [this](const JobID &job_id) {
+        return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      });
   // Initialize by gcs tables data.
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       main_service_, *gcs_placement_group_manager_));
   rpc_server_.RegisterService(*placement_group_info_service_);
+}
+
+std::string GcsServer::StorageType() const {
+  if (RayConfig::instance().gcs_storage() == "memory") {
+    if (!config_.redis_address.empty()) {
+      RAY_LOG(INFO) << "Using external Redis for KV storage: " << config_.redis_address;
+      return "redis";
+    }
+    return "memory";
+  }
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    RAY_CHECK(!config_.redis_address.empty());
+    return "redis";
+  }
+  RAY_LOG(FATAL) << "Unsupported GCS storage type: "
+                 << RayConfig::instance().gcs_storage();
+  return RayConfig::instance().gcs_storage();
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -416,15 +435,17 @@ void GcsServer::InitStatsHandler() {
   rpc_server_.RegisterService(*stats_service_);
 }
 
+void GcsServer::InitFunctionManager() {
+  function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+}
+
 void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   // TODO (yic): Use a factory with configs
-  if (RayConfig::instance().gcs_storage() == "redis") {
+  if (storage_type_ == "redis") {
     instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
-  } else if (RayConfig::instance().gcs_storage() == "memory") {
+  } else if (storage_type_ == "memory") {
     instance = std::make_unique<MemoryInternalKV>(main_service_);
-  } else {
-    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
@@ -465,7 +486,8 @@ void GcsServer::InitRuntimeEnvManager() {
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->GetInstance().Del(
-                uri, [callback = std::move(callback)](bool deleted) { callback(false); });
+                "" /* namespace */, uri /* key */, false /* del_by_prefix*/,
+                [callback = std::move(callback)](int64_t) { callback(false); });
           }
         }
       });
@@ -497,11 +519,12 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
         auto node_id = NodeID::FromBinary(node->node_id());
+        const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id);
+        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         gcs_resource_report_poller_->HandleNodeRemoved(*node);
         if (config_.grpc_based_resource_broadcast) {
@@ -515,11 +538,12 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        auto worker_ip = worker_address.ip_address();
         const rpc::RayException *creation_task_exception = nullptr;
         if (worker_failure_data->has_creation_task_exception()) {
           creation_task_exception = &worker_failure_data->creation_task_exception();
         }
-        gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
+        gcs_actor_manager_->OnWorkerDead(node_id, worker_id, worker_ip,
                                          worker_failure_data->exit_type(),
                                          creation_task_exception);
       });
@@ -533,11 +557,13 @@ void GcsServer::InstallEventListeners() {
   // Install scheduling event listeners.
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
-      main_service_.post([this] {
-        // Because resources have been changed, we need to try to schedule the pending
-        // actors.
-        gcs_actor_manager_->SchedulePendingActors();
-      });
+      main_service_.post(
+          [this] {
+            // Because resources have been changed, we need to try to schedule the pending
+            // actors.
+            gcs_actor_manager_->SchedulePendingActors();
+          },
+          "GcsServer.SchedulePendingActors");
     });
   }
 }
@@ -555,7 +581,7 @@ void GcsServer::DumpDebugStateToFile() const {
   fs.open(config_.log_dir + "/debug_state_gcs.txt",
           std::fstream::out | std::fstream::trunc);
   fs << GetDebugState() << "\n\n";
-  fs << main_service_.StatsString();
+  fs << main_service_.stats().StatsString();
   fs.close();
 }
 
@@ -565,7 +591,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
-         << gcs_publisher_->DebugString() << "\n\n";
+         << gcs_publisher_->DebugString() << "\n\n"
+         << runtime_env_manager_->DebugString() << "\n\n";
 
   if (config_.grpc_based_resource_broadcast) {
     stream << grpc_based_resource_broadcaster_->DebugString();
@@ -592,7 +619,7 @@ void GcsServer::PrintAsioStats() {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
+    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
   }
 }
 

@@ -2,6 +2,7 @@ import atexit
 import collections
 import datetime
 import errno
+import grpc
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 
 from typing import Optional, Dict
 from collections import defaultdict
@@ -82,6 +84,23 @@ class Node:
         self.all_processes = {}
         self.removal_lock = threading.Lock()
 
+        # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
+        redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
+        if ray_params.external_addresses is None and \
+                redis_address_env is not None:
+            external_redis = redis_address_env.split(",")
+
+            # Reuse primary Redis as Redis shard when there's only one
+            # instance provided.
+            if len(external_redis) == 1:
+                external_redis.append(external_redis[0])
+            [primary_redis_ip, port] = external_redis[0].split(":")
+            ray._private.services.wait_for_redis_to_start(
+                primary_redis_ip, port, password=ray_params.redis_password)
+
+            ray_params.external_addresses = external_redis
+            ray_params.num_redis_shards = len(external_redis) - 1
+
         # Try to get node IP address with the parameters.
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
@@ -144,10 +163,6 @@ class Node:
         self._gcs_client = None
 
         if not self.head:
-            # TODO(mwtian): remove after supporting bootstraapping with GCS
-            # address.
-            if self._redis_address and not self._gcs_address:
-                self._gcs_address = self._get_gcs_address_from_redis()
             self.validate_ip_port(self.address)
             self.get_gcs_client()
 
@@ -224,10 +239,10 @@ class Node:
                 ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
-            if ray_params.gcs_server_port is None:
+            if ray_params.gcs_server_port is None \
+                    or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port(
                     "gcs_server_port")
-            self._gcs_server_port = ray_params.gcs_server_port
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -276,8 +291,9 @@ class Node:
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
-        self.validate_ip_port(self.redis_address)
         self.validate_ip_port(self.gcs_address)
+        if not use_gcs_for_bootstrap():
+            self.validate_ip_port(self.redis_address)
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -458,6 +474,8 @@ class Node:
         `ray start` or `ray.int()` to start worker nodes, that has been
         converted to ip:port format.
         """
+        if use_gcs_for_bootstrap():
+            return self._gcs_address
         return self._redis_address
 
     @property
@@ -540,7 +558,7 @@ class Node:
         return {
             "node_ip_address": self._node_ip_address,
             "raylet_ip_address": self._raylet_ip_address,
-            "redis_address": self._redis_address,
+            "redis_address": self.redis_address,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
@@ -556,26 +574,25 @@ class Node:
     def create_redis_client(self):
         """Create a redis client."""
         return ray._private.services.create_redis_client(
-            self._redis_address, self._ray_params.redis_password)
+            self.redis_address, self._ray_params.redis_password)
 
     def get_gcs_client(self):
         if self._gcs_client is None:
-            num_retries = NUM_REDIS_GET_RETRIES
-            for i in range(num_retries):
+            for _ in range(NUM_REDIS_GET_RETRIES):
+                gcs_address = None
+                last_ex = None
                 try:
-                    if use_gcs_for_bootstrap():
-                        self._gcs_client = GcsClient(address=self.gcs_address)
-                    else:
-                        self._gcs_client = GcsClient.create_from_redis(
-                            self.create_redis_client())
-                    break
-                except Exception as e:
+                    gcs_address = self.gcs_address
+                    self._gcs_client = GcsClient(address=gcs_address)
+                except Exception:
+                    last_ex = traceback.format_exc()
+                    logger.debug(f"Connecting to GCS: {last_ex}")
                     time.sleep(1)
-                    logger.debug(f"Waiting for gcs up {e}")
-            assert self._gcs_client is not None
+            assert self._gcs_client is not None, (
+                f"Failed to connect to GCS at address={gcs_address}. "
+                f"Last exception: {last_ex}")
             ray.experimental.internal_kv._initialize_internal_kv(
                 self._gcs_client)
-
         return self._gcs_client
 
     def get_temp_dir_path(self):
@@ -802,8 +819,8 @@ class Node:
                 process_info,
             ]
 
-    def start_redis(self):
-        """Start the Redis servers."""
+    def start_or_configure_redis(self):
+        """Starts local Redis or configures external Redis."""
         assert self._redis_address is None
         redis_log_files = []
         if self._ray_params.external_addresses is None:
@@ -882,21 +899,22 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        assert self._gcs_server_port is not None
+        gcs_server_port = self._ray_params.gcs_server_port
+        assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
         # TODO(mwtian): append date time so restarted GCS uses different files.
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
-            self._redis_address,
+            self.redis_address,
             self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
-            gcs_server_port=self._gcs_server_port,
+            gcs_server_port=gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address)
         assert (
@@ -910,7 +928,7 @@ class Node:
         # when possible.
         if use_gcs_for_bootstrap():
             self._gcs_address = (f"{self._node_ip_address}:"
-                                 f"{self._gcs_server_port}")
+                                 f"{gcs_server_port}")
         # Initialize gcs client, which also waits for GCS to start running.
         self.get_gcs_client()
 
@@ -930,7 +948,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
         process_info = ray._private.services.start_raylet(
-            self._redis_address,
+            self.redis_address,
             self.gcs_address,
             self._node_ip_address,
             self._ray_params.node_manager_port,
@@ -986,7 +1004,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
-            self._redis_address,
+            self.redis_address,
             self.gcs_address,
             self._logs_dir,
             stdout_file=stdout_file,
@@ -1005,7 +1023,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
-            self.redis_address,
+            self.address,
             self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
@@ -1020,15 +1038,12 @@ class Node:
         ]
 
     def _write_cluster_info_to_kv(self):
-        client = self.get_gcs_client()
-
-        # Version info.
+        # Write Version info.
         ray_version, python_version = self._compute_version_info()
         version_info = json.dumps((ray_version, python_version))
-        client.internal_kv_put(
+        self._internal_kv_put_with_retry(
             b"VERSION_INFO",
             version_info.encode(),
-            overwrite=True,
             namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
     def start_head_processes(self):
@@ -1039,13 +1054,18 @@ class Node:
         assert self._gcs_address is None
         assert self._gcs_client is None
 
-        # If this is the head node, start the relevant head node processes.
-        self.start_redis()
-        assert self._redis_address is not None
+        if not use_gcs_for_bootstrap() or \
+                self._ray_params.external_addresses is not None:
+            # This only configures external Redis and does not start local
+            # Redis, when external Redis address is specified.
+            # TODO(mwtian): after GCS bootstrapping is default and stable,
+            # only keep external Redis configuration logic in the function.
+            self.start_or_configure_redis()
+            # Wait for Redis to become available.
+            self.create_redis_client()
 
         self.start_gcs_server()
         assert self._gcs_client is not None
-        # import pdb; pdb.set_trace()
         self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
@@ -1447,5 +1467,22 @@ class Node:
                 time.sleep(2)
         if not result:
             raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                               "Has redis started correctly on the head node?")
+                               "If using Redis, did Redis start successfully?")
         return result
+
+    def _internal_kv_put_with_retry(self,
+                                    key,
+                                    value,
+                                    namespace,
+                                    num_retries=NUM_REDIS_GET_RETRIES):
+        if isinstance(key, str):
+            key = key.encode()
+        for i in range(num_retries):
+            try:
+                return self.get_gcs_client().internal_kv_put(
+                    key, value, overwrite=True, namespace=namespace)
+            except grpc.RpcError:
+                logger.exception("Internal KV Put failed")
+                time.sleep(2)
+        # Reraise the last grpc.RpcError.
+        raise

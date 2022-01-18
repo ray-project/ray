@@ -246,22 +246,19 @@
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_serve_ray_minimal
 
-- label: ":python: (Small & Large)"
+- label: ":python: (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      python/ray/tests/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests
-      --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      python/ray/tests/...
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- python/ray/tests/...
+- label: ":python: (Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - . ./ci/travis/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -325,52 +322,38 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - ./dashboard/tests/run_ui_tests.sh
-    # Enable job related tests after ray.init can accept gcs address
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory -- //python/ray/dashboard/...
-      -//python/ray/dashboard:test_actor
-      -//python/ray/dashboard:test_job_manager
-      -//python/ray/dashboard:test_cli_integration
-      -//python/ray/dashboard:test_http_job_server
-      -//python/ray/dashboard:test_job_submission
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
-      -- python/ray/serve/... -//python/ray/serve:test_cli -//python/ray/serve:test_standalone
-    # Re-enable after fixing.
-    #- bazel test --config=ci $(./scripts/bazel_export_options)
-    #  --test_tag_filters=team:serve
-    #  --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_gcs_storage=memory
-    #  release/...
-- label: ":redis: HA GCS (Small & Large)"
+      -- python/ray/serve/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=team:serve
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory
+      release/...
+- label: ":redis: HA GCS (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-post_wheel_build,-worker-container
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
+      --test_tag_filters=client_tests,small_size_python_tests
       --test_env=RAY_gcs_grpc_based_pubsub=1
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
-      -//python/ray/tests:test_failure_2
-      -//python/ray/tests:test_job
-      -//python/ray/tests:test_autoscaler_drain_node_api
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,client_tests
-      --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
-      --test_env=RAY_gcs_grpc_based_pubsub=1
-      --test_env=RAY_bootstrap_with_gcs=1
-      --test_env=RAY_gcs_storage=memory
-      -- //python/ray/tests/...
+      -- python/ray/tests/... -//python/ray/tests:test_client_reconnect
+- label: ":redis: HA GCS (Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - . ./ci/travis/ci.sh test_large_gcs
 - label: ":redis: HA GCS (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -381,9 +364,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
-      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
-      -//python/ray/tests:test_client -//python/ray/tests:test_client_reconnect
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -394,9 +374,6 @@
       --test_env=RAY_bootstrap_with_gcs=1
       --test_env=RAY_gcs_storage=memory
       -- //python/ray/tests/...
-      -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
-      -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
-      -//python/ray/tests:test_multi_node -//python/ray/tests:test_multi_node_3
 
 - label: ":octopus: Tune soft imports test"
   conditions: ["RAY_CI_TUNE_AFFECTED"]

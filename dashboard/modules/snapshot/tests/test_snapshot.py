@@ -32,7 +32,7 @@ class Pinger:
 a = Pinger.options(lifetime={lifetime}, name={name}).remote()
 ray.get(a.ping.remote())
     """
-    address = ray_start_with_dashboard["redis_address"]
+    address = ray_start_with_dashboard["address"]
     detached_driver = driver_template.format(
         address=address, lifetime="'detached'", name="'abc'")
     named_driver = driver_template.format(
@@ -84,7 +84,7 @@ import ray
 from ray import serve
 
 ray.init(
-    address="{ray_start_with_dashboard['redis_address']}",
+    address="{ray_start_with_dashboard['address']}",
     namespace="serve")
 
 serve.start(detached=True)

@@ -17,7 +17,7 @@ import ray
 import ray._private.profiling as profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor, JobID
 from ray._private.utils import (
     check_oversized_function,
     ensure_str,
@@ -37,11 +37,11 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-def make_exports_prefix(job_id: bytes) -> bytes:
-    return b"IsolatedExports:" + job_id
+def make_exports_prefix(job_id: JobID) -> bytes:
+    return b"IsolatedExports:" + job_id.hex().encode()
 
 
-def make_export_key(pos: int, job_id: bytes) -> bytes:
+def make_export_key(pos: int, job_id: JobID) -> bytes:
     # big-endian for ordering in binary
     return make_exports_prefix(job_id) + b":" + pos.to_bytes(8, "big")
 
@@ -155,7 +155,7 @@ class FunctionActorManager:
             while True:
                 self._num_exported += 1
                 holder = make_export_key(self._num_exported,
-                                         self._worker.current_job_id.binary())
+                                         self._worker.current_job_id)
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
                 if self._worker.gcs_client.internal_kv_put(
@@ -168,7 +168,7 @@ class FunctionActorManager:
             self._worker.gcs_publisher.publish_function_key(key)
         else:
             self._worker.redis_client.lpush(
-                make_exports_prefix(self._worker.current_job_id.binary()), "a")
+                make_exports_prefix(self._worker.current_job_id), "a")
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -192,8 +192,9 @@ class FunctionActorManager:
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
-               + remote_function._function_descriptor.function_id.binary())
+        key = (
+            b"RemoteFunction:" + self._worker.current_job_id.hex().encode() +
+            b":" + remote_function._function_descriptor.function_id.binary())
         if self._worker.gcs_client.internal_kv_exists(
                 key, KV_NAMESPACE_FUNCTION_TABLE):
             return
@@ -422,7 +423,7 @@ class FunctionActorManager:
             "task, please make sure the thread finishes before the "
             "task finishes.")
         job_id = self._worker.current_job_id
-        key = (b"ActorClass:" + job_id.binary() + b":" +
+        key = (b"ActorClass:" + job_id.hex().encode() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         try:
             serialized_actor_class = pickle.dumps(Class)
@@ -554,7 +555,7 @@ class FunctionActorManager:
     def _load_actor_class_from_gcs(self, job_id,
                                    actor_creation_function_descriptor):
         """Load actor class from GCS."""
-        key = (b"ActorClass:" + job_id.binary() + b":" +
+        key = (b"ActorClass:" + job_id.hex().encode() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         # Only wait for the actor class if it was exported from the same job.
         # It will hang if the job id mismatches, since we isolate actor class

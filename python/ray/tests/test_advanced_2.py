@@ -18,7 +18,6 @@ from ray._private.test_utils import (run_string_as_driver_nonblocking,
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="OOM on Windows")
 def test_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
@@ -95,7 +94,6 @@ def test_resource_constraints(shutdown_only):
     assert duration > 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="OOM on Windows")
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=10)
@@ -519,6 +517,9 @@ def test_two_custom_resources(ray_start_cluster):
     # Make sure each node has at least one idle worker.
     wait_for_condition(
         lambda: len(set(ray.get([foo.remote() for _ in range(6)]))) == 2)
+
+    # Make sure the resource view is refreshed.
+    time.sleep(1)
 
     @ray.remote(resources={"CustomResource1": 1})
     def f():
