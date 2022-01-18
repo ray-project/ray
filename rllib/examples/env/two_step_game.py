@@ -1,4 +1,4 @@
-from gym.spaces import MultiDiscrete, Dict, Discrete
+from gym.spaces import Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, ENV_STATE
@@ -8,6 +8,8 @@ class TwoStepGame(MultiAgentEnv):
     action_space = Discrete(2)
 
     def __init__(self, env_config):
+        super().__init__()
+        self.action_space = Discrete(2)
         self.state = None
         self.agent_1 = 0
         self.agent_2 = 1
@@ -109,3 +111,24 @@ class TwoStepGame(MultiAgentEnv):
             return np.concatenate([self.state, [2]])
         else:
             return np.flatnonzero(self.state)[0] + 3
+
+
+class TwoStepGameWithGroupedAgents(MultiAgentEnv):
+    def __init__(self, env_config):
+        super().__init__()
+        env = TwoStepGame(env_config)
+        tuple_obs_space = Tuple([env.observation_space, env.observation_space])
+        tuple_act_space = Tuple([env.action_space, env.action_space])
+
+        self.env = env.with_agent_groups(
+            groups={"agents": [0, 1]},
+            obs_space=tuple_obs_space,
+            act_space=tuple_act_space)
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+
+    def reset(self):
+        return self.env.reset()
+
+    def step(self, actions):
+        return self.env.step(actions)

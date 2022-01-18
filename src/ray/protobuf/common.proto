@@ -196,6 +196,42 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+message ActorDeathCause {
+  oneof context {
+    // Indicates that this actor is marked as DEAD due to actor creation task failure.
+    RayException creation_task_failure_context = 1;
+    ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
+    ActorDiedErrorContext actor_died_error_context = 3;
+  }
+}
+// ---Actor death contexts start----
+// Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+message ActorDeathRuntimeEnvFailedContext {
+  // TODO(sang,lixin) Get this error message from agent.
+  string error_message = 1;
+}
+
+message ActorDiedErrorContext {
+  string error_message = 1;
+  // The id of owner of the actor.
+  bytes owner_id = 2;
+  // The ip address of the owner worker.
+  string owner_ip_address = 3;
+  // The IP address where actor was created.
+  string node_ip_address = 4;
+  // The process id of this actor.
+  uint32 pid = 5;
+  // Name of the actor.
+  string name = 6;
+  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 7;
+  // The actor's class name.
+  string class_name = 8;
+  // The id of the actor
+  bytes actor_id = 9;
+}
+// ---Actor death contexts end----
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -256,6 +292,9 @@ message TaskSpec {
   int64 depth = 26;
   // Strategy about how to schedule this task.
   SchedulingStrategy scheduling_strategy = 27;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 28;
 }
 
 message Bundle {

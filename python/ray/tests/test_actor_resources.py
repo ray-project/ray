@@ -229,7 +229,6 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -590,7 +589,6 @@ def test_custom_label_placement(ray_start_cluster):
         assert location == custom_resource2_node.unique_id
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_creating_more_actors_than_resources(shutdown_only):
     ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 

@@ -129,8 +129,8 @@ class SimpleBlockAccessor(BlockAccessor):
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
         key_fn = key if key else lambda x: x
-        comp_fn = lambda x, b: key_fn(x) > b \
-            if descending else lambda x, b: key_fn(x) < b  # noqa E731
+        comp_fn = (lambda x, b: key_fn(x) > b) \
+            if descending else (lambda x, b: key_fn(x) < b)  # noqa E731
 
         # Compute the boundary indices in O(n) time via scan.
         boundary_indices = []
@@ -214,10 +214,11 @@ class SimpleBlockAccessor(BlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        stats = BlockExecStats.builder()
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
         return ret, SimpleBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -242,6 +243,7 @@ class SimpleBlockAccessor(BlockAccessor):
             If key is None then the k element of tuple is omitted.
         """
 
+        stats = BlockExecStats.builder()
         key_fn = (lambda r: r[0]) if key else (lambda r: 0)
 
         iter = heapq.merge(
@@ -290,4 +292,4 @@ class SimpleBlockAccessor(BlockAccessor):
                 break
 
         return ret, SimpleBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
