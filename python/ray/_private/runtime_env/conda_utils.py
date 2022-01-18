@@ -63,19 +63,22 @@ def _get_conda_env_name(conda_env_path: str) -> str:
         conda_env_contents.encode("utf-8")).hexdigest()
 
 
-def create_conda_env(conda_yaml_file: str,
-                     prefix: str,
-                     logger: Optional[logging.Logger] = None) -> None:
+def get_or_create_conda_env(conda_env_path: str,
+                            base_dir: Optional[str] = None,
+                            logger: Optional[logging.Logger] = None) -> str:
     """
-    Given a conda YAML file and a path, creates a conda environment containing
-    the required dependencies.
-
+    Given a conda YAML, creates a conda environment containing the required
+    dependencies if such a conda environment doesn't already exist. Returns the
+    name of the conda environment, which is based on a hash of the YAML.
     Args:
-        conda_yaml_file (str): The path to a conda `environment.yml` file.
-        prefix (str): Directory to install the environment into via
-            the `--prefix` option to conda create.  This also becomes the name
-            of the conda env; i.e. it can be passed into `conda activate` and
-            `conda remove`.
+        conda_env_path: Path to a conda environment YAML file.
+        base_dir (str, optional): Directory to install the environment into via
+            the --prefix option to conda create.  If not specified, will
+            install into the default conda directory (e.g. ~/anaconda3/envs)
+    Returns:
+        The name of the env, or the path to the env if base_dir is specified.
+            In either case, the return value should be valid to pass in to
+            `conda activate`.
     """
     if logger is None:
         logger = logging.getLogger(__name__)
@@ -91,19 +94,33 @@ def create_conda_env(conda_yaml_file: str,
             "You can also configure Ray to look for a specific "
             f"Conda executable by setting the {RAY_CONDA_HOME} "
             "environment variable to the path of the Conda executable.")
+    _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
+    envs = json.loads(stdout)["envs"]
 
-    create_cmd = [
-        conda_path, "env", "create", "--file", conda_yaml_file, "--prefix",
-        prefix
-    ]
+    create_cmd = None
+    env_name = _get_conda_env_name(conda_env_path)
+    if base_dir:
+        env_name = f"{base_dir}/{env_name}"
+        if env_name not in envs:
+            create_cmd = [
+                conda_path, "env", "create", "--file", conda_env_path,
+                "--prefix", env_name
+            ]
+    else:
+        env_names = [os.path.basename(env) for env in envs]
+        if env_name not in env_names:
+            create_cmd = [
+                conda_path, "env", "create", "-n", env_name, "--file",
+                conda_env_path
+            ]
 
     if create_cmd is not None:
-        logger.info(f"Creating conda environment {prefix}")
+        logger.info(f"Creating conda environment {env_name}")
         exit_code, output = exec_cmd_stream_to_logger(create_cmd, logger)
         if exit_code != 0:
-            shutil.rmtree(prefix)
+            shutil.rmtree(env_name)
             raise RuntimeError(
-                f"Failed to install conda environment {prefix}:\n{output}")
+                f"Failed to install conda environment:\n{output}")
 
 
 def delete_conda_env(prefix: str,
