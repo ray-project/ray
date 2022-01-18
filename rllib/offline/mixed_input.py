@@ -15,10 +15,13 @@ class MixedInput(InputReader):
     """Mixes input from a number of other input sources.
 
     Examples:
-        >>> MixedInput({
-            "sampler": 0.4,
-            "/tmp/experiences/*.json": 0.4,
-            "s3://bucket/expert.json": 0.2,
+        >>> from ray.rllib.offline import MixedInput
+        >>> from ray.rllib.offline.io_context import IOContext
+        >>> ioctx = IOContext()
+        >>> MixedInput({ \
+            "sampler": 0.4, \
+            "/tmp/experiences/*.json": 0.4, \
+            "s3://bucket/expert.json": 0.2, \
         }, ioctx)
     """
 
