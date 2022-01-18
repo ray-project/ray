@@ -9,16 +9,18 @@ import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
-    GcsAioResourceUsageSubscriber
+import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
+
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
+    GcsAioResourceUsageSubscriber
+from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,20 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
+        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
+        # asynchronous and will lead to low performance. ray disconnect()
+        # will be hang when the ray.state is connected and the GCS is exit.
+        # Please refer to: https://github.com/ray-project/ray/issues/16328
+        assert dashboard_head.gcs_address or dashboard_head.redis_address
+        gcs_address = dashboard_head.gcs_address
+        redis_address = dashboard_head.redis_address
+        redis_password = dashboard_head.redis_password
+        temp_dir = dashboard_head.temp_dir
+        # Flatten the redis address
+        if isinstance(dashboard_head.redis_address, tuple):
+            redis_address = f"{redis_address[0]}:{redis_address[1]}"
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, gcs_address, temp_dir)
 
     async def _update_stubs(self, change):
         if change.old:
@@ -132,6 +148,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
+        # Need daemon True to avoid dashboard hangs at exit.
+        self.service_discovery.daemon = True
+        self.service_discovery.start()
         if gcs_pubsub_enabled():
             gcs_addr = await self._dashboard_head.get_gcs_address()
             subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
