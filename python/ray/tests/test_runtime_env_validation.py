@@ -219,9 +219,9 @@ class TestValidatePip:
         result = parse_and_validate_pip(["pkg1", "ray[serve, tune]", "pkg2"])
         assert "pkg1" in result
         assert "pkg2" in result
-        assert "uvicorn" in result  # from ray[serve]
+        assert "fastapi" in result  # from ray[serve]
         assert "pandas" in result  # from ray[tune]
-        assert not any(["ray" in specifier for specifier in result])
+        assert not any("ray" in specifier for specifier in result)
 
 
 class TestValidateEnvVars:
