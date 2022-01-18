@@ -26,10 +26,11 @@ from ray.autoscaler.tags import (STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED)
 # replicas of the worker group it wants to scale, if it wants to scale down
 # it decreases the number of replicas and adds the exact pods that should be
 # terminated to the scaleStrategy). In order to guarantee consistency, the NodeProvider
-# then waits until Kuberay's reconciliation loop creates the pods and then returns
-# control back to the autoscaler. The waiting period is typically small, on the order
-# of a few seconds. We make sure that only one such modification is in process
-# by serializing all modification operations with a lock in the NodeProvider.
+# then waits until Kuberay's reconciliation loop creates the pod specifications in the
+# API server and then returns control back to the autoscaler. The waiting period
+# is typically small, on the order of a few seconds. We make sure that only one
+# such modification is in process by serializing all modification operations with
+# a lock in the NodeProvider.
 
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
