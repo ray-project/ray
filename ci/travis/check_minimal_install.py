@@ -12,7 +12,7 @@ from typing import List
 DEFAULT_BLACKLIST = [
     "aiohttp",
     "aiohttp_cors",
-    "aioredis",
+    # "aioredis",
     "colorful",
     "py-spy",
     # "requests",

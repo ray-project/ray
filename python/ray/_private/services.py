@@ -1308,10 +1308,16 @@ def start_dashboard(require_dashboard,
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
         command = [
-            sys.executable, "-u", dashboard_filepath, f"--host={host}",
-            f"--port={port}", f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+            sys.executable,
+            "-u",
+            dashboard_filepath,
+            f"--host={host}",
+            f"--port={port}",
+            f"--port-retries={port_retries}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--log-dir={logdir}",
+            f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
         ]
@@ -1377,8 +1383,9 @@ def start_dashboard(require_dashboard,
 
         if not minimal:
             logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
-                        colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-                        colorama.Fore.RESET, colorama.Style.NORMAL)
+                        colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                        dashboard_url, colorama.Fore.RESET,
+                        colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     except Exception as e:

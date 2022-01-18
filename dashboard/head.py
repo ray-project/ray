@@ -238,6 +238,7 @@ class DashboardHead:
                     await co
                 except Exception:
                     logger.exception(f"Error notifying coroutine {co}")
+
         modules = self._load_modules()
 
         http_host, http_port = self.http_host, self.http_port
