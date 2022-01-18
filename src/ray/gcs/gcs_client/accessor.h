@@ -732,45 +732,51 @@ class InternalKVAccessor {
   virtual ~InternalKVAccessor() = default;
   /// Asynchronously list keys with prefix stored in internal kv
   ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
-      const std::string &prefix,
+      const std::string &ns, const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
   ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(const std::string &key,
+  virtual Status AsyncInternalKVGet(const std::string &ns, const std::string &key,
                                     const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
+  /// \param ns The namespace to put the key.
   /// \param key The key in <key, value> pair
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
-                                    bool overwrite,
+  virtual Status AsyncInternalKVPut(const std::string &ns, const std::string &key,
+                                    const std::string &value, bool overwrite,
                                     const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
-  /// \param key The key to check
+  /// \param ns The namespace to check.
+  /// \param key The key to check.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVExists(const std::string &key,
+  virtual Status AsyncInternalKVExists(const std::string &ns, const std::string &key,
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
   ///
-  /// \param key The key to delete
+  /// \param ns The namespace to delete from.
+  /// \param key The key to delete.
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVDel(const std::string &key,
-                                    const StatusCallback &callback);
+  virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
+                                    bool del_by_prefix, const StatusCallback &callback);
 
   // These are sync functions of the async above
 
@@ -778,15 +784,18 @@ class InternalKVAccessor {
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
-  virtual Status Keys(const std::string &prefix, std::vector<std::string> &value);
+  virtual Status Keys(const std::string &ns, const std::string &prefix,
+                      std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to put the key.
   /// \param key The key of the pair
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
@@ -794,35 +803,39 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
-  virtual Status Put(const std::string &key, const std::string &value, bool overwrite,
-                     bool &added);
+  virtual Status Put(const std::string &ns, const std::string &key,
+                     const std::string &value, bool overwrite, bool &added);
 
   /// Retrive the value associated with a key
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
-  virtual Status Get(const std::string &key, std::string &value);
+  virtual Status Get(const std::string &ns, const std::string &key, std::string &value);
 
   /// Delete the key
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to delete from.
   /// \param key The key to delete
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \return Status
-  virtual Status Del(const std::string &key);
+  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
 
   /// Check existence of a key in the store
   ///
   /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
+  /// \param ns The namespace to check.
   /// \param key The key to check
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
-  virtual Status Exists(const std::string &key, bool &exist);
+  virtual Status Exists(const std::string &ns, const std::string &key, bool &exist);
 
  private:
   GcsClient *client_impl_;

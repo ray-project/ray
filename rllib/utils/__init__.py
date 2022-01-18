@@ -9,7 +9,7 @@ from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.pre_checks import check_env
+from ray.rllib.utils.pre_checks.env import check_env
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \

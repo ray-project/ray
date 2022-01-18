@@ -193,6 +193,7 @@ class SACTrainer(DQNTrainer):
 
     @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["use_state_preprocessor"] != DEPRECATED_VALUE:
