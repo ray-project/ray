@@ -409,7 +409,7 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
     cat = "node" if not remote_node.is_head else "head"
 
     cli_logger.print(f"Collecting data from remote node: {remote_node.host}")
-    _, tmp = tempfile.mkstemp(
+    tmp = tempfile.mkstemp(
         prefix=f"ray_{cat}_{remote_node.host}_", suffix=".tar.gz")[1]
     with open(tmp, "wb") as fp:
         try:
