@@ -1,6 +1,8 @@
 import argparse
 import logging
+import os
 
+import ray
 from ray import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
@@ -8,7 +10,6 @@ from ray.autoscaler._private.monitor import Monitor
 import yaml
 
 AUTOSCALING_CONFIG_PATH = "/autoscaler/ray_bootstrap_config.yaml"
-AUTOSCALING_LOG_DIR = "/tmp/ray/session_latest/logs/"
 
 
 def setup_logging() -> None:
@@ -21,7 +22,8 @@ def setup_logging() -> None:
     setup_component_logger(
         logging_level=ray_constants.LOGGER_LEVEL,  # info
         logging_format=ray_constants.LOGGER_FORMAT,
-        log_dir=AUTOSCALING_LOG_DIR,
+        log_dir=os.path.join(ray._private.utils.get_ray_temp_dir(),
+                             ray.node.SESSION_LATEST, "logs"),
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
