@@ -250,8 +250,7 @@ public class ObjectSerializer {
         return RayException.fromRayExceptionPB(
             rayErrorInfo
                 .getActorDiedError()
-                .getCreationTaskFailureContext()
-                .getCreationTaskException());
+                .getCreationTaskFailureContext());
       } else {
         // TODO(lixin) Generate friendly error message from RayErrorInfo.ActorDiedError's field
         // type.
