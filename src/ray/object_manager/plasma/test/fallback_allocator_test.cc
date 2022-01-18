@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include <boost/filesystem.hpp>
-
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 

@@ -188,7 +188,6 @@ def _get_conda_env_hash(conda_dict: Dict) -> str:
     return hash
 
 
-# TODO(architkulkarni): Delete?
 def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"conda://<hashed_dependencies>"`, or None if no GC required."""
     conda = runtime_env.get("conda")
@@ -311,7 +310,6 @@ class CondaManager:
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
-            # TODO(architkulkarni): uri instead of conda_uri?
             protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
         context.py_executable = "python"

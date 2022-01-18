@@ -92,7 +92,7 @@ class PipManager:
         return successful
 
     def create(self,
-               uri: Optional[str],
+               uri: str,
                runtime_env: RuntimeEnv,
                context: RuntimeEnvContext,
                logger: Optional[logging.Logger] = default_logger) -> int:
@@ -100,12 +100,8 @@ class PipManager:
                      f"{runtime_env.serialize()}")
         protocol, hash = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
-        # TODO(architkulkarni): Decide what to do about this
-        # if not runtime_env.has_pip():
-        #     return
 
         pip_packages: List[str] = runtime_env.pip_packages()
-        # target_dir = self._get_path_from_hash(_get_pip_hash(pip_packages))
 
         _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
 

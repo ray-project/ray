@@ -166,8 +166,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             -> ("gs",
             "gs_public-runtime-env-test_test_module.zip")
     """
-    print("PARSE URI: ", pkg_uri)
-    default_logger.error("PARSEURI LOG: " + str(pkg_uri))
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3 or protocol == Protocol.GS:
