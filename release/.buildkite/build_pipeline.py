@@ -119,7 +119,6 @@ SERVE_NIGHTLY_TESTS = {
         "multi_deployment_1k_noop_replica",
         "autoscaling_single_deployment",
         "autoscaling_multi_deployment",
-        "autoscaling_bounds",
         "serve_micro_benchmark",
         "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",

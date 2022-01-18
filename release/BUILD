@@ -55,21 +55,3 @@ py_test(
         "//python/ray/serve:serve_lib",
     ],
 )
-
-py_test(
-    name = "autoscaling_bounds_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "autoscaling_bounds.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
