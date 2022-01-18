@@ -57,6 +57,16 @@ ray.init("auto")
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
 
+## Uninstalling the Kuberay operator
+
+You can uninstall the Kuberay operator using
+```shell
+kubectl delete -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler.yaml"
+kubectl delete -k "ray/python/ray/autoscaler/kuberay/config/default"
+```
+
+Note that all running Ray clusters will automatically be terminated.
+
 ## Developing the Kuberay integration (advanced)
 
 In order to maximize development iteration speed, we recommend using a Linux machine with Python 3.7 for

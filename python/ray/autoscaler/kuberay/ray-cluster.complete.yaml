@@ -86,10 +86,8 @@ spec:
               cpu: "500m"
               memory: "512Mi"
           volumeMounts:
-          - mountPath: /opt
-            name: config
-#           - mountPath: /tmp/ray
-#             name: ray-logs
+            - mountPath: /tmp/ray
+              name: ray-logs
         - name: autoscaler
           image: pcmoritz/autoscaler
           imagePullPolicy: Always
@@ -98,32 +96,18 @@ spec:
           volumeMounts:
             - mountPath: /autoscaler/
               name: autoscaler-config
-            - mountPath: /tmp/ray/session_latest/logs
-              name: autoscaler-logs
-#             - mountPath: /tmp/ray/
-#               name: ray-logs
+            - mountPath: /tmp/ray
+              name: ray-logs
         volumes:
         # You set volumes at the Pod level, then mount them into containers inside that Pod
-        - name: config
-          configMap:
-            # Provide the name of the ConfigMap you want to mount.
-            name: ray-code
-            # An array of keys from the ConfigMap to create as files
-            items:
-            - key: example.py
-              path: example.py
         - name: autoscaler-config
           configMap:
             name: autoscaler-config
             items:
             - key: ray_bootstrap_config.yaml
               path: ray_bootstrap_config.yaml
-        - name: autoscaler-logs
+        - name: ray-logs
           emptyDir: {}
-#         - name: ray-logs
-#           hostPath:
-#             path: /var/log/ray/
-#             type: Directory
   workerGroupSpecs:
   # the pod replicas in this group typed worker
   - replicas: 1
