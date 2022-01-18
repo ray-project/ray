@@ -558,5 +558,27 @@ class TestTailLogs:
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
 
+def test_logs_streaming(job_manager):
+    """Test that logs are streamed during the job, not just at the end."""
+
+    # This timeout should be longer than the time it takes to start a job.
+    TIMEOUT_S = 10
+
+    # Print a log and sleep long enough to make the job end after the timeout.
+    stream_logs_cmd = ("python -c\""
+                       "import time;"
+                       "print('STREAMED');"
+                       f"time.sleep({TIMEOUT_S * 2});"
+                       "\"")
+
+    job_id = job_manager.submit_job(entrypoint=stream_logs_cmd)
+
+    # Check that we see the log before the timeout (thus, before the job ends.)
+    wait_for_condition(
+        lambda: "STREAMED" in job_manager.get_job_logs(job_id),
+        timeout=TIMEOUT_S)
+    job_manager.stop_job(job_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
