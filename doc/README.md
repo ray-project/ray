@@ -33,6 +33,32 @@ To build the documentation more strictly, by treating warnings as errors, run th
 sphinx-build -W -b html -d _build/doctrees source _build/html
 ```
 
+## Building just one sub-project
+
+Often your changes in documentation just concern one sub-project, such as Tune or Train. 
+To build just this one sub-project, and ignore the rest (leading to build warnings due to broken references etc.), run the following command:
+
+```shell
+DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
+```
+where `<project>` is the name of the sub-project and can be any of "cluster", "contribute",
+"ray-core", "ray-data", "ray-design-patterns", "ray-more-libs",
+"ray-observability", "ray-overview", "ray-rllib",  "ray-serve", "ray-train",
+"ray-tune", or "ray-workflows".
+
+## Announcements and includes
+
+To add new announcements and other messaging to the top or bottom of a documentation page,
+check the `_includes` folder first to see if the message you want is already there (like "get help" 
+or "we're hiring" etc.)
+If not, add the template you want and include it accordingly, i.e. with
+
+```markdown
+.. include:: /_includes/<my-announcement>
+```
+
+This ensures consistent messaging across documentation pages.
+
 ## Checking for broken links
 
 To check if there are broken links, run the following (we are currently not running this
