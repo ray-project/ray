@@ -121,6 +121,7 @@ SERVE_NIGHTLY_TESTS = {
         "autoscaling_multi_deployment",
         "autoscaling_bounds",
         "serve_micro_benchmark",
+        "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
     ],
 }

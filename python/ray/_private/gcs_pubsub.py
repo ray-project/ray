@@ -1,5 +1,4 @@
 import asyncio
-import os
 from collections import deque
 import logging
 import random
@@ -14,6 +13,7 @@ except ImportError:
 
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
+from ray._raylet import Config
 from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -26,8 +26,7 @@ logger = logging.getLogger(__name__)
 
 def gcs_pubsub_enabled():
     """Checks whether GCS pubsub feature flag is enabled."""
-    return os.environ.get("RAY_gcs_grpc_based_pubsub") not in \
-        [None, "0", "false"]
+    return Config.gcs_grpc_based_pubsub()
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
@@ -247,6 +246,10 @@ class _SyncSubscriber(_SubscriberBase):
                     # Choose to not raise deadline exceeded errors to the
                     # caller. Instead return None. This can be revisited later.
                     if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        return
+                    # Could be a temporary connection issue. Suppress error.
+                    # TODO: reconnect GRPC channel?
+                    if e.code() == grpc.StatusCode.UNAVAILABLE:
                         return
                     raise
 

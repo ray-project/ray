@@ -18,8 +18,6 @@ There are three ways of starting the Ray runtime:
 * Explicitly via CLI (:ref:`start-ray-cli`)
 * Explicitly via the cluster launcher (:ref:`start-ray-up`)
 
-You can also connect to an existing Ray runtime using the `Ray Client <cluster/ray-client.html>`__
-
 .. _start-ray-init:
 
 Starting Ray on a single machine
@@ -245,7 +243,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
       java -classpath <classpath> \
         -Dray.local-mode=true \
         <classname> <args>
-    
+
     .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
   .. group-tab:: C++

@@ -223,9 +223,8 @@ class DashboardHead:
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
         if gcs_pubsub_enabled():
             self.gcs_error_subscriber = GcsAioErrorSubscriber(
-                channel=self.aiogrpc_gcs_channel)
-            self.gcs_log_subscriber = GcsAioLogSubscriber(
-                channel=self.aiogrpc_gcs_channel)
+                address=gcs_address)
+            self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)
             await self.gcs_error_subscriber.subscribe()
             await self.gcs_log_subscriber.subscribe()
 

@@ -67,6 +67,10 @@ training.
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
 
+    .. note::
+       Ray Train will still work even if you don't use the ``prepare_model`` and ``prepare_data_loader`` utilities below,
+       and instead handle the logic directly inside your training function.
+
     First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
 
@@ -182,6 +186,9 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="torch", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
+
 
   .. group-tab:: TensorFlow
 
@@ -190,12 +197,18 @@ with one of the following:
         from ray.train import Trainer
         trainer = Trainer(backend="tensorflow", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
+
   .. group-tab:: Horovod
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="horovod", num_workers=2)
+
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="horovod", num_workers=2, use_gpu=True)
 
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.

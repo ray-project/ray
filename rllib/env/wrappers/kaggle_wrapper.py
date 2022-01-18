@@ -33,6 +33,7 @@ class KaggleFootballMultiAgentEnv(MultiAgentEnv):
                 football environment. For detailed information, see:
                 https://github.com/Kaggle/kaggle-environments/blob/master/kaggle_environments/envs/football/football.json
         """
+        super().__init__()
         self.kaggle_env = kaggle_environments.make(
             "football", configuration=configuration or {})
         self.last_cumulative_reward = None

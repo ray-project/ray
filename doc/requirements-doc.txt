@@ -30,7 +30,7 @@ sphinx-book-theme==0.0.42
 sphinxcontrib.yt
 starlette
 tabulate
-uvicorn
+uvicorn==0.16.0
 werkzeug
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
@@ -38,3 +38,4 @@ git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
 sphinx-sitemap==2.2.0
+myst-parser

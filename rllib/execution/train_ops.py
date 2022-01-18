@@ -34,7 +34,7 @@ def train_one_step(trainer, train_batch) -> Dict:
     workers = trainer.workers
     local_worker = workers.local_worker()
     policies = local_worker.policies_to_train
-    num_sgd_iter = config.get("sgd_num_iter", 1)
+    num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
     learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]
@@ -55,13 +55,6 @@ def train_one_step(trainer, train_batch) -> Dict:
     trainer._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     trainer._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
-    # Update weights - after learning on the local worker - on all remote
-    # workers.
-    if workers.remote_workers():
-        with trainer._timers[WORKER_UPDATE_TIMER]:
-            weights = ray.put(workers.local_worker().get_weights(policies))
-            for e in workers.remote_workers():
-                e.set_weights.remote(weights)
     return info
 
 
