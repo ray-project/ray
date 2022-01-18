@@ -12,6 +12,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -36,6 +37,7 @@ import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
+import io.ray.runtime.util.ConcurrencyGroupUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -270,6 +272,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public ConcurrencyGroup createConcurrencyGroup(
       String name, int maxConcurrency, List<RayFunc> funcs) {
     return new ConcurrencyGroupImpl(name, maxConcurrency, funcs);
+  }
+
+  @Override
+  public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
+    return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
   }
 
   private ObjectRef callNormalFunction(

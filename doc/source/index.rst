@@ -236,7 +236,6 @@ Papers
 
    walkthrough.rst
    using-ray.rst
-   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
@@ -251,9 +250,10 @@ Papers
    cluster/index.rst
    cluster/quickstart.rst
    cluster/guide.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
+   cluster/ray-client.rst
    cluster/reference.rst
    cluster/cloud.rst
-   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::

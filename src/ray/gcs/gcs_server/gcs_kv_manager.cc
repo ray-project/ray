@@ -67,10 +67,12 @@ void RedisInternalKV::Get(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HGET", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        if (!redis_reply->IsNil()) {
-          callback(redis_reply->ReadAsString());
-        } else {
-          callback(std::nullopt);
+        if (callback) {
+          if (!redis_reply->IsNil()) {
+            callback(redis_reply->ReadAsString());
+          } else {
+            callback(std::nullopt);
+          }
         }
       }));
 }
@@ -83,8 +85,10 @@ void RedisInternalKV::Put(const std::string &ns, const std::string &key,
                                   value};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        auto added_num = redis_reply->ReadAsInteger();
-        callback(added_num != 0);
+        if (callback) {
+          auto added_num = redis_reply->ReadAsInteger();
+          callback(added_num != 0);
+        }
       }));
 }
 
@@ -96,21 +100,33 @@ void RedisInternalKV::Del(const std::string &ns, const std::string &key,
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [this, callback = std::move(callback)](auto redis_reply) {
           const auto &reply = redis_reply->ReadAsStringArray();
-          std::vector<std::string> del_cmd = {"DEL"};
-          for (const auto &r : reply) {
-            RAY_CHECK(r.has_value());
-            del_cmd.emplace_back(*r);
+          // If there are no keys with this prefix, we don't need to send
+          // another delete.
+          if (reply.size() == 0) {
+            if (callback) {
+              callback(0);
+            }
+          } else {
+            std::vector<std::string> del_cmd = {"DEL"};
+            for (const auto &r : reply) {
+              RAY_CHECK(r.has_value());
+              del_cmd.emplace_back(*r);
+            }
+            RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+                del_cmd, [callback = std::move(callback)](auto redis_reply) {
+                  if (callback) {
+                    callback(redis_reply->ReadAsInteger());
+                  }
+                }));
           }
-          RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-              del_cmd, [callback = std::move(callback)](auto redis_reply) {
-                callback(redis_reply->ReadAsInteger());
-              }));
         }));
   } else {
     std::vector<std::string> cmd = {"DEL", true_key};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [callback = std::move(callback)](auto redis_reply) {
-          callback(redis_reply->ReadAsInteger());
+          if (callback) {
+            callback(redis_reply->ReadAsInteger());
+          }
         }));
   }
 }
@@ -121,8 +137,10 @@ void RedisInternalKV::Exists(const std::string &ns, const std::string &key,
   std::vector<std::string> cmd = {"HEXISTS", true_key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        bool exists = redis_reply->ReadAsInteger() > 0;
-        callback(exists);
+        if (callback) {
+          bool exists = redis_reply->ReadAsInteger() > 0;
+          callback(exists);
+        }
       }));
 }
 
@@ -132,13 +150,15 @@ void RedisInternalKV::Keys(const std::string &ns, const std::string &prefix,
   std::vector<std::string> cmd = {"KEYS", true_prefix + "*"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [callback = std::move(callback)](auto redis_reply) {
-        const auto &reply = redis_reply->ReadAsStringArray();
-        std::vector<std::string> results;
-        for (const auto &r : reply) {
-          RAY_CHECK(r.has_value());
-          results.emplace_back(ExtractKey(*r));
+        if (callback) {
+          const auto &reply = redis_reply->ReadAsStringArray();
+          std::vector<std::string> results;
+          for (const auto &r : reply) {
+            RAY_CHECK(r.has_value());
+            results.emplace_back(ExtractKey(*r));
+          }
+          callback(std::move(results));
         }
-        callback(std::move(results));
       }));
 }
 

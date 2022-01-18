@@ -114,6 +114,17 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return self();
   }
 
+  /**
+   * Set the placement group to place this actor in, which may use any available bundle.
+   *
+   * @param group The placement group of the actor.
+   * @return self
+   * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
+   */
+  public T setPlacementGroup(PlacementGroup group) {
+    return setPlacementGroup(group, -1);
+  }
+
   @SuppressWarnings("unchecked")
   private T self() {
     return (T) this;

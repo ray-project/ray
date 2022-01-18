@@ -59,6 +59,10 @@ def test_ray_debugger_commands(shutdown_only):
     result1 = f.remote()
     result2 = f.remote()
 
+    wait_for_condition(lambda: len(
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
+
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
     p = pexpect.spawn("ray debug")

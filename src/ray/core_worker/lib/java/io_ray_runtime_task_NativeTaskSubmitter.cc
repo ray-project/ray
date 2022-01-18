@@ -164,7 +164,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     if (java_actor_lifetime != nullptr) {
       is_detached =
           std::make_optional<bool>(env->IsSameObject(java_actor_lifetime, STATUS_DETACHED));
-      RAY_CHECK_JAVA_EXCEPTION(env);
     }
 
     max_restarts =
