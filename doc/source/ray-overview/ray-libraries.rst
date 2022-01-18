@@ -7,7 +7,7 @@ This page lists libraries that have integrations with Ray for distributed execut
 
 Ray also comes packaged with several libraries solving problems in the machine learning space:
 
-- :doc:`../tune/index`
+- :doc:`../ray-tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`datasets` (beta)
