@@ -21,11 +21,25 @@ public class GlobalStateAccessor {
     return globalStateAccessor;
   }
 
+  public static synchronized GlobalStateAccessor getInstance(
+      String gcsAddress) {
+    if (null == globalStateAccessor) {
+      globalStateAccessor = new GlobalStateAccessor(gcsAddress);
+    }
+    return globalStateAccessor;
+  }
+
   public static synchronized void destroyInstance() {
     if (null != globalStateAccessor) {
       globalStateAccessor.destroyGlobalStateAccessor();
       globalStateAccessor = null;
     }
+  }
+
+  private GlobalStateAccessor(String gcsAddress) {
+    globalStateAccessorNativePointer = nativeCreateGlobalStateAccessor(gcsAddress);
+    validateGlobalStateAccessorPointer();
+    connect();
   }
 
   private GlobalStateAccessor(String redisAddress, String redisPassword) {

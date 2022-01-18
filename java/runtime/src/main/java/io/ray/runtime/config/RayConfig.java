@@ -38,7 +38,7 @@ public class RayConfig {
   public String sessionDir;
   public String logDir;
 
-  private String redisAddress;
+  private String bootstrapAddress;
   public final String redisPassword;
 
   // RPC socket name of object store.
@@ -163,12 +163,13 @@ public class RayConfig {
     }
 
     // Redis configurations.
-    String redisAddress = config.getString("ray.address");
-    if (StringUtils.isNotBlank(redisAddress)) {
-      setRedisAddress(redisAddress);
+    String bootstrap_address = config.getString("ray.address");
+    if (StringUtils.isNotBlank(bootstrap_address)) {
+      setBootstrapAddress(bootstrap_address);
     } else {
       // We need to start gcs using `RunManager` for local cluster
       this.redisAddress = null;
+      this.gcsAddress = null;
     }
 
     redisPassword = config.getString("ray.redis.password");
@@ -215,15 +216,14 @@ public class RayConfig {
     validate();
   }
 
-  public void setRedisAddress(String redisAddress) {
-    Preconditions.checkNotNull(redisAddress);
-    Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
-
-    this.redisAddress = redisAddress;
+  public void setBootstrapAddress(String bootstrapAddress) {
+    Preconditions.checkNotNull(bootstrapAddress);
+    Preconditions.checkState(this.bootstrapAddress == null, "Bootstrap address was already set");
+    this.bootstrapAddress = bootstrapAddress;
   }
 
-  public String getRedisAddress() {
-    return redisAddress;
+  public String getBootstrapAddress() {
+    return this.bootstrapAddress;
   }
 
   public void setJobId(JobId jobId) {

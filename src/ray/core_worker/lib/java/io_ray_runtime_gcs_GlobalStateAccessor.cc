@@ -38,6 +38,15 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
   return reinterpret_cast<jlong>(gcs_accessor);
 }
 
+JNIEXPORT jlong JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessorFromGcsAddress(
+    JNIEnv *env, jobject o, jstring j_gcs_address) {
+  std::string gcs_address = JavaStringToNativeString(env, j_gcs_address);
+  ray::gcs::GcsClientOptions client_options(gcs_address);
+  gcs::GlobalStateAccessor *gcs_accessor = new gcs::GlobalStateAccessor(client_options);
+  return reinterpret_cast<jlong>(gcs_accessor);
+}
+
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeDestroyGlobalStateAccessor(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
