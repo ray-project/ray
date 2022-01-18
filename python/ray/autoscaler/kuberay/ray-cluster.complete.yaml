@@ -1,3 +1,5 @@
+# This is adapted from https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.complete.yaml
+# It is a general RayCluster that has most fields in it for maximum flexibility in the Ray/Kuberay integration MVP.
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:
@@ -6,7 +8,7 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.0.1'
+  rayVersion: '1.9.2'
   enableInTreeAutoscaling: false
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
@@ -36,14 +38,17 @@ spec:
           # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
           # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
           rayCluster: raycluster-sample # will be injected if missing
-          rayNodeType: head # will be injected if missing, must be head or wroker
+          rayNodeType: head # will be injected if missing, must be head or worker
           groupName: headgroup # will be injected if missing
         # annotations for pod
         annotations:
           key: value
       spec:
+        # This is needed to give the autoscaler side car permissions to query and update
+        # definitions in the Kubernetes API server (see kuberay-autoscaler.yaml)
         serviceAccountName: autoscaler-sa
         containers:
+        # The Ray head pod
         - name: ray-head
           image: rayproject/ray:latest
           imagePullPolicy: Always
@@ -88,6 +93,7 @@ spec:
           volumeMounts:
             - mountPath: /tmp/ray
               name: ray-logs
+        # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
           image: rayproject/kuberay-autoscaler
           imagePullPolicy: Always
