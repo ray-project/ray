@@ -11,7 +11,7 @@ from ray._private.test_utils import wait_for_condition, get_error_message
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
-from ray.dashboard.modules.runtime_env.runtime_env_agent import URICache
+from ray._private.runtime_env.uri_cache import URICache
 
 
 def test_get_wheel_filename():
