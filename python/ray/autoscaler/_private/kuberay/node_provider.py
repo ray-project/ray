@@ -140,7 +140,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         return result.json()
 
     def _get_worker_group(self, raycluster: Dict[str, Any],
-                          group_name: str) -> Tuple[int, Dict[str, str]]:
+                          group_name: str) -> Tuple[int, Dict[str, Any]]:
         group_index = None
         group_spec = None
         worker_group_specs = raycluster["spec"]["workerGroupSpecs"]
@@ -275,6 +275,11 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                     }
                 }]
                 self._patch(url, payload)
+
+            for group_name, nodes in groups.items():
+                group_index, group_spec = self._get_worker_group(
+                    raycluster, group_name)
+                prefix = f"/spec/workerGroupSpecs/{group_index}"
                 self._wait_for_pods(group_name,
                                     group_spec["replicas"] - len(nodes))
                 # Clean up workersToDelete
