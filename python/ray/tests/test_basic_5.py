@@ -4,12 +4,10 @@ import logging
 import os
 import sys
 import time
-
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import client_test_enabled
-from ray._private.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import wait_for_pid_to_exit, client_test_enabled
 
 import ray
 
@@ -105,6 +103,7 @@ def test_internal_kv(ray_start_regular):
     assert set(kv._internal_kv_list("k",
                                     namespace="n")) == {b"k1", b"k2", b"k3"}
     assert kv._internal_kv_del("k", del_by_prefix=True, namespace="n") == 3
+    assert kv._internal_kv_del("x", del_by_prefix=True, namespace="n") == 0
     assert kv._internal_kv_get("k1", namespace="n") is None
     assert kv._internal_kv_get("k2", namespace="n") is None
     assert kv._internal_kv_get("k3", namespace="n") is None
