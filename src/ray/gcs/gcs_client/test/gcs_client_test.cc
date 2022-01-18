@@ -76,21 +76,21 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;
     ;
 
-    client_io_service_.reset(new instrumented_io_context());
-    client_io_service_thread_.reset(new std::thread([this] {
+    client_io_service_ = std::make_unique<instrumented_io_context>();
+    client_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
-    }));
+    });
 
-    server_io_service_.reset(new instrumented_io_context());
-    gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
+    server_io_service_ = std::make_unique<instrumented_io_context>();
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
-    server_io_service_thread_.reset(new std::thread([this] {
+    server_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*server_io_service_));
       server_io_service_->run();
-    }));
+    });
 
     // Wait until server starts listening.
     while (!gcs_server_->IsStarted()) {
@@ -100,11 +100,11 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Create GCS client.
     if (enable_gcs_bootstrap_) {
       gcs::GcsClientOptions options("127.0.0.1:5397");
-      gcs_client_.reset(new gcs::GcsClient(options));
+      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     } else {
       gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
                                     config_.redis_password);
-      gcs_client_.reset(new gcs::GcsClient(options));
+      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     }
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
