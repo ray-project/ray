@@ -124,7 +124,7 @@ class LocalMemoryBuffer : public Buffer {
   /// Whether this buffer holds a copy of data.
   bool has_data_copy_ = false;
   /// This is only valid when `should_copy` is true.
-  uint8_t *buffer_ = NULL;
+  uint8_t *buffer_ = nullptr;
 };
 
 /// Represents a byte buffer in shared memory.
