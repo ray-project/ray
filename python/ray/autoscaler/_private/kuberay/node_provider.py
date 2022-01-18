@@ -12,7 +12,7 @@ from ray.autoscaler.tags import (STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED)
 
 # Labels and Tags
 # We call the Kuberay labels "labels" and the Ray autoscaler tags "tags".
-# The labes are prefixed by "ray.io". Tags are prefixed by "ray-".
+# The labels are prefixed by "ray.io". Tags are prefixed by "ray-".
 # We convert between the two but do not mix them.
 
 # Worker Groups and Available Node Types
