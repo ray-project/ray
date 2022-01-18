@@ -69,6 +69,12 @@ Note that all running Ray clusters will automatically be terminated.
 
 ## Developing the Kuberay integration (advanced)
 
+If you also want to change the underlying Kuberay operator, please refer to the instructions
+in [the Kuberay development documentation](https://github.com/ray-project/kuberay/blob/master/ray-operator/DEVELOPMENT.md). In that case you should push the modified operator to your docker account or registry and
+follow the instructions in `ray/python/ray/autoscaler/kuberay/init-config.sh`.
+
+The remainder of the instructions will cover how to change the autoscaler code.
+
 In order to maximize development iteration speed, we recommend using a Linux machine with Python 3.7 for
 development, since that will simplify building wheels incrementally.
 Make the desired modification to Ray and/or the autoscaler and build the Ray wheels by running
@@ -78,10 +84,13 @@ the following command in the `ray/python` directory:
 python setup.py bdist_wheel
 ```
 
-Then in the `ray/docker/autoscaler` directory run:
+Then in the `ray/docker/kuberay-autoscaler` directory run:
 
 ```shell
 cp ../../python/dist/ray-2.0.0.dev0-cp37-cp37m-linux_x86_64.whl ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t pcmoritz/autoscaler --no-cache .
-docker push pcmoritz/autoscaler
+docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t rayproject/kuberay-autoscaler --no-cache .
+docker push rayproject/kuberay-autoscaler
 ```
+
+where you replace `rayproject/kuberay-autoscaler` with the desired image path in your own docker account (normally
+`<username>/kuberay-autoscaler`). Please also make sure to update the image in `ray-cluster.complete.yaml`.

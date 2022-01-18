@@ -8,6 +8,6 @@ index 333106d..fdf62d6 100644
  - name: kuberay/operator
 -  newName: kuberay/operator
 -  newTag: nightly
-+  newName: pcmoritz/operator
++  newName: rayproject/kuberay-operator
 +  newTag: latest
  
