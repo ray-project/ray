@@ -93,6 +93,8 @@ spec:
         - name: autoscaler
           image: pcmoritz/autoscaler
           imagePullPolicy: Always
+          command: ["/bin/sh"]
+          args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
           volumeMounts:
             - mountPath: /autoscaler/
               name: autoscaler-config

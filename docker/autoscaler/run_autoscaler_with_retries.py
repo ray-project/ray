@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import time
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +20,9 @@ if __name__ == "__main__":
     """
     while True:
         try:
-            subprocess.run(["python", f"{run_autoscaler_script}"])  # noqa: B1
+            # We are forwarding all the command line arguments of
+            # run_autoscaler_with_retries.py to run_autoscaler.py.
+            subprocess.run(["python", f"{run_autoscaler_script}"] + sys.argv[1:])  # noqa: B1
         except subprocess.SubprocessError:
             print(f"Restarting autoscaler in {BACKOFF_S} seconds.")
             time.sleep(BACKOFF_S)

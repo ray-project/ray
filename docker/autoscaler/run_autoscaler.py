@@ -1,3 +1,4 @@
+import argparse
 import logging
 
 from ray import ray_constants
@@ -39,12 +40,22 @@ def setup_logging() -> None:
 
 if __name__ == "__main__":
     setup_logging()
+
+    parser = argparse.ArgumentParser(description="Kuberay Autoscaler")
+    parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        default=None,
+        help="The password to use for Redis")
+    args = parser.parse_args()
+
     cluster_name = yaml.safe_load(
         open(AUTOSCALING_CONFIG_PATH).read())["cluster_name"]
     head_ip = get_node_ip_address()
     Monitor(
         address=f"{head_ip}:6379",
-        redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        redis_password=args.redis_password,
         autoscaling_config=AUTOSCALING_CONFIG_PATH,
         monitor_ip=head_ip,
     ).run()
