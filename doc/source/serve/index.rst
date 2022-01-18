@@ -44,7 +44,7 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 Ray Serve Quickstart
 ====================
 
-Ray Serve supports Python versions 3.6 through 3.8.
+Ray Serve supports Python versions 3.6 through 3.9.
 First, install Ray Serve and all of its dependencies by running the following command in your terminal:
 
 .. code-block:: bash
