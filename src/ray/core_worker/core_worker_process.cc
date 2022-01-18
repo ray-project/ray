@@ -21,9 +21,9 @@ namespace ray {
 namespace core {
 namespace {
 
-CoreWorkerProcessImpl* core_worker_process;
+CoreWorkerProcessImpl *core_worker_process;
 
-void ResetCoreWorkerProcess(CoreWorkerProcessImpl* process) {
+void ResetCoreWorkerProcess(CoreWorkerProcessImpl *process) {
   delete core_worker_process;
   core_worker_process = process;
 }
