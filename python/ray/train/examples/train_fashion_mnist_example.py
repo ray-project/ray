@@ -144,18 +144,9 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        default=False,
-        help="Finish quickly for testing.")
 
     args, _ = parser.parse_known_args()
 
     import ray
-
-    if args.smoke_test:
-        ray.init()
-    else:
-        ray.init(address=args.address)
+    ray.init(address=args.address)
     train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
