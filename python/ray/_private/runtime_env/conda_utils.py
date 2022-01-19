@@ -65,20 +65,15 @@ def _get_conda_env_name(conda_env_path: str) -> str:
 
 def get_or_create_conda_env(conda_env_path: str,
                             base_dir: Optional[str] = None,
-                            logger: Optional[logging.Logger] = None) -> str:
+                            logger: Optional[logging.Logger] = None) -> None:
     """
     Given a conda YAML, creates a conda environment containing the required
-    dependencies if such a conda environment doesn't already exist. Returns the
-    name of the conda environment, which is based on a hash of the YAML.
+    dependencies if such a conda environment doesn't already exist.
     Args:
         conda_env_path: Path to a conda environment YAML file.
         base_dir (str, optional): Directory to install the environment into via
             the --prefix option to conda create.  If not specified, will
             install into the default conda directory (e.g. ~/anaconda3/envs)
-    Returns:
-        The name of the env, or the path to the env if base_dir is specified.
-            In either case, the return value should be valid to pass in to
-            `conda activate`.
     """
     if logger is None:
         logger = logging.getLogger(__name__)

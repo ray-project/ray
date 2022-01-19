@@ -6,6 +6,7 @@ import shutil
 
 from pathlib import Path
 from typing import Optional, List, Dict
+from filelock import FileLock
 
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -36,7 +37,6 @@ def _install_pip_list_to_dir(
         raise RuntimeError(f"Failed to install pip requirements:\n{output}")
 
 
-# TODO(architkulkarni): Delete or move? Duplicated below
 def get_uri(runtime_env: Dict) -> Optional[str]:
     """Return `"pip://<hashed_dependencies>"`, or None if no GC required."""
     pip = runtime_env.get("pip")
@@ -55,6 +55,11 @@ class PipManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "pip")
         try_to_create_directory(self._resources_dir)
+
+        # Concurrent pip installs are unsafe.  This lock prevents concurrent
+        # installs (and deletions).
+        self._installs_and_deletions_file_lock = os.path.join(
+            self._resources_dir, "ray-pip-installs-and-deletions.lock")
 
     def _get_path_from_hash(self, hash: str) -> str:
         """Generate a path from the hash of a pip spec.
@@ -83,7 +88,8 @@ class PipManager:
 
         pip_env_path = self._get_path_from_hash(hash)
         try:
-            shutil.rmtree(pip_env_path)
+            with FileLock(self._installs_and_deletions_file_lock):
+                shutil.rmtree(pip_env_path)
             successful = True
         except OSError as e:
             successful = False
@@ -102,24 +108,25 @@ class PipManager:
         target_dir = self._get_path_from_hash(hash)
 
         pip_packages: List[str] = runtime_env.pip_packages()
+        with FileLock(self._installs_and_deletions_file_lock):
+            _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
 
-        _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
-
-        # Despite Ray being removed from the input pip list during validation,
-        # other packages in the pip list (for example, xgboost_ray) may
-        # themselves include Ray as a dependency.  In this case, we will have
-        # inadvertently installed the latest Ray version in the target_dir,
-        # which may cause Ray version mismatch issues. Uninstall it here, if it
-        # exists, to make the workers use the Ray that is already
-        # installed in the cluster.
-        #
-        # In the case where the user explicitly wants to include Ray in their
-        # pip list (and signals this by setting the environment variable below)
-        # then we don't want this deletion logic, so we skip it.
-        if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != 1:
-            ray_path = Path(target_dir) / "ray"
-            if ray_path.exists() and ray_path.is_dir():
-                shutil.rmtree(ray_path)
+            # Despite Ray being removed from the input pip list during
+            # validation, other packages in the pip list (for example,
+            # xgboost_ray) may themselves include Ray as a dependency.  In this
+            # case, we will have inadvertently installed the latest Ray version
+            # in the target_dir, which may cause Ray version mismatch issues.
+            # Uninstall it here, if it exists, to make the workers use the Ray
+            # that is already installed in the cluster.
+            #
+            # In the case where the user explicitly wants to include Ray in
+            # their pip list (and signals this by setting the environment
+            # variable below) then we don't want this deletion logic, so we
+            # skip it.
+            if os.environ.get(RAY_RUNTIME_ENV_ALLOW_RAY_IN_PIP) != 1:
+                ray_path = Path(target_dir) / "ray"
+                if ray_path.exists() and ray_path.is_dir():
+                    shutil.rmtree(ray_path)
         return get_directory_size(target_dir)
 
     def modify_context(self,

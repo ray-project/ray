@@ -6,8 +6,7 @@ import logging
 import os
 import time
 from typing import Dict, Set
-from filelock import FileLock
-from ray._private.utils import import_attr, try_to_create_directory
+from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -147,54 +146,41 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         working_dir_uri, runtime_env, context)
 
                 # Set up conda
-                conda_resources_dir = os.path.join(self._runtime_env_dir,
-                                                   "conda")
-                try_to_create_directory(conda_resources_dir)
-                conda_file_lock = os.path.join(self._runtime_env_dir,
-                                               "ray-conda-install.lock")
-                # TODO(architkulkarni): add comment
-                with FileLock(conda_file_lock):
-                    conda_uri = self._conda_manager.get_uri(runtime_env)
-                    if conda_uri is not None:
-                        if conda_uri not in self._conda_uri_cache:
-                            size_bytes = self._conda_manager.create(
-                                conda_uri,
-                                runtime_env,
-                                context,
-                                logger=per_job_logger)
-                            self._conda_uri_cache.add(
-                                conda_uri, size_bytes, logger=per_job_logger)
-                        else:
-                            self._conda_uri_cache.mark_used(
-                                conda_uri, logger=per_job_logger)
-                    # Even if conda_uri is None, it might be the case that we're
-                    # specifying an existing conda env, so run modify_context
-                    # to prepend `conda activate <env_name>` to the entrypoint.
-                    self._conda_manager.modify_context(
-                        conda_uri, runtime_env, context, logger=per_job_logger)
+                conda_uri = self._conda_manager.get_uri(runtime_env)
+                if conda_uri is not None:
+                    if conda_uri not in self._conda_uri_cache:
+                        size_bytes = self._conda_manager.create(
+                            conda_uri,
+                            runtime_env,
+                            context,
+                            logger=per_job_logger)
+                        self._conda_uri_cache.add(
+                            conda_uri, size_bytes, logger=per_job_logger)
+                    else:
+                        self._conda_uri_cache.mark_used(
+                            conda_uri, logger=per_job_logger)
+                # Even if conda_uri is None, it might be the case that we're
+                # specifying an existing conda env, so run modify_context
+                # to prepend `conda activate <env_name>` to the entrypoint.
+                self._conda_manager.modify_context(
+                    conda_uri, runtime_env, context, logger=per_job_logger)
 
                 # Set up pip
-                pip_resources_dir = os.path.join(self._runtime_env_dir, "pip")
-                try_to_create_directory(pip_resources_dir)
-                pip_file_lock = os.path.join(self._runtime_env_dir,
-                                             "ray-pip-install.lock")
-                # TODO(architkulkarni): add comment
-                with FileLock(pip_file_lock):
-                    pip_uri = self._pip_manager.get_uri(runtime_env)
-                    if pip_uri is not None:
-                        if pip_uri not in self._pip_uri_cache:
-                            size_bytes = self._pip_manager.create(
-                                pip_uri,
-                                runtime_env,
-                                context,
-                                logger=per_job_logger)
-                            self._pip_uri_cache.add(
-                                pip_uri, size_bytes, logger=per_job_logger)
-                        else:
-                            self._pip_uri_cache.mark_used(
-                                pip_uri, logger=per_job_logger)
-                    self._pip_manager.modify_context(
-                        pip_uri, runtime_env, context, logger=per_job_logger)
+                pip_uri = self._pip_manager.get_uri(runtime_env)
+                if pip_uri is not None:
+                    if pip_uri not in self._pip_uri_cache:
+                        size_bytes = self._pip_manager.create(
+                            pip_uri,
+                            runtime_env,
+                            context,
+                            logger=per_job_logger)
+                        self._pip_uri_cache.add(
+                            pip_uri, size_bytes, logger=per_job_logger)
+                    else:
+                        self._pip_uri_cache.mark_used(
+                            pip_uri, logger=per_job_logger)
+                self._pip_manager.modify_context(
+                    pip_uri, runtime_env, context, logger=per_job_logger)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(
