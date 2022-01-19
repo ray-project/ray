@@ -204,14 +204,21 @@ void GcsClient::Disconnect() {
     return;
   }
   is_connected_ = false;
-  periodical_runner_.reset();
-  gcs_subscriber_.reset();
+  // periodical_runner_.reset();
+  // gcs_subscriber_.reset();
   if (redis_client_) {
     redis_client_->Disconnect();
-    redis_client_.reset();
+    // redis_client_.reset();
   }
   disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
+}
+
+void GcsClient::Reset() {
+  RAY_CHECK(disconnected_);
+  periodical_runner_.reset();
+  gcs_subscriber_.reset();
+  redis_client_.reset();
 }
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() {

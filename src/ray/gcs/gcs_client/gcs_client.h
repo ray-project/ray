@@ -111,6 +111,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
 
+  virtual void Reset();
+
   virtual std::pair<std::string, int> GetGcsServerAddress();
 
   /// Return client information for debug.

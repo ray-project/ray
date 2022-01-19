@@ -475,16 +475,19 @@ void CoreWorker::Shutdown() {
   }
 
   // Running in a io_thread_.
-  io_service_.stop();
-  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
-  if (io_thread_.joinable()) {
-    io_thread_.join();
-  }
   // Disconnect should be done after joining the io thread because
   // Disconnect deallocates some pointers that could be used by io_service_.
   if (gcs_client_) {
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
     gcs_client_->Disconnect();
+  }
+  io_service_.stop();
+  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+  if (gcs_client_) {
+    gcs_client_->Reset();
   }
 
   if (options_.worker_type == WorkerType::WORKER) {
