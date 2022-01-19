@@ -198,7 +198,6 @@ NIGHTLY_TESTS = {
         SmokeTest("network_overhead"),
         "result_throughput_cluster",
         "result_throughput_single_node",
-        "xgboost_sweep",
     ],
     "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
         "train_small",
@@ -252,6 +251,7 @@ WEEKLY_TESTS = {
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",
         "long_running_large_checkpoints",
+        "xgboost_sweep",
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         "learning_tests",
