@@ -486,9 +486,9 @@ void CoreWorker::Shutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
-  // if (gcs_client_) {
-  //   gcs_client_->Reset();
-  // }
+  if (gcs_client_) {
+    gcs_client_->Reset();
+  }
 
   if (options_.worker_type == WorkerType::WORKER) {
     // Asyncio coroutines could still run after CoreWorker is removed because it is
