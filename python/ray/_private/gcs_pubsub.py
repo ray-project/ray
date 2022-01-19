@@ -108,6 +108,17 @@ class _SubscriberBase:
         return req
 
     @staticmethod
+    def _should_terminate_polling(e: grpc.RpcError) -> None:
+        # Caller only expects polling to be terminated after deadline exceeded.
+        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+            return True
+        # Could be a temporary connection issue. Suppress error.
+        # TODO: reconnect GRPC channel?
+        if e.code() == grpc.StatusCode.UNAVAILABLE:
+            return True
+        return False
+
+    @staticmethod
     def _pop_error_info(queue):
         if len(queue) == 0:
             return None, None
@@ -243,13 +254,7 @@ class _SyncSubscriber(_SubscriberBase):
                     # GRPC has not replied, continue waiting.
                     continue
                 except grpc.RpcError as e:
-                    # Choose to not raise deadline exceeded errors to the
-                    # caller. Instead return None. This can be revisited later.
-                    if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                        return
-                    # Could be a temporary connection issue. Suppress error.
-                    # TODO: reconnect GRPC channel?
-                    if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    if self._should_terminate_polling(e):
                         return
                     raise
 
@@ -514,9 +519,13 @@ class _AioSubscriber(_SubscriberBase):
             if poll not in done or close in done:
                 # Request timed out or subscriber closed.
                 break
-            # TODO(mwtian): Check for exception.
-            for msg in poll.result().pub_messages:
-                self._queue.append(msg)
+            try:
+                for msg in poll.result().pub_messages:
+                    self._queue.append(msg)
+            except grpc.RpcError as e:
+                if self._should_terminate_polling(e):
+                    return
+                raise
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscription."""
