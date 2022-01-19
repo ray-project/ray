@@ -197,8 +197,7 @@ class SerializationContext:
         if ray_error_info.actor_died_error.HasField(
                 "creation_task_failure_context"):
             return RayError.from_ray_exception(
-                ray_error_info.actor_died_error.creation_task_failure_context.
-                creation_task_exception)
+                ray_error_info.actor_died_error.creation_task_failure_context)
         else:
             assert ray_error_info.actor_died_error.HasField(
                 "actor_died_error_context")
