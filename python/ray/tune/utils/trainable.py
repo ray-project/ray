@@ -20,7 +20,23 @@ logger = logging.getLogger(__name__)
 class TrainableUtil:
     @staticmethod
     def process_checkpoint(checkpoint: Union[Dict, str], parent_dir: str,
-                           trainable_state: Dict):
+                           trainable_state: Dict) -> str:
+        """Creates checkpoint file structure and writes metadata
+        under `parent_dir`.
+
+        The file structure could either look like:
+        - checkpoint_00000
+        -- .is_checkpoint
+        -- .tune_metadata
+        -- xxx.pkl
+        Or,
+        - checkpoint_00000
+        -- .is_checkpoint
+        -- xxx.pkl
+        -- xxx.pkl.tune_metadata
+
+        The returned path is the path to xxx.pkl.
+        """
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if not checkpoint.startswith(parent_dir):
@@ -100,22 +116,25 @@ class TrainableUtil:
         return os.path.normpath(checkpoint_dir)
 
     @staticmethod
-    def find_rel_checkpoint_dir(checkpoint_path):
+    def find_rel_checkpoint_dir(logdir, checkpoint_path):
         """Returns the (relative) directory name of the checkpoint.
 
-        For example, if `checkpoint_path` is
-        `~/ray_results/2022-01-18_17-02-xxx/checkpoint_000001/`,
-        returns `checkpoint_000001`.
-        if `checkpoint_path` is
-        `~/ray_results/2022-01-18_17-02-xxx/checkpoint_000001/checkpoint`,
-        still returns `checkpoint_000001`.
+        `checkpoint_path` can be `~/ray_results/exp/
+        MyTrainable_a=1_b=2_2022-01-08_20-45-26/checkpoint_00000/xxx.pkl`.
+        or `~/ray_results/exp/MyTrainable_a=1_b=2_2022-01-08_20-45-26/
+        checkpoint_00000`.
+
+        `logdir` is a different path at `~/ray_results/exp/
+        MyTrainable_a=1_b=2_2022-01-08_20-45-51/`.
+
+        returns `checkpoint_00000`.
 
         Raises:
             FileNotFoundError if checkpoint directory is not found.
         """
-        absolute_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
-            checkpoint_path)
-        return os.path.basename(os.path.normpath(absolute_checkpoint_dir))
+        experiment_dir = os.path.dirname(os.path.dirname(logdir))
+        rel_path = os.path.relpath(checkpoint_path, experiment_dir)
+        return rel_path.split(os.sep)[1]
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):

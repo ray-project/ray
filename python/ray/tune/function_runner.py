@@ -411,7 +411,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None):
+    def save(self, checkpoint_path=None) -> str:
         if checkpoint_path:
             raise ValueError(
                 "Checkpoint path should not be used with function API.")

@@ -385,7 +385,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None):
+    def save(self, checkpoint_dir=None) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -398,7 +398,10 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            str: Checkpoint path or prefix that may be passed to restore().
+            str: path that points to xxx.pkl file.
+
+        Note the return path should match up with what is expected of
+        `restore()`.
         """
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration)
@@ -441,15 +444,22 @@ class Trainable:
 
         These checkpoints are returned from calls to save().
 
-        Subclasses should override ``_restore()`` instead to restore state.
+        Subclasses should override ``load_checkpoint()`` instead to
+        restore state.
         This method restores additional metadata saved with the checkpoint.
 
-        `checkpoint_path` is the file/folder path of a trial checkpoint.
+        `checkpoint_path` should match with the return from ``save()``.
+
+        `checkpoint_path` can be
+        `~/ray_results/exp/MyTrainable_a=1_b=2_2022-01-08_20-45-26/
+        checkpoint_00000/xxx.pkl`.
+        `self.logdir` is a different path at for example, `~/ray_results/exp/
+        MyTrainable_a=1_b=2_2022-01-08_20-45-51`.
         """
         # Maybe sync from cloud
         if self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
-                checkpoint_path)
+                self.logdir, checkpoint_path)
             self.storage_client.sync_down(
                 os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
                 os.path.join(self.logdir, rel_checkpoint_dir))
