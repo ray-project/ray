@@ -151,6 +151,7 @@ extensions = [
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_parser",
+    # "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
 ]
