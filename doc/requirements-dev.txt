@@ -39,4 +39,3 @@ scikit-optimize
 sphinx-sitemap==2.2.0
 myst-parser
 pytest
-readthedocs-sphinx-search
