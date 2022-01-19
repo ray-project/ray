@@ -335,8 +335,13 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"eager_install": False}``
 
-**Garbage Collection**.  Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` folders) will be removed when they are no longer
-referenced by any actor, task or job.  To disable this (for example, for debugging purposes) set the environment variable ``RAY_runtime_env_skip_local_gc`` to ``1`` on each node in your cluster before starting Ray (e.g. with ``ray start``).
+Caching and Garbage Collection
+""""""""""""""""""""""""""""""
+Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different tasks and actors within a job.  Each field of ``runtime_env``` has its own cache size which defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Rayl e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
+
+When the cache size limit is exceeded, resources not currently used by any actor, task or job will be deleted.
+
+To disable all deletion behavior (for example, for debugging purposes) you may set the environment variable ``RAY_runtime_env_skip_local_gc`` to ``1`` on each node in your cluster before starting Ray.
 
 Inheritance
 """""""""""
