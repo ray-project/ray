@@ -165,6 +165,18 @@
 #     prepare: python wait_cluster.py 20 900
 #     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
+- name: k8s_dask_on_ray_large_scale_test_no_spilling
+  cluster:
+    app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/dask_on_ray_stress_compute_k8s.yaml
+    compute_on_k8s: True
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 21 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+  stable: false
+
 # Test large scale dask on ray test without spilling.
 - name: dask_on_ray_large_scale_test_no_spilling
   team: core
