@@ -64,8 +64,9 @@ def _get_conda_env_name(conda_env_path: str) -> str:
 
 
 def create_conda_env_if_needed(conda_yaml_file: str,
-                            prefix: str,
-                            logger: Optional[logging.Logger] = None) -> None:
+                               prefix: str,
+                               logger: Optional[logging.Logger] = None
+                               ) -> None:
     """
     Given a conda YAML, creates a conda environment containing the required
     dependencies if such a conda environment doesn't already exist.
