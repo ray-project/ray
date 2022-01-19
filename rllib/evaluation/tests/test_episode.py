@@ -83,6 +83,7 @@ class EchoPolicy(Policy):
 
 class EpisodeEnv(MultiAgentEnv):
     def __init__(self, episode_length, num):
+        super().__init__()
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
         self.dones = set()
         self.observation_space = self.agents[0].observation_space
