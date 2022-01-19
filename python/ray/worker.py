@@ -616,7 +616,7 @@ class RayContext(BaseContext, Mapping):
     protocol_version = Optional[str]
     address_info: Dict[str, Optional[str]]
 
-    def __init__(self, address_info: dict):
+    def __init__(self, address_info: Dict[str, Optional[str]]):
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(
             sys.version_info[0], sys.version_info[1], sys.version_info[2])
@@ -625,7 +625,7 @@ class RayContext(BaseContext, Mapping):
         # No client protocol version since this driver was intiialized
         # directly
         self.protocol_version = None
-        self.address_info = dict(address_info)
+        self.address_info = address_info
 
     def __getitem__(self, key):
         if log_once("ray_context_getitem"):
