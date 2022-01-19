@@ -46,8 +46,7 @@
 # Additional tags are:
 # - "team:ml": Indicating that all tests in this file are the responsibility of
 #   the ML Team.
-# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
-# - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
+# - "gpu_rllib_X": Indicating that a test needs to be run in the GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.yaml.
 # - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
@@ -205,13 +204,33 @@ py_test(
 
 # DDPG
 py_test(
-    name = "learning_tests_pendulum_ddpg",
+    name = "learning_tests_pendulum_ddpg_tf",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:ml", "gpu_rllib_2"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg"]
+    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=tf"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ddpg_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "gpu_rllib_2"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=tf2"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ddpg_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "gpu_rllib_2"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=torch"]
 )
 
 py_test(
@@ -505,7 +524,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac_tf1",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:ml", "gpu_rllib_1"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -515,7 +534,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac_tf2",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:ml", "gpu_rllib_1"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -525,7 +544,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac_torch",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:ml", "gpu_rllib_1"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -2636,7 +2655,7 @@ py_test(
 
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
-    tags = ["team:ml", "gpu"],
+    tags = ["team:ml", "gpu_rllib_1"],
     size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
