@@ -31,6 +31,7 @@ def ray_init_with_task_retry_delay():
         "object_store_memory": 150 * 1024 * 1024,
     }],
     indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on CI")
 def test_actor_spilled(ray_start_regular):
     object_store_memory = 150 * 1024 * 1024
 

@@ -518,6 +518,9 @@ def test_two_custom_resources(ray_start_cluster):
     wait_for_condition(
         lambda: len(set(ray.get([foo.remote() for _ in range(6)]))) == 2)
 
+    # Make sure the resource view is refreshed.
+    time.sleep(1)
+
     @ray.remote(resources={"CustomResource1": 1})
     def f():
         time.sleep(0.001)

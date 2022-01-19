@@ -93,9 +93,9 @@ _GRPC_OPTIONS = [("grpc.enable_http_proxy",
 
 
 def use_gcs_for_bootstrap():
-    import os
     from ray._private.gcs_pubsub import gcs_pubsub_enabled
-    ret = os.environ.get("RAY_bootstrap_with_gcs") not in (None, "0", "false")
+    from ray._raylet import Config
+    ret = Config.bootstrap_with_gcs()
     if ret:
         assert gcs_pubsub_enabled()
     return ret

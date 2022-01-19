@@ -460,6 +460,7 @@ class Monitor:
 
     def run(self):
         # Register signal handlers for autoscaler termination.
+        # Signals will not be received on windows
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         try:
