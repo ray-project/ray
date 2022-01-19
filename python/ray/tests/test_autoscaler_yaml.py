@@ -274,8 +274,6 @@ class AutoscalingConfigTest(unittest.TestCase):
         # Check that worker config numbers were clipped to 3.
         assert prepared_config == expected_prepared
 
-
-
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
             "master/python/ray/autoscaler/aws/example-full.yaml"
