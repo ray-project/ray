@@ -96,7 +96,7 @@ Obtain the head IP address
 
 Next, we'll want to obtain a hostname and a node IP address for the head node. This way, when we start worker nodes, we'll be able to properly connect to the right head node.
 
-.. literalinclude:: /cluster/examples/slurm-basic.sh
+.. literalinclude:: /ray-cluster/examples/slurm-basic.sh
    :language: bash
    :start-after: __doc_head_address_start__
    :end-before: __doc_head_address_end__
@@ -115,7 +115,7 @@ and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
 more resources than allocated. We also need to explictly
 indicate the ``node-ip-address`` for the Ray head runtime:
 
-.. literalinclude:: /cluster/examples/slurm-basic.sh
+.. literalinclude:: /ray-cluster/examples/slurm-basic.sh
    :language: bash
    :start-after: __doc_head_ray_start__
    :end-before: __doc_head_ray_end__
@@ -127,7 +127,7 @@ Starting the Ray worker nodes
 
 Below, we do the same thing, but for each worker. Make sure the Ray head and Ray worker processes are not started on the same node.
 
-.. literalinclude:: /cluster/examples/slurm-basic.sh
+.. literalinclude:: /ray-cluster/examples/slurm-basic.sh
    :language: bash
    :start-after: __doc_worker_ray_start__
    :end-before: __doc_worker_ray_end__
@@ -137,7 +137,7 @@ Submitting your script
 
 Finally, you can invoke your Python script:
 
-.. literalinclude:: /cluster/examples/slurm-basic.sh
+.. literalinclude:: /ray-cluster/examples/slurm-basic.sh
    :language: bash
    :start-after: __doc_script_start__
 

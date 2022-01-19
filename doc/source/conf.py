@@ -262,13 +262,11 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-ray_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
-all_toc_libs = ["cluster"] + ray_libs
-
+# All doc libs start with a "ray-" prefix.
+all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
     exclude_patterns += all_toc_libs
-
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.

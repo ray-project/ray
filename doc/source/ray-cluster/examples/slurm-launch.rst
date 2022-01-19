@@ -5,4 +5,4 @@
 slurm-launch.py
 ~~~~~~~~~~~~~~~
 
-.. literalinclude:: /cluster/examples/slurm-launch.py
+.. literalinclude:: /ray-cluster/examples/slurm-launch.py

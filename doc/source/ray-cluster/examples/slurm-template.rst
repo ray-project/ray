@@ -5,5 +5,5 @@
 slurm-template.sh
 ~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: /cluster/examples/slurm-template.sh
+.. literalinclude:: /ray-cluster/examples/slurm-template.sh
     :language: bash

@@ -247,14 +247,14 @@ Papers
    :maxdepth: -1
    :caption: Multi-node Ray
 
-   cluster/index.rst
-   cluster/quickstart.rst
-   cluster/guide.rst
-   Ray Job Submission <cluster/job-submission.rst>
-   cluster/ray-client.rst
-   cluster/reference.rst
-   cluster/cloud.rst
-   cluster/deploy.rst
+   ray-cluster/index.rst
+   ray-cluster/quickstart.rst
+   ray-cluster/guide.rst
+   Ray Job Submission <ray-cluster/job-submission.rst>
+   ray-cluster/ray-client.rst
+   ray-cluster/reference.rst
+   ray-cluster/cloud.rst
+   ray-cluster/deploy.rst
 
 .. toctree::
    :hidden:

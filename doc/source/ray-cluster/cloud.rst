@@ -21,7 +21,7 @@ Ray with cloud providers
 .. toctree::
     :hidden:
 
-    /cluster/aws-tips.rst
+    /ray-cluster/aws-tips.rst
 
 .. tabs::
     .. group-tab:: AWS
