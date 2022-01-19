@@ -1,8 +1,6 @@
 import json
 import pathlib
-import platform
 from pprint import pformat
-import sys
 import os
 from unittest.mock import MagicMock
 
