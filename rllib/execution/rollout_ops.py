@@ -406,7 +406,7 @@ class SelectExperiences:
 
     def __init__(self,
                  policy_ids: Optional[Container[PolicyID]] = None,
-                 local_worker: Optional[RolloutWorker] = None):
+                 local_worker: Optional["RolloutWorker"] = None):
         """Initializes a SelectExperiences instance.
 
         Args:
