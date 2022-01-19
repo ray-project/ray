@@ -424,9 +424,15 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
+    # For cgroups v1:
     memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    # For cgroups v2:
+    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+    elif os.path.exists(memory_limit_filename_v2):
+        with open(memory_limit_filename_v2, "r") as f:
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
@@ -567,9 +573,15 @@ def get_used_memory():
     # Try to accurately figure out the memory usage if we are in a docker
     # container.
     docker_usage = None
+    # For cgroups v1:
     memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    # For cgroups v2:
+    memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     if os.path.exists(memory_usage_filename):
         with open(memory_usage_filename, "r") as f:
+            docker_usage = int(f.read())
+    elif os.path.exists(memory_usage_filename_v2):
+        with open(memory_usage_filename_v2, "r") as f:
             docker_usage = int(f.read())
 
     # Use psutil if it is available.
