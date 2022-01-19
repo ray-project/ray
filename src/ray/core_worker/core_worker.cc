@@ -473,18 +473,18 @@ void CoreWorker::Shutdown() {
     // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
-
-  // Running in a io_thread_.
+]
   io_service_.stop();
+  if (gcs_client_) {
+    // TODO(sang): This causes a thread-safety bug because
+    // it invalidates a pointer that's used by a different thread.
+    // We should run Disconnect in a io_service thread.
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    gcs_client_->Disconnect();
+  }
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
   if (io_thread_.joinable()) {
     io_thread_.join();
-  }
-  // Disconnect should be done after joining the io thread because
-  // Disconnect deallocates some pointers that could be used by io_service_.
-  if (gcs_client_) {
-    RAY_LOG(INFO) << "Disconnecting a GCS client.";
-    gcs_client_->Disconnect();
   }
 
   if (options_.worker_type == WorkerType::WORKER) {
