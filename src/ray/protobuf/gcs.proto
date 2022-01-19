@@ -269,7 +269,9 @@ message JobConfig {
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
-  // The default lifetime of actors with lifetime not specified explicitly at runtime.
+  // The default lifetime of actors in this job.
+  // If the lifetime of an actor is not specified explicitly at runtime, this
+  // default value will be applied.
   ActorLifetime default_actor_lifetime = 7;
 }
 

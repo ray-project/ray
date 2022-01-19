@@ -720,8 +720,8 @@ class ActorClass:
             detached = False
         else:
             raise ValueError(
-                "actor `lifetime` argument must be either 'detached', "
-                "'non_detached' or 'None'."
+                "actor `lifetime` argument must be one of 'detached', "
+                "'non_detached' and 'None'."
             )
 
         # Set the actor's default resources if not already set. First three
