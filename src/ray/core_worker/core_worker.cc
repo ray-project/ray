@@ -473,30 +473,30 @@ void CoreWorker::Shutdown() {
     // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
-]
-  io_service_.stop();
-if (gcs_client_) {
-  // TODO(sang): This causes a thread-safety bug because
-  // it invalidates a pointer that's used by a different thread.
-  // We should run Disconnect in a io_service thread.
-  RAY_LOG(INFO) << "Disconnecting a GCS client.";
-  gcs_client_->Disconnect();
-}
-RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
-if (io_thread_.joinable()) {
-  io_thread_.join();
-}
 
-if (options_.worker_type == WorkerType::WORKER) {
-  // Asyncio coroutines could still run after CoreWorker is removed because it is
-  // running in a different thread. This can cause segfault because coroutines try to
-  // access CoreWorker methods that are already garbage collected. We should complete
-  // all coroutines before shutting down in order to prevent this.
-  if (worker_context_.CurrentActorIsAsync()) {
-    options_.terminate_asyncio_thread();
+  io_service_.stop();
+  if (gcs_client_) {
+    // TODO(sang): This causes a thread-safety bug because
+    // it invalidates a pointer that's used by a different thread.
+    // We should run Disconnect in a io_service thread.
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    gcs_client_->Disconnect();
   }
-}
-RAY_LOG(INFO) << "Core worker ready to be deallocated.";
+  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
+  }
+  RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
 void CoreWorker::ConnectToRaylet() {
