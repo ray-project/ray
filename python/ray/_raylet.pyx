@@ -1277,11 +1277,10 @@ cdef class CoreWorker:
             owner_address: Owner address for this object ref.
         """
         cdef:
-            CObjectID c_object_id
+            CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
-            c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
 
