@@ -1786,7 +1786,7 @@ def build_cpp_worker_command(cpp_worker_options, bootstrap_address,
 
     Args:
         cpp_worker_options (list): The command options for CPP worker.
-        bootstrap_address (str): The bootstrap of the cluster.
+        bootstrap_address (str): The bootstrap address of the cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
