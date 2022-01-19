@@ -204,33 +204,13 @@ py_test(
 
 # DDPG
 py_test(
-    name = "learning_tests_pendulum_ddpg_tf",
+    name = "learning_tests_pendulum_ddpg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_2"],
+    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=tf"]
-)
-
-py_test(
-    name = "learning_tests_pendulum_ddpg_tf2",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_2"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=tf2"]
-)
-
-py_test(
-    name = "learning_tests_pendulum_ddpg_torch",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_2"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
-    args = ["--yaml-dir=tuned_examples/ddpg",  "--framework=torch"]
+    args = ["--yaml-dir=tuned_examples/ddpg"]
 )
 
 py_test(
@@ -514,7 +494,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -522,33 +502,13 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac_tf1",
+    name = "learning_tests_transformed_actions_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_1"],
+    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--framework=tf"]
-)
-
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac_tf2",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_1"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--framework=tf2"]
-)
-
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac_torch",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_1"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+    args = ["--yaml-dir=tuned_examples/sac"]
 )
 
 py_test(
