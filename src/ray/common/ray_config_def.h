@@ -278,7 +278,7 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
-RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "redis")
 // Feature flag to enable GCS based bootstrapping.
@@ -332,7 +332,7 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)

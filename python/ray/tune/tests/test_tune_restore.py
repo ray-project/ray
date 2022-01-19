@@ -1,6 +1,7 @@
 # coding: utf-8
 import signal
 from collections import Counter
+import multiprocessing
 import os
 import shutil
 import tempfile
@@ -78,6 +79,30 @@ class TuneRestoreTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
+# Defining the callbacks at the file level, so they can be pickled and spawned
+# in a separate process.
+class SteppingCallback(Callback):
+    def __init__(self, driver_semaphore, trainer_semaphore):
+        self.driver_semaphore = driver_semaphore
+        self.trainer_semaphore = trainer_semaphore
+
+    def on_step_end(self, iteration, trials, **info):
+        self.driver_semaphore.release()  # Driver should continue
+        self.trainer_semaphore.acquire()  # Wait until released
+
+
+def _run(local_dir, driver_semaphore, trainer_semaphore):
+    def _train(config):
+        for i in range(7):
+            tune.report(val=i)
+
+    tune.run(
+        _train,
+        local_dir=local_dir,
+        name="interrupt",
+        callbacks=[SteppingCallback(driver_semaphore, trainer_semaphore)])
+
+
 class TuneInterruptionTest(unittest.TestCase):
     def setUp(self) -> None:
         # Wait up to five seconds for placement groups when starting a trial
@@ -87,29 +112,16 @@ class TuneInterruptionTest(unittest.TestCase):
         os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
     def testExperimentInterrupted(self):
-        import multiprocessing
-
-        trainer_semaphore = multiprocessing.Semaphore()
-        driver_semaphore = multiprocessing.Semaphore()
-
-        class SteppingCallback(Callback):
-            def on_step_end(self, iteration, trials, **info):
-                driver_semaphore.release()  # Driver should continue
-                trainer_semaphore.acquire()  # Wait until released
-
-        def _run(local_dir):
-            def _train(config):
-                for i in range(7):
-                    tune.report(val=i)
-
-            tune.run(
-                _train,
-                local_dir=local_dir,
-                name="interrupt",
-                callbacks=[SteppingCallback()])
-
         local_dir = tempfile.mkdtemp()
-        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        # Unix platforms may default to "fork", which is problematic with
+        # multithreading and GRPC. The child process should always be spawned.
+        mp_ctx = multiprocessing.get_context("spawn")
+        driver_semaphore = mp_ctx.Semaphore()
+        trainer_semaphore = mp_ctx.Semaphore()
+        process = mp_ctx.Process(
+            target=_run,
+            args=(local_dir, driver_semaphore, trainer_semaphore),
+            name="tune_interrupt")
         process.daemon = False
         process.start()
 

@@ -608,6 +608,7 @@ cc_library(
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -854,6 +855,18 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_function_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_function_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1618,6 +1631,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1714,6 +1728,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
