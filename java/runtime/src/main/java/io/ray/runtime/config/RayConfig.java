@@ -79,7 +79,7 @@ public class RayConfig {
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(
-          redisAddress != null, "Redis address must be set in worker mode.");
+          bootstrapAddress != null, "Bootstrap address must be set in worker mode.");
     }
   }
 
@@ -162,14 +162,13 @@ public class RayConfig {
       rayletSocketName = config.getString("ray.raylet.socket-name");
     }
 
-    // Redis configurations.
+    // Bootstrap configurations.
     String bootstrap_address = config.getString("ray.address");
     if (StringUtils.isNotBlank(bootstrap_address)) {
       setBootstrapAddress(bootstrap_address);
     } else {
       // We need to start gcs using `RunManager` for local cluster
-      this.redisAddress = null;
-      this.gcsAddress = null;
+      this.bootstrapAddress = null;
     }
 
     redisPassword = config.getString("ray.redis.password");
@@ -260,7 +259,7 @@ public class RayConfig {
     dynamic.put("ray.raylet.socket-name", rayletSocketName);
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
-    dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.address", bootstrapAddress);
     dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());

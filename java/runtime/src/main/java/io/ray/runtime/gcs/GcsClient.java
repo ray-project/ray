@@ -24,8 +24,8 @@ public class GcsClient {
 
   private GlobalStateAccessor globalStateAccessor;
 
-  public GcsClient(String redisAddress, String redisPassword) {
-    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  public GcsClient(String bootstrapAddress, String redisPassword) {
+    globalStateAccessor = GlobalStateAccessor.getInstance(bootstrapAddress, redisPassword);
   }
 
   /**

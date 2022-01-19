@@ -34,16 +34,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(JNIE
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
- * Method:    nativeCreateGlobalStateAccessorFromGcsAddress
- * Signature: (Ljava/lang/String;)J
- */
-JNIEXPORT jlong JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessorFromGcsAddress(
-    JNIEnv *,
-    jobject,
-    jstring);
-/*
- * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeDestroyGlobalStateAccessor
  * Signature: (J)V
  */
