@@ -99,6 +99,13 @@ spec:
           imagePullPolicy: Always
           command: ["/bin/sh"]
           args: ["-c", "$HOME/anaconda3/bin/python /home/ray/run_autoscaler_with_retries.py --redis-password 5241590000000000"]
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1024Mi
+            requests:
+              cpu: 250m
+              memory: 512Mi
           volumeMounts:
             - mountPath: /autoscaler/
               name: autoscaler-config

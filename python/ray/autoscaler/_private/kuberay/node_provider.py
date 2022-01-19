@@ -6,7 +6,13 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED)
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UP_TO_DATE,
+    STATUS_UPDATE_FAILED,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE)
 
 # Terminology:
 
@@ -50,7 +56,7 @@ def to_label_selector(tags: Dict[str, str]) -> str:
 
 def status_tag(pod: Dict[str, Any]) -> str:
     """Convert pod state to Ray autoscaler status tag."""
-    if "containerStatuses" not in pod["status"]:
+    if "containerStatuses" not in pod["status"] or not pod["status"]["containerStatuses"]:
         return "pending"
 
     state = pod["status"]["containerStatuses"][0]["state"]
@@ -71,11 +77,11 @@ def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
     tags = {"ray-node-status": status_tag}
 
     if labels["ray.io/node-type"] == "head":
-        tags["ray-node-type"] = "head"
-        tags["ray-user-node-type"] = "head-group"
+        tags[TAG_RAY_NODE_KIND] = NODE_KIND_HEAD
+        tags[TAG_RAY_USER_NODE_TYPE] = "head-group"
     else:
-        tags["ray-node-type"] = "worker"
-        tags["ray-user-node-type"] = labels["ray.io/group"]
+        tags[TAG_RAY_NODE_KIND] = NODE_KIND_WORKER
+        tags[TAG_RAY_USER_NODE_TYPE] = labels["ray.io/group"]
 
     return tags
 
@@ -212,23 +218,16 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict."""
-        data = self._get("pods/")
-
+        label_filters = to_label_selector({
+            "ray.io/cluster": self.cluster_name,
+        }
+        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
             labels = pod["metadata"]["labels"]
-            if labels.get("ray.io/cluster") == "raycluster-complete":
-
-                def matches(tags, tag_filters):
-                    for k, v in tag_filters.items():
-                        if k not in tags or tags[k] != v:
-                            return False
-                    return True
-
-                tags = make_node_tags(labels, status_tag(pod))
-                if matches(tags, tag_filters):
-                    result.append(pod["metadata"]["name"])
-
+            tags = make_node_tags(labels, status_tag(pod))
+            if tag_filters.items() <= tags.items():
+                result.append(pod["metadata"]["name"])
         return result
 
     def terminate_node(self, node_id: str) -> None:

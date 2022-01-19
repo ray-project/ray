@@ -7,14 +7,14 @@ Going forward, we would like to make this way of deployment accessible and seaml
 all Ray users and standardize Ray deployment on Kubernetes around Kuberay's operator.
 Presently you should consider this integration a minimal viable product that is not polished
 enough for general use and prefer the [Kubernetes integration](kubernetes.rst) for running
-Ray on Kubernetes. If you are brave enought to try the Kuberay integration out, this documentation
+Ray on Kubernetes. If you are brave enough to try the Kuberay integration out, this documentation
 is for you! We would love your feedback as a [Github issue](https://github.com/ray-project/ray/issues)
 including `[Kuberay]` in the title.
 ```
 
 Here we describe how you can deploy a Ray cluster on Kuberay. The following instructions are for
-Minikube but the deployment works the same way on a real Kubernetes cluster. First we make sure
-Minikube is initialized with
+Minikube but the deployment works the same way on a real Kubernetes cluster. You need to have at
+least 4 CPUs to run this example. First we make sure Minikube is initialized with
 
 ```shell
 minikube start

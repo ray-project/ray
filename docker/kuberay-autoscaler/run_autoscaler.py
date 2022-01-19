@@ -13,10 +13,8 @@ AUTOSCALING_CONFIG_PATH = "/autoscaler/ray_bootstrap_config.yaml"
 
 
 def setup_logging() -> None:
-    """Setup logging to
-    - log at INFO level to standard autoscaler log location. (logs viewable in UI)
-    - log at DEBUG level to pod stout.
-      (logs viewable with `kubectl logs <head-pod> -c autoscaler`)
+    """Log to standard autoscaler log location (logs viewable in UI) and
+    pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     # Write logs at info level to monitor.log.
     setup_component_logger(
