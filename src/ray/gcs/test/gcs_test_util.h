@@ -83,6 +83,26 @@ struct Mocker {
     return request;
   }
 
+  static std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
+      const PlacementGroupID &placement_group_id,
+      absl::flat_hash_map<std::string, double> &unit_resource, int bundles_size = 1) {
+    std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+    for (int i = 0; i < bundles_size; i++) {
+      rpc::Bundle bundle;
+      auto mutable_bundle_id = bundle.mutable_bundle_id();
+      // The bundle index is start from 1.
+      mutable_bundle_id->set_bundle_index(i + 1);
+      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+      auto mutable_unit_resources = bundle.mutable_unit_resources();
+      for (auto &resource : unit_resource) {
+        mutable_unit_resources->insert({resource.first, resource.second});
+      }
+      bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle));
+    }
+    return bundle_specs;
+  }
+
+  // TODO(@clay4444): Remove this once we did the batch rpc request refactor.
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {
@@ -158,27 +178,6 @@ struct Mocker {
     return actor_table_data;
   }
 
-  static std::shared_ptr<rpc::TaskTableData> GenTaskTableData(
-      const std::string &job_id, const std::string &task_id) {
-    auto task_table_data = std::make_shared<rpc::TaskTableData>();
-    rpc::Task task;
-    rpc::TaskSpec task_spec;
-    task_spec.set_job_id(job_id);
-    task_spec.set_task_id(task_id);
-    task.mutable_task_spec()->CopyFrom(task_spec);
-    task_table_data->mutable_task()->CopyFrom(task);
-    return task_table_data;
-  }
-
-  static std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(
-      const std::string &task_id, const std::string &node_id) {
-    auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
-    task_lease_data->set_task_id(task_id);
-    task_lease_data->set_node_manager_id(node_id);
-    task_lease_data->set_timeout(9999);
-    return task_lease_data;
-  }
-
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
       const NodeID &node_id) {
     auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
@@ -196,6 +195,22 @@ struct Mocker {
     auto worker_table_data = std::make_shared<rpc::WorkerTableData>();
     worker_table_data->set_timestamp(std::time(nullptr));
     return worker_table_data;
+  }
+
+  static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
+      const JobID &job_id, const std::string &ray_namespace,
+      uint32_t num_java_worker_per_process) {
+    auto job_config_data = std::make_shared<rpc::JobConfig>();
+    job_config_data->set_ray_namespace(ray_namespace);
+    job_config_data->set_num_java_workers_per_process(num_java_worker_per_process);
+
+    auto job_table_data = std::make_shared<rpc::JobTableData>();
+    job_table_data->set_job_id(job_id.Binary());
+    job_table_data->mutable_config()->CopyFrom(*job_config_data);
+
+    auto add_job_request = std::make_shared<rpc::AddJobRequest>();
+    add_job_request->mutable_data()->CopyFrom(*job_table_data);
+    return add_job_request;
   }
 };
 

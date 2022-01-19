@@ -1,3 +1,4 @@
+import os
 from typing import Iterable, List, Optional, Dict, Set, Tuple, Union
 import abc
 import warnings
@@ -11,13 +12,17 @@ from ray.util.ml_utils.dict import flatten_dict
 from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.train.callbacks import TrainingCallback
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
-                                 TIME_TOTAL_S, TIMESTAMP, PID)
+                                 TIME_TOTAL_S, TIMESTAMP, PID,
+                                 TRAIN_CHECKPOINT_SUBDIR)
+from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirMixin:
-    def start_training(self, logdir: str, **info):
+class TrainingLogdirCallback(TrainingCallback, abc.ABC):
+    """Abstract Train callback class with logging directory."""
+
+    def start_training(self, logdir: str, config: Dict, **info):
         if self._logdir:
             logdir_path = Path(self._logdir)
         else:
@@ -36,8 +41,7 @@ class TrainingLogdirMixin:
         return Path(self._logdir_path)
 
 
-class TrainingSingleFileLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Args:
@@ -84,7 +88,7 @@ class TrainingSingleFileLoggingCallback(
         return logdir_path.joinpath(Path(filename))
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir=logdir, **info)
 
         if not self._filename:
             filename = self._default_filename
@@ -117,7 +121,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir=logdir, **info)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
@@ -139,8 +143,7 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
                 loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
 
 
-class TrainingSingleWorkerLoggingCallback(
-        TrainingLogdirMixin, TrainingCallback, metaclass=abc.ABCMeta):
+class TrainingSingleWorkerLoggingCallback(TrainingLogdirCallback, abc.ABC):
     """Abstract Train logging callback class.
 
     Allows only for single-worker logging.
@@ -174,6 +177,96 @@ class TrainingSingleWorkerLoggingCallback(
         return worker_to_log
 
 
+class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
+    """MLflow Logger to automatically log Train results and config to MLflow.
+
+    MLflow (https://mlflow.org) Tracking is an open source library for
+    recording and querying experiments. This Ray Train callback
+    sends information (config parameters, training results & metrics,
+    and artifacts) to MLflow for automatic experiment tracking.
+
+    Args:
+        tracking_uri (Optional[str]): The tracking URI for where to manage
+            experiments and runs. This can either be a local file path or a
+            remote server. If None is passed in, the logdir of the trainer
+            will be used as the tracking URI.
+            This arg gets passed directly to mlflow initialization.
+        registry_uri (Optional[str]): The registry URI that gets passed
+            directly to mlflow initialization. If None is passed in, the
+            logdir of the trainer will be used as the registry URI.
+        experiment_id (Optional[str]): The experiment id of an already
+            existing experiment. If not
+            passed in, experiment_name will be used.
+        experiment_name (Optional[str]): The experiment name to use for this
+            Train run.
+            If the experiment with the name already exists with MLflow,
+            it will be used. If not, a new experiment will be created with
+            this name. At least one of ``experiment_id`` or
+            ``experiment_name`` must be passed in.
+        tags (Optional[Dict]):  An optional dictionary of string keys and
+            values to set as tags on the run
+        save_artifact (bool): If set to True, automatically save the entire
+            contents of the Train local_dir as an artifact to the
+            corresponding run in MlFlow.
+        logdir (Optional[str]): Path to directory where the results file
+            should be. If None, will be set by the Trainer. If no tracking
+            uri or registry uri are passed in, the logdir will be used for
+            both.
+        worker_to_log (int): Worker index to log. By default, will log the
+            worker with index 0.
+    """
+
+    def __init__(self,
+                 tracking_uri: Optional[str] = None,
+                 registry_uri: Optional[str] = None,
+                 experiment_id: Optional[str] = None,
+                 experiment_name: Optional[str] = None,
+                 tags: Optional[Dict] = None,
+                 save_artifact: bool = False,
+                 logdir: Optional[str] = None,
+                 worker_to_log: int = 0):
+        super().__init__(logdir=logdir, worker_to_log=worker_to_log)
+
+        self.tracking_uri = tracking_uri
+        self.registry_uri = registry_uri
+        self.experiment_id = experiment_id
+        self.experiment_name = experiment_name
+        self.tags = tags
+
+        self.save_artifact = save_artifact
+        self.mlflow_util = MLflowLoggerUtil()
+
+    def start_training(self, logdir: str, config: Dict, **info):
+        super().start_training(logdir=logdir, config=config, **info)
+
+        tracking_uri = self.tracking_uri or os.path.join(
+            str(self.logdir), "mlruns")
+        registry_uri = self.registry_uri or os.path.join(
+            str(self.logdir), "mlruns")
+
+        self.mlflow_util.setup_mlflow(
+            tracking_uri=tracking_uri,
+            registry_uri=registry_uri,
+            experiment_id=self.experiment_id,
+            experiment_name=self.experiment_name,
+            create_experiment_if_not_exists=True)
+
+        self.mlflow_util.start_run(tags=self.tags, set_active=True)
+        self.mlflow_util.log_params(params_to_log=config)
+
+    def handle_result(self, results: List[Dict], **info):
+        result = results[self._workers_to_log]
+
+        self.mlflow_util.log_metrics(
+            metrics_to_log=result, step=result[TRAINING_ITERATION])
+
+    def finish_training(self, error: bool = False, **info):
+        checkpoint_dir = self.logdir.joinpath(TRAIN_CHECKPOINT_SUBDIR)
+        if self.save_artifact and checkpoint_dir.exists():
+            self.mlflow_util.save_artifacts(dir=str(checkpoint_dir))
+        self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
+
+
 class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     """Logs Train results in TensorboardX format.
 
@@ -189,7 +282,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir=logdir, **info)
 
         try:
             from tensorboardX import SummaryWriter

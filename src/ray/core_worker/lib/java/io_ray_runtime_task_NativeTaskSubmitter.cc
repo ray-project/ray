@@ -144,6 +144,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
   std::string name = "";
+  bool is_detached = false;
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
@@ -158,6 +159,12 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     if (java_name) {
       name = JavaStringToNativeString(env, java_name);
     }
+    auto java_actor_lifetime = (jobject)env->GetObjectField(
+        actorCreationOptions, java_actor_creation_options_lifetime);
+    RAY_CHECK(java_actor_lifetime != nullptr);
+    jint actor_lifetime_value =
+        env->GetIntField(java_actor_lifetime, java_actor_lifetime_value);
+    is_detached = (actor_lifetime_value == 0);
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
@@ -240,7 +247,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       resources,
       dynamic_worker_options,
-      /*is_detached=*/false,
+      is_detached,
       name,
       ray_namespace,
       /*is_asyncio=*/false,

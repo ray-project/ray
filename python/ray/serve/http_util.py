@@ -211,8 +211,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    routes = fastapi_app.routes
-    for route in routes:
+    routes_to_remove = list()
+    for route in fastapi_app.routes:
         if not isinstance(route, APIRoute):
             continue
 
@@ -229,4 +229,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
-            routes.remove(route)
+            routes_to_remove.append(route)
+    fastapi_app.routes[:] = [
+        r for r in fastapi_app.routes if r not in routes_to_remove
+    ]

@@ -89,7 +89,7 @@ def test_list_named_actors_ray_kill(ray_start_regular):
 
 def test_list_named_actors_detached(ray_start_regular):
     """Verify that names are returned for detached actors until killed."""
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     driver_script = """
 import ray
@@ -115,7 +115,7 @@ assert "sad" in ray.util.list_named_actors()
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_list_named_actors_namespace(ray_start_regular):
     """Verify that actor names are filtered on namespace by default."""
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     driver_script_1 = """
 import ray

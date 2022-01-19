@@ -59,6 +59,10 @@ def test_ray_debugger_commands(shutdown_only):
     result1 = f.remote()
     result2 = f.remote()
 
+    wait_for_condition(lambda: len(
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
+
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
     p = pexpect.spawn("ray debug")
@@ -146,7 +150,7 @@ def test_ray_debugger_recursive(shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_job_exit_cleanup(ray_start_regular):
-    address = ray_start_regular["redis_address"]
+    address = ray_start_regular["address"]
 
     driver_script = """
 import time

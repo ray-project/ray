@@ -173,9 +173,9 @@ void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
                                         std::shared_ptr<WorkerInterface> worker,
                                         PopWorkerStatus status) {
   // Call back this function asynchronously to make sure executed in different stack.
-  io_service_->post([this, callback, worker, status]() {
-    PopWorkerCallbackInternal(callback, worker, status);
-  });
+  io_service_->post([this, callback, worker,
+                     status]() { PopWorkerCallbackInternal(callback, worker, status); },
+                    "WorkerPool.PopWorkerCallback");
 }
 
 void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
@@ -1480,6 +1480,7 @@ std::string WorkerPool::DebugString() const {
            << entry.second.util_io_worker_state.pending_io_tasks.size();
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
+  result << "\n" << runtime_env_manager_.DebugString();
   return result.str();
 }
 

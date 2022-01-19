@@ -98,7 +98,6 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
@@ -144,7 +143,6 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
-include "includes/gcs_client.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -1025,14 +1023,6 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.destroy_event_loop_if_exists()
 
 
-def connect_to_gcs(ip, port, password):
-    return GcsClient.make_from_address(ip, port, password)
-
-
-def disconnect_from_gcs(gcs_client):
-    gcs_client.disconnect()
-
-
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -1115,10 +1105,6 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
-
-    def get_gcs_client(self):
-        return GcsClient.make_from_existing(
-            CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
 
     def notify_raylet(self):
         with nogil:
@@ -1278,7 +1264,6 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
         # TODO(suquark): This method does not support put objects to
@@ -1317,16 +1302,12 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
-        put_small_object_in_memory_store = (
-            RayConfig.instance().put_small_object_in_memory_store() and
-            inline_small_object)
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -1339,8 +1320,7 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
-            if self.is_local_mode or (put_small_object_in_memory_store
-               and <int64_t>total_bytes < put_threshold):
+            if self.is_local_mode:
                 contained_object_refs = (
                         CCoreWorkerProcess.GetCoreWorker().
                         GetObjectRefs(contained_object_ids))
@@ -1642,7 +1622,8 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
-                          double num_method_cpus):
+                          double num_method_cpus,
+                          c_string concurrency_group_name):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -1665,7 +1646,9 @@ cdef class CoreWorker:
             return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                 c_actor_id,
                 ray_function,
-                args_vector, CTaskOptions(name, num_returns, c_resources))
+                args_vector,
+                CTaskOptions(
+                    name, num_returns, c_resources, concurrency_group_name))
             if return_refs.has_value():
                 return VectorToObjectRefs(return_refs.value())
             else:

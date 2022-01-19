@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
 import sys
+import time
 import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
+from unittest import mock
 from ray._private.test_utils import run_string_as_driver
 
 import ray
@@ -379,6 +381,39 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
     ray.kill(a)
     wait_for_condition(check_internal_kv_gced)
     wait_for_condition(lambda: check_local_files_gced(cluster))
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def skip_local_gc():
+    with mock.patch.dict(os.environ, {
+            "RAY_runtime_env_skip_local_gc": "1",
+    }):
+        print("RAY_runtime_env_skip_local_gc enabled.")
+        yield
+
+
+class TestSkipLocalGC:
+    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, source):
+        cluster, address = start_cluster
+        ray.init(
+            address, namespace="test", runtime_env={"working_dir": source})
+
+        @ray.remote
+        class A:
+            def test_import(self):
+                import test_module
+                test_module.one()
+
+        a = A.remote()
+        ray.get(a.test_import.remote())  # Check working_dir was downloaded
+
+        ray.shutdown()
+
+        time.sleep(1)  # Give time for GC to potentially happen
+        assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":
