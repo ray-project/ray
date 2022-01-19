@@ -28,12 +28,27 @@ void ResetCoreWorkerProcess(CoreWorkerProcessImpl *process) {
   core_worker_process = process;
 }
 
+void ResetCoreWorkerProcess() { ResetCoreWorkerProcess(nullptr); }
+
 }  // namespace
 
 void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
   RAY_CHECK(!core_worker_process)
       << "The process is already initialized for core worker.";
   ResetCoreWorkerProcess(new CoreWorkerProcessImpl(options));
+
+  // NOTE(mwtian): destruction order at exit is very subtle. Find a way to remove this
+  // and not destruct core_worker_process on Windows.
+#ifdef _WIN32
+  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
+  // constructor. We assume that spdlog has been initialized before this line. When the
+  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
+  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
+  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
+  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
+  // `CoreWorkerProcess` destructor.
+  RAY_CHECK(std::atexit(ResetCoreWorkerProcess) == 0);
+#endif
 }
 
 void CoreWorkerProcess::Shutdown() {
@@ -42,7 +57,7 @@ void CoreWorkerProcess::Shutdown() {
     return;
   }
   core_worker_process->ShutdownDriver();
-  ResetCoreWorkerProcess(nullptr);
+  ResetCoreWorkerProcess();
 }
 
 bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
@@ -60,7 +75,7 @@ void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
 void CoreWorkerProcess::RunTaskExecutionLoop() {
   EnsureInitialized(/*quick_exit*/ false);
   core_worker_process->RunWorkerTaskExecutionLoop();
-  ResetCoreWorkerProcess(nullptr);
+  ResetCoreWorkerProcess();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
