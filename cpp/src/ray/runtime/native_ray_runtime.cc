@@ -29,22 +29,18 @@ NativeRayRuntime::NativeRayRuntime() {
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
   task_executor_ = std::make_unique<TaskExecutor>();
 
+  auto bootstrap_address = ConfigInternal::Instance().bootstrap_ip;
+  if (bootstrap_address.empty()) {
+    bootstrap_address = GetNodeIpAddress();
+  }
+  bootstrap_address =
+      bootstrap_address + ":" + std::to_string(ConfigInternal::Instance().bootstrap_port);
   if (::RayConfig::instance().bootstrap_with_gcs()) {
-    auto gcs_address = ConfigInternal::Instance().gcs_ip;
-    if (gcs_address.empty()) {
-      gcs_address = GetNodeIpAddress();
-    }
-    global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-        gcs_address + ":" + std::to_string(ConfigInternal::Instance().gcs_port));
+    global_state_accessor_ =
+        ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
   } else {
-    auto redis_ip = ConfigInternal::Instance().redis_ip;
-    if (redis_ip.empty()) {
-      redis_ip = GetNodeIpAddress();
-    }
-    std::string redis_address =
-        redis_ip + ":" + std::to_string(ConfigInternal::Instance().redis_port);
     global_state_accessor_ = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-        redis_address, ConfigInternal::Instance().redis_password);
+        bootstrap_address, ConfigInternal::Instance().redis_password);
   }
 }
 

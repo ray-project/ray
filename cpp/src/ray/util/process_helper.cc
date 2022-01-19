@@ -73,12 +73,8 @@ std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateA
 }
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
-  std::string bootstrap_ip = ::RayConfig::instance().bootstrap_with_gcs()
-                                 ? ConfigInternal::Instance().gcs_ip
-                                 : ConfigInternal::Instance().redis_ip;
-  int bootstrap_port = ::RayConfig::instance().bootstrap_with_gcs()
-                           ? ConfigInternal::Instance().gcs_port
-                           : ConfigInternal::Instance().redis_port;
+  std::string bootstrap_ip = ConfigInternal::Instance().bootstrap_ip;
+  int bootstrap_port = ConfigInternal::Instance().bootstrap_port;
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
@@ -133,7 +129,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   gcs::GcsClientOptions gcs_options =
       ::RayConfig::instance().bootstrap_with_gcs()
           ? gcs::GcsClientOptions(bootstrap_address)
-          : gcs::GcsClientOptions(bootstrap_ip, ConfigInternal::Instance().redis_port,
+          : gcs::GcsClientOptions(bootstrap_ip, ConfigInternal::Instance().bootstrap_port,
                                   ConfigInternal::Instance().redis_password);
 
   CoreWorkerOptions options;
@@ -172,8 +168,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
 void ProcessHelper::RayStop() {
   CoreWorkerProcess::Shutdown();
-  if (ConfigInternal::Instance().redis_ip.empty() ||
-      ConfigInternal::Instance().gcs_ip.empty()) {
+  if (ConfigInternal::Instance().bootstrap_ip.empty()) {
     StopRayNode();
   }
 }

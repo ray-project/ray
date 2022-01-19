@@ -15,6 +15,7 @@
 #include "config_internal.h"
 
 #include <boost/dll/runtime_symbol_info.hpp>
+#include <charconv>
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -118,13 +119,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
-    if ((::RayConfig::instance().bootstrap_with_gcs() && gcs_ip.empty()) ||
-        redis_ip.empty()) {
+    if (bootstrap_ip.empty()) {
       auto ray_address_env = std::getenv("RAY_ADDRESS");
       if (ray_address_env) {
         RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
                        << "\" from environment variable \"RAY_ADDRESS\".";
-        RAY_LOG(ERROR) << "??? " << config.address;
         SetBootstrapAddress(ray_address_env);
       }
     }
@@ -147,16 +146,13 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
 };
 
-void ConfigInternal::SetBootstrapAddress(const std::string &address) {
+void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto pos = address.find(':');
   RAY_CHECK(pos != std::string::npos);
-  if (::RayConfig::instance().bootstrap_with_gcs()) {
-    gcs_ip = address.substr(0, pos);
-    redis_port = std::stoi(address.substr(pos + 1, address.length()));
-  } else {
-    redis_ip = address.substr(0, pos);
-    redis_port = std::stoi(address.substr(pos + 1, address.length()));
-  }
+  bootstrap_ip = address.substr(0, pos);
+  auto ret = std::from_chars(address.data() + pos + 1, address.data() + address.size(),
+                             bootstrap_port);
+  RAY_CHECK(ret.ec == std::errc());
 }
 }  // namespace internal
 }  // namespace ray
