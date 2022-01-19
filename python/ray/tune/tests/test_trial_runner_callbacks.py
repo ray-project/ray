@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 import ray
 from ray import tune
+from ray.exceptions import RayActorError
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, \
@@ -67,18 +68,19 @@ class TestCallback(Callback):
 class _MockTrialExecutor(RayTrialExecutor):
     def __init__(self):
         super().__init__()
-        self.results = {}
         self.next_trial = None
-        self.failed_trial = None
+        self.results = {}
+        self.should_fail_in_fetch_result = False
 
     def fetch_result(self, trial):
-        return [self.results.get(trial, {})]
+        if self.should_fail_in_fetch_result:
+            raise RayActorError(
+                "The actor died unexpectedly before finishing this task.")
+        else:
+            return [self.results.get(trial, {})]
 
     def get_next_available_trial(self, timeout=None):
         return self.next_trial or super().get_next_available_trial()
-
-    def get_next_failed_trial(self):
-        return self.failed_trial or super().get_next_failed_trial()
 
 
 class TrialRunnerCallbacks(unittest.TestCase):
@@ -184,7 +186,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
             self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
-        self.executor.failed_trial = trials[0]
+        self.executor.next_trial = trials[0]
+        self.executor.should_fail_in_fetch_result = True
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)
         self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id,
@@ -277,7 +280,6 @@ class TrialRunnerCallbacks(unittest.TestCase):
         lc = LegacyLoggerCallback(logger_classes=DEFAULT_LOGGERS)
         callbacks = create_default_callbacks([mc1, mc2, lc, mc3], SyncConfig(),
                                              None)
-        print(callbacks)
         first_logger_pos, last_logger_pos, syncer_pos = get_positions(
             callbacks)
         self.assertLess(last_logger_pos, syncer_pos)
