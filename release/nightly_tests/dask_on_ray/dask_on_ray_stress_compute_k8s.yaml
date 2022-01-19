@@ -1,0 +1,26 @@
+cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+region: us-west-2
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: anyscale-user
+          Value: '{{env["ANYSCALE_USER"]}}'
+        - Key: anyscale-expiration
+          Value: '{{env["EXPIRATION_1D"]}}'
+  BlockDeviceMappings:
+    - DeviceName: /dev/sda1
+      Ebs:
+        VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: m5.8xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m5.8xlarge
+      min_workers: 20
+      max_workers: 20
+      use_spot: false

@@ -125,6 +125,7 @@ SERVE_NIGHTLY_TESTS = {
 
 CORE_DAILY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "k8s_dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
