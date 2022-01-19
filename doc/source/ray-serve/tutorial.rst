@@ -27,7 +27,7 @@ Ray Serve runs on top of a Ray cluster, so the next step is to start a local Ray
 
 .. note::
 
-  ``ray.init()`` will start a single-node Ray cluster on your local machine, which will allow you to use all your CPU cores to serve requests in parallel.  To start a multi-node cluster, see :doc:`../cluster/index`.
+  ``ray.init()`` will start a single-node Ray cluster on your local machine, which will allow you to use all your CPU cores to serve requests in parallel.  To start a multi-node cluster, see :doc:`../ray-cluster/index`.
 
 Next, start the Ray Serve runtime:
 

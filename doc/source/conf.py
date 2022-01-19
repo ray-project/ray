@@ -153,6 +153,7 @@ extensions = [
     "myst_parser",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
+    'sphinx_search.extension',
 ]
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
