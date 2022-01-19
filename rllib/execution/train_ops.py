@@ -525,7 +525,7 @@ class UpdateTargetNetwork:
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
             to_update = self.policies or self.local_worker.policies_to_train
-            self.workers.local_worker().foreach_trainable_policy(
+            self.workers.local_worker().foreach_policy_to_train(
                 lambda p, p_id: p_id in to_update and p.update_target())
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts

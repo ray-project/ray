@@ -224,11 +224,16 @@ class WorkerSet:
                 w.__ray_terminate__.remote()
 
     @DeveloperAPI
-    def policies_to_train(
-            self
-    ) -> Union[Set[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]:
-        """Returns the list of trainable policy ids."""
-        return self.local_worker().policies_to_train
+    def is_policy_to_train(self,
+                           policy_id: PolicyID,
+                           batch: Optional[SampleBatchType] = None) -> bool:
+        """Whether given PolicyID (optionally inside some batch) is trainable.
+        """
+        local_worker = self.local_worker()
+        if local_worker:
+            return local_worker.is_policy_to_train(policy_id, batch)
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
@@ -307,15 +312,7 @@ class WorkerSet:
         return results
 
     @DeveloperAPI
-    TODOdef trainable_policies(self) -> List[PolicyID]:
-        """Returns the list of trainable policy ids."""
-        if self.local_worker() is not None:
-            return self.local_worker().policies_to_train
-        else:
-            raise NotImplementedError
-
-    @DeveloperAPI
-    def foreach_trainable_policy(
+    def foreach_policy_to_train(
             self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
@@ -329,12 +326,12 @@ class WorkerSet:
         """
         results = []
         if self.local_worker() is not None:
-            results = self.local_worker().foreach_trainable_policy(func)
+            results = self.local_worker().foreach_policy_to_train(func)
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
                 worker.apply.remote(
-                    lambda w: w.foreach_trainable_policy(func)))
+                    lambda w: w.foreach_policy_to_train(func)))
         remote_results = ray.get(ray_gets)
         for r in remote_results:
             results.extend(r)
@@ -551,6 +548,18 @@ class WorkerSet:
 
         return worker
 
-    @Deprecated(new="WorkerSet.policies_to_train", error=False)
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    def foreach_trainable_policy(self, func):
+        return self.foreach_policy_to_train(func)
+
+    @Deprecated(
+        new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
     def trainable_policies(self):
-        return self.policies_to_train()
+        local_worker = self.local_worker()
+        if local_worker is not None:
+            return [
+                local_worker.is_policy_to_train(pid, None)
+                for pid in local_worker.policy_map.keys()
+            ]
+        else:
+            raise NotImplementedError

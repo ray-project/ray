@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple, \
+from typing import Any, Callable, Container, Dict, List, Optional, Tuple, \
     TYPE_CHECKING
 
 import ray
@@ -404,19 +404,45 @@ class SelectExperiences:
         {"pol1", "pol2"}
     """
 
-    def __init__(self, policy_ids: List[PolicyID]):
-        assert isinstance(policy_ids, list), policy_ids
-        self.policy_ids = policy_ids
+    def __init__(self,
+                 policy_ids: Optional[Container[PolicyID]] = None,
+                 local_worker: Optional[RolloutWorker] = None):
+        """Initializes a SelectExperiences instance.
+        
+        Args:
+            policy_ids: Container of PolicyID to select from passing through
+                batches. If not provided, must provide the `local_worker` arg.
+            local_worker: The local worker to use to determine, which policy
+                IDs are trainable. If not provided, must provide the
+                `policy_ids` arg.
+        """
+        assert policy_ids is not None or local_worker is not None, \
+            "ERROR: Must provide either one of `policy_ids` or " \
+            "`local_worker` args!"
+
+        self.local_worker = self.policy_ids = None
+        if local_worker:
+            self.local_worker = local_worker
+        else:
+            assert isinstance(policy_ids, Container), policy_ids
+            self.policy_ids = set(policy_ids)
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:
         _check_sample_batch_type(samples)
 
         if isinstance(samples, MultiAgentBatch):
-            samples = MultiAgentBatch({
-                k: v
-                for k, v in samples.policy_batches.items()
-                if k in self.policy_ids
-            }, samples.count)
+            if self.local_worker:
+                samples = MultiAgentBatch({
+                    pid: batch
+                    for pid, batch in samples.policy_batches.items()
+                    if self.local_worker.is_policy_to_train(pid, batch)
+                }, samples.count)
+            else:
+                samples = MultiAgentBatch({
+                    k: v
+                    for k, v in samples.policy_batches.items()
+                    if k in self.policy_ids
+                }, samples.count)
 
         return samples
 

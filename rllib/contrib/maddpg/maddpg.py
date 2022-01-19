@@ -172,7 +172,7 @@ class MADDPGTrainer(DQNTrainer):
 
         def f(batch, workers, config):
             policies = dict(workers.local_worker()
-                            .foreach_trainable_policy(lambda p, i: (i, p)))
+                            .foreach_policy_to_train(lambda p, i: (i, p)))
             return before_learn_on_batch(batch, policies,
                                          config["train_batch_size"])
 
