@@ -578,7 +578,8 @@ class TorchPolicy(Policy):
 
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+        for i, (model, batch) in enumerate(
+                zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update({
                 LEARNER_STATS_KEY: self.extra_grad_info(batch),
                 "model": model.metrics()
