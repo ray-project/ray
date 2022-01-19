@@ -2668,7 +2668,7 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
-  if (gcs_client_->Nodes().Get(node_id) == nullptr) {
+  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
     RAY_LOG(DEBUG) << "Attempting to add object location for a dead node. "
                    << "Ignoring this request. object_id: " << object_id
                    << ", node_id: " << node_id;
