@@ -8,5 +8,5 @@ public interface ParallelContext {
 
   <A> ParallelActor<A> createParallelActorExecutor(ParallelStrategy strategy, int parallelNum, ConcurrencyGroup[] concurrencyGroups, RayFuncR<A> ctorFunc);
 
-  ObjectRef<Object> submitParallelTask(ParallelActor parallelActor, int parallelIndex, RayFuncR func, Object[] args);
+  <R> ObjectRef<R> submitParallelTask(ParallelActor parallelActor, int parallelIndex, RayFuncR func, Object[] args);
 }

@@ -3,8 +3,6 @@ package io.ray.runtime.functionmanager;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import io.ray.runtime.generated.Common.Language;
-import sun.plugin2.message.Serializer;
-
 import java.io.Serializable;
 import java.util.List;
 

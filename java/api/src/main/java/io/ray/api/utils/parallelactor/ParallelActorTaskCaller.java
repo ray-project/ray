@@ -23,7 +23,7 @@ public class ParallelActorTaskCaller<R> {
 
     ParallelContext ctx = Ray.internal().getParallelContext();
     /// TODO(qwang): Select a instance index.
-    ObjectRef<Object> ret = ctx.submitParallelTask(parallelActor, 0, func, args);
+    ObjectRef<R> ret = ctx.submitParallelTask(parallelActor, 0, func, args);
     return (ObjectRef<R>) ret;
   }
 

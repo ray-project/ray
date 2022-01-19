@@ -2,8 +2,10 @@ package io.ray.api.utils.parallelactor;
 
 import io.ray.api.call.ActorTaskCaller;
 
-//// TODO: 这个不适合实现该接口，即使要实现，那么就需要在调task()的时候区分开是instance还是非instance.
-//// 我们需要实现的是instance，然后，ParallelActor.task()则调的是某个instance.
+//// TODO: This is not suitable for implementing this interface. Even if you want to implement it,
+// you need to distinguish between instance and non instance when calling task ()
+///
+/// What we need to implement is instance, and then parallelactor.task () calls on an InstanceCaller
 public class ParallelInstance<A> implements ParallelActorCall<A> {
 
 }
