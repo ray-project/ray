@@ -408,7 +408,7 @@ class SelectExperiences:
                  policy_ids: Optional[Container[PolicyID]] = None,
                  local_worker: Optional[RolloutWorker] = None):
         """Initializes a SelectExperiences instance.
-        
+
         Args:
             policy_ids: Container of PolicyID to select from passing through
                 batches. If not provided, must provide the `local_worker` arg.

@@ -6,7 +6,7 @@ import numpy as np
 import platform
 import os
 import tree  # pip install dm_tree
-from typing import Any, Callable, Container, Dict, List, Iterable, Optional, \
+from typing import Any, Callable, Container, Dict, List, Optional, Set, \
     Tuple, Type, TYPE_CHECKING, Union
 
 import ray

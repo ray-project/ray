@@ -2,7 +2,7 @@ import gym
 import logging
 import importlib.util
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, \
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     Union
 
 import ray
@@ -330,8 +330,7 @@ class WorkerSet:
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
-                worker.apply.remote(
-                    lambda w: w.foreach_policy_to_train(func)))
+                worker.apply.remote(lambda w: w.foreach_policy_to_train(func)))
         remote_results = ray.get(ray_gets)
         for r in remote_results:
             results.extend(r)
