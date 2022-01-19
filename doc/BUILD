@@ -8,8 +8,8 @@
 py_test(
     name = "dask_xgboost",
     size = "medium",
-    main = "source/ray-core/examples/dask_xgboost/dask_xgboost.py",
-    srcs = ["source/ray-core/examples/dask_xgboost/dask_xgboost.py"],
+    main = "source/ray-core/_examples/dask_xgboost/dask_xgboost.py",
+    srcs = ["source/ray-core/_examples/dask_xgboost/dask_xgboost.py"],
     tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
@@ -20,8 +20,8 @@ py_test(
 py_test(
     name = "modin_xgboost",
     size = "medium",
-    main = "source/ray-core/examples/modin_xgboost/modin_xgboost.py",
-    srcs = ["source/ray-core/examples/modin_xgboost/modin_xgboost.py"],
+    main = "source/ray-core/_examples/modin_xgboost/modin_xgboost.py",
+    srcs = ["source/ray-core/_examples/modin_xgboost/modin_xgboost.py"],
     tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
@@ -38,7 +38,7 @@ py_test(
 py_test(
     name = "datasets_train",
     size = "medium",
-    srcs = ["source/ray-core/examples/datasets_train/datasets_train.py"],
+    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
     tags = ["exclusive", "team:ml", "py37", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
@@ -46,28 +46,28 @@ py_test(
 py_test(
     name = "plot_hyperparameter",
     size = "small",
-    srcs = ["source/ray-core/examples/plot_hyperparameter.py"],
+    srcs = ["source/ray-core/_examples/plot_hyperparameter.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "medium",
-    srcs = ["source/ray-core/examples/plot_parameter_server.py"],
+    srcs = ["source/ray-core/_examples/plot_parameter_server.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "large",
-    srcs = ["source/ray-core/examples/plot_pong_example.py"],
+    srcs = ["source/ray-core/_examples/plot_pong_example.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "progress_bar",
     size = "small",
-    srcs = ["source/ray-core/examples/progress_bar.py"],
+    srcs = ["source/ray-core/_examples/progress_bar.py"],
     tags = ["exclusive", "team:ml"]
 )
 
