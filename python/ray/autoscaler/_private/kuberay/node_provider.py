@@ -45,7 +45,7 @@ provider_exists = False
 
 
 def to_label_selector(tags: Dict[str, str]) -> str:
-    "Convert tags to label selector to embed in query to K8s API server."
+    """Convert tags to label selector to embed in query to K8s API server."""
     label_selector = ""
     for k, v in tags.items():
         if label_selector != "":
@@ -56,7 +56,8 @@ def to_label_selector(tags: Dict[str, str]) -> str:
 
 def status_tag(pod: Dict[str, Any]) -> str:
     """Convert pod state to Ray autoscaler status tag."""
-    if "containerStatuses" not in pod["status"] or not pod["status"]["containerStatuses"]:
+    if ("containerStatuses" not in pod["status"] or
+        not pod["status"]["containerStatuses"]):
         return "pending"
 
     state = pod["status"]["containerStatuses"][0]["state"]
