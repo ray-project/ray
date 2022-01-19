@@ -1120,7 +1120,15 @@ def create_and_wait_for_session(
         session_operation = session_operation_response.result
         completed = session_operation.completed
 
-        _check_stop(stop_event, "session")
+        try:
+            _check_stop(stop_event, "session")
+        except SessionTimeoutError as e:
+            # Always queue session termination.
+            # We can't do this later as we won't return anything here
+            # and the session ID will not be set in the control loop
+            _cleanup_session(sdk=sdk, session_id=session_id)
+            raise e
+
         now = time.time()
         if now > next_report:
             logger.info(f"... still waiting for session {session_name} "
