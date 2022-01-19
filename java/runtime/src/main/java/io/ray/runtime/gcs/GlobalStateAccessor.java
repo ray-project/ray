@@ -29,7 +29,8 @@ public class GlobalStateAccessor {
   }
 
   private GlobalStateAccessor(String bootstrapAddress, String redisPassword) {
-    globalStateAccessorNativePointer = nativeCreateGlobalStateAccessor(bootstrapAddress, redisPassword);
+    globalStateAccessorNativePointer =
+        nativeCreateGlobalStateAccessor(bootstrapAddress, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }

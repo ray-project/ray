@@ -34,14 +34,14 @@ thread_local std::unordered_map<size_t,
     executor_function_descriptor_cache;
 
 inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_options) {
-    std::string ip = JavaStringToNativeString(
-        env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
-    int port = env->GetIntField(gcs_client_options, java_gcs_client_options_port);
-    std::string password = JavaStringToNativeString(
-        env,
-        (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
+  std::string ip = JavaStringToNativeString(
+      env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
+  int port = env->GetIntField(gcs_client_options, java_gcs_client_options_port);
+  std::string password = JavaStringToNativeString(
+      env,
+      (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
 
-  if(RayConfig::instance().bootstrap_with_gcs()) {
+  if (RayConfig::instance().bootstrap_with_gcs()) {
     return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
   } else {
     return gcs::GcsClientOptions(ip, port, password);

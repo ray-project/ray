@@ -1565,8 +1565,7 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            gcs_address
-            if use_gcs_for_bootstrap() else redis_address,
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
