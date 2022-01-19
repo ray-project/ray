@@ -1,8 +1,6 @@
 import json
 import pathlib
-import platform
 from pprint import pformat
-import sys
 import os
 from unittest.mock import MagicMock
 
@@ -163,7 +161,6 @@ def _setup_cluster_for_test(ray_start_cluster):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
@@ -293,8 +290,6 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
     global_node = ray.worker._global_node
