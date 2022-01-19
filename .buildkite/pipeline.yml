@@ -151,6 +151,11 @@
   commands:
     - ./java/test.sh
 
+- label: ":java: :redis:  Java"
+  conditions: ["RAY_CI_JAVA_AFFECTED"]
+  commands:
+    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./java/test.sh
+
 - label: ":java: Streaming"
   conditions:
     ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
@@ -158,6 +163,16 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       //streaming:all
     - bash streaming/src/test/run_streaming_queue_test.sh
+
+- label: ":java: :redis: Streaming"
+  conditions:
+    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - bazel test --config=ci
+      --test_env=RAY_gcs_grpc_based_pubsub=1
+      --test_env=RAY_bootstrap_with_gcs=1
+      --test_env=RAY_gcs_storage=memory $(./scripts/bazel_export_options) //streaming:all
+    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory bash streaming/src/test/run_streaming_queue_test.sh
 
 - label: ":cpp: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
