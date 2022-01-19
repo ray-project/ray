@@ -129,7 +129,7 @@ method.
 The ``TensorFlowVariables`` object provides methods for getting and setting the
 weights as well as collecting all of the variables in the model.
 
-Now we can use these methodo[s to extract the weights, and place them back in the
+Now we can use these method's to extract the weights, and place them back in the
 network as follows.
 
 .. code-block:: python
@@ -151,9 +151,6 @@ unmanageably large over time.
   w.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
   b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 
-
-.. autoclass:: ray.experimental.tf_utils.TensorFlowVariables
-   :members:
 
 .. note:: This may not work with `tf.Keras`.
 

@@ -156,8 +156,8 @@ extensions = [
 ]
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
-# or imports.
-autodoc_mock_imports = ["ray.experimental"]
+# of imports.
+# autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 
 versionwarning_admonition_type = "note"
@@ -261,9 +261,9 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
-all_toc_libs = ["cluster", "contribute", "ray-core", "ray-data", "ray-design-patterns", "ray-more-libs",
-                "ray-observability", "ray-overview", "ray-rllib",  "ray-serve", "ray-train",
-                "ray-tune", "ray-workflows"]
+
+ray_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
+all_toc_libs = ["cluster", "contribute"] + ray_libs
 
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
