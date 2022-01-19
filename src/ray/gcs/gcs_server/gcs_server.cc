@@ -218,6 +218,7 @@ void GcsServer::Stop() {
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
+    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -455,7 +456,8 @@ void GcsServer::InitKVManager() {
 }
 
 void GcsServer::InitPubSubHandler() {
-  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(gcs_publisher_);
+  pubsub_handler_ =
+      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_);
   pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
                                                                      *pubsub_handler_);
   // Register service.
