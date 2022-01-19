@@ -869,18 +869,17 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
+  // Increment the local ref count to ensure that the object is considered in
+  // scope before we return the ObjectRef to the language frontend. Note that
+  // the language bindings should set skip_adding_local_ref=True to avoid
+  // double referencing the object.
+  AddLocalReference(*object_id);
   if (owned_by_us) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
-    // a `WaitForRefRemoved` RPC request will be sent back to
-    // the current worker. So we need to make sure ref count is > 0
-    // by invoking `AddLocalReference` first. Note that in worker.py we set
-    // skip_adding_local_ref=True to avoid double referencing the object.
-    AddLocalReference(*object_id);
     RAY_UNUSED(reference_counter_->AddBorrowedObject(
         *object_id, ObjectID::Nil(), real_owner_address,
         /*foreign_owner_already_monitoring=*/true));
@@ -915,10 +914,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                               created_by_worker);
     }
     if (!status.ok()) {
+      RemoveLocalReference(*object_id);
       if (owned_by_us) {
         reference_counter_->RemoveOwnedObject(*object_id);
-      } else {
-        RemoveLocalReference(*object_id);
       }
       return status;
     } else if (*data == nullptr) {

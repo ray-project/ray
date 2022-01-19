@@ -434,7 +434,8 @@ cdef prepare_args(
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(
-                            serialized_arg, inline_small_object=False)),
+                            serialized_arg, inline_small_object=False,
+                            skip_adding_local_ref=True)),
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                         put_arg_call_site)))
 
@@ -1265,15 +1266,21 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
             c_vector[CObjectID] c_object_id_vector
-            unique_ptr[CAddress] c_owner_address
+            unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
+                    object_ref.owner_address()))
+
         # TODO(suquark): This method does not support put objects to
         # in memory store currently.
         metadata_buf = string_to_buffer(metadata)
-        object_already_exists = self._create_put_buffer(
-            metadata_buf, data_size, object_ref,
-            ObjectRefsToVector([]),
-            &c_object_id, &data_buf, False, owner_address)
-        if object_already_exists:
+
+        status = CCoreWorkerProcess.GetCoreWorker().CreateExisting(
+                    metadata_buf, data_size, object_ref.native(),
+                    dereference(c_owner_address), &data_buf,
+                    False)
+        if not status.ok():
+            logger.debug("Error putting restored object into plasma.")
+            return
+        if data_buf == NULL: 
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
         data = Buffer.make(data_buf)
@@ -1282,7 +1289,6 @@ cdef class CoreWorker:
         while index < data_size:
             bytes_read = file_like.readinto(view[index:])
             index += bytes_read
-        c_owner_address = move(self._convert_python_address(owner_address))
         with nogil:
             # Using custom object refs is not supported because we
             # can't track their lifecycle, so we don't pin the object
@@ -1290,7 +1296,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
-                            owner_address=move(c_owner_address)))
+                            owner_address=c_owner_address))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
