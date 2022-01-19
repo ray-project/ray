@@ -214,12 +214,12 @@ void GcsClient::Disconnect() {
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
 
-void GcsClient::Reset() {
-  RAY_CHECK(disconnected_);
-  periodical_runner_.reset();
-  gcs_subscriber_.reset();
-  redis_client_.reset();
-}
+// void GcsClient::Reset() {
+//   RAY_CHECK(disconnected_);
+//   periodical_runner_.reset();
+//   gcs_subscriber_.reset();
+//   redis_client_.reset();
+// }
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
