@@ -140,7 +140,6 @@ ray_files = [
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
-    "ray/streaming/_streaming.so",
 ]
 
 if BUILD_JAVA or os.path.exists(
@@ -160,7 +159,6 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
-    "ray/streaming/generated",
     "ray/serve/generated",
 ]
 
@@ -382,7 +380,6 @@ def replace_symlinks_with_junctions():
     _LINKS = {
         r"ray\new_dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
-        r"ray\streaming": "../../streaming/python/",
     }
     root_dir = os.path.dirname(__file__)
     for link, default in _LINKS.items():
