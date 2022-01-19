@@ -146,7 +146,7 @@ You can also get started by visiting our `Tutorials <https://github.com/ray-proj
 Getting Involved
 ================
 
-.. include:: contribute/involvement.rst
+.. include:: ray-contribute/involvement.rst
 
 If you're interested in contributing to Ray, visit our page on :ref:`Getting Involved <getting-involved>` to read about the contribution process and see what you can work on!
 
@@ -378,9 +378,9 @@ Papers
    :maxdepth: -1
    :caption: Contributor Guide
 
-   contribute/getting-involved.rst
-   contribute/development.rst
-   contribute/fake-autoscaler.rst
-   contribute/whitepaper.rst
-   contribute/debugging.rst
-   contribute/profiling.rst
+   ray-contribute/getting-involved.rst
+   ray-contribute/development.rst
+   ray-contribute/fake-autoscaler.rst
+   ray-contribute/whitepaper.rst
+   ray-contribute/debugging.rst
+   ray-contribute/profiling.rst
