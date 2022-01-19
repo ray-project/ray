@@ -6,13 +6,9 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    NODE_KIND_HEAD,
-    NODE_KIND_WORKER,
-    STATUS_UP_TO_DATE,
-    STATUS_UPDATE_FAILED,
-    TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE)
+from ray.autoscaler.tags import (NODE_KIND_HEAD, NODE_KIND_WORKER,
+                                 STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
+                                 TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE)
 
 # Terminology:
 
@@ -56,8 +52,8 @@ def to_label_selector(tags: Dict[str, str]) -> str:
 
 def status_tag(pod: Dict[str, Any]) -> str:
     """Convert pod state to Ray autoscaler status tag."""
-    if ("containerStatuses" not in pod["status"] or
-        not pod["status"]["containerStatuses"]):
+    if ("containerStatuses" not in pod["status"]
+            or not pod["status"]["containerStatuses"]):
         return "pending"
 
     state = pod["status"]["containerStatuses"][0]["state"]
@@ -138,7 +134,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert result.status_code == 200
         return result.json()
 
-    def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _patch(self, path: str,
+               payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
         result = requests.patch(
             self._url(path),
@@ -222,7 +219,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         label_filters = to_label_selector({
             "ray.io/cluster": self.cluster_name,
         })
-        data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
+        data = self._get("pods?labelSelector=" +
+                         requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
             labels = pod["metadata"]["labels"]
