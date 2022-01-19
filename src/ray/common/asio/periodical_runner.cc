@@ -74,6 +74,9 @@ void PeriodicalRunner::DoRunFnPeriodically(
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     const std::function<void()> &fn, boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer, const std::string name) {
+  if (name == "GcsClient.deadline_timer.check_gcs_service_address") {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
