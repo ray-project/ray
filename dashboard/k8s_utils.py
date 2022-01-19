@@ -70,9 +70,7 @@ def _cpu_usage():
         # e.g. "usage_usec 16089294616"
         cpu_stat_first_line = cpu_stat_text.split("\n")[0]
         # return the second word of the first line, cast as an integer
-        return int(
-            cpu_stat_first_line.split()[1]
-        )
+        return int(cpu_stat_first_line.split()[1])
 
 
 def _system_usage():
