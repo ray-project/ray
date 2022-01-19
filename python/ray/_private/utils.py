@@ -475,7 +475,7 @@ def _get_docker_cpus(
         try:
             max_file = open(cpu_max_file_name).read()
             quota_str, period_str = max_file.split()
-            if quota_str.isnumeric():
+            if quota_str.isnumeric() and period_str.isnumeric():
                 cpu_quota = float(quota_str) / float(period_str)
             else:
                 # quota_str is "max" meaning the cpu quota is unset
