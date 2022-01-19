@@ -216,7 +216,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             # certain errors.
             # https://github.com/ray-project/ray/issues/14305
             # https://github.com/ray-project/ray/pull/21686
-            if type(e).__name__ == 'NVMLError_DriverNotLoaded':
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
                 enable_gpu_usage_check = False
 
         for gpu in gpus:
