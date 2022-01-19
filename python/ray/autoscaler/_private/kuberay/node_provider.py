@@ -220,7 +220,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Return a list of node ids filtered by the specified tags dict."""
         label_filters = to_label_selector({
             "ray.io/cluster": self.cluster_name,
-        }
+        })
         data = self._get("pods?labelSelector=" + requests.utils.quote(label_filters))
         result = []
         for pod in data["items"]:
