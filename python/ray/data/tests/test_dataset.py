@@ -3295,9 +3295,9 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         "C": [2 * x for x in xs]
     })
     # Wrong type.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         ray.data.from_pandas(df).groupby("A").mean(5)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         ray.data.from_pandas(df).groupby("A").mean([5])
     # Empty list.
     with pytest.raises(ValueError):
@@ -3313,9 +3313,9 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
 
     # Test bad on for global aggregation
     # Wrong type.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         ray.data.from_pandas(df).mean(5)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         ray.data.from_pandas(df).mean([5])
     # Empty list.
     with pytest.raises(ValueError):
