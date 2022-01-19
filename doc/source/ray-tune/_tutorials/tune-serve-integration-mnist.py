@@ -129,8 +129,10 @@ class MNISTDataInterface(object):
             transforms.ToTensor(),
             transforms.Normalize((0.1307, ), (0.3081, ))
         ])
-        self.dataset = MNIST(
-            self.data_dir, train=True, download=True, transform=transform)
+        self.dataset = MNIST(self.data_dir,
+                             train=True,
+                             download=True,
+                             transform=transform)
 
     def _get_day_slice(self, day=0):
         if day < 0:
@@ -154,8 +156,8 @@ class MNISTDataInterface(object):
         end = self._get_day_slice(day)
 
         available_data = Subset(self.dataset, list(range(start, end)))
-        train_n = int(
-            0.8 * (end - start))  # 80% train data, 20% validation data
+        train_n = int(0.8 *
+                      (end - start))  # 80% train data, 20% validation data
 
         return random_split(available_data, [train_n, end - start - train_n])
 
@@ -171,6 +173,7 @@ class MNISTDataInterface(object):
 # MNIST, but it is useful to demonstrate scenarios where your hyperparameter
 # search space affects the model complexity.
 class ConvNet(nn.Module):
+
     def __init__(self, layer_size=192):
         super(ConvNet, self).__init__()
         self.layer_size = layer_size
@@ -236,8 +239,9 @@ def train_mnist(config,
     model = ConvNet(layer_size=config["layer_size"]).to(device)
 
     # Create optimizer
-    optimizer = optim.SGD(
-        model.parameters(), lr=config["lr"], momentum=config["momentum"])
+    optimizer = optim.SGD(model.parameters(),
+                          lr=config["lr"],
+                          momentum=config["momentum"])
 
     # Load checkpoint, or load start model if no checkpoint has been
     # passed and a start model is specified
@@ -256,8 +260,9 @@ def train_mnist(config,
     # Get full training datasets
     train_dataset, validation_dataset = data_fn(day=day)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=config["batch_size"], shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset,
+                                               batch_size=config["batch_size"],
+                                               shuffle=True)
 
     validation_loader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=config["batch_size"], shuffle=True)
@@ -297,35 +302,32 @@ def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
         "momentum": tune.uniform(0.1, 0.9),
     }
 
-    scheduler = ASHAScheduler(
-        metric="mean_accuracy",
-        mode="max",
-        max_t=num_epochs,
-        grace_period=1,
-        reduction_factor=2)
+    scheduler = ASHAScheduler(metric="mean_accuracy",
+                              mode="max",
+                              max_t=num_epochs,
+                              grace_period=1,
+                              reduction_factor=2)
 
     reporter = CLIReporter(
         parameter_columns=["layer_size", "lr", "momentum", "batch_size"],
         metric_columns=["mean_accuracy", "training_iteration"])
 
-    analysis = tune.run(
-        partial(
-            train_mnist,
-            start_model=None,
-            data_fn=data_interface.get_data,
-            num_epochs=num_epochs,
-            use_gpus=True if gpus_per_trial > 0 else False,
-            day=day),
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": gpus_per_trial
-        },
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        progress_reporter=reporter,
-        verbose=0,
-        name="tune_serve_mnist_fromscratch")
+    analysis = tune.run(partial(train_mnist,
+                                start_model=None,
+                                data_fn=data_interface.get_data,
+                                num_epochs=num_epochs,
+                                use_gpus=True if gpus_per_trial > 0 else False,
+                                day=day),
+                        resources_per_trial={
+                            "cpu": 1,
+                            "gpu": gpus_per_trial
+                        },
+                        config=config,
+                        num_samples=num_samples,
+                        scheduler=scheduler,
+                        progress_reporter=reporter,
+                        verbose=0,
+                        name="tune_serve_mnist_fromscratch")
 
     best_trial = analysis.get_best_trial("mean_accuracy", "max", "last")
     best_accuracy = best_trial.metric_analysis["mean_accuracy"]["last"]
@@ -361,35 +363,32 @@ def tune_from_existing(start_model,
         "momentum": tune.uniform(0.1, 0.9),
     })
 
-    scheduler = ASHAScheduler(
-        metric="mean_accuracy",
-        mode="max",
-        max_t=num_epochs,
-        grace_period=1,
-        reduction_factor=2)
+    scheduler = ASHAScheduler(metric="mean_accuracy",
+                              mode="max",
+                              max_t=num_epochs,
+                              grace_period=1,
+                              reduction_factor=2)
 
     reporter = CLIReporter(
         parameter_columns=["lr", "momentum", "batch_size"],
         metric_columns=["mean_accuracy", "training_iteration"])
 
-    analysis = tune.run(
-        partial(
-            train_mnist,
-            start_model=start_model,
-            data_fn=data_interface.get_incremental_data,
-            num_epochs=num_epochs,
-            use_gpus=True if gpus_per_trial > 0 else False,
-            day=day),
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": gpus_per_trial
-        },
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        progress_reporter=reporter,
-        verbose=0,
-        name="tune_serve_mnist_fromsexisting")
+    analysis = tune.run(partial(train_mnist,
+                                start_model=start_model,
+                                data_fn=data_interface.get_incremental_data,
+                                num_epochs=num_epochs,
+                                use_gpus=True if gpus_per_trial > 0 else False,
+                                day=day),
+                        resources_per_trial={
+                            "cpu": 1,
+                            "gpu": gpus_per_trial
+                        },
+                        config=config,
+                        num_samples=num_samples,
+                        scheduler=scheduler,
+                        progress_reporter=reporter,
+                        verbose=0,
+                        name="tune_serve_mnist_fromsexisting")
 
     best_trial = analysis.get_best_trial("mean_accuracy", "max", "last")
     best_accuracy = best_trial.metric_analysis["mean_accuracy"]["last"]
@@ -413,6 +412,7 @@ def tune_from_existing(start_model,
 # outputs our digit prediction according to our trained model:
 @serve.deployment(name="mnist", route_prefix="/mnist")
 class MNISTDeployment:
+
     def __init__(self, checkpoint_dir, config, metrics, use_gpu=False):
         self.checkpoint_dir = checkpoint_dir
         self.config = config
@@ -422,9 +422,9 @@ class MNISTDeployment:
         self.device = torch.device("cuda" if use_cuda else "cpu")
         model = ConvNet(layer_size=self.config["layer_size"]).to(self.device)
 
-        model_state, optimizer_state = torch.load(
-            os.path.join(self.checkpoint_dir, "checkpoint"),
-            map_location=self.device)
+        model_state, optimizer_state = torch.load(os.path.join(
+            self.checkpoint_dir, "checkpoint"),
+                                                  map_location=self.device)
         model.load_state_dict(model_state)
 
         self.model = model
@@ -442,7 +442,11 @@ class MNISTDeployment:
 # active model. We call this directory ``model_dir``. Every time we
 # would like to update our model, we copy the checkpoint of the new
 # model to this directory. We then update the deployment to the new version.
-def serve_new_model(model_dir, checkpoint, config, metrics, day,
+def serve_new_model(model_dir,
+                    checkpoint,
+                    config,
+                    metrics,
+                    day,
                     use_gpu=False):
     print("Serving checkpoint: {}".format(checkpoint))
 
@@ -555,17 +559,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MNIST Tune/Serve example")
     parser.add_argument("--model_dir", type=str, default="~/mnist_tune_serve")
 
-    parser.add_argument(
-        "--from_scratch",
-        action="store_true",
-        help="Train and select best model from scratch",
-        default=False)
+    parser.add_argument("--from_scratch",
+                        action="store_true",
+                        help="Train and select best model from scratch",
+                        default=False)
 
-    parser.add_argument(
-        "--from_existing",
-        action="store_true",
-        help="Train and select best model from existing model",
-        default=False)
+    parser.add_argument("--from_existing",
+                        action="store_true",
+                        help="Train and select best model from existing model",
+                        default=False)
 
     parser.add_argument(
         "--day",
@@ -573,14 +575,15 @@ if __name__ == "__main__":
         type=int,
         default=0)
 
-    parser.add_argument(
-        "--query", help="Query endpoint with example", type=int, default=-1)
+    parser.add_argument("--query",
+                        help="Query endpoint with example",
+                        type=int,
+                        default=-1)
 
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        help="Finish quickly for testing",
-        default=False)
+    parser.add_argument("--smoke-test",
+                        action="store_true",
+                        help="Finish quickly for testing",
+                        default=False)
 
     args = parser.parse_args()
 
@@ -599,9 +602,8 @@ if __name__ == "__main__":
         label = data[1]
 
         # Query our model
-        response = requests.post(
-            "http://localhost:8000/mnist",
-            json={"images": [data[0].numpy().tolist()]})
+        response = requests.post("http://localhost:8000/mnist",
+                                 json={"images": [data[0].numpy().tolist()]})
 
         try:
             pred = response.json()["result"][0]
@@ -625,13 +627,12 @@ if __name__ == "__main__":
         print("Trained day {} from scratch on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, num_examples, acc, config))
-        serve_new_model(
-            model_dir,
-            best_checkpoint,
-            config,
-            acc,
-            args.day,
-            use_gpu=serve_gpu)
+        serve_new_model(model_dir,
+                        best_checkpoint,
+                        config,
+                        acc,
+                        args.day,
+                        use_gpu=serve_gpu)
 
     if args.from_existing:
         old_checkpoint, old_config, old_acc = get_current_model(model_dir)
@@ -649,13 +650,12 @@ if __name__ == "__main__":
         print("Trained day {} from existing on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, num_examples, acc, config))
-        serve_new_model(
-            model_dir,
-            best_checkpoint,
-            config,
-            acc,
-            args.day,
-            use_gpu=serve_gpu)
+        serve_new_model(model_dir,
+                        best_checkpoint,
+                        config,
+                        acc,
+                        args.day,
+                        use_gpu=serve_gpu)
 
 #######################################################################
 # That's it! We now have an end-to-end workflow to train and update a

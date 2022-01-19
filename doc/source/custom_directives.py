@@ -6,7 +6,10 @@ from docutils import nodes
 import os
 import sphinx_gallery
 
-__all__ = ['CustomGalleryItemDirective', 'fix_xgb_lgbm_docs', 'MOCK_MODULES', 'CHILD_MOCK_MODULES']
+__all__ = [
+    'CustomGalleryItemDirective', 'fix_xgb_lgbm_docs', 'MOCK_MODULES',
+    'CHILD_MOCK_MODULES'
+]
 
 try:
     FileNotFoundError
@@ -91,8 +94,9 @@ class CustomGalleryItemDirective(Directive):
             raise ValueError("Need to provide :description: under "
                              "`customgalleryitem::`.")
 
-        thumbnail_rst = GALLERY_TEMPLATE.format(
-            tooltip=tooltip, thumbnail=thumbnail, description=description)
+        thumbnail_rst = GALLERY_TEMPLATE.format(tooltip=tooltip,
+                                                thumbnail=thumbnail,
+                                                description=description)
         thumbnail = StringList(thumbnail_rst.split("\n"))
         thumb = nodes.paragraph()
         self.state.nested_parse(thumbnail, self.content_offset, thumb)
@@ -136,6 +140,7 @@ def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
         for i, _ in enumerate(lines):
             for replacement in replacements:
                 lines[i] = lines[i].replace(*replacement)
+
 
 import scipy.stats
 import scipy.linalg

@@ -26,18 +26,16 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="The job name and path to logging file (exp_name.log).")
-    parser.add_argument(
-        "--num-nodes",
-        "-n",
-        type=int,
-        default=1,
-        help="Number of nodes to use.")
-    parser.add_argument(
-        "--node",
-        "-w",
-        type=str,
-        help="The specified nodes to use. Same format as the "
-        "return of 'sinfo'. Default: ''.")
+    parser.add_argument("--num-nodes",
+                        "-n",
+                        type=int,
+                        default=1,
+                        help="Number of nodes to use.")
+    parser.add_argument("--node",
+                        "-w",
+                        type=str,
+                        help="The specified nodes to use. Same format as the "
+                        "return of 'sinfo'. Default: ''.")
     parser.add_argument(
         "--num-gpus",
         type=int,
@@ -52,13 +50,12 @@ if __name__ == "__main__":
         "--load-env",
         type=str,
         help="The script to load your environment ('module load cuda/10.1')")
-    parser.add_argument(
-        "--command",
-        type=str,
-        required=True,
-        help="The command you wish to execute. For example: "
-        " --command 'python test.py'. "
-        "Note that the command must be a string.")
+    parser.add_argument("--command",
+                        type=str,
+                        required=True,
+                        help="The command you wish to execute. For example: "
+                        " --command 'python test.py'. "
+                        "Note that the command must be a string.")
     args = parser.parse_args()
 
     if args.node:

@@ -26,8 +26,8 @@ class RayDistributedActor:
         """
 
         # Set the init_method and rank of the process for distributed training.
-        print("Ray worker at {url} rank {rank}".format(
-            url=url, rank=world_rank))
+        print("Ray worker at {url} rank {rank}".format(url=url,
+                                                       rank=world_rank))
         self.url = url
         self.world_rank = world_rank
         args.distributed_rank = world_rank
@@ -103,8 +103,8 @@ def run_fault_tolerant_loop():
         set_batch_size(args)
 
         # Set up Ray distributed actors.
-        Actor = ray.remote(
-            num_cpus=1, num_gpus=int(not args.cpu))(RayDistributedActor)
+        Actor = ray.remote(num_cpus=1,
+                           num_gpus=int(not args.cpu))(RayDistributedActor)
         workers = [Actor.remote() for i in range(args.distributed_world_size)]
 
         # Get the IP address and a free port of actor 0, which is used for
@@ -134,11 +134,10 @@ def run_fault_tolerant_loop():
 def add_ray_args(parser):
     """Add ray and fault-tolerance related parser arguments to the parser."""
     group = parser.add_argument_group("Ray related arguments")
-    group.add_argument(
-        "--ray-address",
-        default="auto",
-        type=str,
-        help="address for ray initialization")
+    group.add_argument("--ray-address",
+                       default="auto",
+                       type=str,
+                       help="address for ray initialization")
     group.add_argument(
         "--fix-batch-size",
         default=None,

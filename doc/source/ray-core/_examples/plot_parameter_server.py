@@ -46,18 +46,14 @@ def get_data_loader():
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
     with FileLock(os.path.expanduser("~/data.lock")):
-        train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(
-                "~/data",
-                train=True,
-                download=True,
-                transform=mnist_transforms),
-            batch_size=128,
-            shuffle=True)
-        test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST("~/data", train=False, transform=mnist_transforms),
-            batch_size=128,
-            shuffle=True)
+        train_loader = torch.utils.data.DataLoader(datasets.MNIST(
+            "~/data", train=True, download=True, transform=mnist_transforms),
+                                                   batch_size=128,
+                                                   shuffle=True)
+        test_loader = torch.utils.data.DataLoader(datasets.MNIST(
+            "~/data", train=False, transform=mnist_transforms),
+                                                  batch_size=128,
+                                                  shuffle=True)
     return train_loader, test_loader
 
 
@@ -138,6 +134,7 @@ class ConvNet(nn.Module):
 
 @ray.remote
 class ParameterServer(object):
+
     def __init__(self, lr):
         self.model = ConvNet()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
@@ -167,6 +164,7 @@ class ParameterServer(object):
 
 @ray.remote
 class DataWorker(object):
+
     def __init__(self):
         self.model = ConvNet()
         self.data_iterator = iter(get_data_loader()[0])

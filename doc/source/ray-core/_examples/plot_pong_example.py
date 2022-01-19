@@ -218,6 +218,7 @@ ray.init()
 
 @ray.remote
 class RolloutWorker(object):
+
     def __init__(self):
         # Tell numpy to only use one core. If we don't do this, each actor may
         # try to use all of the cores and the resulting contention may result

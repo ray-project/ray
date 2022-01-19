@@ -27,6 +27,7 @@ import mock
 
 
 class ChildClassMock(mock.Mock):
+
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock
@@ -86,7 +87,6 @@ external_toc_path = '_toc.yml'
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
-
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
@@ -116,9 +116,7 @@ sphinx_gallery_conf = {
     ],
     # and then generated into these respective target folders:
     "gallery_dirs": [
-        "ray-core/examples",
-        "ray-tune/tutorials",
-        "ray-data/examples"
+        "ray-core/examples", "ray-tune/tutorials", "ray-data/examples"
     ],
     "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
@@ -190,7 +188,9 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 build_one_lib = os.getenv("DOC_LIB")
 
 # All doc libs start with a "ray-" prefix.
-all_toc_libs = [f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path]
+all_toc_libs = [
+    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
     exclude_patterns += all_toc_libs

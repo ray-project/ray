@@ -22,9 +22,10 @@ class _DistributeResources:
         Otherwise, spread them among base_trial_resource bundles."""
         self.add_bundles = add_bundles
 
-    def __call__(self, trial_runner: "trial_runner.TrialRunner", trial: Trial,
-                 result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
-                 ) -> Union[None, PlacementGroupFactory]:
+    def __call__(
+        self, trial_runner: "trial_runner.TrialRunner", trial: Trial,
+        result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
+    ) -> Union[None, PlacementGroupFactory]:
         # Get base trial resources as defined in
         # ``tune.run(resources_per_trial)``
         base_trial_resource = scheduler.base_trial_resources
@@ -62,8 +63,8 @@ class _DistributeResources:
         if min_cpu == 0:
             upper_cpu_limit = 0
         else:
-            upper_cpu_limit = math.ceil(
-                total_available_cpus / num_running_trials)
+            upper_cpu_limit = math.ceil(total_available_cpus /
+                                        num_running_trials)
             # Round to nearest bundle minimum
             # eg. 8 CPUs between 3 trials with min 2 CPUs per bundle
             #   -> 4, 2, 2
@@ -75,8 +76,8 @@ class _DistributeResources:
         if min_gpu == 0:
             upper_gpu_limit = 0
         else:
-            upper_gpu_limit = math.ceil(
-                total_available_gpus / num_running_trials)
+            upper_gpu_limit = math.ceil(total_available_gpus /
+                                        num_running_trials)
             # Ensure we don't go below per-bundle minimum
             if self.add_bundles:
                 upper_gpu_limit = math.ceil(
@@ -130,10 +131,10 @@ class _DistributeResources:
         return PlacementGroupFactory(new_bundles)
 
 
-def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
-                                trial: Trial, result: Dict[str, Any],
-                                scheduler: "ResourceChangingScheduler"
-                                ) -> Union[None, PlacementGroupFactory]:
+def evenly_distribute_cpus_gpus(
+    trial_runner: "trial_runner.TrialRunner", trial: Trial,
+    result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
+) -> Union[None, PlacementGroupFactory]:
     """This is a basic resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
@@ -167,8 +168,8 @@ def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
 
 
 def evenly_distribute_cpus_gpus_distributed(
-        trial_runner: "trial_runner.TrialRunner", trial: Trial,
-        result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
+    trial_runner: "trial_runner.TrialRunner", trial: Trial,
+    result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
 ) -> Union[None, PlacementGroupFactory]:
     """This is a basic resource allocating function.
 
@@ -280,13 +281,13 @@ class ResourceChangingScheduler(TrialScheduler):
     """
 
     def __init__(
-            self,
-            base_scheduler: Optional[TrialScheduler] = None,
-            resources_allocation_function: Optional[Callable[[
-                "trial_runner.TrialRunner", Trial, Dict[str, Any],
-                "ResourceChangingScheduler"
-            ], Union[None, PlacementGroupFactory,
-                     Resources]]] = evenly_distribute_cpus_gpus,
+        self,
+        base_scheduler: Optional[TrialScheduler] = None,
+        resources_allocation_function: Optional[Callable[[
+            "trial_runner.TrialRunner", Trial, Dict[
+                str, Any], "ResourceChangingScheduler"
+        ], Union[None, PlacementGroupFactory,
+                 Resources]]] = evenly_distribute_cpus_gpus,
     ) -> None:
         super().__init__()
         if resources_allocation_function is None:
@@ -298,8 +299,9 @@ class ResourceChangingScheduler(TrialScheduler):
         self._base_scheduler = base_scheduler or FIFOScheduler()
         self._base_trial_resources: Optional[Union[
             Resources, PlacementGroupFactory]] = None
-        self._trials_to_reallocate: Dict[Trial, Union[
-            None, dict, PlacementGroupFactory]] = {}
+        self._trials_to_reallocate: Dict[Trial,
+                                         Union[None, dict,
+                                               PlacementGroupFactory]] = {}
         self._reallocated_trial_ids: Set[str] = set()
 
     @property
@@ -419,9 +421,9 @@ class ResourceChangingScheduler(TrialScheduler):
         return False
 
     def _are_resources_the_same(
-            self,
-            trial: Trial,
-            new_resources,
+        self,
+        trial: Trial,
+        new_resources,
     ) -> bool:
         """Returns True if trial's resources are value equal to new_resources.
 

@@ -59,23 +59,24 @@ class LinearModel(object):
     def loss(self, xs, ys):
         """Computes the loss of the network."""
         return float(
-            self.sess.run(
-                self.cross_entropy, feed_dict={
-                    self.x: xs,
-                    self.y_: ys
-                }))
+            self.sess.run(self.cross_entropy,
+                          feed_dict={
+                              self.x: xs,
+                              self.y_: ys
+                          }))
 
     def grad(self, xs, ys):
         """Computes the gradients of the network."""
-        return self.sess.run(
-            self.cross_entropy_grads, feed_dict={
-                self.x: xs,
-                self.y_: ys
-            })
+        return self.sess.run(self.cross_entropy_grads,
+                             feed_dict={
+                                 self.x: xs,
+                                 self.y_: ys
+                             })
 
 
 @ray.remote
 class NetActor(object):
+
     def __init__(self, xs, ys):
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         with tf.device("/cpu:0"):
@@ -142,5 +143,8 @@ if __name__ == "__main__":
 
     # Use L-BFGS to minimize the loss function.
     print("Running L-BFGS.")
-    result = scipy.optimize.fmin_l_bfgs_b(
-        full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
+    result = scipy.optimize.fmin_l_bfgs_b(full_loss,
+                                          theta_init,
+                                          maxiter=10,
+                                          fprime=full_grad,
+                                          disp=True)

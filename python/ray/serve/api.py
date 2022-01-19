@@ -75,17 +75,19 @@ class ReplicaContext:
 
 
 def _set_internal_replica_context(
-        deployment: str,
-        replica_tag: ReplicaTag,
-        controller_name: str,
-        servable_object: Callable,
+    deployment: str,
+    replica_tag: ReplicaTag,
+    controller_name: str,
+    servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(deployment, replica_tag,
+                                               controller_name,
+                                               servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
+
     @wraps(f)
     def check(self, *args, **kwargs):
         if self._shutdown:
@@ -96,6 +98,7 @@ def _ensure_connected(f: Callable) -> Callable:
 
 
 class Client:
+
     def __init__(self,
                  controller: ActorHandle,
                  controller_name: str,
@@ -154,8 +157,8 @@ class Client:
                 try:
                     controller_namespace = _get_controller_namespace(
                         self._detached)
-                    ray.get_actor(
-                        self._controller_name, namespace=controller_namespace)
+                    ray.get_actor(self._controller_name,
+                                  namespace=controller_namespace)
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -174,8 +177,8 @@ class Client:
         if goal_id is None:
             return True
 
-        ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        ready, _ = ray.wait([self._controller.wait_for_goal.remote(goal_id)],
+                            timeout=timeout)
         # AsyncGoal could return exception if set, ray.get()
         # retrieves and throws it to user code explicitly.
         if len(ready) == 1:
@@ -187,19 +190,19 @@ class Client:
             return False
 
     @_ensure_connected
-    def deploy(
-            self,
-            name: str,
-            deployment_def: Union[Callable, Type[Callable], str],
-            init_args: Tuple[Any],
-            init_kwargs: Dict[Any, Any],
-            ray_actor_options: Optional[Dict] = None,
-            config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
-            version: Optional[str] = None,
-            prev_version: Optional[str] = None,
-            route_prefix: Optional[str] = None,
-            url: Optional[str] = None,
-            _blocking: Optional[bool] = True) -> Optional[GoalId]:
+    def deploy(self,
+               name: str,
+               deployment_def: Union[Callable, Type[Callable], str],
+               init_args: Tuple[Any],
+               init_kwargs: Dict[Any, Any],
+               ray_actor_options: Optional[Dict] = None,
+               config: Optional[Union[DeploymentConfig, Dict[str,
+                                                             Any]]] = None,
+               version: Optional[str] = None,
+               prev_version: Optional[str] = None,
+               route_prefix: Optional[str] = None,
+               url: Optional[str] = None,
+               _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -212,11 +215,10 @@ class Client:
         else:
             ray_actor_options["runtime_env"] = curr_job_env
 
-        replica_config = ReplicaConfig(
-            deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options)
+        replica_config = ReplicaConfig(deployment_def,
+                                       init_args=init_args,
+                                       init_kwargs=init_kwargs,
+                                       ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
             deployment_config = DeploymentConfig.parse_obj(config)
@@ -279,11 +281,11 @@ class Client:
 
     @_ensure_connected
     def get_handle(
-            self,
-            deployment_name: str,
-            missing_ok: Optional[bool] = False,
-            sync: bool = True,
-            _internal_pickled_http_request: bool = False,
+        self,
+        deployment_name: str,
+        missing_ok: Optional[bool] = False,
+        sync: bool = True,
+        _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -367,11 +369,11 @@ class Client:
 
 @PublicAPI(stability="beta")
 def start(
-        detached: bool = False,
-        http_options: Optional[Union[dict, HTTPOptions]] = None,
-        dedicated_cpu: bool = False,
-        _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-        **kwargs,
+    detached: bool = False,
+    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    dedicated_cpu: bool = False,
+    _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
+    **kwargs,
 ) -> Client:
     """Initialize a serve instance.
 
@@ -503,8 +505,8 @@ def _connect() -> Client:
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(
-            controller_name, namespace=controller_namespace)
+        controller = ray.get_actor(controller_name,
+                                   namespace=controller_namespace)
     except ValueError:
         raise RayServeException("There is no "
                                 "instance running on this Ray cluster. Please "
@@ -589,6 +591,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
         class ASGIAppWrapper(cls):
+
             async def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -602,9 +605,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                        self._serve_asgi_lifespan.logger,
-                        level=logging.WARNING):
+                with LoggingContext(self._serve_asgi_lifespan.logger,
+                                    level=logging.WARNING):
                     await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
@@ -621,9 +623,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             async def __del__(self):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                        self._serve_asgi_lifespan.logger,
-                        level=logging.WARNING):
+                with LoggingContext(self._serve_asgi_lifespan.logger,
+                                    level=logging.WARNING):
                     await self._serve_asgi_lifespan.shutdown()
 
                 # Make sure to call user's del method as well.
@@ -639,6 +640,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
 @PublicAPI
 class Deployment:
+
     def __init__(self,
                  func_or_class: Callable,
                  name: str,
@@ -822,8 +824,10 @@ class Deployment:
         return _get_global_client().delete_deployment(self._name)
 
     @PublicAPI
-    def get_handle(self, sync: Optional[bool] = True
-                   ) -> Union[RayServeHandle, RayServeSyncHandle]:
+    def get_handle(
+        self,
+        sync: Optional[bool] = True
+    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
 
         Args:
@@ -835,27 +839,29 @@ class Deployment:
         Returns:
             ServeHandle
         """
-        return _get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync)
+        return _get_global_client().get_handle(self._name,
+                                               missing_ok=True,
+                                               sync=sync)
 
     @PublicAPI
-    def options(self,
-                func_or_class: Optional[Callable] = None,
-                name: Optional[str] = None,
-                version: Optional[str] = None,
-                prev_version: Optional[str] = None,
-                init_args: Optional[Tuple[Any]] = None,
-                init_kwargs: Optional[Dict[Any, Any]] = None,
-                route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-                num_replicas: Optional[int] = None,
-                ray_actor_options: Optional[Dict] = None,
-                user_config: Optional[Any] = None,
-                max_concurrent_queries: Optional[int] = None,
-                _autoscaling_config: Optional[Union[Dict,
-                                                    AutoscalingConfig]] = None,
-                _graceful_shutdown_wait_loop_s: Optional[float] = None,
-                _graceful_shutdown_timeout_s: Optional[float] = None
-                ) -> "Deployment":
+    def options(
+            self,
+            func_or_class: Optional[Callable] = None,
+            name: Optional[str] = None,
+            version: Optional[str] = None,
+            prev_version: Optional[str] = None,
+            init_args: Optional[Tuple[Any]] = None,
+            init_kwargs: Optional[Dict[Any, Any]] = None,
+            route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+            num_replicas: Optional[int] = None,
+            ray_actor_options: Optional[Dict] = None,
+            user_config: Optional[Any] = None,
+            max_concurrent_queries: Optional[int] = None,
+            _autoscaling_config: Optional[Union[Dict,
+                                                AutoscalingConfig]] = None,
+            _graceful_shutdown_wait_loop_s: Optional[float] = None,
+            _graceful_shutdown_timeout_s: Optional[float] = None
+    ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
@@ -943,38 +949,38 @@ def deployment(func_or_class: Callable) -> Deployment:
 
 @overload
 def deployment(
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        prev_version: Optional[str] = None,
-        num_replicas: Optional[int] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None
+    name: Optional[str] = None,
+    version: Optional[str] = None,
+    prev_version: Optional[str] = None,
+    num_replicas: Optional[int] = None,
+    init_args: Optional[Tuple[Any]] = None,
+    init_kwargs: Optional[Dict[Any, Any]] = None,
+    ray_actor_options: Optional[Dict] = None,
+    user_config: Optional[Any] = None,
+    max_concurrent_queries: Optional[int] = None,
+    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    _graceful_shutdown_wait_loop_s: Optional[float] = None,
+    _graceful_shutdown_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     pass
 
 
 @PublicAPI
 def deployment(
-        _func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        prev_version: Optional[str] = None,
-        num_replicas: Optional[int] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None
+    _func_or_class: Optional[Callable] = None,
+    name: Optional[str] = None,
+    version: Optional[str] = None,
+    prev_version: Optional[str] = None,
+    num_replicas: Optional[int] = None,
+    init_args: Optional[Tuple[Any]] = None,
+    init_kwargs: Optional[Dict[Any, Any]] = None,
+    route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
+    ray_actor_options: Optional[Dict] = None,
+    user_config: Optional[Any] = None,
+    max_concurrent_queries: Optional[int] = None,
+    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    _graceful_shutdown_wait_loop_s: Optional[float] = None,
+    _graceful_shutdown_timeout_s: Optional[float] = None
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 

@@ -64,32 +64,29 @@ from ray.util.dask import ray_dask_get
 # you can directly override the arguments manually.
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--address", type=str, default="auto", help="The address to use for Ray.")
-parser.add_argument(
-    "--smoke-test",
-    action="store_true",
-    help="Read a smaller dataset for quick testing purposes.")
-parser.add_argument(
-    "--num-actors",
-    type=int,
-    default=4,
-    help="Sets number of actors for training.")
-parser.add_argument(
-    "--cpus-per-actor",
-    type=int,
-    default=6,
-    help="The number of CPUs per actor for training.")
-parser.add_argument(
-    "--num-actors-inference",
-    type=int,
-    default=16,
-    help="Sets number of actors for inference.")
-parser.add_argument(
-    "--cpus-per-actor-inference",
-    type=int,
-    default=2,
-    help="The number of CPUs per actor for inference.")
+parser.add_argument("--address",
+                    type=str,
+                    default="auto",
+                    help="The address to use for Ray.")
+parser.add_argument("--smoke-test",
+                    action="store_true",
+                    help="Read a smaller dataset for quick testing purposes.")
+parser.add_argument("--num-actors",
+                    type=int,
+                    default=4,
+                    help="Sets number of actors for training.")
+parser.add_argument("--cpus-per-actor",
+                    type=int,
+                    default=6,
+                    help="The number of CPUs per actor for training.")
+parser.add_argument("--num-actors-inference",
+                    type=int,
+                    default=16,
+                    help="Sets number of actors for inference.")
+parser.add_argument("--cpus-per-actor-inference",
+                    type=int,
+                    default=2,
+                    help="The number of CPUs per actor for inference.")
 # Ignore -f from ipykernel_launcher
 args, _ = parser.parse_known_args()
 
@@ -187,12 +184,11 @@ def train_xgboost(config, train_df, test_df, target_column, ray_params):
     train_start_time = time.time()
 
     # Train the classifier
-    bst = train(
-        params=config,
-        dtrain=train_set,
-        evals=[(test_set, "eval")],
-        evals_result=evals_result,
-        ray_params=ray_params)
+    bst = train(params=config,
+                dtrain=train_set,
+                evals=[(test_set, "eval")],
+                evals_result=evals_result,
+                ray_params=ray_params)
 
     train_end_time = time.time()
     train_duration = train_end_time - train_start_time
@@ -263,20 +259,18 @@ def tune_xgboost(train_df, test_df, target_column):
         "max_depth": tune.randint(1, 9)
     }
 
-    ray_params = RayParams(
-        max_actor_restarts=1,
-        cpus_per_actor=cpus_per_actor,
-        num_actors=num_actors)
+    ray_params = RayParams(max_actor_restarts=1,
+                           cpus_per_actor=cpus_per_actor,
+                           num_actors=num_actors)
 
     tune_start_time = time.time()
 
     analysis = tune.run(
-        tune.with_parameters(
-            train_xgboost,
-            train_df=train_df,
-            test_df=test_df,
-            target_column=target_column,
-            ray_params=ray_params),
+        tune.with_parameters(train_xgboost,
+                             train_df=train_df,
+                             test_df=test_df,
+                             target_column=target_column,
+                             ray_params=ray_params),
         # Use the `get_tune_resources` helper function to set the resources.
         resources_per_trial=ray_params.get_tune_resources(),
         config=config,
@@ -311,11 +305,9 @@ tune_xgboost(train_df, eval_df, LABEL_COLUMN)
 # actors can measurably reduce the amount of time needed.
 
 inference_df = RayDMatrix(data, ignore=[LABEL_COLUMN, "partition"])
-results = predict(
-    bst,
-    inference_df,
-    ray_params=RayParams(
-        cpus_per_actor=cpus_per_actor_inference,
-        num_actors=num_actors_inference))
+results = predict(bst,
+                  inference_df,
+                  ray_params=RayParams(cpus_per_actor=cpus_per_actor_inference,
+                                       num_actors=num_actors_inference))
 
 print(results)

@@ -54,13 +54,12 @@ from sklearn.datasets import make_classification
 import numpy as np
 
 # Create dataset
-X, y = make_classification(
-    n_samples=11000,
-    n_features=1000,
-    n_informative=50,
-    n_redundant=0,
-    n_classes=10,
-    class_sep=2.5)
+X, y = make_classification(n_samples=11000,
+                           n_features=1000,
+                           n_informative=50,
+                           n_redundant=0,
+                           n_classes=10,
+                           class_sep=2.5)
 x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=1000)
 
 # Example parameters to tune from SGDClassifier
@@ -69,10 +68,13 @@ parameter_grid = {"alpha": [1e-4, 1e-1, 1], "epsilon": [0.01, 0.1]}
 #######################################################################
 # As you can see, the setup here is exactly how you would do it for Scikit-Learn. Now, let's try fitting a model.
 
-tune_search = TuneGridSearchCV(
-    SGDClassifier(), parameter_grid, early_stopping=True, max_iters=10)
+tune_search = TuneGridSearchCV(SGDClassifier(),
+                               parameter_grid,
+                               early_stopping=True,
+                               max_iters=10)
 
 import time  # Just to compare fit times
+
 start = time.time()
 tune_search.fit(x_train, y_train)
 end = time.time()

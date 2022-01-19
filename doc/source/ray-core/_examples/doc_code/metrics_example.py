@@ -8,6 +8,7 @@ ray.init(_metrics_export_port=8080)
 
 @ray.remote
 class MyActor:
+
     def __init__(self, name):
         self._curr_count = 0
 
@@ -23,11 +24,10 @@ class MyActor:
             tag_keys=("actor_name", ))
         self.gauge.set_default_tags({"actor_name": name})
 
-        self.histogram = Histogram(
-            "request_latency",
-            description="Latencies of requests in ms.",
-            boundaries=[0.1, 1],
-            tag_keys=("actor_name", ))
+        self.histogram = Histogram("request_latency",
+                                   description="Latencies of requests in ms.",
+                                   boundaries=[0.1, 1],
+                                   tag_keys=("actor_name", ))
         self.histogram.set_default_tags({"actor_name": name})
 
     def process_request(self, num):

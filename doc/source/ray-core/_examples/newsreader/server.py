@@ -9,6 +9,7 @@ import ray
 
 @ray.remote
 class NewsServer(object):
+
     def __init__(self):
         self.conn = sqlite3.connect("newsreader.db")
         c = self.conn.cursor()
@@ -77,9 +78,8 @@ def dispatcher():
         result = ray.get(method.remote(*method_args))
         return jsonify(result)
     else:
-        return jsonify({
-            "error": "method_name '" + method_name + "' not found"
-        })
+        return jsonify(
+            {"error": "method_name '" + method_name + "' not found"})
 
 
 if __name__ == "__main__":
