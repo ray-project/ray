@@ -1277,10 +1277,6 @@ def test_to_numpy_refs(ray_start_regular_shared):
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
-    # Table Dataset requires column
-    with pytest.raises(ValueError):
-        ray.get(ds.to_numpy_refs())
-
 
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
