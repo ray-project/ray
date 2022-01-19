@@ -4,21 +4,12 @@ Ray Tutorials and Examples
 Get started with Ray, Tune, and RLlib with these notebooks that you can run online in Colab or Binder: `Ray Tutorial Notebooks <https://github.com/ray-project/tutorial>`__
 
 
-Ray Examples
-------------
+Ray Core Examples
+-----------------
 
 .. raw:: html
 
     <div class="sphx-glr-bigcontainer">
-
-.. toctree::
-   :hidden:
-
-   tips-for-first-time.rst
-   testing-tips.rst
-   progress_bar.rst
-   plot_streaming.rst
-   placement-group.rst
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
@@ -53,18 +44,6 @@ Machine Learning Examples
 
     <div class="sphx-glr-bigcontainer">
 
-.. toctree::
-   :hidden:
-
-   plot_parameter_server.rst
-   plot_hyperparameter.rst
-   plot_lbfgs.rst
-   plot_example-lm.rst
-   plot_newsreader.rst
-   dask_xgboost/dask_xgboost.rst
-   modin_xgboost/modin_xgboost.rst
-
-
 .. customgalleryitem::
    :tooltip: Build a simple parameter server using Ray.
    :figure: /images/param_actor.png
@@ -78,7 +57,6 @@ Machine Learning Examples
 .. customgalleryitem::
    :tooltip: Walkthrough of parallelizing the L-BFGS algorithm.
    :description: :doc:`plot_lbfgs`
-
 
 .. customgalleryitem::
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
@@ -111,12 +89,6 @@ These are simple examples that show you how to leverage Ray Core. For Ray's prod
 
     <div class="sphx-glr-bigcontainer">
 
-.. toctree::
-   :hidden:
-
-   plot_pong_example.rst
-   plot_example-a3c.rst
-
 .. customgalleryitem::
    :tooltip: Asynchronous Advantage Actor Critic agent using Ray.
    :figure: /images/a3c.png
@@ -140,12 +112,11 @@ These are full guides on how you can use Ray with various Machine Learning libra
 
     <div class="sphx-glr-bigcontainer">
 
-.. toctree::
-   :hidden:
-
-   using-ray-with-pytorch-lightning.rst
-
 .. customgalleryitem::
    :tooltip: Using Ray with PyTorch Lightning.
    :figure: /images/pytorch_lightning_small.png
    :description: :doc:`using-ray-with-pytorch-lightning`
+
+.. raw:: html
+
+    </div>

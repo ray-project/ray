@@ -27,6 +27,7 @@ sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
 sphinx-book-theme==0.0.42
+sphinx-external-toc
 sphinxcontrib.yt
 starlette
 tabulate

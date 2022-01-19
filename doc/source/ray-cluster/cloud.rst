@@ -18,11 +18,6 @@ To learn about deploying Ray on an existing Kubernetes cluster, refer to the gui
 Ray with cloud providers
 ------------------------
 
-.. toctree::
-    :hidden:
-
-    /ray-cluster/aws-tips.rst
-
 .. tabs::
     .. group-tab:: AWS
 

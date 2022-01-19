@@ -6,6 +6,8 @@ from docutils import nodes
 import os
 import sphinx_gallery
 
+__all__ = ['CustomGalleryItemDirective', 'fix_xgb_lgbm_docs', 'MOCK_MODULES', 'CHILD_MOCK_MODULES']
+
 try:
     FileNotFoundError
 except NameError:
@@ -134,3 +136,79 @@ def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
         for i, _ in enumerate(lines):
             for replacement in replacements:
                 lines[i] = lines[i].replace(*replacement)
+
+import scipy.stats
+import scipy.linalg
+
+MOCK_MODULES = [
+    "ax",
+    "ax.service.ax_client",
+    "blist",
+    "ConfigSpace",
+    "dask.distributed",
+    "gym",
+    "gym.spaces",
+    "horovod",
+    "horovod.runner",
+    "horovod.runner.common",
+    "horovod.runner.common.util",
+    "horovod.ray",
+    "horovod.ray.runner",
+    "horovod.ray.utils",
+    "hyperopt",
+    "hyperopt.hp"
+    "kubernetes",
+    "mlflow",
+    "modin",
+    "mxnet",
+    "mxnet.model",
+    "optuna",
+    "optuna.distributions",
+    "optuna.samplers",
+    "optuna.trial",
+    "psutil",
+    "ray._raylet",
+    "ray.core.generated",
+    "ray.core.generated.common_pb2",
+    "ray.core.generated.runtime_env_common_pb2",
+    "ray.core.generated.gcs_pb2",
+    "ray.core.generated.logging_pb2",
+    "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
+    "scipy.signal",
+    "scipy.stats",
+    "setproctitle",
+    "tensorflow_probability",
+    "tensorflow",
+    "tensorflow.contrib",
+    "tensorflow.contrib.all_reduce",
+    "tree",
+    "tensorflow.contrib.all_reduce.python",
+    "tensorflow.contrib.layers",
+    "tensorflow.contrib.rnn",
+    "tensorflow.contrib.slim",
+    "tensorflow.core",
+    "tensorflow.core.util",
+    "tensorflow.keras",
+    "tensorflow.python",
+    "tensorflow.python.client",
+    "tensorflow.python.util",
+    "torch",
+    "torch.distributed",
+    "torch.nn",
+    "torch.nn.parallel",
+    "torch.utils.data",
+    "torch.utils.data.distributed",
+    "wandb",
+    "zoopt",
+]
+
+CHILD_MOCK_MODULES = [
+    "pytorch_lightning",
+    "pytorch_lightning.accelerators",
+    "pytorch_lightning.plugins",
+    "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.utilities",
+    "tensorflow.keras.callbacks",
+]
