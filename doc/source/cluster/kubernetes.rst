@@ -148,11 +148,29 @@ The :ref:`Ray dashboard<ray-dashboard>` can be accessed on the Ray head node at 
 
 .. _ray-k8s-client:
 
+Running Ray programs with Ray Jobs Submission
+---------------------------------------------
+
+:ref:`Ray Job Submission <jobs-overview>` can be used to submit Ray programs to your Ray cluster.
+
+.. code-block:: bash
+
+  export RAY_ADDRESS="http://127.0.0.1:8265"
+
+  ❯ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+  2021-12-01 23:04:52,672 INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
+  2021-12-01 23:04:52,809 INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
+  2021-12-01 23:04:52,810 INFO packaging.py:352 -- Creating a file package for local directory './'.
+  2021-12-01 23:04:52,878 INFO cli.py:105 -- Job submitted successfully: raysubmit_RXhvSyEPbxhcXtm6.
+  2021-12-01 23:04:52,878 INFO cli.py:106 -- Query the status of the job using: `ray job status raysubmit_RXhvSyEPbxhcXtm6`.
+
+
+
+
 Running Ray programs with Ray Client
 ------------------------------------
 
-:ref:`Ray Client <ray-client>` can be used to execute Ray programs
-on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``10001``.
+:ref:`Ray Client <ray-client>` can be used to interactively execute Ray programs on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``10001``.
 
 .. note::
 

@@ -170,7 +170,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 num_rows=num_rows,
                 size_bytes=sum(file_sizes),
                 schema=schema,
-                input_files=read_paths)
+                input_files=read_paths,
+                exec_stats=None)  # Exec stats filled in later.
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(
                     read_paths, filesystem), meta

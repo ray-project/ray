@@ -34,7 +34,7 @@ Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to
    :width: 650px
    :align: center
 
-See :ref:`the Talks section <data-talks>` for more Dataset ML use cases and benchmarks.
+See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more Datasets ML use cases and benchmarks.
 
 General Parallel Compute
 ------------------------
@@ -392,6 +392,8 @@ Talks and Materials
 -------------------
 
 - [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+- [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
+- [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
 
 
 Contributing

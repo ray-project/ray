@@ -1067,9 +1067,11 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (all_grads, grad_info)
             except Exception as e:
+                import traceback
                 with lock:
                     results[shard_idx] = (ValueError(
-                        e.args[0] + "\n" +
+                        e.args[0] + "\n traceback" + traceback.format_exc() +
+                        "\n" +
                         "In tower {} on device {}".format(shard_idx, device)),
                                           e)
 
@@ -1168,7 +1170,7 @@ class EntropyCoeffSchedule:
 
 @DeveloperAPI
 class DirectStepOptimizer:
-    """Typesafe method for indicating apply gradients can directly step the
+    """Typesafe method for indicating `apply_gradients` can directly step the
        optimizers with in-place gradients.
     """
     _instance = None

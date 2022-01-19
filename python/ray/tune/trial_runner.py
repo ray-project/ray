@@ -13,22 +13,24 @@ import ray
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
-from ray.tune.stopper import NoopStopper
+from ray.tune.experiment import Experiment
+from ray.tune.insufficient_resources_manager import (
+    InsufficientResourcesManager)
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
                              TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
+from ray.tune.schedulers import FIFOScheduler, TrialScheduler
+from ray.tune.stopper import NoopStopper
+from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
 from ray.tune.trial import Checkpoint, Trial
-from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
-from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -260,6 +262,7 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+        self._insufficient_resources_manager = InsufficientResourcesManager()
         self._pending_trial_queue_times = {}
 
         # Set the number of maximum pending trials
@@ -689,6 +692,10 @@ class TrialRunner:
                 # Only try to start another trial if previous trial startup
                 # did not error (e.g. it just didn't start because its
                 # placement group is not ready, yet).
+                # Without this clause, this test fails:
+                # test_trial_runner_pg.py::
+                # TrialRunnerPlacementGroupHeterogeneousTest::
+                # testResourceDeadlock
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):
@@ -701,7 +708,8 @@ class TrialRunner:
                     timeout = 0.1
                 self._process_events(timeout=timeout)
             else:
-                self.trial_executor.on_no_available_trials(self.get_trials())
+                self._insufficient_resources_manager.on_no_available_trials(
+                    self.get_trials())
 
         self._stop_experiment_if_needed()
 
@@ -752,7 +760,9 @@ class TrialRunner:
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(self, trial)
+            self._scheduler_alg.on_trial_add(
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
+                trial)
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
@@ -807,65 +817,54 @@ class TrialRunner:
         return trial
 
     def _process_events(self, timeout: Optional[float] = None):
-        with warn_if_slow("get_next_failed_trial"):
-            failed_trial = self.trial_executor.get_next_failed_trial()
-        if failed_trial:
-            error_msg = (
-                "{} (IP: {}) detected as stale. This is likely because the "
-                "node was lost").format(failed_trial, failed_trial.node_ip)
-            logger.info(error_msg)
-            with warn_if_slow("process_failed_trial"):
-                self._process_trial_failure(failed_trial, error_msg=error_msg)
+        # TODO(ujvl): Consider combining get_next_available_trial and
+        #  fetch_result functionality so that we don't timeout on fetch.
+        trial = self.trial_executor.get_next_available_trial(
+            timeout=timeout)  # blocking
+        if not trial:
+            return
+        if trial.is_restoring:
+            with warn_if_slow("process_trial_restore"):
+                self._process_trial_restore(trial)
+            with warn_if_slow("callbacks.on_trial_restore"):
+                self._callbacks.on_trial_restore(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
+        elif trial.is_saving:
+            with warn_if_slow("process_trial_save") as _profile:
+                self._process_trial_save(trial)
+            with warn_if_slow("callbacks.on_trial_save"):
+                self._callbacks.on_trial_save(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial)
+            if _profile.too_slow and trial.sync_on_checkpoint:
+                # TODO(ujvl): Suggest using cloud checkpointing once
+                #  API has converged.
+
+                msg = ("Consider turning off forced head-worker trial "
+                       "checkpoint syncs by setting sync_on_checkpoint=False"
+                       ". Note that this may result in faulty trial "
+                       "restoration if a failure occurs while the checkpoint "
+                       "is being synced from the worker to the head node.")
+
+                if trial.location.hostname and (trial.location.hostname !=
+                                                get_node_ip_address()):
+                    if log_once("tune_head_worker_checkpoint"):
+                        logger.warning(msg)
+
         else:
-            # TODO(ujvl): Consider combining get_next_available_trial and
-            #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial(
-                timeout=timeout)  # blocking
-            if not trial:
-                return
-            if trial.is_restoring:
-                with warn_if_slow("process_trial_restore"):
-                    self._process_trial_restore(trial)
-                with warn_if_slow("callbacks.on_trial_restore"):
-                    self._callbacks.on_trial_restore(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-            elif trial.is_saving:
-                with warn_if_slow("process_trial_save") as _profile:
-                    self._process_trial_save(trial)
-                with warn_if_slow("callbacks.on_trial_save"):
-                    self._callbacks.on_trial_save(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-                if _profile.too_slow and trial.sync_on_checkpoint:
-                    # TODO(ujvl): Suggest using cloud checkpointing once
-                    #  API has converged.
+            with warn_if_slow("process_trial"):
+                self._process_trial(trial)
 
-                    msg = (
-                        "Consider turning off forced head-worker trial "
-                        "checkpoint syncs by setting sync_on_checkpoint=False"
-                        ". Note that this may result in faulty trial "
-                        "restoration if a failure occurs while the checkpoint "
-                        "is being synced from the worker to the head node.")
-
-                    if trial.location.hostname and (trial.location.hostname !=
-                                                    get_node_ip_address()):
-                        if log_once("tune_head_worker_checkpoint"):
-                            logger.warning(msg)
-
-            else:
-                with warn_if_slow("process_trial"):
-                    self._process_trial(trial)
-
-            # `self._queued_trial_decisions` now contains a final decision
-            # based on all results
-            if trial not in self._cached_trial_decisions:
-                final_decision = self._queued_trial_decisions.pop(
-                    trial.trial_id, None)
-                if final_decision:
-                    self._execute_action(trial, final_decision)
+        # `self._queued_trial_decisions` now contains a final decision
+        # based on all results
+        if trial not in self._cached_trial_decisions:
+            final_decision = self._queued_trial_decisions.pop(
+                trial.trial_id, None)
+            if final_decision:
+                self._execute_action(trial, final_decision)
 
     def _process_trial(self, trial):
         """Processes a trial result.
@@ -938,54 +937,29 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
-        _trigger_callback_complete = False
-
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
-            result.update(done=True)
-
-            # Hook into scheduler
-            self._scheduler_alg.on_trial_complete(self, trial, flat_result)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, result=flat_result)
-
-            # If this is not a duplicate result, the callbacks should
-            # be informed about the result.
-            if not is_duplicate:
-                with warn_if_slow("callbacks.on_trial_result"):
-                    self._callbacks.on_trial_result(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial,
-                        result=result.copy())
-
-            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, flat_result)
-            if decision == TrialScheduler.STOP:
-                result.update(done=True)
+        if decision == TrialScheduler.STOP:
+            result.update(done=True)
+        else:
+            # Only updating search alg if the trial is not to be stopped.
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
+
+        # If this is not a duplicate result, the callbacks should
+        # be informed about the result.
+        if not is_duplicate:
             with warn_if_slow("callbacks.on_trial_result"):
                 self._callbacks.on_trial_result(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
                     result=result.copy())
-            if decision == TrialScheduler.STOP:
-                with warn_if_slow("search_alg.on_trial_complete"):
-                    self._search_alg.on_trial_complete(
-                        trial.trial_id, result=flat_result)
-                with warn_if_slow("callbacks.on_trial_complete"):
-                    self._callbacks.on_trial_complete(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-
-        if not is_duplicate:
             trial.update_last_result(result)
             # Include in next experiment checkpoint
             self.trial_executor.mark_trial_to_checkpoint(trial)
@@ -995,10 +969,6 @@ class TrialRunner:
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
-
-        if _trigger_callback_complete:
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
 
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.
@@ -1174,8 +1144,9 @@ class TrialRunner:
         elif decision == TrialScheduler.PAUSE:
             self.trial_executor.pause_trial(trial)
         elif decision == TrialScheduler.STOP:
-            self.trial_executor.export_trial_if_needed(trial)
-            self.trial_executor.stop_trial(trial)
+            self.stop_trial(trial)
+        elif decision == TrialScheduler.NOOP:
+            pass
         else:
             raise ValueError("Invalid decision: {}".format(decision))
 
@@ -1252,7 +1223,9 @@ class TrialRunner:
         self._live_trials.add(trial)
 
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(self, trial)
+            self._scheduler_alg.on_trial_add(
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
+                trial)
 
     def _update_trial_queue(self, blocking: bool = False,
                             timeout: int = 600) -> bool:
@@ -1300,48 +1273,39 @@ class TrialRunner:
             self.stop_trial(t)
 
     def stop_trial(self, trial):
-        """Stops trial.
+        """The canonical implementation of stopping a trial.
 
-        Trials may be stopped at any time. If trial is in state PENDING
-        or PAUSED, calls `on_trial_remove`  for scheduler and
-        `on_trial_complete() for search_alg.
-        Otherwise waits for result for the trial and calls
-        `on_trial_complete` for scheduler and search_alg if RUNNING.
+        Trials may be in any external status when this function is called.
+        If trial is in state PENDING or PAUSED, calls `on_trial_remove` for
+        scheduler and `on_trial_complete()` for search_alg.
+        If trial is in state RUNNING, calls `on_trial_complete` for scheduler
+        and search_alg if RUNNING. Caller to ensure that there is no
+        outstanding future to be handled for the trial. If there is, the future
+        would be discarded.
         """
-        error = False
-        error_msg = None
-
-        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
-            return
-        elif trial.status in [Trial.PENDING, Trial.PAUSED]:
-            self._scheduler_alg.on_trial_remove(self, trial)
-            self._search_alg.on_trial_complete(trial.trial_id)
+        try:
+            if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+                return
+            elif trial.status in [Trial.PENDING, Trial.PAUSED]:
+                self._scheduler_alg.on_trial_remove(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id)
+            elif trial.status is Trial.RUNNING:
+                # By this time trial.last_result should have been
+                # updated already.
+                self._scheduler_alg.on_trial_complete(
+                    self, trial, flatten_dict(trial.last_result))
+                self._search_alg.on_trial_complete(
+                    trial.trial_id, result=flatten_dict(trial.last_result))
             self._callbacks.on_trial_complete(
                 iteration=self._iteration, trials=self._trials, trial=trial)
-        elif trial.status is Trial.RUNNING:
-            try:
-                results = self.trial_executor.fetch_result(trial)
-                result = results[-1]
-                trial.update_last_result(result)
-                self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(
-                    trial.trial_id, result=result)
-                self._callbacks.on_trial_complete(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-            except Exception:
-                error_msg = traceback.format_exc()
-                logger.exception("Error processing event.")
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-                error = True
-        self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
-        self._live_trials.discard(trial)
+            self.trial_executor.export_trial_if_needed(trial)
+            self.trial_executor.stop_trial(trial)
+            self._live_trials.discard(trial)
+        except Exception:
+            logger.exception("Trial %s: Error stopping trial.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
+            self._process_trial_failure(trial, traceback.format_exc())
 
     def cleanup_trials(self):
         self.trial_executor.cleanup(self.get_trials())
@@ -1390,3 +1354,62 @@ class TrialRunner:
 
         if launch_web_server:
             self._server = TuneServer(self, self._server_port)
+
+
+class TrialExecutorWrapper(RayTrialExecutor):
+    """Wraps around TrialExecutor class, intercepts API calls and warns users
+    of restricted API access.
+
+    This is meant to facilitate restricting
+    the current API exposure of TrialExecutor by TrialScheduler.
+    """
+
+    def __init__(self,
+                 trial_executor: RayTrialExecutor,
+                 whitelist_attr: Optional[set] = None):
+        self._trial_executor = trial_executor
+        self._whitelist_attr = whitelist_attr or set()
+
+    def __getattr__(self, attr):
+        if attr not in self._whitelist_attr:
+            logger.warning(f"You are trying to access {attr} interface of "
+                           f"TrialExecutor in TrialScheduler, which is being "
+                           f"restricted. If you believe it is reasonable for "
+                           f"your scheduler to access this TrialExecutor API, "
+                           f"please reach out to Ray team on GitHub. A more "
+                           f"strict API access pattern would be enforced "
+                           f"starting 1.12.0")
+        return getattr(self._trial_executor, attr)
+
+
+class TrialRunnerWrapper(TrialRunner):
+    """Wraps around TrialRunner class, intercepts API calls and warns users
+    of restricted API access.
+
+    This is meant to facilitate restricting
+    the current API exposure of TrialRunner by TrialScheduler.
+    """
+
+    _EXECUTOR_ATTR = "trial_executor"
+
+    def __init__(self,
+                 trial_runner: TrialRunner,
+                 runner_whitelist_attr: Optional[set] = None,
+                 executor_whitelist_attr: Optional[set] = None):
+        self._trial_runner = trial_runner
+        self._trial_executor = TrialExecutorWrapper(
+            trial_runner.trial_executor, executor_whitelist_attr)
+        self._runner_whitelist_attr = runner_whitelist_attr or set()
+
+    def __getattr__(self, attr):
+        if attr == self._EXECUTOR_ATTR:
+            return self._trial_executor
+        if attr not in self._runner_whitelist_attr:
+            logger.warning(f"You are trying to access {attr} interface of "
+                           f"TrialRunner in TrialScheduler, which is being "
+                           f"restricted. If you believe it is reasonable for "
+                           f"your scheduler to access this TrialRunner API, "
+                           f"please reach out to Ray team on GitHub. A more "
+                           f"strict API access pattern would be enforced "
+                           f"starting 1.12s.0")
+        return getattr(self._trial_runner, attr)

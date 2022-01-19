@@ -219,6 +219,23 @@ class SkOptSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        assert self._skopt_opt, "Optimizer must be set."
+        if intermediate_values:
+            logger.warning("SkOpt doesn't use intermediate_values. Ignoring.")
+        if not error and not pruned:
+            self._skopt_opt.tell(
+                [parameters[par] for par in self._parameter_names], value)
+
+        else:
+            logger.warning("Only non errored and non pruned points"
+                           " can be added to SkOpt.")
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict, **spec) -> bool:
         if self._skopt_opt:
@@ -249,9 +266,6 @@ class SkOptSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
         if self._initial_points:
             suggested_config = self._initial_points.pop(0)
             skopt_config = [suggested_config[par] for par in self._parameters]

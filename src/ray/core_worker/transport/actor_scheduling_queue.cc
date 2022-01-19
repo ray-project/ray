@@ -19,7 +19,8 @@ namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
     instrumented_io_context &main_io_service, DependencyWaiter &waiter,
-    std::shared_ptr<PoolManager> pool_manager, bool is_asyncio, int fiber_max_concurrency,
+    std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+    bool is_asyncio, int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups, int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
       wait_timer_(main_io_service),
@@ -35,8 +36,8 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
     RAY_LOG(INFO) << ss.str();
-    fiber_state_manager_ =
-        std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
+    fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
+        concurrency_groups, fiber_max_concurrency);
   }
 }
 
@@ -136,14 +137,14 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
     if (is_asyncio_) {
       // Process async actor task.
-      auto fiber = fiber_state_manager_->GetFiber(request.ConcurrencyGroupName(),
-                                                  request.FunctionDescriptor());
+      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                                     request.FunctionDescriptor());
       fiber->EnqueueFiber([request]() mutable { request.Accept(); });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);
-      auto pool = pool_manager_->GetPool(request.ConcurrencyGroupName(),
-                                         request.FunctionDescriptor());
+      auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                             request.FunctionDescriptor());
       if (pool == nullptr) {
         request.Accept();
       } else {

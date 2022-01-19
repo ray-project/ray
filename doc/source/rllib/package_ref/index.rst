@@ -20,4 +20,8 @@ If you think there is anything missing, please open an issue on `Github`_.
    env.rst
    trainer.rst
    policy.rst
-   ../../rllib-package-ref
+   models.rst
+   evaluation.rst
+   offline.rst
+   execution.rst
+   utils.rst

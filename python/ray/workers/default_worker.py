@@ -39,6 +39,11 @@ parser.add_argument(
     type=str,
     help="the address to use for Redis")
 parser.add_argument(
+    "--gcs-address",
+    required=True,
+    type=str,
+    help="the address to use for GCS")
+parser.add_argument(
     "--redis-password",
     required=False,
     type=str,
@@ -180,6 +185,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
+        gcs_address=args.gcs_address,
     )
 
     node = ray.node.Node(

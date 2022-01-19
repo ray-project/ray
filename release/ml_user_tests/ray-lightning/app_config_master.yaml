@@ -1,6 +1,4 @@
 base_image: "anyscale/ray-ml:nightly-py37-gpu"
-env_vars:
-  PL_TORCH_DISTRIBUTED_BACKEND: gloo
 
 debian_packages:
   - curl

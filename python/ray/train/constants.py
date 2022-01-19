@@ -33,8 +33,11 @@ RESULT_FILE_JSON = "results.json"
 # Default directory where all Train logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
 
-# File name to use for checkpoints saved with Tune
+# File name to use for checkpoints saved with Tune.
 TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
+
+# The name of the subdirectory inside the trainer run_dir to store checkpoints.
+TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
 
 # The key to use to specify the checkpoint id for Tune.
 # This needs to be added to the checkpoint dictionary so if the Tune trial

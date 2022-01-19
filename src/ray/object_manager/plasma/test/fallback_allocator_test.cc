@@ -32,10 +32,31 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
   auto plasma_directory = CreateTestDir();
   auto fallback_directory = CreateTestDir();
   int64_t kLimit = 256 * sizeof(size_t) + 2 * kMB;
+  int64_t object_size = 900 * 1024;
   PlasmaAllocator allocator(plasma_directory, fallback_directory,
                             /* hugepage_enabled */ false, kLimit);
 
   EXPECT_EQ(kLimit, allocator.GetFootprintLimit());
+
+  {
+    auto allocation_1 = allocator.Allocate(object_size);
+    EXPECT_TRUE(allocation_1.has_value());
+
+    auto allocation_2 = allocator.Allocate(object_size);
+    EXPECT_TRUE(allocation_2.has_value());
+
+    EXPECT_EQ(2 * object_size, allocator.Allocated());
+
+    allocator.Free(std::move(allocation_1.value()));
+    auto allocation_3 = allocator.Allocate(object_size);
+    EXPECT_TRUE(allocation_3.has_value());
+    EXPECT_EQ(0, allocator.FallbackAllocated());
+    EXPECT_EQ(2 * object_size, allocator.Allocated());
+
+    allocator.Free(std::move(allocation_2.value()));
+    allocator.Free(std::move(allocation_3.value()));
+    EXPECT_EQ(0, allocator.Allocated());
+  }
 
   int64_t expect_allocated = 0;
   int64_t expect_fallback_allocated = 0;
