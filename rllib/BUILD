@@ -503,13 +503,33 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_transformed_actions_pendulum_sac",
+    name = "learning_tests_transformed_actions_pendulum_sac_tf1",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    tags = ["team:ml", "gpu"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
+    args = ["--yaml-dir=tuned_examples/sac" "--framework=tf"]
+)
+
+py_test(
+    name = "learning_tests_transformed_actions_pendulum_sac_tf2",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "gpu"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=tf2"]
+)
+
+py_test(
+    name = "learning_tests_transformed_actions_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "gpu"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
 py_test(
