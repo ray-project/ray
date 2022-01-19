@@ -556,7 +556,7 @@ class TorchPolicy(Policy):
             custom_metrics = {}
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=batch, result=custom_metrics)
-            batch_fetches[f"tower_{i}"] = {'custom_metrics': custom_metrics}
+            batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
