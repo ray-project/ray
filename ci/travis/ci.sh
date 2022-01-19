@@ -140,7 +140,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
-      -python/ray/serve:conda_env # runtime_env unsupported on Windows
+      -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -152,8 +152,6 @@ test_python() {
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
-      -python/ray/tests:test_metrics
-      -python/ray/tests:test_metrics_agent # timeout
       -python/ray/tests:test_multiprocessing  # flaky, causes subsequent tests to fail
       -python/ray/tests:test_multiprocessing_client_mode
       -python/ray/tests:test_multi_node_3
