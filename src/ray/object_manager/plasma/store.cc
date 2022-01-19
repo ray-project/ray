@@ -184,7 +184,12 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(
   if (lowest_priority != nullptr) {
     //LocalObject *lowest_pri_obj = object_lifecycle_mgr_.GetLowestPriObject();
     //lowest_priority = lowest_pri_obj->GetPriority();
-    lowest_priority = &object_lifecycle_mgr_.GetLowestPriObject();
+	ray::Priority &p = object_lifecycle_mgr_.GetLowestPriObject();
+	int size = p.GetSize();
+	int i;
+	for(i=0; i<size; i++){
+		lowest_priority->SetScore(i, p.GetScore(i));
+	}
   }
 
   // Trigger object spilling if current usage is above the specified threshold.
@@ -385,7 +390,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     }
     // TODO(Jae) Went up the function calls to here. It seems this gets a dummy priority.
     // Check the log and remove this if it gets a correct value
-    RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] reqyest->priority(): " << request->priority();
     RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] priority passed is " << priority;
     ray::TaskKey key(priority, ObjectID::FromRandom().TaskId());
 

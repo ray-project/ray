@@ -48,6 +48,10 @@ struct Priority {
     return score[depth];
   }
 
+  int GetSize() {
+	  return (int)score.size();
+  }
+
   void SetScore(int64_t depth, int s) {
     extend(depth + 1);
     RAY_CHECK(score[depth] >= s);

@@ -53,17 +53,17 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
 
 ray::Priority &ObjectStore::GetLowestPriObject() {
   auto it = object_table_.begin();
-  auto return_it = it;
   ray::Priority &lowest_priority = it->second->GetPriority();
   it++;
+  RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] Look for lowest pri" << object_table_.size();
   for (; it != object_table_.end(); it++){
 	ray::Priority &p = it->second->GetPriority();
+	RAY_LOG(DEBUG) << "[JAE_DEBUG] [" << __func__ << "] pri:" << p;
     if(lowest_priority< p){
       lowest_priority = p;
-	  return_it = it;
 	}
   }
-  return return_it->second->GetPriority();
+  return lowest_priority;
 }
 
 
