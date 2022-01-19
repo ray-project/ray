@@ -867,16 +867,17 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   // scope before we return the ObjectRef to the language frontend. Note that
   // the language bindings should set skip_adding_local_ref=True to avoid
   // double referencing the object.
-  AddLocalReference(*object_id);
   if (owned_by_us) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
+    AddLocalReference(*object_id);
   } else {
     RAY_UNUSED(reference_counter_->AddBorrowedObject(
         *object_id, ObjectID::Nil(), real_owner_address,
         /*foreign_owner_already_monitoring=*/true));
+    AddLocalReference(*object_id);
 
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
