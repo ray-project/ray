@@ -151,7 +151,7 @@
   commands:
     - ./java/test.sh
 
-- label: ":java: :redis:  Java"
+- label: ":java: :redis: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
     - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./java/test.sh
