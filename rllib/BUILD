@@ -509,7 +509,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac" "--framework=tf"]
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=tf"]
 )
 
 py_test(
