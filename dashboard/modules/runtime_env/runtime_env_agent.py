@@ -34,6 +34,16 @@ default_logger = logging.getLogger(__name__)
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
+# Sizes for the URI cache for each runtime_env field.  Defaults to 10 GB.
+WORKING_DIR_CACHE_SIZE_BYTES = int((1024**3) * float(
+    os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10)))
+PY_MODULES_CACHE_SIZE_BYTES = int((1024**3) * float(
+    os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10)))
+CONDA_CACHE_SIZE_BYTES = int((1024**3) * float(
+    os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10)))
+PIP_CACHE_SIZE_BYTES = int(
+    (1024**3) * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", 10)))
+
 
 @dataclass
 class CreatedEnvResult:
@@ -78,11 +88,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
         self._working_dir_uri_cache = URICache(
-            self._working_dir_manager.delete_uri)
+            self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES)
         self._py_modules_uri_cache = URICache(
-            self._py_modules_manager.delete_uri)
-        self._conda_uri_cache = URICache(self._conda_manager.delete_uri)
-        self._pip_uri_cache = URICache(self._pip_manager.delete_uri)
+            self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES)
+        self._conda_uri_cache = URICache(self._conda_manager.delete_uri,
+                                         CONDA_CACHE_SIZE_BYTES)
+        self._pip_uri_cache = URICache(self._pip_manager.delete_uri,
+                                       PIP_CACHE_SIZE_BYTES)
         self._logger = default_logger
 
     def get_or_create_logger(self, job_id: bytes):
