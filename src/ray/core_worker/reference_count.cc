@@ -1196,6 +1196,10 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     return false;
   }
   if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+    // NOTE(swang): If the object is out of scope, then we should have
+    // already sent the "object evicted" notification to delete the copy at
+    // this spilled URL. Therefore, we should not add this spill URL as a
+    // location.
     return false;
   }
 
