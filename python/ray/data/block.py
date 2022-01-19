@@ -55,7 +55,7 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
             raise ValueError("Callable key '{}' requires dataset format to be "
                              "'simple', was '{}'.".format(key, fmt))
     else:
-        raise ValueError("Invalid key type {} ({}).".format(key, type(key)))
+        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
 
 
 # Represents a batch of records to be stored in the Ray object store.
