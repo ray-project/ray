@@ -1566,9 +1566,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     /// Since this actor doesn't have a specified lifetime on creation, let's use
     /// the default value of the job.
     is_detached = job_config_->default_actor_lifetime() ==
-                                 ray::rpc::JobConfig_ActorLifetime_DETACHED;
+                  ray::rpc::JobConfig_ActorLifetime_DETACHED;
   } else {
-      is_detached = actor_creation_options.is_detached.value();
+    is_detached = actor_creation_options.is_detached.value();
   }
 
   const auto next_task_index = worker_context_.GetNextTaskIndex();
@@ -1615,10 +1615,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, serialized_actor_handle, actor_creation_options.scheduling_strategy,
       actor_creation_options.max_restarts, actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, is_detached,
-      actor_name, ray_namespace, actor_creation_options.is_asyncio,
-      actor_creation_options.concurrency_groups, extension_data,
-      actor_creation_options.execute_out_of_order);
+      actor_creation_options.max_concurrency, is_detached, actor_name, ray_namespace,
+      actor_creation_options.is_asyncio, actor_creation_options.concurrency_groups,
+      extension_data, actor_creation_options.execute_out_of_order);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
