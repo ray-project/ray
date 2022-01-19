@@ -2185,7 +2185,7 @@ def run_test(test_config_file: str,
     # When running local test, this validates the team name.
     # If the team name is not specified, they will be recorded as "unspecified"
     if not report and team not in VALID_TEAMS:
-        raise ValueError(
+        logger.warning(
             f"Incorrect team name {team} has given."
             "Please specify team under the name field in the test config. "
             "For example, within nightly_tests.yaml,\n"
