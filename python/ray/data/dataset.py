@@ -2478,9 +2478,6 @@ Dict[str, List[str]]]): The names of the columns
                 return "arrow"
         except ModuleNotFoundError:
             pass
-        from ray.data.impl.pandas_block import PandasBlockSchema
-        if isinstance(schema, PandasBlockSchema):
-            return "pandas"
         return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
