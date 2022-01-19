@@ -5,10 +5,12 @@ from docutils.statemachine import StringList
 from docutils import nodes
 import os
 import sphinx_gallery
+import scipy.stats
+import scipy.linalg
 
 __all__ = [
-    'CustomGalleryItemDirective', 'fix_xgb_lgbm_docs', 'MOCK_MODULES',
-    'CHILD_MOCK_MODULES'
+    "CustomGalleryItemDirective", "fix_xgb_lgbm_docs", "MOCK_MODULES",
+    "CHILD_MOCK_MODULES"
 ]
 
 try:
@@ -141,9 +143,6 @@ def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
             for replacement in replacements:
                 lines[i] = lines[i].replace(*replacement)
 
-
-import scipy.stats
-import scipy.linalg
 
 MOCK_MODULES = [
     "ax",
