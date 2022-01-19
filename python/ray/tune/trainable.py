@@ -83,6 +83,8 @@ class Trainable:
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+                This is **per trial** directory,
+                which is different from **per checkpoint** directory.
             sync_function_tpl (str): Sync function template to use. Defaults
               to `cls._sync_function` (which defaults to `None`).
         """
@@ -147,6 +149,8 @@ class Trainable:
                 self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):
+        """Converts a `local_path` to be based off of
+        `self.remote_checkpoint_dir`."""
         rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
@@ -439,11 +443,16 @@ class Trainable:
 
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
+
+        `checkpoint_path` is the file/folder path of a trial checkpoint.
         """
         # Maybe sync from cloud
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_down(self.remote_checkpoint_dir,
-                                          self.logdir)
+            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+                checkpoint_path)
+            self.storage_client.sync_down(
+                os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
+                os.path.join(self.logdir, rel_checkpoint_dir))
             self.storage_client.wait()
 
         # Ensure TrialCheckpoints are converted
@@ -624,6 +633,8 @@ class Trainable:
         """Create logger from logger creator.
 
         Sets _logdir and _result_logger.
+
+        `_logdir` is the **per trial** directory for the Trainable.
         """
         if logger_creator:
             self._result_logger = logger_creator(config)

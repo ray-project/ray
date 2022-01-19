@@ -1,16 +1,14 @@
-from typing import Dict, Any
-
 import glob
 import inspect
 import io
 import logging
-import shutil
-
-import pandas as pd
-import ray.cloudpickle as pickle
 import os
+import pandas as pd
+import shutil
+from typing import Any, Dict, Union
 
 import ray
+import ray.cloudpickle as pickle
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
@@ -21,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(checkpoint, parent_dir, trainable_state):
+    def process_checkpoint(checkpoint: Union[Dict, str], parent_dir: str,
+                           trainable_state: Dict):
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if not checkpoint.startswith(parent_dir):
@@ -99,6 +98,24 @@ class TrainableUtil:
                 "Checkpoint directory not found for {}".format(
                     checkpoint_path))
         return os.path.normpath(checkpoint_dir)
+
+    @staticmethod
+    def find_rel_checkpoint_dir(checkpoint_path):
+        """Returns the (relative) directory name of the checkpoint.
+
+        For example, if `checkpoint_path` is
+        `~/ray_results/2022-01-18_17-02-xxx/checkpoint_000001/`,
+        returns `checkpoint_000001`.
+        if `checkpoint_path` is
+        `~/ray_results/2022-01-18_17-02-xxx/checkpoint_000001/checkpoint`,
+        still returns `checkpoint_000001`.
+
+        Raises:
+            FileNotFoundError if checkpoint directory is not found.
+        """
+        absolute_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+            checkpoint_path)
+        return os.path.basename(os.path.normpath(absolute_checkpoint_dir))
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):
