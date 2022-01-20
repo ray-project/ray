@@ -67,12 +67,13 @@ message PluginRuntimeEnv {
 }
 
 message PythonRuntimeEnv {
-  /// List of URIs that contain the dependent python modules. 
+  /// List of URIs that contain the dependent python modules.
   /// Valid URIs include:
   /// - A local directory: it will be added to to the PYTHONPATH;
   ///   - Example: `file:///path/to/my_module`.
-  /// - A zip file in an external storage: it will be unpacked and added to the PYTHONPATH.
-  ///   - Example: `http://example.com/my_module.zip`. 
+  /// - A zip file in an external storage: it will be unpacked and added to the
+  /// PYTHONPATH.
+  ///   - Example: `http://example.com/my_module.zip`.
   repeated string dependent_modules = 1;
   /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
   oneof python_runtime_env {
@@ -101,12 +102,12 @@ message JavaRuntimeEnv {
   /// - A jar file in an external storage: it will be added to the CLASSPATH;
   ///   - Example: `http://example.com/my_example.jar`.
   /// - A zip file in an external storage: it will be unpacked and added to the CLASSPATH.
-  ///   - Example: `http://example.com/my_jars.zip`. 
+  ///   - Example: `http://example.com/my_jars.zip`.
   repeated string dependent_jars = 1;
   /// The JVM options, which will be appended to java command line.
   repeated string jvm_options = 2;
-  /// If empty, the default "java" command will be used. 
-  /// If set, `${java_home}/bin/java` will be used. 
+  /// If empty, the default "java" command will be used.
+  /// If set, `${java_home}/bin/java` will be used.
   string java_home = 3;
   /// The concrete Runtime Env for Java workers. Use only one of them, or none at all.
   oneof java_runtime_env {
@@ -122,7 +123,7 @@ message JavaRuntimeEnv {
 message CppRuntimeEnv {
   /// List of dynamic libraries, each of which can specify either
   /// local path or remote URI.
-  /// A local path must be a directory path. And A remote URI 
+  /// A local path must be a directory path. And A remote URI
   /// must be a link directly to a zip file. All the libraries will
   /// be inserted into the LD_LIBRARY_PATH of python workers.
   /// List of URIs that contain the dependent libraries.
@@ -130,7 +131,8 @@ message CppRuntimeEnv {
   /// - A local file or directory: it will be added to to the LD_LIBRARY_PATH;
   ///   - Example: `file:///path/to/my_example.so`.
   ///   - Example: `file:///path/to/my_libraries`.
-  /// - A zip file in an external storage: it will be unpacked and added to the LD_LIBRARY_PATH.
+  /// - A zip file in an external storage: it will be unpacked and added to the
+  /// LD_LIBRARY_PATH.
   ///   - Example: `http://example.com/my_libraries.zip`.
   repeated string dependent_libraries = 1;
   /// The concrete Runtime Env for C++ workers. Use only one of them, or none at all.
