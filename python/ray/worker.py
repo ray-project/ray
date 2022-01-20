@@ -451,9 +451,9 @@ class Worker:
             # This is meaningful only for Redis subscriber.
             num_consecutive_messages_received = 0
             # Number of messages received from the last polling. When the batch
-            # size increases and exceeds 100, the worker and the user probably
-            # will not be able to consume the log messages as rapidly as they
-            # are coming in.
+            # size exceeds 100 and keeps increasing, the worker and the user
+            # probably will not be able to consume the log messages as rapidly
+            # as they are coming in.
             # This is meaningful only for GCS subscriber.
             last_polling_batch_size = 0
             job_id_hex = self.current_job_id.hex()
@@ -475,15 +475,14 @@ class Worker:
                     continue
 
                 if self.gcs_pubsub_enabled:
-                    keeping_up = (
-                        last_polling_batch_size > subscriber.last_batch_size
-                        and last_polling_batch_size >= 100)
+                    lagging = (100 <= last_polling_batch_size <
+                               subscriber.last_batch_size)
                     last_polling_batch_size = subscriber.last_batch_size
                 else:
                     num_consecutive_messages_received += 1
-                    keeping_up = (num_consecutive_messages_received % 100 == 0
-                                  and num_consecutive_messages_received > 0)
-                if not keeping_up:
+                    lagging = (num_consecutive_messages_received % 100 == 0
+                               and num_consecutive_messages_received > 0)
+                if lagging:
                     logger.warning(
                         "The driver may not be able to keep up with the "
                         "stdout/stderr of the workers. To avoid forwarding "
