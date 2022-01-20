@@ -117,22 +117,11 @@ class TrainableUtil:
     def find_rel_checkpoint_dir(logdir, checkpoint_path):
         """Returns the (relative) directory name of the checkpoint.
 
-        `checkpoint_path` can be `~/ray_results/exp/
-        MyTrainable_a=1_b=2_2022-01-08_20-45-26/checkpoint_00000/xxx.pkl`.
-        or `~/ray_results/exp/MyTrainable_a=1_b=2_2022-01-08_20-45-26/
-        checkpoint_00000`.
-
-        `logdir` is a different path at `~/ray_results/exp/
-        MyTrainable_a=1_b=2_2022-01-08_20-45-51/`.
-
-        returns `checkpoint_00000`.
-
-        Raises:
-            FileNotFoundError if checkpoint directory is not found.
+        For example, returns `checkpoint00000/`.
         """
-        experiment_dir = os.path.dirname(os.path.dirname(logdir + os.sep))
-        rel_path = os.path.relpath(checkpoint_path, experiment_dir)
-        return rel_path.split(os.sep)[1]
+        rel_path = os.path.relpath(checkpoint_path, logdir)
+        tokens = rel_path.split(os.sep)
+        return os.path.join(tokens[0], "")
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):

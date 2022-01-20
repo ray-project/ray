@@ -16,15 +16,15 @@ from ray.tune.utils.util import (flatten_dict, unflatten_dict,
 from ray.tune.utils.trainable import TrainableUtil
 
 
-@pytest.mark.parametrize(
-    "checkpoint_path",
-    ["~/tmp/exp/trial1/checkpoint0", "~/tmp/exp/trial1/checkpoint0/"])
-@pytest.mark.parametrize("logdir", [
-    "~/tmp/exp/trial2", "~/tmp/exp/trial2/", "~/tmp/exp/trial1",
-    "~/tmp/exp/trial1/"
+@pytest.mark.parametrize("checkpoint_path", [
+    "~/tmp/exp/trial/checkpoint0", "~/tmp/exp/trial/checkpoint0/",
+    "~/tmp/exp/trial/checkpoint0/checkpoint",
+    "~/tmp/exp/trial/checkpoint0/foo/bar/baz"
 ])
-def testFindRelCheckpointDir(checkpoint_path, logdir):
-    assert TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
+@pytest.mark.parametrize("logdir", ["~/tmp/exp/trial", "~/tmp/exp/trial/"])
+def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
+    assert TrainableUtil.find_rel_checkpoint_dir(
+        logdir, checkpoint_path) == "checkpoint0/"
 
 
 class TrainableUtilTest(unittest.TestCase):

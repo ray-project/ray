@@ -451,12 +451,16 @@ class Trainable:
         `checkpoint_path` should match with the return from ``save()``.
 
         `checkpoint_path` can be
-        `~/ray_results/exp/MyTrainable_a=1_b=2_2022-01-08_20-45-26/
-        checkpoint_00000/xxx.pkl`.
-        `self.logdir` is a different path at for example, `~/ray_results/exp/
-        MyTrainable_a=1_b=2_2022-01-08_20-45-51`.
+        `~/ray_results/exp/MyTrainable_abc/
+        checkpoint_00000/checkpoint`. Or,
+        `~/ray_results/exp/MyTrainable_abc/checkpoint_00000`.
+
+        `self.logdir` should generally be corresponding to `checkpoint_path`,
+        for example, `~/ray_results/exp/MyTrainable_abc`.
+
+        `self.remote_checkpoint_dir` in this case, is something like,
+        `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
         """
-        # Maybe sync from cloud
         if self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
                 self.logdir, checkpoint_path)
