@@ -5,6 +5,8 @@ import logging
 import os
 from pathlib import Path
 import shutil
+import random
+import string
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
@@ -20,6 +22,14 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # limit, but for some reason that causes failures when downloading.
 GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 RAY_PKG_PREFIX = "_ray_pkg_"
+
+
+def generate_random_string(min_len: int = 0, max_len: int = 100):
+    if min_len > max_len:
+        raise ValueError(f"Got min_len={min_len} and max_len={max_len}. "
+                         f"min_len should be less than max_len.")
+    size = random.randint(min_len, max_len)
+    return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -526,22 +536,35 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     return top_level_directory
 
 
-def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
-                                          zip_ref: ZipFile):
+def remove_dir_from_filepaths(base_dir: str, rdir: str):
     """
-    Extracts fname file from zip_ref zip file, removes the top level directory
-    from fname's file path, and stores fname in the base_dir.
+    base_dir: String path of the directory containing rdir
+    rdir: String path of directory relative to base_dir whose contents should
+          be moved to its parent directory
+
+    Removes rdir from the filepaths of all files and directories inside it.
+    In other words, moves all the files inside rdir to the directory that
+    contains rdir.
     """
 
-    fname_without_top_level_dir = "/".join(fname.split("/")[1:])
+    # Find a temporary name for rdir that's different than all children
+    temp_rdir = rdir
+    rdir_children = os.listdir(os.path.join(base_dir, rdir))
+    while temp_rdir in rdir_children:
+        temp_rdir = generate_random_string(min_len=20, max_len=100)
 
-    # If this condition is false, it means there was no top-level directory,
-    # so we do nothing
-    if fname_without_top_level_dir:
-        zip_ref.extract(fname, base_dir)
+    # Rename rdir to temporary name to avoid name collisions with children
+    os.rename(os.path.join(base_dir, rdir), os.path.join(base_dir, temp_rdir))
+
+    # Shift children out of rdir and into base_dir
+    temp_rdir_children = os.listdir(os.path.join(base_dir, temp_rdir))
+    for child in temp_rdir_children:
         os.rename(
-            os.path.join(base_dir, fname),
-            os.path.join(base_dir, fname_without_top_level_dir))
+            os.path.join(base_dir, temp_rdir, child),
+            os.path.join(base_dir, child))
+
+    # Remove any remnants of temp_rdir
+    shutil.rmtree(os.path.join(base_dir, temp_rdir))
 
 
 def unzip_package(package_path: str,
@@ -563,6 +586,8 @@ def unzip_package(package_path: str,
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
+    with ZipFile(str(package_path), "r") as zip_ref:
+        zip_ref.extractall(target_dir)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(
             package_path)
@@ -571,20 +596,8 @@ def unzip_package(package_path: str,
                              "a single top level directory. Make sure there "
                              "are no hidden files at the same level as the "
                              "top level directory.")
-        with ZipFile(str(package_path), "r") as zip_ref:
-            for fname in zip_ref.namelist():
-                extract_file_and_remove_top_level_dir(
-                    base_dir=target_dir, fname=fname, zip_ref=zip_ref)
 
-            # Remove now-empty top_level_directory and any empty subdirectories
-            # left over from extract_file_and_remove_top_level_dir operations
-            leftover_top_level_directory = os.path.join(
-                target_dir, top_level_directory)
-            if os.path.isdir(leftover_top_level_directory):
-                shutil.rmtree(leftover_top_level_directory)
-    else:
-        with ZipFile(str(package_path), "r") as zip_ref:
-            zip_ref.extractall(target_dir)
+        remove_dir_from_filepaths(target_dir, top_level_directory)
 
     if unlink_zip:
         Path(package_path).unlink()
