@@ -268,6 +268,12 @@ def start_middleman_server(on_log_response=None,
         ray.util.disconnect()
         if middleman:
             middleman.stop(0)
+        # Delete server to allow the client server to be GC'ed, which shuts
+        # down Ray. Then wait for Ray to shut down in the local process.
+        # Otherwise, the Ray cluster may stay alive until the next call to
+        # start_middleman_server(), become the backing Ray cluster to the
+        # client server, and shut down in the middle of the test case after
+        # GC finally catches up, leading to test failures.
         server.stop(0)
         del server
         start = time.monotonic()
