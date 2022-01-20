@@ -100,7 +100,7 @@ if __name__ == "__main__":
     submission_cost, ready_cost, actor_job_cost = start_actor(
         args.total_num_actors, args.num_actors_per_nodes, job)
 
-    output = os.get("TEST_OUTPUT_JSON")
+    output = os.environ.get("TEST_OUTPUT_JSON")
 
     result = {
         "total_num_task": args.total_num_task,
