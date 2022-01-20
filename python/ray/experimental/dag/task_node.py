@@ -3,6 +3,9 @@ from ray.experimental.dag.dag_node import DAGNode
 
 
 class TaskNode(DAGNode):
+    """Represents a bound task node in a Ray task DAG."""
+
+    # TODO(ekl) support task options
     def __init__(self, func_body, func_args, func_kwargs):
         self._func_body = func_body
         DAGNode.__init__(self, func_args, func_kwargs)

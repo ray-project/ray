@@ -15,6 +15,18 @@ class DAGNode:
     def transform_up(self,
                      visitor: "Callable[[DAGNode], T]",
                      _cache: Dict["DAGNode", T] = None) -> T:
+        """Transform each node in this DAG in a bottom-up tree walk.
+
+        Args:
+            visitor: Callable that will be applied once to each node in the
+                DAG. It will be applied recursively bottom-up, so nodes can
+                assume the visitor has been applied to their args already.
+            _cache: Dict used to de-duplicate applications of visitor.
+
+        Returns:
+            Return type of the visitor after application to the tree.
+        """
+
         if _cache is None:
             _cache = {}
 
