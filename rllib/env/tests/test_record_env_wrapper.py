@@ -2,6 +2,7 @@ import glob
 import gym
 import numpy as np
 import os
+import shutil
 import unittest
 
 from ray.rllib.env.utils import VideoMonitor, record_env_wrapper
@@ -51,6 +52,9 @@ class TestRecordEnvWrapper(unittest.TestCase):
         check(
             np.array([100.0, 100.0]) * num_steps_per_episode,
             wrapped.get_episode_rewards())
+        # Erase all generated files and the temp path just in case,
+        # as to not disturb further CI-tests.
+        shutil.rmtree(record_env_dir)
 
     def test_wrap_multi_agent_env(self):
         record_env_dir = os.popen("mktemp -d").read()[:-1]
