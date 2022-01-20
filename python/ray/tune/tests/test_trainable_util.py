@@ -1,6 +1,7 @@
 import copy
 from collections import OrderedDict
 import os
+import pytest
 import sys
 import shutil
 import unittest
@@ -13,6 +14,17 @@ from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import (flatten_dict, unflatten_dict,
                                  unflatten_list_dict)
 from ray.tune.utils.trainable import TrainableUtil
+
+
+@pytest.mark.parametrize(
+    "checkpoint_path",
+    ["~/tmp/exp/trial1/checkpoint0", "~/tmp/exp/trial1/checkpoint0/"])
+@pytest.mark.parametrize("logdir", [
+    "~/tmp/exp/trial2", "~/tmp/exp/trial2/", "~/tmp/exp/trial1",
+    "~/tmp/exp/trial1/"
+])
+def testFindRelCheckpointDir(checkpoint_path, logdir):
+    assert TrainableUtil.find_rel_checkpoint_dir(logdir, checkpoint_path) == "checkpoint0"
 
 
 class TrainableUtilTest(unittest.TestCase):

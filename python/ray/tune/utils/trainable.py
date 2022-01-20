@@ -25,17 +25,15 @@ class TrainableUtil:
         under `parent_dir`.
 
         The file structure could either look like:
-        - checkpoint_00000
+        - checkpoint_00000 (returned path)
         -- .is_checkpoint
         -- .tune_metadata
-        -- xxx.pkl
+        -- xxx.pkl (or whatever user specifies in their Trainable)
         Or,
         - checkpoint_00000
         -- .is_checkpoint
-        -- checkpoint
+        -- checkpoint (returned path)
         -- checkpoint.tune_metadata
-
-        The returned path is the path to xxx.pkl.
         """
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -132,7 +130,7 @@ class TrainableUtil:
         Raises:
             FileNotFoundError if checkpoint directory is not found.
         """
-        experiment_dir = os.path.dirname(os.path.dirname(logdir))
+        experiment_dir = os.path.dirname(os.path.dirname(logdir + os.sep))
         rel_path = os.path.relpath(checkpoint_path, experiment_dir)
         return rel_path.split(os.sep)[1]
 
