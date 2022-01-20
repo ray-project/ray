@@ -46,7 +46,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
     private String name;
-    private ActorLifetime lifetime = ActorLifetime.DEFAULT;
+    private ActorLifetime lifetime = ActorLifetime.NON_DETACHED;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
     private List<String> jvmOptions = new ArrayList<>();

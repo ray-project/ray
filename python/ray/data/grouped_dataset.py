@@ -1,22 +1,17 @@
-from typing import Union, Callable, Generic, Tuple, List, Optional
+from typing import Union, Generic, Tuple, List
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, Std, AggregateOnT
-from ray.data.block import BlockExecStats
+    Mean, Std
+from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
-
-GroupKeyBaseT = Union[Callable[[T], KeyType], str]
-GroupKeyT = Optional[Union[GroupKeyBaseT, List[GroupKeyBaseT]]]
-
-AggregateOnTs = Union[AggregateOnT, List[AggregateOnT]]
 
 
 @PublicAPI(stability="beta")
@@ -26,44 +21,14 @@ class GroupedDataset(Generic[T]):
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset[T], key: GroupKeyT):
+    def __init__(self, dataset: Dataset[T], key: KeyFn):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedDataset API.
         Use the ``Dataset.groupby()`` method to construct one.
         """
         self._dataset = dataset
-
-        if isinstance(key, list):
-            if len(key) > 1:
-                # TODO(jjyao) Support multi-key groupby.
-                raise NotImplementedError(
-                    "Multi-key groupby is not supported yet")
-            else:
-                key = key[0]
-
-        try:
-            fmt = self._dataset._dataset_format()
-        except ValueError:
-            # Dataset is empty/cleared, let downstream ops handle this.
-            fmt = None
-
-        if key is None:
-            self._key = key
-        elif isinstance(key, str):
-            if fmt and fmt == "simple":
-                raise TypeError(
-                    "String key '{}' requires dataset format to be "
-                    "'arrow' or 'pandas', was '{}'.".format(key, fmt))
-            self._key = key
-        elif callable(key):
-            if fmt and fmt != "simple":
-                raise NotImplementedError(
-                    "Callable key '{}' requires dataset format to be "
-                    "'simple', was '{}'.".format(key, fmt))
-            self._key = key
-        else:
-            raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+        self._key = key
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements an accumulator-based aggregation.
@@ -96,6 +61,8 @@ class GroupedDataset(Generic[T]):
         stage_info = {}
         if len(aggs) == 0:
             raise ValueError("Aggregate requires at least one aggregation")
+        for agg in aggs:
+            agg._validate(self._dataset)
         # Handle empty dataset.
         if self._dataset.num_blocks() == 0:
             return self._dataset
@@ -145,8 +112,8 @@ class GroupedDataset(Generic[T]):
             BlockList(blocks, metadata), self._dataset._epoch,
             stats.build_multistage(stage_info))
 
-    def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
-                      **kwargs):
+    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
+                      *args, **kwargs):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -177,7 +144,7 @@ class GroupedDataset(Generic[T]):
         """
         return self.aggregate(Count())
 
-    def sum(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped sum aggregation.
 
         This is a blocking operation.
@@ -230,7 +197,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Sum, on)
 
-    def min(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped min aggregation.
 
         This is a blocking operation.
@@ -283,7 +250,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Min, on)
 
-    def max(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped max aggregation.
 
         This is a blocking operation.
@@ -336,7 +303,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Max, on)
 
-    def mean(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> Dataset[U]:
         """Compute grouped mean aggregation.
 
         This is a blocking operation.
@@ -390,7 +357,7 @@ class GroupedDataset(Generic[T]):
         """
         return self._aggregate_on(Mean, on)
 
-    def std(self, on: Optional[AggregateOnTs] = None,
+    def std(self, on: Union[KeyFn, List[KeyFn]] = None,
             ddof: int = 1) -> Dataset[U]:
         """Compute grouped standard deviation aggregation.
 
@@ -456,7 +423,7 @@ class GroupedDataset(Generic[T]):
 
 
 def _partition_and_combine_block(
-        block: Block[T], boundaries: List[KeyType], key: GroupKeyT,
+        block: Block[T], boundaries: List[KeyType], key: KeyFn,
         aggs: Tuple[AggregateFn]) -> List[Union[Block, BlockMetadata]]:
     """Partition the block and combine rows with the same key."""
     stats = BlockExecStats.builder()
@@ -473,7 +440,7 @@ def _partition_and_combine_block(
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
+        num_reducers: int, key: KeyFn, aggs: Tuple[AggregateFn],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
