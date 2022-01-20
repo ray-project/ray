@@ -78,3 +78,28 @@ class EnvContext(dict):
             remote if remote is not None else self.remote,
             num_workers if num_workers is not None else self.num_workers,
         )
+
+    def set_defaults(self, defaults: dict) -> None:
+        """Sets missing keys of self to the values given in `defaults`.
+
+        If `defaults` contains keys that already exist in self, don't override
+        the values with these defaults.
+
+        Args:
+            defaults: The key/value pairs to add to self, but only for those
+                keys in `defaults` that don't exist yet in self.
+
+        Examples:
+             >>> env_ctx = EnvContext({"a": 1, "b": 2}, worker_index=0)
+             >>> env_ctx.set_defaults({"a": -42, "c": 3})
+             >>> print(env_ctx)
+             ... {"a": 1, "b": 2, "c": 3}
+        """
+        for key, value in defaults.items():
+            if key not in self:
+                self[key] = value
+
+    def __str__(self):
+        return super().__str__()[:-1] + \
+               f", worker={self.worker_index}/{self.num_workers}, " \
+               f"vector_idx={self.vector_index}, remote={self.remote}" + "}"

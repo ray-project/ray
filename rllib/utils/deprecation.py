@@ -38,7 +38,7 @@ def deprecation_warning(
               if help else ""))
 
     if error is True:
-        raise ValueError(msg)
+        raise DeprecationWarning(msg)
     elif error and issubclass(error, Exception):
         raise error(msg)
     else:

@@ -2,15 +2,14 @@
     For more information on WheelBandit, see https://arxiv.org/abs/1802.09127 .
 """
 
-import time
-
+from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+import time
+
 from ray import tune
-from ray.rllib.contrib.bandits.agents import LinTSTrainer
-from ray.rllib.contrib.bandits.agents.lin_ts import TS_CONFIG
-from ray.rllib.contrib.bandits.envs import WheelBanditEnv
+from ray.rllib.agents.bandits.lin_ts import BanditLinTSTrainer
+from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 
 def plot_model_weights(means, covs, ax):
@@ -31,7 +30,9 @@ def plot_model_weights(means, covs, ax):
 
 
 if __name__ == "__main__":
-    TS_CONFIG["env"] = WheelBanditEnv
+    config = {
+        "env": WheelBanditEnv,
+    }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
@@ -41,8 +42,8 @@ if __name__ == "__main__":
 
     start_time = time.time()
     analysis = tune.run(
-        LinTSTrainer,
-        config=TS_CONFIG,
+        "BanditLinTS",
+        config=config,
         stop={"training_iteration": training_iterations},
         num_samples=2,
         checkpoint_at_end=True)
@@ -66,7 +67,7 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
-    trainer = LinTSTrainer(config=TS_CONFIG)
+    trainer = BanditLinTSTrainer()
     trainer.restore(trial.checkpoint.value)
 
     # Get model to plot arm weights distribution

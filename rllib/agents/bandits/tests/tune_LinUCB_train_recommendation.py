@@ -8,8 +8,8 @@ from matplotlib import pyplot as plt
 import pandas as pd
 
 from ray import tune
-from ray.rllib.contrib.bandits.agents.lin_ucb import UCB_CONFIG
-from ray.rllib.contrib.bandits.envs import ParametricItemRecoEnv
+from ray.rllib.examples.env.bandit_envs_recommender_system import \
+    ParametricItemRecoEnv
 
 if __name__ == "__main__":
     # Temp fix to avoid OMP conflict
@@ -28,10 +28,10 @@ if __name__ == "__main__":
 
     start_time = time.time()
     analysis = tune.run(
-        "contrib/LinUCB",
+        "BanditLinUCB",
         config=config,
         stop={"training_iteration": training_iterations},
-        #num_samples=2,
+        num_samples=2,
         checkpoint_at_end=False)
 
     print("The trials took", time.time() - start_time, "seconds\n")

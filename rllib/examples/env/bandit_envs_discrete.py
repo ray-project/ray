@@ -1,14 +1,38 @@
 import copy
-
 import gym
+from gym.spaces import Box, Discrete
 import numpy as np
-from gym import spaces
+import random
 
-DEFAULT_CONFIG_LINEAR = {
-    "feature_dim": 8,
-    "num_actions": 4,
-    "reward_noise_std": 0.01
-}
+
+class SimpleContextualBandit(gym.Env):
+    """Simple env w/ 2 states and 3 actions (arms): 0, 1, and 2.
+
+    Episodes last only for one timestep, possible observations are:
+    [-1.0, 1.0] and [1.0, -1.0], where the first element is the "current context".
+    The highest reward (+10.0) is received for selecting arm 0 for context=1.0
+    and arm 2 for context=-1.0. Action 1 always yields 0.0 reward.
+    """
+
+    def __init__(self, config=None):
+        self.action_space = Discrete(3)
+        self.observation_space = Box(low=-1., high=1., shape=(2, ))
+        self.cur_context = None
+
+    def reset(self):
+        self.cur_context = random.choice([-1., 1.])
+        return np.array([self.cur_context, -self.cur_context])
+
+    def step(self, action):
+        rewards_for_context = {
+            -1.: [-10, 0, 10],
+            1.: [10, 0, -10],
+        }
+        reward = rewards_for_context[self.cur_context][action]
+        return (np.array([-self.cur_context, self.cur_context]), reward, True,
+                {
+                    "regret": 10 - reward
+                })
 
 
 class LinearDiscreteEnv(gym.Env):
@@ -20,8 +44,14 @@ class LinearDiscreteEnv(gym.Env):
     and Gaussian noise is added to the rewards.
     """
 
+    DEFAULT_CONFIG_LINEAR = {
+        "feature_dim": 8,
+        "num_actions": 4,
+        "reward_noise_std": 0.01
+    }
+
     def __init__(self, config=None):
-        self.config = copy.copy(DEFAULT_CONFIG_LINEAR)
+        self.config = copy.copy(self.DEFAULT_CONFIG_LINEAR)
         if config is not None and type(config) == dict:
             self.config.update(config)
 
@@ -29,8 +59,8 @@ class LinearDiscreteEnv(gym.Env):
         self.num_actions = self.config["num_actions"]
         self.sigma = self.config["reward_noise_std"]
 
-        self.action_space = spaces.Discrete(self.num_actions)
-        self.observation_space = spaces.Box(
+        self.action_space = Discrete(self.num_actions)
+        self.observation_space = Box(
             low=-10, high=10, shape=(self.feature_dim, ))
 
         self.thetas = np.random.uniform(-1, 1,
@@ -74,25 +104,24 @@ class LinearDiscreteEnv(gym.Env):
         raise NotImplementedError
 
 
-DEFAULT_CONFIG_WHEEL = {
-    "delta": 0.5,
-    "mu_1": 1.2,
-    "mu_2": 1,
-    "mu_3": 50,
-    "std": 0.01
-}
-
-
 class WheelBanditEnv(gym.Env):
     """Wheel bandit environment for 2D contexts
     (see https://arxiv.org/abs/1802.09127).
     """
 
+    DEFAULT_CONFIG_WHEEL = {
+        "delta": 0.5,
+        "mu_1": 1.2,
+        "mu_2": 1,
+        "mu_3": 50,
+        "std": 0.01
+    }
+
     feature_dim = 2
     num_actions = 5
 
     def __init__(self, config=None):
-        self.config = copy.copy(DEFAULT_CONFIG_WHEEL)
+        self.config = copy.copy(self.DEFAULT_CONFIG_WHEEL)
         if config is not None and type(config) == dict:
             self.config.update(config)
 
@@ -102,8 +131,8 @@ class WheelBanditEnv(gym.Env):
         self.mu_3 = self.config["mu_3"]
         self.std = self.config["std"]
 
-        self.action_space = spaces.Discrete(self.num_actions)
-        self.observation_space = spaces.Box(
+        self.action_space = Discrete(self.num_actions)
+        self.observation_space = Box(
             low=-1, high=1, shape=(self.feature_dim, ))
 
         self.means = [self.mu_1] + 4 * [self.mu_2]
