@@ -1369,11 +1369,11 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
   rpc::RuntimeEnv result_runtime_env(*parent);
   // TODO(SongGuyang): avoid dupliacated fields.
   result_runtime_env.MergeFrom(child);
-  if (child.python_runtime_env().py_modules().size() > 0 &&
-      parent->python_runtime_env().py_modules().size() > 0) {
-    result_runtime_env.mutable_python_runtime_env()->clear_py_modules();
-    for (auto &module : child.python_runtime_env().py_modules()) {
-      result_runtime_env.mutable_python_runtime_env()->add_py_modules(module);
+  if (child.python_runtime_env().dependent_modules().size() > 0 &&
+      parent->python_runtime_env().dependent_modules().size() > 0) {
+    result_runtime_env.mutable_python_runtime_env()->clear_dependent_modules();
+    for (auto &module : child.python_runtime_env().dependent_modules()) {
+      result_runtime_env.mutable_python_runtime_env()->add_dependent_modules(module);
     }
     result_runtime_env.mutable_uris()->clear_py_modules_uris();
     result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(

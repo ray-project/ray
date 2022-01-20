@@ -67,19 +67,22 @@ message PluginRuntimeEnv {
 }
 
 message PythonRuntimeEnv {
-  /// List of URIs (either in the GCS or external
-  /// storage), each of which is a zip file that will be unpacked and
-  /// inserted into the PYTHONPATH of the workers.
-  repeated string py_modules = 1;
-  /// One of typed runtime env of python
+  /// List of URIs that contain the dependent python modules. 
+  /// Valid URIs include:
+  /// - A local directory: it will be added to to the PYTHONPATH;
+  ///   - Example: `file:///path/to/my_module`.
+  /// - A zip file in an external storage: it will be unpacked and added to the PYTHONPATH.
+  ///   - Example: `http://example.com/my_module.zip`. 
+  repeated string dependent_modules = 1;
+  /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
   oneof python_runtime_env {
-    /// pip runtime env
+    /// Only set when PipRuntimeEnv is used.
     PipRuntimeEnv pip_runtime_env = 2;
-    /// conda runtime env
+    /// Only set when CondaRuntimeEnv is used.
     CondaRuntimeEnv conda_runtime_env = 3;
-    /// container runtime env
+    /// Only set when ContainerRuntimeEnv is used.
     ContainerRuntimeEnv container_runtime_env = 4;
-    /// plugin runtime env
+    /// Only set when PluginRuntimeEnv is used.
     PluginRuntimeEnv plugin_runtime_env = 5;
   }
 }
@@ -90,33 +93,51 @@ message MavenRuntimeEnv {
 }
 
 message JavaRuntimeEnv {
-  /// List of URIs, each of which is a zip file that will be unpacked
-  /// and inserted into the CLASSPATH of the java workers.
-  repeated string jars = 1;
-  /// The JVM options, which are appended to java command line.
+  /// List of URIs that contain the dependent jars.
+  /// Valid URIs include:
+  /// - A local file or directory: it will be added to to the CLASSPATH;
+  ///   - Example: `file:///path/to/my_example.jar`.
+  ///   - Example: `file:///path/to/my_jars`.
+  /// - A jar file in an external storage: it will be added to the CLASSPATH;
+  ///   - Example: `http://example.com/my_example.jar`.
+  /// - A zip file in an external storage: it will be unpacked and added to the CLASSPATH.
+  ///   - Example: `http://example.com/my_jars.zip`. 
+  repeated string dependent_jars = 1;
+  /// The JVM options, which will be appended to java command line.
   repeated string jvm_options = 2;
-  /// Specify a built-in java version.
+  /// If empty, the default "java" command will be used. 
+  /// If set, `${java_home}/bin/java` will be used. 
   string java_home = 3;
-  /// One of typed runtime env of java
+  /// The concrete Runtime Env for Java workers. Use only one of them, or none at all.
   oneof java_runtime_env {
-    /// maven runtime env
+    /// Only set when MavenRuntimeEnv is used.
     MavenRuntimeEnv maven_runtime_env = 4;
-    /// container runtime env
+    /// Only set when ContainerRuntimeEnv is used.
     ContainerRuntimeEnv container_runtime_env = 5;
-    /// plugin runtime env
+    /// Only set when PluginRuntimeEnv is used.
     PluginRuntimeEnv plugin_runtime_env = 6;
   }
 }
 
 message CppRuntimeEnv {
-  /// List of URIs, each of which is a zip file that will be unpacked
-  /// and inserted into the LD_LIBRARY_PATH of the C++ workers.
-  repeated string dynamic_libraries = 1;
-  /// One of typed runtime env of C++
+  /// List of dynamic libraries, each of which can specify either
+  /// local path or remote URI.
+  /// A local path must be a directory path. And A remote URI 
+  /// must be a link directly to a zip file. All the libraries will
+  /// be inserted into the LD_LIBRARY_PATH of python workers.
+  /// List of URIs that contain the dependent libraries.
+  /// Valid URIs include:
+  /// - A local file or directory: it will be added to to the LD_LIBRARY_PATH;
+  ///   - Example: `file:///path/to/my_example.so`.
+  ///   - Example: `file:///path/to/my_libraries`.
+  /// - A zip file in an external storage: it will be unpacked and added to the LD_LIBRARY_PATH.
+  ///   - Example: `http://example.com/my_libraries.zip`.
+  repeated string dependent_libraries = 1;
+  /// The concrete Runtime Env for C++ workers. Use only one of them, or none at all.
   oneof cpp_runtime_env {
-    /// container runtime env
+    /// Only set when ContainerRuntimeEnv is used.
     ContainerRuntimeEnv container_runtime_env = 2;
-    /// plugin runtime env
+    /// Only set when PluginRuntimeEnv is used.
     PluginRuntimeEnv plugin_runtime_env = 3;
   }
 }
@@ -149,7 +170,7 @@ message RuntimeEnv {
   optional JavaRuntimeEnv java_runtime_env = 5;
   /// cpp runtime env
   optional CppRuntimeEnv cpp_runtime_env = 6;
-  /// TODO(SongGuyang): Remove this field. Issue 
+  /// TODO(SongGuyang): Remove this field. Issue
   /// https://github.com/ray-project/ray/issues/21695.
   /// Runtime env uris of different types.
   RuntimeEnvUris uris = 7;

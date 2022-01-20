@@ -112,9 +112,9 @@ class RuntimeEnv:
 
     def to_dict(self) -> Dict:
         initialize_dict: Dict[str, Any] = {}
-        if self._proto_runtime_env.python_runtime_env.py_modules:
+        if self._proto_runtime_env.python_runtime_env.dependent_modules:
             initialize_dict["py_modules"] = list(
-                self._proto_runtime_env.python_runtime_env.py_modules)
+                self._proto_runtime_env.python_runtime_env.dependent_modules)
         if self._proto_runtime_env.working_dir:
             initialize_dict[
                 "working_dir"] = self._proto_runtime_env.working_dir
@@ -161,7 +161,8 @@ class RuntimeEnv:
         return self._proto_runtime_env.working_dir
 
     def py_modules(self) -> List[str]:
-        return list(self._proto_runtime_env.python_runtime_env.py_modules)
+        return list(
+            self._proto_runtime_env.python_runtime_env.dependent_modules)
 
     def env_vars(self) -> Dict:
         return dict(self._proto_runtime_env.env_vars)
@@ -237,7 +238,7 @@ class RuntimeEnv:
             proto_runtime_env.uris.working_dir_uri = runtime_env_dict[
                 "working_dir"]
         if "py_modules" in runtime_env_dict:
-            proto_runtime_env.python_runtime_env.py_modules.extend(
+            proto_runtime_env.python_runtime_env.dependent_modules.extend(
                 runtime_env_dict["py_modules"])
             for uri in runtime_env_dict["py_modules"]:
                 proto_runtime_env.uris.py_modules_uris.append(uri)
