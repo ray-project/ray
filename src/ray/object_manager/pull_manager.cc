@@ -615,10 +615,14 @@ void PullManager::Tick() {
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   absl::MutexLock lock(&active_objects_mu_);
   bool active = active_object_pull_requests_.count(object_id) > 0;
-  if (active) {
-    if (TryPinObject(object_id)) {
-      RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
-      // Notify primary copy holder that it can unpin its copy.
+  if (!active) {
+    return;
+  }
+  if (TryPinObject(object_id)) {
+    RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
+    // If system flag send_unpin is set, then:
+    // Notify primary copy holder that it can unpin its copy.
+    if (RayConfig::instance().send_unpin()) { 
       auto it = object_pull_nodes_.find(object_id);
       if (it != object_pull_nodes_.end()) {
         auto node_id = it->second;
@@ -627,23 +631,23 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
           rpc_client->UnpinObjectIDs(
               {object_id},
               [this, object_id, node_id](const Status &status,
-                                         const rpc::UnpinObjectIDsReply &reply) {
-                if (!status.ok()) {
-                  RAY_LOG(WARNING) << "Send unpin " << object_id << " request to client "
-                                   << node_id << " failed due to " << status.message();
-                }
+        				 const rpc::UnpinObjectIDsReply &reply) {
+        	if (!status.ok()) {
+        	  RAY_LOG(WARNING) << "Send unpin " << object_id << " request to client "
+        			   << node_id << " failed due to " << status.message();
+        	}
               });
         } else {
           RAY_LOG(WARNING) << "Couldn't send unpin " << object_id << " request to node "
-                           << node_id << ", setup RPC connection failed";
+        		   << node_id << ", setup RPC connection failed";
         }
       } else {
         RAY_LOG(WARNING) << "Couldn't send unpin " << object_id
-                         << " because we don't know where to send";
+      		 << " because we don't know where to send";
       }
-    } else {
-      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
     }
+  } else {
+    RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
   }
 }
 
