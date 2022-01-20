@@ -29,7 +29,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             ip, ports = change.new
             self._notified_agents[ip] = ports
-    
+
     @staticmethod
     def is_optional():
         return True

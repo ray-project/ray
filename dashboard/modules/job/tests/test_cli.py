@@ -81,7 +81,6 @@ def set_env_var(key: str, val: Optional[str] = None):
 
 
 class TestSubmit:
-    @pytest.mark.asyncio
     def test_address(self, mock_sdk_client):
         runner = CliRunner()
 
