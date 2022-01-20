@@ -308,8 +308,8 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(RedisRemovalTest, GlobalStateAccessorTest,
-                        ::testing::Values(false, true));
+INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
+                         ::testing::Values(false, true));
 
 }  // namespace ray
 
