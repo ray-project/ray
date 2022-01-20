@@ -2555,14 +2555,16 @@ class Trainer(Trainable):
             # Get capacity out of replay_buffer_config.
             capacity = replay_buffer_config["capacity"]
 
+        # Configure prio. replay parameters.
         if config.get("prioritized_replay"):
             prio_args = {
                 "prioritized_replay_alpha": config["prioritized_replay_alpha"],
                 "prioritized_replay_beta": config["prioritized_replay_beta"],
                 "prioritized_replay_eps": config["prioritized_replay_eps"],
             }
+        # Switch off prioritization (alpha=0.0).
         else:
-            prio_args = {}
+            prio_args = {"prioritized_replay_alpha": 0.0}
 
         return MultiAgentReplayBuffer(
             num_shards=1,
