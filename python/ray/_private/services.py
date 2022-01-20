@@ -1565,7 +1565,7 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            redis_address,
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1578,8 +1578,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", gcs_address
+            if use_gcs_for_bootstrap() else redis_address, plasma_store_name,
+            raylet_name, redis_password, session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1720,7 +1721,7 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        redis_address,
+        bootstrap_address,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1731,7 +1732,7 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): Bootstrap address of ray cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1744,8 +1745,8 @@ def build_java_worker_command(
         The command string for starting Java worker.
     """
     pairs = []
-    if redis_address is not None:
-        pairs.append(("ray.address", redis_address))
+    if bootstrap_address is not None:
+        pairs.append(("ray.address", bootstrap_address))
     pairs.append(("ray.raylet.node-manager-port",
                   "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
@@ -1778,14 +1779,14 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(cpp_worker_options, redis_address,
+def build_cpp_worker_command(cpp_worker_options, bootstrap_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
 
     Args:
         cpp_worker_options (list): The command options for CPP worker.
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): The bootstrap address of the cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1802,7 +1803,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={redis_address}",
+        f"--ray_address={bootstrap_address}",
         f"--ray_redis_password={redis_password}",
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",

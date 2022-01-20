@@ -4,6 +4,7 @@
 
 # Run the test that invokes many tasks without object store usage.
 - name: chaos_many_tasks_no_object_store
+  team: core
   cluster:
     app_config: chaos_test/app_config.yaml
     compute_template: chaos_test/compute_template.yaml
@@ -14,6 +15,7 @@
     script: python chaos_test/test_chaos_basic.py --workload=tasks
 
 - name: chaos_many_actors
+  team: core
   cluster:
     app_config: chaos_test/app_config.yaml
     compute_template: chaos_test/compute_template.yaml
@@ -24,6 +26,7 @@
     script: python chaos_test/test_chaos_basic.py --workload=actors
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
+  team: core
   cluster:
     app_config: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -37,6 +40,7 @@
 
 # Test large scale dask on ray test with spilling.
 - name: chaos_dask_on_ray_large_scale_test_spilling
+  team: core
   cluster:
     app_config: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -49,10 +53,7 @@
   stable: false
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: dataset/pipelined_ingestion_app.yaml
     compute_template: dataset/pipelined_ingestion_compute.yaml
