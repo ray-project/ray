@@ -42,6 +42,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private boolean startRayHead = false;
 
+  private GcsClient gcsClient;
+
   /**
    * In Java, GC runs in a standalone thread, and we can't control the exact timing of garbage
    * collection. By using this lock, when {@link NativeObjectStore#nativeRemoveLocalReference} is
@@ -54,9 +56,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void updateSessionDir(GcsClient gcsClient) {
+  private void updateSessionDir() {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("@namespace_session:session_dir");
+    final String sessionDir = getGcsClient().getInternalKV("session", "session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -77,8 +79,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
         JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-        updateSessionDir(gcsClient);
+        updateSessionDir();
         Preconditions.checkNotNull(rayConfig.sessionDir);
       } else {
         // Expose ray ABI symbols which may be depended by other shared
@@ -86,18 +87,17 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // See BUILD.bazel:libcore_worker_library_java.so
         Preconditions.checkNotNull(rayConfig.sessionDir);
         JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        GcsNodeInfo nodeInfo = getGcsClient().getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
         rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
         rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
       }
 
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
-        rayConfig.setJobId(gcsClient.nextJobId());
+        rayConfig.setJobId(getGcsClient().nextJobId());
       }
       int numWorkersPerProcess =
           rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
@@ -231,6 +231,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     LOGGER.info("Actor {} is exiting.", runtimeContext.getCurrentActorId());
     throw new RayIntentionalSystemExitException(
         String.format("Actor %s is exiting.", runtimeContext.getCurrentActorId()));
+  }
+
+  @Override
+  public GcsClient getGcsClient() {
+    if (gcsClient == null) {
+      synchronized (this) {
+        if (gcsClient == null) {
+          gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+        }
+      }
+    }
+    return gcsClient;
   }
 
   @Override

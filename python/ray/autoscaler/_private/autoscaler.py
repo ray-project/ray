@@ -480,10 +480,20 @@ class StandardAutoscaler:
         # node provider node id -> ip -> raylet id
 
         # Convert node provider node ids to ips.
-        node_ips = {
-            self.provider.internal_ip(provider_node_id)
-            for provider_node_id in provider_node_ids_to_drain
-        }
+        node_ips = set()
+        failed_ip_fetch = False
+        for provider_node_id in provider_node_ids_to_drain:
+            # If the provider's call to fetch ip fails, the exception is not
+            # fatal. Log the exception and proceed.
+            try:
+                ip = self.provider.internal_ip(provider_node_id)
+                node_ips.add(ip)
+            except Exception:
+                logger.exception("Failed to get ip of node with id"
+                                 f" {provider_node_id} during scale-down.")
+                failed_ip_fetch = True
+        if failed_ip_fetch:
+            self.prom_metrics.drain_node_exceptions.inc()
 
         # Only attempt to drain connected nodes, i.e. nodes with ips in
         # LoadMetrics.
@@ -497,6 +507,9 @@ class StandardAutoscaler:
             self.load_metrics.raylet_id_by_ip[ip]
             for ip in connected_node_ips
         }
+
+        if not raylet_ids_to_drain:
+            return
 
         logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:

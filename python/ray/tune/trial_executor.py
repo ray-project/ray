@@ -126,11 +126,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
 
-    def resume_trial(self, trial: Trial) -> None:
-        """Resumes PAUSED trials. This is a blocking call."""
-        assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial)
-
     @abstractmethod
     def reset_trial(self, trial: Trial, new_config: Dict,
                     new_experiment_tag: str) -> bool:
@@ -180,16 +175,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Returns:
             Trial object that is ready for intermediate processing.
-        """
-        pass
-
-    @abstractmethod
-    def get_next_failed_trial(self) -> Optional[Trial]:
-        """Non-blocking call that detects and returns one failed trial.
-
-        Returns:
-            A Trial object that is ready for failure processing. None if
-            no failure detected.
         """
         pass
 

@@ -33,6 +33,15 @@ namespace stats {
 /// NOTE: When adding a new metric, add the metric name to the _METRICS list in
 /// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
 
+/// Convention
+/// Following Prometheus convention
+/// https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+/// Units: ray_[component]_[metrics_name]_[units] (e.g.,
+/// ray_pull_manager_spill_throughput_mb) Gauge: ray_[component]_[metrics_name]s (e.g.,
+/// ray_pull_manager_requests) Cumulative Gauge / Count:
+/// ray_[component]_[metrics_name]_total (e.g., ray_pull_manager_total)
+///
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);
@@ -44,6 +53,33 @@ DECLARE_stats(grpc_server_req_process_time_ms);
 DECLARE_stats(grpc_server_req_new);
 DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
+
+/// Object Manager.
+DECLARE_stats(object_manager_received_chunks);
+
+/// Pull Manager
+DECLARE_stats(pull_manager_usage_bytes);
+// TODO(sang): Remove pull_manager_active_bundles and
+// support active/inactive get/wait/task_args
+DECLARE_stats(pull_manager_requested_bundles);
+DECLARE_stats(pull_manager_requests);
+DECLARE_stats(pull_manager_active_bundles);
+DECLARE_stats(pull_manager_retries_total);
+
+/// Push Manager
+DECLARE_stats(push_manager_in_flight_pushes);
+DECLARE_stats(push_manager_chunks);
+
+/// Scheduler
+DECLARE_stats(scheduler_failed_worker_startup_total);
+DECLARE_stats(scheduler_tasks);
+DECLARE_stats(scheduler_unscheduleable_tasks);
+
+/// Local Object Manager
+DECLARE_stats(spill_manager_objects);
+DECLARE_stats(spill_manager_objects_bytes);
+DECLARE_stats(spill_manager_request_total);
+DECLARE_stats(spill_manager_throughput_mb);
 
 /// GCS Resource Manager
 DECLARE_stats(gcs_new_resource_creation_latency_ms);
@@ -150,34 +186,14 @@ static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");
 
-/// Scheduler
-static Sum NumReceivedTasks(
-    "internal_num_received_tasks",
-    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
-
-static Sum NumDispatchedTasks(
-    "internal_num_dispatched_tasks",
-    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
-
 static Sum NumSpilledTasks("internal_num_spilled_tasks",
                            "The cumulative number of lease requeusts that this raylet "
                            "has spilled to other raylets.",
                            "tasks");
 
-static Gauge NumInfeasibleTasks(
-    "internal_num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",
     "The number of unique scheduling classes that are infeasible.", "tasks");
-
-/// Local Object Manager (Spilling)
-static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
-                                 "Bandwidth of object spilling.", "MB");
-
-static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
-                                  "Bandwidth of object restoration.", "MB");
 
 ///
 /// GCS Server Metrics

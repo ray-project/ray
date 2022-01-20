@@ -50,8 +50,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.download(
                 local_path=self.local_dir, cloud_path=self.cloud_dir)
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.local_dir, state["cmd"])
 
     def testDownloadDefaultLocal(self):
@@ -77,8 +77,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.download(cloud_path=self.cloud_dir)
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.local_dir, state["cmd"])
 
         # Case: Both are passed
@@ -87,8 +87,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.download(
                 local_path=other_local_dir, cloud_path=self.cloud_dir)
 
-        self.assertEquals(other_local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(other_local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
 
@@ -110,8 +110,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.download(local_path=self.local_dir)
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.local_dir, state["cmd"])
 
         # Case: Cloud dir is passed
@@ -125,8 +125,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.download(
                 local_path=self.local_dir, cloud_path=other_cloud_dir)
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_cloud_dir, state["cmd"])
         self.assertNotIn(self.cloud_dir, state["cmd"])
 
@@ -146,8 +146,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.download()
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.local_dir, state["cmd"])
 
         # Case: Local dir is passed
@@ -157,8 +157,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.download(local_path=other_local_dir)
 
-        self.assertEquals(other_local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(other_local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
 
@@ -171,8 +171,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.download(
                 local_path=other_local_dir, cloud_path=other_cloud_dir)
 
-        self.assertEquals(other_local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(other_local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
         self.assertIn(other_cloud_dir, state["cmd"])
@@ -205,8 +205,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.upload(
                 local_path=self.local_dir, cloud_path=self.cloud_dir)
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.cloud_dir, state["cmd"])
 
     def testUploadDefaultLocal(self):
@@ -232,8 +232,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.upload(cloud_path=self.cloud_dir)
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.cloud_dir, state["cmd"])
 
         # Case: Both are passed
@@ -242,8 +242,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.upload(
                 local_path=other_local_dir, cloud_path=self.cloud_dir)
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
 
@@ -265,8 +265,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.upload(local_path=self.local_dir)
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.cloud_dir, state["cmd"])
 
         # Case: Cloud dir is passed
@@ -280,8 +280,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.upload(
                 local_path=self.local_dir, cloud_path=other_cloud_dir)
 
-        self.assertEquals(other_cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(other_cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_cloud_dir, state["cmd"])
         self.assertNotIn(self.cloud_dir, state["cmd"])
 
@@ -301,8 +301,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.upload()
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.cloud_dir, state["cmd"])
 
         # Case: Local dir is passed
@@ -312,8 +312,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.upload(local_path=other_local_dir)
 
-        self.assertEquals(self.cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
 
@@ -326,8 +326,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
             path = checkpoint.upload(
                 local_path=other_local_dir, cloud_path=other_cloud_dir)
 
-        self.assertEquals(other_cloud_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(other_cloud_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(other_local_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])
         self.assertIn(other_cloud_dir, state["cmd"])
@@ -368,8 +368,8 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.save(self.local_dir, force_download=True)
 
-        self.assertEquals(self.local_dir, path)
-        self.assertEquals(state["cmd"][0], "aws")
+        self.assertEqual(self.local_dir, path)
+        self.assertEqual(state["cmd"][0], "aws")
         self.assertIn(self.cloud_dir, state["cmd"])
         self.assertIn(self.local_dir, state["cmd"])
 
@@ -380,9 +380,9 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("shutil.copytree", copytree):
             path = checkpoint.save(other_local_dir)
 
-        self.assertEquals(other_local_dir, path)
-        self.assertEquals(state["copy_source"], self.local_dir)
-        self.assertEquals(state["copy_dest"], other_local_dir)
+        self.assertEqual(other_local_dir, path)
+        self.assertEqual(state["copy_source"], self.local_dir)
+        self.assertEqual(state["copy_dest"], other_local_dir)
 
         # Case: Both default, no pass
         checkpoint = TrialCheckpoint(
@@ -391,7 +391,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.save()
 
-        self.assertEquals(self.local_dir, path)
+        self.assertEqual(self.local_dir, path)
         self.assertIn(self.cloud_dir, state["cmd"])
         self.assertIn(self.local_dir, state["cmd"])
 
@@ -402,10 +402,10 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("shutil.copytree", copytree):
             path = checkpoint.save(other_local_dir)
 
-        self.assertEquals(other_local_dir, path)
-        self.assertEquals(state["copy_source"], self.local_dir)
-        self.assertEquals(state["copy_dest"], other_local_dir)
-        self.assertEquals(checkpoint.local_path, self.local_dir)
+        self.assertEqual(other_local_dir, path)
+        self.assertEqual(state["copy_source"], self.local_dir)
+        self.assertEqual(state["copy_dest"], other_local_dir)
+        self.assertEqual(checkpoint.local_path, self.local_dir)
 
     def testSaveCloudTarget(self):
         state = {}
@@ -436,7 +436,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.save(self.cloud_dir)
 
-        self.assertEquals(self.cloud_dir, path)
+        self.assertEqual(self.cloud_dir, path)
         self.assertIn(self.cloud_dir, state["cmd"])
         self.assertIn(self.local_dir, state["cmd"])
 
@@ -449,7 +449,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.save(other_cloud_dir)
 
-        self.assertEquals(other_cloud_dir, path)
+        self.assertEqual(other_cloud_dir, path)
         self.assertIn(other_cloud_dir, state["cmd"])
         self.assertNotIn(self.local_dir, state["cmd"])  # Temp dir
 
@@ -460,7 +460,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         with patch("subprocess.check_call", check_call):
             path = checkpoint.save(other_cloud_dir)
 
-        self.assertEquals(other_cloud_dir, path)
+        self.assertEqual(other_cloud_dir, path)
         self.assertIn(other_cloud_dir, state["cmd"])
         self.assertIn(self.local_dir, state["cmd"])
 
@@ -554,11 +554,11 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             self.assertTrue(os.path.exists(cp0.local_path))
 
             cp_content = _load_cp(other_local_dir)
-            self.assertEquals(cp_content["train_id"], 0)
-            self.assertEquals(cp_content["score"], 9)
+            self.assertEqual(cp_content["train_id"], 0)
+            self.assertEqual(cp_content["score"], 9)
 
             cp_content_2 = _load_cp(cp0.local_path)
-            self.assertEquals(cp_content, cp_content_2)
+            self.assertEqual(cp_content, cp_content_2)
 
             # Clean up
             shutil.rmtree(other_local_dir)
@@ -576,8 +576,8 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             # Directory is not empty anymore
             self.assertTrue(os.listdir(cp1.local_path))
             cp_content = _load_cp(cp1.local_path)
-            self.assertEquals(cp_content["train_id"], 1)
-            self.assertEquals(cp_content["score"], 9)
+            self.assertEqual(cp_content["train_id"], 1)
+            self.assertEqual(cp_content["score"], 9)
 
             #######
             # Case: Checkpoint does not exist on local dir, download from cloud
@@ -593,8 +593,8 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             # Directory still does not exist (as we save to other dir)
             self.assertFalse(os.path.exists(cp2.local_path))
             cp_content = _load_cp(other_local_dir)
-            self.assertEquals(cp_content["train_id"], 2)
-            self.assertEquals(cp_content["score"], 9)
+            self.assertEqual(cp_content["train_id"], 2)
+            self.assertEqual(cp_content["score"], 9)
 
             # Clean up
             shutil.rmtree(other_local_dir)
@@ -621,8 +621,8 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             self.assertTrue(os.listdir(self.second_fake_cloud_dir))
 
             cp_content = _load_cp(self.second_fake_cloud_dir)
-            self.assertEquals(cp_content["train_id"], 3)
-            self.assertEquals(cp_content["score"], 9)
+            self.assertEqual(cp_content["train_id"], 3)
+            self.assertEqual(cp_content["score"], 9)
 
 
 if __name__ == "__main__":

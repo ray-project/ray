@@ -190,16 +190,16 @@ class TestLocalDistributedRunner(unittest.TestCase):
         self.assertTrue(mock_runner._set_cuda_device.called)
         local_device = mock_runner._set_cuda_device.call_args[0][0]
         env_set_device = os.environ["CUDA_VISIBLE_DEVICES"]
-        self.assertEquals(len(env_set_device), 1)
+        self.assertEqual(len(env_set_device), 1)
 
         if preset_devices:
             visible_devices = preset_devices.split(",")
             self.assertIn(env_set_device, visible_devices)
             device_int = int(local_device)
             self.assertLess(device_int, len(visible_devices))
-            self.assertEquals(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
+            self.assertEqual(len(os.environ["CUDA_VISIBLE_DEVICES"]), 1)
         else:
-            self.assertEquals(local_device, env_set_device)
+            self.assertEqual(local_device, env_set_device)
 
     def testNoVisibleWithInitialized(self):
         with patch("torch.cuda.is_initialized") as init_mock:
@@ -252,7 +252,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         mock_runner = MagicMock()
         mock_runner._is_set = False
         LocalDistributedRunner._set_cuda_device(mock_runner, "123")
-        self.assertEquals(mock_runner.local_cuda_device, "123")
+        self.assertEqual(mock_runner.local_cuda_device, "123")
         self.assertTrue(set_mock.called)
         set_mock.assert_called_with(123)
 
@@ -263,7 +263,7 @@ class TestLocalDistributedRunner(unittest.TestCase):
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 0)
         remaining = ray.available_resources()["CPU"]
-        self.assertEquals(int(remaining), 6)
+        self.assertEqual(int(remaining), 6)
 
     def testV2ReserveCPUResources(self):
         mock_runner = MagicMock()
@@ -272,4 +272,4 @@ class TestLocalDistributedRunner(unittest.TestCase):
         LocalDistributedRunner._try_reserve_and_set_resources(
             mock_runner, 4, 1)
         remaining = ray.available_resources()["CPU"]
-        self.assertEquals(int(remaining), 6)
+        self.assertEqual(int(remaining), 6)

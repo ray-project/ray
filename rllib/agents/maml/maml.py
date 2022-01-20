@@ -169,6 +169,7 @@ class MAMLTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["num_gpus"] > 1:
@@ -214,7 +215,7 @@ class MAMLTrainer(Trainer):
         metric_collect = CollectMetrics(
             workers,
             min_history=config["metrics_num_episodes_for_smoothing"],
-            timeout_seconds=config["collect_metrics_timeout"])
+            timeout_seconds=config["metrics_episode_collection_timeout_s"])
 
         # Iterator for Inner Adaptation Data gathering (from pre->post
         # adaptation)

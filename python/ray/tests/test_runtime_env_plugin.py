@@ -52,21 +52,26 @@ def test_simple_env_modification_plugin(ray_start_regular):
             }
         }).remote()
 
-    output = ray.get(
-        f.options(
-            runtime_env={
-                "plugins": {
-                    MY_PLUGIN_CLASS_PATH: {
-                        "env_value": 42,
-                        "tmp_file": tmp_file_path,
-                        "tmp_content": "hello",
-                        # See https://en.wikipedia.org/wiki/Nice_(Unix)
-                        "prefix_command": "nice -n 19",
+    if os.name != "nt":
+        output = ray.get(
+            f.options(
+                runtime_env={
+                    "plugins": {
+                        MY_PLUGIN_CLASS_PATH: {
+                            "env_value": 42,
+                            "tmp_file": tmp_file_path,
+                            "tmp_content": "hello",
+                            # See https://en.wikipedia.org/wiki/Nice_(Unix)
+                            "prefix_command": "nice -n 19",
+                        }
                     }
-                }
-            }).remote())
+                }).remote())
 
-    assert output == {"env_value": "42", "tmp_content": "hello", "nice": 19}
+        assert output == {
+            "env_value": "42",
+            "tmp_content": "hello",
+            "nice": 19
+        }
 
 
 if __name__ == "__main__":

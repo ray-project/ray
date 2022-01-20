@@ -49,7 +49,7 @@ class TrainableUtilTest(unittest.TestCase):
                                        "0/my/nested/chkpt")
         os.makedirs(checkpoint_path)
         found_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self.assertEquals(self.checkpoint_dir, found_dir)
+        self.assertEqual(self.checkpoint_dir, found_dir)
 
         with self.assertRaises(FileNotFoundError):
             parent = os.path.dirname(found_dir)
@@ -71,7 +71,7 @@ class TrainableUtilTest(unittest.TestCase):
 
         for i in range(5):
             path = os.path.join(self.checkpoint_dir, str(i))
-            self.assertEquals(loaded["data"][str(i)], open(path, "rb").read())
+            self.assertEqual(loaded["data"][str(i)], open(path, "rb").read())
 
 
 class FlattenDictTest(unittest.TestCase):

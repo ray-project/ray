@@ -236,7 +236,6 @@ Papers
 
    walkthrough.rst
    using-ray.rst
-   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
@@ -251,9 +250,10 @@ Papers
    cluster/index.rst
    cluster/quickstart.rst
    cluster/guide.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
+   cluster/ray-client.rst
    cluster/reference.rst
    cluster/cloud.rst
-   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -300,6 +300,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/metadata.rst
    workflows/events.rst
    workflows/comparison.rst
    workflows/advanced.rst
@@ -357,7 +358,7 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   xgboost-ray.rst
+   xgboost-ray.md
    lightgbm-ray.rst
    ray-lightning.rst
    ray-collective.rst

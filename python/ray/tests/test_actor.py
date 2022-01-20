@@ -50,6 +50,7 @@ def test_caching_actors(shutdown_only, set_enable_auto_connect):
     assert ray.get(f.get_val.remote()) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_function_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
@@ -273,7 +274,6 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-    # TODO: redis-removal kv
     g = ray.worker.global_worker.gcs_client
     actor_keys = g.internal_kv_keys(b"ActorClass",
                                     ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
@@ -735,7 +735,6 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -1007,7 +1006,6 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [
@@ -1036,7 +1034,9 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
             ray.actor.exit_actor()
 
     data = "hello"
-    tmpfile = tempfile.NamedTemporaryFile()
+    tmpfile = tempfile.NamedTemporaryFile("w+", suffix=".tmp", delete=False)
+    tmpfile.close()
+
     a = A.remote(tmpfile.name, data)
     ray.get(a.ready.remote())
 
@@ -1052,7 +1052,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert False, "Unrecognized condition"
 
     def check_file_written():
-        with open(tmpfile.name) as f:
+        with open(tmpfile.name, "r") as f:
             if f.read() == data:
                 return True
             return False
@@ -1062,6 +1062,8 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         assert not check_file_written()
     else:
         wait_for_condition(check_file_written)
+
+    os.unlink(tmpfile.name)
 
 
 def test_return_actor_handle_from_actor(ray_start_regular_shared):
