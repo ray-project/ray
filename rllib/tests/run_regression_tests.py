@@ -97,9 +97,6 @@ if __name__ == "__main__":
         if args.framework in ["tf2", "tfe"]:
             exp["config"]["eager_tracing"] = True
 
-        if int(os.environ.get("RLLIB_NUM_GPUS", "0")):
-            exp["config"]["num_gpus"] = 1
-
         # Print out the actual config.
         print("== Test config ==")
         print(yaml.dump(experiments))

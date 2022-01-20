@@ -46,7 +46,8 @@
 # Additional tags are:
 # - "team:ml": Indicating that all tests in this file are the responsibility of
 #   the ML Team.
-# - "gpu_rllib_X": Indicating that a test needs to be run in the GPU
+# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
+# - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.yaml.
 # - "multi-gpu": Indicating that a test will definitely be run in the Large GPU
 #   pipeline, defined in .buildkite/pipeline.gpu.large.yaml.
@@ -206,7 +207,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_ddpg",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ddpg/pendulum-ddpg.yaml"]),
@@ -494,7 +495,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-sac.yaml"],
@@ -504,7 +505,7 @@ py_test(
 py_test(
     name = "learning_tests_transformed_actions_pendulum_sac",
     main = "tests/run_regression_tests.py",
-    tags = ["team:ml", "gpu_rllib_torch_learning_test_continuous", "gpu_rllib_tf1_learning_test_continuous", "gpu_rllib_tf2_learning_test_continuous"],
+    tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
@@ -2615,7 +2616,7 @@ py_test(
 
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
-    tags = ["team:ml", "gpu_rllib_1"],
+    tags = ["team:ml", "gpu"],
     size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
