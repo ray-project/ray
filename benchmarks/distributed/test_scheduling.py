@@ -109,7 +109,11 @@ if __name__ == "__main__":
         "total_num_actors": args.total_num_actors,
         "num_actors_per_nodes": args.num_actors_per_nodes,
         "num_nodes": num_nodes,
-        "total_cpus": total_cpus
+        "total_cpus": total_cpus,
+        "submission_cost": submission_cost,
+        "ready_cost": ready_cost,
+        "actor_job_cost": actor_job_cost,
+        "_runtime": submission_cost + ready_cost + actor_job_cost,
     }
 
     if output is not None:
