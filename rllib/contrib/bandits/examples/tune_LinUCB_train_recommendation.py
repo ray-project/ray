@@ -15,20 +15,23 @@ if __name__ == "__main__":
     # Temp fix to avoid OMP conflict
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
-    UCB_CONFIG["env"] = ParametricItemRecoEnv
+    config = {
+        "env": ParametricItemRecoEnv,
+        "num_workers": 2,
+    }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 10
+    training_iterations = 100
 
     print("Running training for %s time steps" % training_iterations)
 
     start_time = time.time()
     analysis = tune.run(
         "contrib/LinUCB",
-        config=UCB_CONFIG,
+        config=config,
         stop={"training_iteration": training_iterations},
-        num_samples=2,
+        #num_samples=2,
         checkpoint_at_end=False)
 
     print("The trials took", time.time() - start_time, "seconds\n")

@@ -6,15 +6,14 @@ Source: https://github.com/google-research/recsim
 
 from collections import OrderedDict
 import gym
-from gym import spaces
+from gym.spaces import Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 from recsim.environments import interest_evolution
 from typing import List
 
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.tune.registry import register_env
-
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
+from ray.tune.registry import register_env
 
 
 class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
@@ -32,12 +31,12 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
     def __init__(self, env: gym.Env):
         super().__init__(env)
         obs_space = self.env.observation_space
-        doc_space = spaces.Dict(
+        doc_space = Dict(
             OrderedDict(
                 [(str(k), doc)
                  for k, (_,
                          doc) in enumerate(obs_space["doc"].spaces.items())]))
-        self.observation_space = spaces.Dict(
+        self.observation_space = Dict(
             OrderedDict([
                 ("user", obs_space["user"]),
                 ("doc", doc_space),
@@ -92,12 +91,12 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
     def __init__(self, env: gym.Env):
         super().__init__(env)
 
-        if not isinstance(env.action_space, spaces.MultiDiscrete):
+        if not isinstance(env.action_space, MultiDiscrete):
             raise UnsupportedSpaceException(
                 f"Action space {env.action_space} "
                 f"is not supported by {self.__class__.__name__}")
         self.action_space_dimensions = env.action_space.nvec
-        self.action_space = spaces.Discrete(
+        self.action_space = Discrete(
             np.prod(self.action_space_dimensions))
 
     def action(self, action: int) -> List[int]:
