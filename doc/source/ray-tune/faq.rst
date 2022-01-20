@@ -1,5 +1,7 @@
-Frequently asked questions
---------------------------
+.. _tune-faq:
+
+Ray Tune FAQ
+------------
 
 Here we try to answer questions that come up often. If you still have questions
 after reading this, let us know!
@@ -514,10 +516,3 @@ should maybe process a larger chunk of data. In function trainables, you can rep
 of the training loop. Try to balance the number of results you really need to make scheduling or searching
 decisions. If you need more fine grained metrics for logging or tracking, consider using a separate logging
 mechanism for this instead of the Ray Tune-provided progress logging of results.
-
-
-
-Further Questions or Issues?
-----------------------------
-
-.. include:: /_includes/_help.rst

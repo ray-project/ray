@@ -1,8 +1,8 @@
 .. _tune-guides:
 
-===============
-Tutorials & FAQ
-===============
+=========
+Tutorials
+=========
 
 .. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
@@ -143,7 +143,3 @@ Check out:
 
  * :doc:`/ray-tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/ray-tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
-
-.. _tune-faq:
-
-.. include:: _faq.inc
