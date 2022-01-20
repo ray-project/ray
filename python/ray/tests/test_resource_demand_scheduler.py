@@ -18,7 +18,7 @@ from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
     MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids, MockAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.autoscaler_summary import AutoscalerSummary
 from ray.autoscaler._private.load_metrics import LoadMetrics, \
     LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node

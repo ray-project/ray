@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 
+from ray import is_initialized
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.event_system import (  # noqa: F401
     CreateClusterEvent,  # noqa: F401
@@ -185,7 +186,8 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 
 def request_resources(num_cpus: Optional[int] = None,
-                      bundles: Optional[List[dict]] = None) -> None:
+                      bundles: Optional[List[dict]] = None,
+                      expire_when_satisfied: bool = False) -> None:
     """Command the autoscaler to scale to accommodate the specified requests.
 
     The cluster will immediately attempt to scale to accommodate the requested
@@ -208,6 +210,7 @@ def request_resources(num_cpus: Optional[int] = None,
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made to override.
+        # TODO expire_when_satisfied docs
 
     Examples:
         >>> # Request 1000 CPUs.
@@ -217,7 +220,9 @@ def request_resources(num_cpus: Optional[int] = None,
         >>> # Same as requesting num_cpus=3.
         >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
-    return commands.request_resources(num_cpus, bundles)
+    if not is_initialized():
+        raise RuntimeError("Ray is not initialized yet")
+    return commands.request_resources(num_cpus, bundles, expire_when_satisfied)
 
 
 def configure_logging(log_style: Optional[str] = None,

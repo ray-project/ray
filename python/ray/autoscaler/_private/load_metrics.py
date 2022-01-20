@@ -98,6 +98,7 @@ class LoadMetrics:
         self.infeasible_bundles = []
         self.pending_placement_groups = []
         self.resource_requests = []
+        self.expire_resource_requests_when_satisfied = False
         self.cluster_full_of_actors_detected = False
 
     def update(self,
@@ -326,12 +327,21 @@ class LoadMetrics:
             request_demand=summarized_resource_requests,
             node_types=nodes_summary)
 
-    def set_resource_requests(self, requested_resources):
-        if requested_resources is not None:
-            assert isinstance(requested_resources, list), requested_resources
+    def set_resource_requests(self, request: Dict):
+        assert isinstance(request, dict), request
+
+        requested_resources = request.get("resources")
+        expire_when_satisfied = request.get("expire_when_satisfied")
+
+        assert isinstance(requested_resources, list), requested_resources
+        assert isinstance(expire_when_satisfied, bool), expire_when_satisfied
+
         self.resource_requests = [
             request for request in requested_resources if len(request) > 0
         ]
+
+        self.expire_resource_requests_when_satisfied = expire_when_satisfied
+
 
     def info_string(self):
         return " - " + "\n - ".join(

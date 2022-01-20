@@ -2,7 +2,6 @@ from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union, \
     Callable
 import copy
-from dataclasses import dataclass
 import logging
 import math
 import operator
@@ -26,6 +25,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+from ray.autoscaler._private.autoscaler_summary import AutoscalerSummary
+from ray.autoscaler._private import commands
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.load_metrics import LoadMetrics
@@ -52,22 +53,11 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
-# Status of a node e.g. "up-to-date", see ray/autoscaler/tags.py
-NodeStatus = str
-
 # Tuple of modified fields for the given node_id returned by should_update
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
-
-
-@dataclass
-class AutoscalerSummary:
-    active_nodes: Dict[NodeType, int]
-    pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
-    pending_launches: Dict[NodeType, int]
-    failed_nodes: List[Tuple[NodeIP, NodeType]]
 
 
 class NonTerminatedNodes:
@@ -362,7 +352,7 @@ class StandardAutoscaler:
         nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
         if self.load_metrics.get_resource_requests():
             nodes_not_allowed_to_terminate = \
-                self._get_nodes_needed_for_request_resources(sorted_node_ids)
+                self._get_and_update_nodes_needed_for_request_resources(sorted_node_ids)
 
         # Tracks counts of nodes we intend to keep for each node type.
         node_type_counts = defaultdict(int)
@@ -704,7 +694,7 @@ class StandardAutoscaler:
 
         return sorted(nodes, key=last_time_used, reverse=True)
 
-    def _get_nodes_needed_for_request_resources(
+    def _get_and_update_nodes_needed_for_request_resources(
             self, sorted_node_ids: List[NodeID]) -> FrozenSet[NodeID]:
         # TODO(ameer): try merging this with resource_demand_scheduler
         # code responsible for adding nodes for request_resources().
@@ -756,9 +746,15 @@ class StandardAutoscaler:
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
         used_resource_requests: List[ResourceDict]
-        _, used_resource_requests = \
+        unfulfilled, used_resource_requests = \
             get_bin_pack_residual(max_node_resources,
                                   self.load_metrics.get_resource_requests())
+        
+        # If we've met the requested resources and the request is set to expire:
+        # remove the request
+        if self.load_metrics.expire_resource_requests_when_satisfied and len(unfulfilled) == 0:
+            commands.request_resources(0)
+
         # Remove the first entry (the head node).
         max_node_resources.pop(0)
         # Remove the first entry (the head node).

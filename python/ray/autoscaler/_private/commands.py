@@ -54,7 +54,7 @@ from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.autoscaler_summary import AutoscalerSummary
 from ray.autoscaler._private.util import format_info_string
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,8 @@ def debug_status(status, error) -> str:
 
 
 def request_resources(num_cpus: Optional[int] = None,
-                      bundles: Optional[List[dict]] = None) -> None:
+                      bundles: Optional[List[dict]] = None,
+                      expire_when_satisfied: bool = False) -> None:
     """Remotely request some CPU or GPU resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
@@ -130,9 +131,8 @@ def request_resources(num_cpus: Optional[int] = None,
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
             call to request_resources() is made.
+        # TODO expire_when_satisfied docs
     """
-    if not ray.is_initialized():
-        raise RuntimeError("Ray is not initialized yet")
     to_request = []
     if num_cpus:
         to_request += [{"CPU": 1}] * num_cpus
@@ -140,7 +140,10 @@ def request_resources(num_cpus: Optional[int] = None,
         to_request += bundles
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-        json.dumps(to_request),
+        json.dumps({
+            "resources": to_request,
+            "expire_when_satisfied": expire_when_satisfied
+        }),
         overwrite=True)
 
 
