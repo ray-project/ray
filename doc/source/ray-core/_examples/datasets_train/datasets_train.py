@@ -44,21 +44,22 @@ def make_and_upload_dataset(dir_path):
     NUM_FILES = NUM_EXAMPLES // PARQUET_FILE_CHUNK_SIZE
 
     def create_data_chunk(n, d, seed, include_label=False):
-        X, y = sklearn.datasets.make_classification(n_samples=n,
-                                                    n_features=d,
-                                                    n_informative=10,
-                                                    n_redundant=2,
-                                                    n_repeated=0,
-                                                    n_classes=2,
-                                                    n_clusters_per_class=3,
-                                                    weights=None,
-                                                    flip_y=0.03,
-                                                    class_sep=0.8,
-                                                    hypercube=True,
-                                                    shift=0.0,
-                                                    scale=1.0,
-                                                    shuffle=False,
-                                                    random_state=seed)
+        X, y = sklearn.datasets.make_classification(
+            n_samples=n,
+            n_features=d,
+            n_informative=10,
+            n_redundant=2,
+            n_repeated=0,
+            n_classes=2,
+            n_clusters_per_class=3,
+            weights=None,
+            flip_y=0.03,
+            class_sep=0.8,
+            hypercube=True,
+            shift=0.0,
+            scale=1.0,
+            shuffle=False,
+            random_state=seed)
 
         # turn into dataframe with column names
         col_names = ["feature_%0d" % i for i in range(1, d + 1, 1)]
@@ -67,13 +68,15 @@ def make_and_upload_dataset(dir_path):
 
         # add some bogus categorical data columns
         options = ["apple", "banana", "orange"]
-        df["fruit"] = df.feature_1.map(lambda x: random.choice(
-            options))  # bogus, but nice to test categoricals
+        df["fruit"] = df.feature_1.map(
+            lambda x: random.choice(options)
+        )  # bogus, but nice to test categoricals
 
         # add some nullable columns
         options = [None, 1, 2]
-        df["nullable_feature"] = df.feature_1.map(lambda x: random.choice(
-            options))  # bogus, but nice to test categoricals
+        df["nullable_feature"] = df.feature_1.map(
+            lambda x: random.choice(options)
+        )  # bogus, but nice to test categoricals
 
         # add label column
         if include_label:
@@ -87,10 +90,11 @@ def make_and_upload_dataset(dir_path):
     for i in range(NUM_FILES):
         path = os.path.join(data_path, f"data_{i:05d}.parquet.snappy")
         if not os.path.exists(path):
-            tmp_df = create_data_chunk(n=PARQUET_FILE_CHUNK_SIZE,
-                                       d=NUM_FEATURES,
-                                       seed=i,
-                                       include_label=True)
+            tmp_df = create_data_chunk(
+                n=PARQUET_FILE_CHUNK_SIZE,
+                d=NUM_FEATURES,
+                seed=i,
+                include_label=True)
             tmp_df.to_parquet(path, compression="snappy", index=False)
         print(f"Wrote {path} to disk...")
         # todo: at large enough scale we might want to upload the rest after
@@ -103,10 +107,11 @@ def make_and_upload_dataset(dir_path):
     for i in range(NUM_FILES):
         path = os.path.join(inference_path, f"data_{i:05d}.parquet.snappy")
         if not os.path.exists(path):
-            tmp_df = create_data_chunk(n=PARQUET_FILE_CHUNK_SIZE,
-                                       d=NUM_FEATURES,
-                                       seed=i,
-                                       include_label=False)
+            tmp_df = create_data_chunk(
+                n=PARQUET_FILE_CHUNK_SIZE,
+                d=NUM_FEATURES,
+                seed=i,
+                include_label=False)
             tmp_df.to_parquet(path, compression="snappy", index=False)
         print(f"Wrote {path} to disk...")
         # todo: at large enough scale we might want to upload the rest after
@@ -136,9 +141,8 @@ class DataPreprocessor:
         # columns.
         self.standard_stats = None
 
-    def preprocess_train_data(
-            self,
-            ds: ray.data.Dataset) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+    def preprocess_train_data(self, ds: ray.data.Dataset
+                              ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
         print("\n\nPreprocessing training dataset.\n")
         return self._preprocess(ds, False)
 
@@ -147,9 +151,8 @@ class DataPreprocessor:
         print("\n\nPreprocessing inference dataset.\n")
         return self._preprocess(df, True)[0]
 
-    def _preprocess(
-            self, ds: ray.data.Dataset,
-            inferencing: bool) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+    def _preprocess(self, ds: ray.data.Dataset, inferencing: bool
+                    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
         print(
             "\nStep 1: Dropping nulls, creating new_col, updating feature_1\n")
 
@@ -161,8 +164,8 @@ class DataPreprocessor:
             df = df.dropna(subset=["nullable_feature"])
 
             # Add new column.
-            df["new_col"] = (df["feature_1"] - 2 * df["feature_2"] +
-                             df["feature_3"]) / 3.
+            df["new_col"] = (
+                df["feature_1"] - 2 * df["feature_2"] + df["feature_3"]) / 3.
 
             # Transform column.
             df["feature_1"] = 2. * df["feature_1"] + 0.1
@@ -237,7 +240,6 @@ class DataPreprocessor:
         standard_stats = self.standard_stats
 
         def batch_standard_scaler(df: pd.DataFrame):
-
             def column_standard_scaler(s: pd.Series):
                 if s.name == "label":
                     # Don't scale the label column.
@@ -250,15 +252,15 @@ class DataPreprocessor:
 
         if inferencing:
             # Apply standard scaling to inference dataset.
-            inference_ds = ds.map_batches(batch_standard_scaler,
-                                          batch_format="pandas")
+            inference_ds = ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
             return inference_ds, None
         else:
             # Apply standard scaling to both training dataset and test dataset.
-            train_ds = train_ds.map_batches(batch_standard_scaler,
-                                            batch_format="pandas")
-            test_ds = test_ds.map_batches(batch_standard_scaler,
-                                          batch_format="pandas")
+            train_ds = train_ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
+            test_ds = test_ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
             return train_ds, test_ds
 
 
@@ -293,7 +295,6 @@ P1:
 
 
 class Net(nn.Module):
-
     def __init__(self, n_layers, n_features, num_hidden, dropout_every,
                  drop_prob):
         super().__init__()
@@ -413,8 +414,8 @@ def train_func(config):
     train_dataset_pipeline = train.get_dataset_shard("train_dataset")
     train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
     test_dataset = train.get_dataset_shard("test_dataset")
-    test_torch_dataset = test_dataset.to_torch(label_column="label",
-                                               batch_size=batch_size)
+    test_torch_dataset = test_dataset.to_torch(
+        label_column="label", batch_size=batch_size)
 
     net = Net(
         n_layers=num_layers,
@@ -434,8 +435,8 @@ def train_func(config):
     for epoch in range(num_epochs):
         train_dataset = next(train_dataset_epoch_iterator)
 
-        train_torch_dataset = train_dataset.to_torch(label_column="label",
-                                                     batch_size=batch_size)
+        train_torch_dataset = train_dataset.to_torch(
+            label_column="label", batch_size=batch_size)
 
         train_running_loss, train_num_correct, train_num_total = train_epoch(
             train_torch_dataset, net, device, criterion, optimizer)
@@ -450,10 +451,11 @@ def train_func(config):
               f"{test_num_correct} / {test_num_total} = {test_acc:.4f}")
 
         # Record and log stats.
-        train.report(train_acc=train_acc,
-                     train_loss=train_running_loss,
-                     test_acc=test_acc,
-                     test_loss=test_running_loss)
+        train.report(
+            train_acc=train_acc,
+            train_loss=train_running_loss,
+            test_acc=test_acc,
+            test_loss=test_running_loss)
 
         # Checkpoint model.
         module = (net.module
@@ -466,36 +468,42 @@ def train_func(config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir-path",
-                        default=".",
-                        type=str,
-                        help="Path to read and write data from")
-    parser.add_argument("--use-s3",
-                        action="store_true",
-                        default=False,
-                        help="Use data from s3 for testing.")
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        default=False,
-                        help="Finish quickly for testing.")
-    parser.add_argument("--address",
-                        required=False,
-                        type=str,
-                        help="The address to use for Ray. "
-                        "`auto` if running through `ray submit.")
+    parser.add_argument(
+        "--dir-path",
+        default=".",
+        type=str,
+        help="Path to read and write data from")
+    parser.add_argument(
+        "--use-s3",
+        action="store_true",
+        default=False,
+        help="Use data from s3 for testing.")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.")
+    parser.add_argument(
+        "--address",
+        required=False,
+        type=str,
+        help="The address to use for Ray. "
+        "`auto` if running through `ray submit.")
     parser.add_argument(
         "--num-workers",
         default=1,
         type=int,
         help="The number of Ray workers to use for distributed training")
-    parser.add_argument("--large-dataset",
-                        action="store_true",
-                        default=False,
-                        help="Use 500GB dataset")
-    parser.add_argument("--use-gpu",
-                        action="store_true",
-                        default=False,
-                        help="Use GPU for training.")
+    parser.add_argument(
+        "--large-dataset",
+        action="store_true",
+        default=False,
+        help="Use 500GB dataset")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Use GPU for training.")
     parser.add_argument(
         "--mlflow-register-model",
         action="store_true",
@@ -610,37 +618,38 @@ if __name__ == "__main__":
     os.makedirs(tbx_logdir, exist_ok=True)
     callbacks = [
         TBXLoggerCallback(logdir=tbx_logdir),
-        MLflowLoggerCallback(experiment_name="cuj-big-data-training",
-                             save_artifact=True)
+        MLflowLoggerCallback(
+            experiment_name="cuj-big-data-training", save_artifact=True)
     ]
 
     # Remove CPU resource so Datasets can be scheduled.
     resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
 
-    trainer = Trainer(backend="torch",
-                      num_workers=num_workers,
-                      use_gpu=use_gpu,
-                      resources_per_worker=resources_per_worker)
+    trainer = Trainer(
+        backend="torch",
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        resources_per_worker=resources_per_worker)
     trainer.start()
-    results = trainer.run(train_func=train_func,
-                          config=config,
-                          callbacks=callbacks,
-                          dataset=datasets)
+    results = trainer.run(
+        train_func=train_func,
+        config=config,
+        callbacks=callbacks,
+        dataset=datasets)
     model = results[0]
     trainer.shutdown()
 
     if args.mlflow_register_model:
-        mlflow.pytorch.log_model(model,
-                                 artifact_path="models",
-                                 registered_model_name="torch_model")
+        mlflow.pytorch.log_model(
+            model, artifact_path="models", registered_model_name="torch_model")
 
         # Get the latest model from mlflow model registry.
         client = mlflow.tracking.MlflowClient()
         registered_model_name = "torch_model"
         # Get the info for the latest model.
         # By default, registered models are in stage "None".
-        latest_model_info = client.get_latest_versions(registered_model_name,
-                                                       stages=["None"])[0]
+        latest_model_info = client.get_latest_versions(
+            registered_model_name, stages=["None"])[0]
         latest_version = latest_model_info.version
 
         def load_model_func():
@@ -656,19 +665,19 @@ if __name__ == "__main__":
             dropout_prob = config["dropout_prob"]
             num_features = config["num_features"]
 
-            model = Net(n_layers=num_layers,
-                        n_features=num_features,
-                        num_hidden=num_hidden,
-                        dropout_every=dropout_every,
-                        drop_prob=dropout_prob)
+            model = Net(
+                n_layers=num_layers,
+                n_features=num_features,
+                num_hidden=num_hidden,
+                dropout_every=dropout_every,
+                drop_prob=dropout_prob)
             model.load_state_dict(state_dict)
             return model
 
     class BatchInferModel:
-
         def __init__(self, load_model_func):
-            self.device = torch.device(
-                "cuda:0" if torch.cuda.is_available() else "cpu")
+            self.device = torch.device("cuda:0"
+                                       if torch.cuda.is_available() else "cpu")
             self.model = load_model_func().to(self.device)
 
         def __call__(self, batch) -> "pd.DataFrame":

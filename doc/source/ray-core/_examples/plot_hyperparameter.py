@@ -59,14 +59,18 @@ def get_data_loaders(batch_size):
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
     with FileLock(os.path.expanduser("~/data.lock")):
-        train_loader = torch.utils.data.DataLoader(datasets.MNIST(
-            "~/data", train=True, download=True, transform=mnist_transforms),
-                                                   batch_size=batch_size,
-                                                   shuffle=True)
-    test_loader = torch.utils.data.DataLoader(datasets.MNIST(
-        "~/data", train=False, transform=mnist_transforms),
-                                              batch_size=batch_size,
-                                              shuffle=True)
+        train_loader = torch.utils.data.DataLoader(
+            datasets.MNIST(
+                "~/data",
+                train=True,
+                download=True,
+                transform=mnist_transforms),
+            batch_size=batch_size,
+            shuffle=True)
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST("~/data", train=False, transform=mnist_transforms),
+        batch_size=batch_size,
+        shuffle=True)
     return train_loader, test_loader
 
 
@@ -147,9 +151,10 @@ def test(model, test_loader, device=torch.device("cpu")):
 def evaluate_hyperparameters(config):
     model = ConvNet()
     train_loader, test_loader = get_data_loaders(config["batch_size"])
-    optimizer = optim.SGD(model.parameters(),
-                          lr=config["learning_rate"],
-                          momentum=config["momentum"])
+    optimizer = optim.SGD(
+        model.parameters(),
+        lr=config["learning_rate"],
+        momentum=config["momentum"])
     train(model, optimizer, train_loader)
     return test(model, test_loader)
 

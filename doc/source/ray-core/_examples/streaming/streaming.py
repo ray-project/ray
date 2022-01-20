@@ -7,19 +7,17 @@ import ray
 import wikipedia
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-mappers",
-                    help="number of mapper actors used",
-                    default=3,
-                    type=int)
-parser.add_argument("--num-reducers",
-                    help="number of reducer actors used",
-                    default=4,
-                    type=int)
+parser.add_argument(
+    "--num-mappers", help="number of mapper actors used", default=3, type=int)
+parser.add_argument(
+    "--num-reducers",
+    help="number of reducer actors used",
+    default=4,
+    type=int)
 
 
 @ray.remote
 class Mapper(object):
-
     def __init__(self, title_stream):
         self.title_stream = title_stream
         self.num_articles_processed = 0
@@ -44,7 +42,6 @@ class Mapper(object):
 
 @ray.remote
 class Reducer(object):
-
     def __init__(self, keys, *mappers):
         self.mappers = mappers
         self.keys = keys
@@ -69,7 +66,6 @@ class Reducer(object):
 
 
 class Stream(object):
-
     def __init__(self, elements):
         self.elements = elements
 
@@ -113,9 +109,8 @@ if __name__ == "__main__":
         ])
         for count in counts:
             wordcounts.update(count)
-        most_frequent_words = heapq.nlargest(10,
-                                             wordcounts,
-                                             key=wordcounts.get)
+        most_frequent_words = heapq.nlargest(
+            10, wordcounts, key=wordcounts.get)
         for word in most_frequent_words:
             print("  ", word, wordcounts[word])
         article_index += 1

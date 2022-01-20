@@ -27,7 +27,6 @@ import mock
 
 
 class ChildClassMock(mock.Mock):
-
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock

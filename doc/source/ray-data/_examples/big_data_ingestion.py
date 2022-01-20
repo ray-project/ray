@@ -89,7 +89,6 @@ def create_shuffle_pipeline(training_data_dir: str, num_epochs: int,
 
 @ray.remote
 class TrainingWorker:
-
     def __init__(self, rank: int, shard: DatasetPipeline):
         self.rank = rank
         self.shard = shard
@@ -112,9 +111,10 @@ class TrainingWorker:
 # First, let's parse some arguments.
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--large-scale-test",
-                    action="store_true",
-                    help="Run large scale test (500GiB of data).")
+parser.add_argument(
+    "--large-scale-test",
+    action="store_true",
+    help="Run large scale test (500GiB of data).")
 
 args, _ = parser.parse_known_args()
 
@@ -136,9 +136,10 @@ if not args.large_scale_test:
 
     def generate_example_files(size_bytes: int) -> str:
         tmpdir = tempfile.mkdtemp()
-        ray.data.read_datasource(RandomIntRowDatasource(),
-                                 n=size_bytes // 8 // NUM_COLUMNS,
-                                 num_columns=NUM_COLUMNS).write_parquet(tmpdir)
+        ray.data.read_datasource(
+            RandomIntRowDatasource(),
+            n=size_bytes // 8 // NUM_COLUMNS,
+            num_columns=NUM_COLUMNS).write_parquet(tmpdir)
         return tmpdir
 
     example_files_dir = generate_example_files(SIZE_100MiB)

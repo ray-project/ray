@@ -34,7 +34,6 @@ def _validate_step_args(*args, **kwargs):
 
 
 class PipelineStep:
-
     def __init__(self, config: StepConfig):
         self._config = config
 
@@ -66,9 +65,8 @@ class CallablePipelineStep(PipelineStep):
 
     def __call__(self, *args, **kwargs):
         _validate_step_args(*args, **kwargs)
-        return ExecutorPipelineNode(self._callable_factory,
-                                    self._config,
-                                    incoming_edges=args)
+        return ExecutorPipelineNode(
+            self._callable_factory, self._config, incoming_edges=args)
 
 
 class UninstantiatedClassPipelineStep(PipelineStep):
@@ -122,8 +120,8 @@ def step(_func_or_class: Optional[Callable] = None,
     elif not isinstance(execution_mode, ExecutionMode):
         raise TypeError("execution_mode must be an ExecutionMode or str.")
 
-    config = StepConfig(execution_mode=execution_mode,
-                        num_replicas=num_replicas)
+    config = StepConfig(
+        execution_mode=execution_mode, num_replicas=num_replicas)
 
     def decorator(_func_or_class):
         if isinstance(_func_or_class, FunctionType):

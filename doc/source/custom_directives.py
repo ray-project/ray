@@ -97,9 +97,8 @@ class CustomGalleryItemDirective(Directive):
             raise ValueError("Need to provide :description: under "
                              "`customgalleryitem::`.")
 
-        thumbnail_rst = GALLERY_TEMPLATE.format(tooltip=tooltip,
-                                                thumbnail=thumbnail,
-                                                description=description)
+        thumbnail_rst = GALLERY_TEMPLATE.format(
+            tooltip=tooltip, thumbnail=thumbnail, description=description)
         thumbnail = StringList(thumbnail_rst.split("\n"))
         thumb = nodes.paragraph()
         self.state.nested_parse(thumbnail, self.content_offset, thumb)
