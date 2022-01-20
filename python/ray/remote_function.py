@@ -445,3 +445,7 @@ class RemoteFunction:
             invocation = self._decorator(invocation)
 
         return invocation(args, kwargs)
+
+    def _bind(self, *args, **kwargs):
+        from ray.experimental.dag.task_node import TaskNode
+        return TaskNode(self._function, args, kwargs)
