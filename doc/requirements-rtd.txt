@@ -1,6 +1,7 @@
-click
+click~=7.1
 colorama
 colorful
+docutils~=0.16.0
 filelock
 flask
 flatbuffers
