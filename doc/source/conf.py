@@ -198,7 +198,7 @@ if build_one_lib and build_one_lib in all_toc_libs:
 # show_authors = False
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = "pastie"
+pygments_style = "lovelace"
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
