@@ -249,9 +249,6 @@ class _MockTrialExecutor(TrialExecutor):
     def get_next_available_trial(self):
         return None
 
-    def get_next_failed_trial(self):
-        return None
-
     def get_running_trials(self):
         return []
 
