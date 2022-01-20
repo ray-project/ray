@@ -24,7 +24,7 @@ GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 RAY_PKG_PREFIX = "_ray_pkg_"
 
 
-def generate_random_string(min_len: int=0, max_len: int=100):
+def generate_random_string(min_len: int = 0, max_len: int = 100):
     if min_len > max_len:
         raise ValueError(f"Got min_len={min_len} and max_len={max_len}. "
                          f"min_len should be less than max_len.")
@@ -554,9 +554,7 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
         temp_rdir = generate_random_string(min_len=20, max_len=100)
 
     # Rename rdir to temporary name to avoid name collisions with children
-    os.rename(
-            os.path.join(base_dir, rdir),
-            os.path.join(base_dir, temp_rdir))
+    os.rename(os.path.join(base_dir, rdir), os.path.join(base_dir, temp_rdir))
 
     # Shift children out of rdir and into base_dir
     temp_rdir_children = os.listdir(os.path.join(base_dir, temp_rdir))
@@ -564,7 +562,7 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
         os.rename(
             os.path.join(base_dir, temp_rdir, child),
             os.path.join(base_dir, child))
-    
+
     # Remove any remnants of temp_rdir
     shutil.rmtree(os.path.join(base_dir, temp_rdir))
 
@@ -599,7 +597,7 @@ def unzip_package(package_path: str,
 
         with ZipFile(str(package_path), "r") as zip_ref:
             zip_ref.extractall(target_dir)
-        
+
         remove_dir_from_filepaths(target_dir, top_level_directory)
     else:
         with ZipFile(str(package_path), "r") as zip_ref:

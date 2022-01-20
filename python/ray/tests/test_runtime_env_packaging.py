@@ -16,8 +16,8 @@ from ray.experimental.internal_kv import (_internal_kv_del,
 from ray._private.runtime_env.packaging import (
     _dir_travel, get_uri_for_directory, _get_excludes,
     upload_package_if_needed, parse_uri, Protocol,
-    get_top_level_dir_from_compressed_package,
-    remove_dir_from_filepaths, unzip_package)
+    get_top_level_dir_from_compressed_package, remove_dir_from_filepaths,
+    unzip_package)
 
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
@@ -208,7 +208,7 @@ class TestUnzipPackage:
             dcmp = dircmp(f"{tmp_subdir}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
         else:
             dcmp = dircmp(f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}",
-                        f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+                          f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
         assert len(dcmp.left_only) == 0
         assert len(dcmp.right_only) == 0
 
@@ -228,17 +228,12 @@ class TestUnzipPackage:
             target_dir=tmp_subdir,
             remove_top_level_directory=remove_top_level_directory,
             unlink_zip=unlink_zip)
-        
-        self.dcmp_helper(
-            remove_top_level_directory,
-            unlink_zip,
-            tmp_subdir,
-            tmp_path,
-            archive_path)
 
-    def test_unzip_with_matching_subdirectory_names(self,
-                                                    remove_top_level_directory,
-                                                    unlink_zip):
+        self.dcmp_helper(remove_top_level_directory, unlink_zip, tmp_subdir,
+                         tmp_path, archive_path)
+
+    def test_unzip_with_matching_subdirectory_names(
+            self, remove_top_level_directory, unlink_zip):
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
             top_level_dir = path / TOP_LEVEL_DIR_NAME
@@ -249,7 +244,7 @@ class TestUnzipPackage:
                 dir1.mkdir(parents=True)
                 next_level_dir = dir1
             make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip",
-                        path, TOP_LEVEL_DIR_NAME)
+                         path, TOP_LEVEL_DIR_NAME)
             archive_path = str(path / ARCHIVE_NAME)
 
             tmp_path = archive_path[:archive_path.rfind("/")]
@@ -260,13 +255,9 @@ class TestUnzipPackage:
                 target_dir=tmp_subdir,
                 remove_top_level_directory=remove_top_level_directory,
                 unlink_zip=unlink_zip)
-            
-            self.dcmp_helper(
-                remove_top_level_directory,
-                unlink_zip,
-                tmp_subdir,
-                tmp_path,
-                archive_path)
+
+            self.dcmp_helper(remove_top_level_directory, unlink_zip,
+                             tmp_subdir, tmp_path, archive_path)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
