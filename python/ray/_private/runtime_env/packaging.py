@@ -6,8 +6,6 @@ import logging
 import os
 from pathlib import Path
 import shutil
-import random
-import string
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
