@@ -3,7 +3,7 @@
 Big Data Training
 =================
 
-This notebook includes an example workflow for training a Pytorch deep learning model on tabular data using Ray Train, and handling the data ingest with Ray Datasets.
+This notebook includes an example workflow for training a PyTorch deep learning model on tabular data using Ray Train, and handling the data ingest with Ray Datasets.
 """
 
 ###############################################################################
@@ -76,7 +76,7 @@ def register_mlflow_model(model):
 #
 # The data is generated with ``sklearn.datasets.make_classification``.
 #
-# **NOTE**: To make things more interesting and more like "real" tabular data, we're going to introduce column names, categorical columns, and turn a few randomly select cells into NULL values. Not all data is clean and purely numeric!
+# **NOTE**: To make things more interesting and more like "real" tabular data, we're going to introduce column names, categorical columns, and turn a few randomly selected cells into NULL values. Not all data is clean and purely numeric!
 
 def make_and_upload_dataset(
         dir_path, num_examples=2_000_000, num_features=20,
@@ -183,7 +183,7 @@ def read_dataset(path: str) -> ray.data.Dataset:
 # Data preprocessing with Ray and Ray Datasets
 # -----------------------------------------------------
 #
-# While we don't yet recommend Ray Datasets as a full-blown ETL solution, often data scientists want to do "last mile preprocessing" performantly with their model training pipeline. This is Ray Datasets' sweet spot as it integrates well with Ray Train for models in PyTorch, Tensorflow, Horovod, or similar.
+# While we don't yet recommend Ray Datasets as a full-blown ETL solution, often data scientists want to do "last mile preprocessing" performantly with their model training pipeline. This is Ray Datasets' sweet spot as it integrates well with Ray Train for models in PyTorch, TensorFlow, Horovod, or similar.
 #
 # You'll note the workhorse of batch computations for a Ray Dataset object (ds) involves:
 #
@@ -367,7 +367,7 @@ def inference(dataset, model_cls: type, batch_size: int, result_path: str,
             num_cpus=0) \
         .write_parquet(result_path)
 
-# Later we'll use this convience class to perform inference to minimize the number of times we load the model into memory, but this is largely an optimization for giant models or large numbers of batches.
+# Later we'll use this convenience class to perform inference to minimize the number of times we load the model into memory, but this is largely an optimization for giant models or large numbers of batches.
 
 class BatchInferModel:
     def __init__(self, load_model_func):
@@ -381,7 +381,7 @@ class BatchInferModel:
         return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
 
 ###############################################################################
-# Defining a neural network in Pytorch
+# Defining a neural network in PyTorch
 # -----------------------------------------------------
 #
 # Let's define our net!
@@ -436,7 +436,7 @@ class Net(nn.Module):
         return x
 
 ###############################################################################
-# Training functions in Pytorch
+# Training functions in PyTorch
 # -----------------------------------------------------
 #
 # Nothing special to see here -- Ray lets you bring your PyTorch code with almost no modifications.
@@ -504,7 +504,7 @@ def test_epoch(dataset, model, device, criterion):
 # Our final training function with Ray Datasets input
 # ------------------------------------------------------
 #
-# Here again, you shouldn't see many surprises. Notably, we're transforming Ray Datasets into Pytorch datasets with one simple line:
+# Here again, you shouldn't see many surprises. Notably, we're transforming Ray Datasets into PyTorch datasets with one simple line:
 #
 # .. code-block:: python
 #
