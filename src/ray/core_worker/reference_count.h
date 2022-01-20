@@ -437,8 +437,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
   /// \param[in] size The size of the object.
-  /// \param[in] release Whether to release the reference.
-  /// \return True if the reference exists, false otherwise.
+  /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
                            const NodeID &spilled_node_id, int64_t size);
 

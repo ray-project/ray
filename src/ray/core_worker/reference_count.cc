@@ -599,11 +599,11 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
     it->second.on_delete = nullptr;
   }
   it->second.pinned_at_raylet_id.reset();
-  if (it->second.spilled) {
+  if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     // The spilled copy of the object should get deleted during the on_delete
     // callback, so reset the spill location metadata here.
-    // TODO(swang): Spilled copies in cloud storage are not GCed, so we should
-    // not reset the spilled metadata.
+    // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
+    // reset the spilled metadata.
     it->second.spilled = false;
     it->second.spilled_url = "";
     it->second.spilled_node_id = NodeID::Nil();
@@ -1195,7 +1195,11 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
     return false;
   }
-  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+  if (it->second.OutOfScope(lineage_pinning_enabled_) && !spilled_node_id.IsNil()) {
+    // NOTE(swang): If the object is out of scope and was spilled locally by
+    // its primary raylet, then we should have already sent the "object
+    // evicted" notification to delete the copy at this spilled URL. Therefore,
+    // we should not add this spill URL as a location.
     return false;
   }
 
