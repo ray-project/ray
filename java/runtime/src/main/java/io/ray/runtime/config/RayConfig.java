@@ -163,9 +163,9 @@ public class RayConfig {
     }
 
     // Bootstrap configurations.
-    String bootstrap_address = config.getString("ray.address");
-    if (StringUtils.isNotBlank(bootstrap_address)) {
-      setBootstrapAddress(bootstrap_address);
+    String bootstrapAddress = config.getString("ray.address");
+    if (StringUtils.isNotBlank(bootstrapAddress)) {
+      setBootstrapAddress(bootstrapAddress);
     } else {
       // We need to start gcs using `RunManager` for local cluster
       this.bootstrapAddress = null;
