@@ -732,9 +732,7 @@ def build_eager_tf_policy(
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
-                    dist_inputs = None
-                    state_out = []
-                    actions, logp = action_sampler_fn(
+                    actions, logp, dist_inputs, state_out = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
