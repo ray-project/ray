@@ -6,8 +6,8 @@ from docutils import nodes
 import os
 import sphinx_gallery
 # Note: the scipy import has to stay here, it's used implicitly down the line
-# noqa: F401
-import scipy.stats
+import scipy.stats  # noqa: F401
+import scipy.linalg  # noqa: F401
 
 __all__ = [
     "CustomGalleryItemDirective", "fix_xgb_lgbm_docs", "MOCK_MODULES",
