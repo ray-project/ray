@@ -6,8 +6,8 @@
 #include "message/message.h"
 #include "message/message_bundle.h"
 #include "queue/queue_client.h"
-#include "ray/common/test_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ring_buffer/ring_buffer.h"
@@ -652,8 +652,8 @@ int main(int argc, char **argv) {
   auto startup_token = std::stoi(startup_token_str.substr(start));
 
   auto gcs_options = RayConfig::instance().bootstrap_with_gcs()
-                     ? ray::gcs::GcsClientOptions("127.0.0.1:6379")
-                     : ray::gcs::GcsClientOptions("127.0.0.1", 6379, "");
+                         ? ray::gcs::GcsClientOptions("127.0.0.1:6379")
+                         : ray::gcs::GcsClientOptions("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
                                          gcs_options, startup_token);
   worker.RunTaskExecutionLoop();
