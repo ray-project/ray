@@ -188,7 +188,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.
-  bool is_connected_{false};
+  std::atomic<bool> is_connected_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
