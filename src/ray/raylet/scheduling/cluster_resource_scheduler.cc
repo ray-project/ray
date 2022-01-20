@@ -259,7 +259,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  RAY_LOG(DEBUG) << "Scheduling decision. "
+  RAY_LOG(INFO) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
                  << (string_to_int_map_.Get(best_node_id) == "-1"

@@ -14,6 +14,8 @@ from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
+import logging
+logger = logging.getLogger(__name__)
 
 def simple_shuffle(input_blocks: BlockList,
                    output_num_blocks: int,
@@ -24,7 +26,9 @@ def simple_shuffle(input_blocks: BlockList,
                    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
                    _spread_resource_prefix: Optional[str] = None
                    ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+    logger.info("jjyao materialize dataset start")
     input_blocks = input_blocks.get_blocks()
+    logger.info("jjyao materialize dataset end")
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
@@ -50,6 +54,7 @@ def simple_shuffle(input_blocks: BlockList,
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
+    logger.info("jjyao shuffle map start")
     shuffle_map_out = [
         shuffle_map.options(
             **map_ray_remote_args,
@@ -70,6 +75,7 @@ def simple_shuffle(input_blocks: BlockList,
     del input_blocks
     shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
     map_bar.close()
+    logger.info("jjyao shuffle map end")
 
     # Randomize the reduce order of the blocks.
     if random_shuffle:
@@ -78,6 +84,7 @@ def simple_shuffle(input_blocks: BlockList,
 
     reduce_bar = ProgressBar(
         "Shuffle Reduce", position=0, total=output_num_blocks)
+    logger.info("jjyao shuffle reduce start")
     shuffle_reduce_out = [
         shuffle_reduce.options(
             **reduce_ray_remote_args,
@@ -93,6 +100,7 @@ def simple_shuffle(input_blocks: BlockList,
     reduce_bar.block_until_complete(list(new_blocks))
     new_metadata = ray.get(list(new_metadata))
     reduce_bar.close()
+    logger.info("jjyao shuffle end start")
 
     stats = {
         "map": shuffle_map_metadata,
