@@ -93,21 +93,25 @@ message JavaRuntimeEnv {
   /// List of URIs, each of which is a zip file that will be unpacked
   /// and inserted into the CLASSPATH of the java workers.
   repeated string jars = 1;
+  /// The JVM options, which are appended to java command line.
+  repeated string jvm_options = 2;
+  /// Specify a built-in java version.
+  string java_home = 3;
   /// One of typed runtime env of java
   oneof java_runtime_env {
     /// maven runtime env
-    MavenRuntimeEnv maven_runtime_env = 2;
+    MavenRuntimeEnv maven_runtime_env = 4;
     /// container runtime env
-    ContainerRuntimeEnv container_runtime_env = 3;
+    ContainerRuntimeEnv container_runtime_env = 5;
     /// plugin runtime env
-    PluginRuntimeEnv plugin_runtime_env = 4;
+    PluginRuntimeEnv plugin_runtime_env = 6;
   }
 }
 
 message CppRuntimeEnv {
   /// List of URIs, each of which is a zip file that will be unpacked
   /// and inserted into the LD_LIBRARY_PATH of the C++ workers.
-  repeated string dynamic_library = 1;
+  repeated string dynamic_libraries = 1;
   /// One of typed runtime env of C++
   oneof cpp_runtime_env {
     /// container runtime env
@@ -145,6 +149,8 @@ message RuntimeEnv {
   optional JavaRuntimeEnv java_runtime_env = 5;
   /// cpp runtime env
   optional CppRuntimeEnv cpp_runtime_env = 6;
+  /// TODO(SongGuyang): Remove this field. Issue 
+  /// https://github.com/ray-project/ray/issues/21695.
   /// Runtime env uris of different types.
   RuntimeEnvUris uris = 7;
 }
