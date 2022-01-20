@@ -55,7 +55,7 @@ EnvType = Any
 # A callable, taking a EnvContext object
 # (config dict + properties: `worker_index`, `vector_index`, `num_workers`,
 # and `remote`) and returning an env object (or None if no env is used).
-EnvCreator = Callable[[EnvContext], Optional[EnvType]]
+EnvCreator = Callable[["EnvContext"], Optional[EnvType]]
 
 # Represents a generic identifier for an agent (e.g., "agent1").
 AgentID = Any
