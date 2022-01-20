@@ -1,0 +1,21 @@
+- name: torch_microbenchmark_single_node
+  team: ml
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_1x4_gpu.yaml
+
+  run:
+    timeout: 900
+    script: python workloads/torch_microbenchmark.py -n 1 -g 4
+
+
+- name: torch_microbenchmark_multi_node
+  team: ml
+  cluster:
+    app_config: app_config.yaml
+    compute_template: tpl_2x4_gpu.yaml
+
+  run:
+    timeout: 900
+    prepare: python wait_cluster.py 2 600
+    script: python workloads/torch_microbenchmark.py -n 2 -g 4

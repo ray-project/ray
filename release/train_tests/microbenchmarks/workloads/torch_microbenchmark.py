@@ -1,3 +1,4 @@
+import argparse
 import os
 import json
 from datetime import timedelta
@@ -19,15 +20,6 @@ from ray.train import Trainer
 from ray.train.torch import TorchConfig
 
 from ray.util.placement_group import placement_group
-
-NUM_NODES = 2
-NUM_GPUS_PER_NODE = 4
-
-CONFIG = {
-        "batch_size": 32,
-        "num_epochs": 10,
-        "num_batches_per_epoch": 100
-    }
 
 def torch_setup(rank, world_size, num_workers_per_node, address, port):
     os.environ["MASTER_ADDR"] = address
@@ -148,11 +140,14 @@ def single_node_benchmark():
     import ray
     ray.init("auto")
 
+    assert NUM_NODES*NUM_GPUS_PER_NODE == NUM_GPUS_PER_NODE
+
     # Time torch.distributed using torch.multiprocessing.
     address = "127.0.0.1"
     port = find_free_port()
-    torch_time = torch_run_single_node(train_func=torch_train, world_size=4,
-                           num_workers_per_node=4,
+    torch_time = torch_run_single_node(train_func=torch_train,
+                                       world_size=NUM_NODES*NUM_GPUS_PER_NODE,
+                           num_workers_per_node=NUM_GPUS_PER_NODE,
                            address=address, port=port)
 
     # Time using Ray Train.
@@ -168,7 +163,7 @@ def single_node_benchmark():
         f.write(
             json.dumps({"torch_time": torch_time, "ray_train_time": ray_time}))
 
-def torch_run_distributed(train_func, num_nodes, num_workers_per_node):
+def torch_run_distributed(num_nodes, num_workers_per_node):
     # Use Ray tasks and placement groups to set up distributed training.
     # This allows us to run commands on all nodes in the cluster.
     per_node_bundle = {"CPU": num_workers_per_node, "GPU": num_workers_per_node}
@@ -202,14 +197,64 @@ def multi_node_benchmark():
     ray.init("auto")
 
     # Time using torch.distributed.
-    torch_time = torch_run_distributed(train_func=torch_train, world_size=4,
-                                       num_workers_per_node=4,
-                                       address=address, port=port)
-
+    torch_time = torch_run_distributed(num_nodes=NUM_NODES,
+                                       num_workers_per_node=NUM_GPUS_PER_NODE)
 
     # Time using Ray Train.
-    ray_time = ray_train_run(train_func=train_func, world_size=8)
+    ray_time = ray_train_run(train_func=train_func, world_size=NUM_NODES*NUM_GPUS_PER_NODE)
+
+    # Make sure that the torch.distributed time and Ray Train time are
+    # within 5% of each other.
+    assert abs(torch_time - ray_time) <= min(0.05 * torch_time,
+                                             0.05 * ray_time), \
+        f"torch.distributed time: {torch_time}, Ray Train time: {ray_time}"
+
+    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+        f.write(
+            json.dumps({"torch_time": torch_time, "ray_train_time": ray_time}))
 
 
 if __name__ == "__main__":
-    single_node_benchmark()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--num-nodes",
+        "-n",
+        type=int,
+        default=1,
+        help="Sets number of nodes in cluster.")
+    parser.add_argument(
+        "--num-gpu-per-node",
+        "-n",
+        type=int,
+        default=4,
+        help="Sets number of GPUs per node to use for training.")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Training batch size.")
+    parser.add_argument(
+        "--num-epochs",
+        type=int,
+        default=10,
+        help="Number of epochs to train for.")
+    parser.add_argument(
+        "--batches-per-epoch",
+        type=int,
+        default=100,
+        help="Number of batches to train for each epoch.")
+    args, _ = parser.parse_known_args()
+
+    NUM_NODES = args.num_nodes
+    NUM_GPUS_PER_NODE = args.num_gpu_per_node
+
+    CONFIG = {
+        "batch_size": args.batch_size,
+        "num_epochs": args.num_epochs,
+        "num_batches_per_epoch": args.batches_per_epoch
+    }
+
+    if NUM_NODES == 1:
+        single_node_benchmark()
+    else:
+        multi_node_benchmark()
