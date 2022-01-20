@@ -120,6 +120,7 @@ class RepeatedSpaceEnv(gym.Env):
 
 class NestedMultiAgentEnv(MultiAgentEnv):
     def __init__(self):
+        super().__init__()
         self.observation_space = spaces.Dict({
             "dict_agent": DICT_SPACE,
             "tuple_agent": TUPLE_SPACE
