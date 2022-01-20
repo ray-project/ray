@@ -510,7 +510,7 @@ def test_epoch(dataset, model, device, criterion):
 #
 #     train_dataset.to_torch(label_column="your_label_col_name", batch_size=1024)
 #
-# This makes it really easy to leverage Ray's nicities around application development and data at scale without needing to code up tons of Pytorch connector boilerplate.
+# This makes it really easy to leverage Ray's niceties around application development and data at scale without needing to code up tons of PyTorch connector boilerplate.
 #
 # The **Ray Train wrapper** is also quite simple:
 #
