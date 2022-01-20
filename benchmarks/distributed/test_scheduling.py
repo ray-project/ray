@@ -26,7 +26,8 @@ class SimpleActor:
 
 def start_tasks(num_task, num_cpu_per_task, task_duration):
     ray.get([
-        simple_task.options(num_cpus=num_cpu_per_task) for _ in range(num_task)
+        simple_task.options(num_cpus=num_cpu_per_task).remote()
+        for _ in range(num_task)
     ])
 
 
