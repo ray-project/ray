@@ -6,7 +6,6 @@ import string
 import sys
 import tempfile
 from filecmp import dircmp
-from zipfile import ZipFile
 import uuid
 
 import pytest
