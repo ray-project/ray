@@ -141,7 +141,7 @@ If you'd like to change the log rotation configuration, you can do it by specify
     RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
 
 Redirecting Ray logs to stdout/stderr
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you wish to redirect all internal Ray logging and your own logging within tasks/actors to stdout/stderr of the host nodes, you can do so by ensuring that the ``GLOG_logtostderr=1`` environment variable is set on the driver and on all Ray nodes. This is very useful if you are using a log aggregator that needs log records to be written to stdout/stderr in order for them to be captured.
 
 When running a local Ray cluster, this environment variable should be set before starting the local cluster:
