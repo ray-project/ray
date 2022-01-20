@@ -1,3 +1,5 @@
+.. _serve-deploy-tutorial:
+
 ===================
 Deploying Ray Serve
 ===================
@@ -8,8 +10,6 @@ This section should help you:
 - monitor your Serve application using the Ray Dashboard and logging
 
 .. contents:: Deploying Ray Serve
-
-.. _serve-deploy-tutorial:
 
 Lifetime of a Ray Serve Instance
 ================================

@@ -88,7 +88,7 @@ can operate on article text sent via HTTP request.
   :end-before: __local_model_end__
 
 Ray Serve needs to run on top of a Ray cluster, so we connect to a local one.
-See :ref:`Deploying Ray Serve` to learn more about starting a Ray Serve
+See :ref:`serve-deploy-tutorial` to learn more about starting a Ray Serve
 instance and deploying to a Ray cluster.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/e2e_deployment.py
