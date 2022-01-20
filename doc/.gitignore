@@ -1,1 +1,8 @@
-auto_examples/
+# Generated documentation files
+_build
+source/_static/thumbs
+
+source/ray-core/examples/
+source/ray-tune/tutorials/
+source/ray-tune/generated_guides/
+source/ray-data/examples/
