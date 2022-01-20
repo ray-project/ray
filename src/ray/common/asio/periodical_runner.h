@@ -40,11 +40,12 @@ class PeriodicalRunner {
  private:
   void DoRunFnPeriodically(const std::function<void()> &fn,
                            boost::posix_time::milliseconds period,
-                           boost::asio::deadline_timer &timer) LOCKS_EXCLUDED(mutex_);
+                           std::shared_ptr<boost::asio::deadline_timer> timer)
+      LOCKS_EXCLUDED(mutex_);
 
   void DoRunFnPeriodicallyInstrumented(const std::function<void()> &fn,
                                        boost::posix_time::milliseconds period,
-                                       boost::asio::deadline_timer &timer,
+                                       std::shared_ptr<boost::asio::deadline_timer> timer,
                                        const std::string name) LOCKS_EXCLUDED(mutex_);
 
   instrumented_io_context &io_service_;
