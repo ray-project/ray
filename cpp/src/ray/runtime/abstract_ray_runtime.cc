@@ -53,13 +53,14 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
     RAY_LOG(INFO) << "Native ray runtime started.";
-    if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
-      // Load functions from code search path.
-      FunctionHelper::GetInstance().LoadFunctionsFromPaths(
-          ConfigInternal::Instance().code_search_path);
-    }
   }
   RAY_CHECK(runtime);
+  internal::RayRuntimeHolder::Instance().Init(runtime);
+  if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
+    // Load functions from code search path.
+    FunctionHelper::GetInstance().LoadFunctionsFromPaths(
+        ConfigInternal::Instance().code_search_path);
+  }
   abstract_ray_runtime_ = runtime;
   return runtime;
 }
@@ -86,9 +87,8 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 }
 
 std::string AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
-  ObjectID object_id =
-      ObjectID::FromIndex(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
-  Put(data, &object_id);
+  ObjectID object_id{};
+  object_store_->Put(data, &object_id);
   return object_id.Binary();
 }
 
@@ -128,8 +128,13 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
           memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{},
+      auto id = ObjectID::FromBinary(*arg.id);
+      auto owner_address = ray::rpc::Address{};
+      if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
+        auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+        owner_address = core_worker.GetOwnerAddress(id);
+      }
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(id, owner_address,
                                                            /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
@@ -176,13 +181,15 @@ std::string AbstractRayRuntime::CallActor(
 }
 
 const TaskID &AbstractRayRuntime::GetCurrentTaskId() {
-  return worker_->GetCurrentTaskID();
+  return GetWorkerContext().GetCurrentTaskID();
 }
 
-const JobID &AbstractRayRuntime::GetCurrentJobID() { return worker_->GetCurrentJobID(); }
+const JobID &AbstractRayRuntime::GetCurrentJobID() {
+  return GetWorkerContext().GetCurrentJobID();
+}
 
-const std::unique_ptr<WorkerContext> &AbstractRayRuntime::GetWorkerContext() {
-  return worker_;
+const WorkerContext &AbstractRayRuntime::GetWorkerContext() {
+  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
 }
 
 void AbstractRayRuntime::AddLocalReference(const std::string &id) {

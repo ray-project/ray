@@ -249,9 +249,6 @@ class _MockTrialExecutor(TrialExecutor):
     def get_next_available_trial(self):
         return None
 
-    def get_next_failed_trial(self):
-        return None
-
     def get_running_trials(self):
         return []
 
@@ -721,10 +718,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
-        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
-        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+        self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
     def testCheckTrialInfoUpdateMin(self):
         def result(score, ts):
@@ -751,9 +746,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
-        self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+        self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
     def testPauseResumeChooseTrial(self):
         def result(score, ts):

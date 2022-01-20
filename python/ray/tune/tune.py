@@ -471,21 +471,22 @@ def run(
     if not search_alg:
         search_alg = BasicVariantGenerator(
             max_concurrent=max_concurrent_trials or 0)
-    elif max_concurrent_trials:
+    elif max_concurrent_trials or is_local_mode:
         if isinstance(search_alg, ConcurrencyLimiter):
-            if search_alg.max_concurrent != max_concurrent_trials:
-                raise ValueError(
-                    "You have specified `max_concurrent_trials="
-                    f"{max_concurrent_trials}`, but the `search_alg` is "
-                    "already a `ConcurrencyLimiter` with `max_concurrent="
-                    f"{search_alg.max_concurrent}. FIX THIS by setting "
-                    "`max_concurrent_trials=None`.")
-            else:
-                logger.warning(
-                    "You have specified `max_concurrent_trials="
-                    f"{max_concurrent_trials}`, but the `search_alg` is "
-                    "already a `ConcurrencyLimiter`. `max_concurrent_trials` "
-                    "will be ignored.")
+            if not is_local_mode:
+                if search_alg.max_concurrent != max_concurrent_trials:
+                    raise ValueError(
+                        "You have specified `max_concurrent_trials="
+                        f"{max_concurrent_trials}`, but the `search_alg` is "
+                        "already a `ConcurrencyLimiter` with `max_concurrent="
+                        f"{search_alg.max_concurrent}. FIX THIS by setting "
+                        "`max_concurrent_trials=None`.")
+                else:
+                    logger.warning(
+                        "You have specified `max_concurrent_trials="
+                        f"{max_concurrent_trials}`, but the `search_alg` is "
+                        "already a `ConcurrencyLimiter`. "
+                        "`max_concurrent_trials` will be ignored.")
         else:
             if max_concurrent_trials < 1:
                 raise ValueError(

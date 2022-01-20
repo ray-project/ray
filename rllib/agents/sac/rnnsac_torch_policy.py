@@ -215,28 +215,28 @@ def actor_critic_loss(
     assert state_batches
     seq_lens = train_batch.get(SampleBatch.SEQ_LENS)
 
-    model_out_t, state_in_t = model({
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "prev_actions": train_batch[SampleBatch.PREV_ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.PREV_REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    model_out_t, state_in_t = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.CUR_OBS],
+            prev_actions=train_batch[SampleBatch.PREV_ACTIONS],
+            prev_rewards=train_batch[SampleBatch.PREV_REWARDS],
+            _is_training=True), state_batches, seq_lens)
     states_in_t = model.select_state(state_in_t, ["policy", "q", "twin_q"])
 
-    model_out_tp1, state_in_tp1 = model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "prev_actions": train_batch[SampleBatch.ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    model_out_tp1, state_in_tp1 = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS],
+            prev_actions=train_batch[SampleBatch.ACTIONS],
+            prev_rewards=train_batch[SampleBatch.REWARDS],
+            _is_training=True), state_batches, seq_lens)
     states_in_tp1 = model.select_state(state_in_tp1, ["policy", "q", "twin_q"])
 
-    target_model_out_tp1, target_state_in_tp1 = target_model({
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "prev_actions": train_batch[SampleBatch.ACTIONS],
-        "prev_rewards": train_batch[SampleBatch.REWARDS],
-        "is_training": True,
-    }, state_batches, seq_lens)
+    target_model_out_tp1, target_state_in_tp1 = target_model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS],
+            prev_actions=train_batch[SampleBatch.ACTIONS],
+            prev_rewards=train_batch[SampleBatch.REWARDS],
+            _is_training=True), state_batches, seq_lens)
     target_states_in_tp1 = target_model.select_state(state_in_tp1,
                                                      ["policy", "q", "twin_q"])
 

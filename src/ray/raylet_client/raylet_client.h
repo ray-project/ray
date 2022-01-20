@@ -109,14 +109,13 @@ class WorkerLeaseInterface {
 /// Interface for leasing resource.
 class ResourceReserveInterface {
  public:
-  /// Request a raylet to prepare resources of a given bundle for atomic placement group
+  /// Request a raylet to prepare resources of given bundles for atomic placement group
   /// creation. This is used for the first phase of atomic placement group creation. The
   /// callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be
-  /// allocated for the worker.
+  /// \param bundle_specs Bundles to be scheduled at this raylet.
   /// \return ray::Status
   virtual void PrepareBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply>
           &callback) = 0;
 
@@ -278,12 +277,6 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   Status AnnounceWorkerPort(int port);
 
-  /// Submit a task using the raylet code path.
-  ///
-  /// \param The task specification.
-  /// \return ray::Status.
-  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
-
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
@@ -407,7 +400,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements PrepareBundleResourcesInterface.
   void PrepareBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
       override;
 

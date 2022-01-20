@@ -1,10 +1,10 @@
 #
 # Single node shuffle
 #
-
 # Test basic single node 10GB shuffle with a small number of partitions.
 # This doesn't require object spilling.
 - name: shuffle_10gb
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -15,6 +15,7 @@
 
 # Test single node 50GB shuffle with a large number of partitions.
 - name: shuffle_50gb
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -25,6 +26,7 @@
 
 # Test single node 50GB shuffle with a large number of partitions.
 - name: shuffle_50gb_large_partition
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -35,6 +37,7 @@
 
 # Test non streaming shuffle in a single node with a small number of partition.
 - name: non_streaming_shuffle_50gb
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -45,6 +48,7 @@
 
 # Test non streaming shuffle in a single node with a large number of partition.
 - name: non_streaming_shuffle_50gb_large_partition
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_single.yaml
@@ -54,6 +58,7 @@
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6 --no-streaming
 
 - name: dask_on_ray_10gb_sort
+  team: core
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
@@ -63,6 +68,7 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
 - name: dask_on_ray_100gb_sort
+  team: core
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_sort_compute_template.yaml
@@ -77,6 +83,7 @@
 
 # Test multi nodes 100GB shuffle with a small number of partitions.
 - name: shuffle_100gb
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_multi.yaml
@@ -88,6 +95,7 @@
 
 # Test non streaming multi nodes 100GB shuffle with a small number of partitions.
 - name: non_streaming_shuffle_100gb
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_multi.yaml
@@ -99,6 +107,7 @@
 
 # Test autoscaling 1TB streaming shuffle with a large number of partitions.
 - name: autoscaling_shuffle_1tb_1000_partitions
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_autoscaling.yaml
@@ -109,6 +118,7 @@
 
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
 - name: shuffle_1tb_1000_partition
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_large_scale.yaml
@@ -120,6 +130,7 @@
 
 # Test multi nodes 1TB non streaming shuffle with a large number of partitions.
 - name: non_streaming_shuffle_1tb_1000_partition
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_large_scale.yaml
@@ -131,6 +142,7 @@
 
 # Stress test for 1TB multi node streaming shuffle.
 - name: shuffle_1tb_5000_partitions
+  team: core
   cluster:
     app_config: shuffle/shuffle_app_config.yaml
     compute_template: shuffle/shuffle_compute_large_scale.yaml
@@ -142,6 +154,7 @@
 
 # Stress test for 1TB multi node non-streaming shuffle.
 # - name: non_streaming_shuffle_1tb_5000_partitions
+#   team: core
 #   stable: False
 #   cluster:
 #     app_config: shuffle/shuffle_app_config.yaml
@@ -152,8 +165,21 @@
 #     prepare: python wait_cluster.py 20 900
 #     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
+- name: k8s_dask_on_ray_large_scale_test_no_spilling
+  cluster:
+    app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/dask_on_ray_stress_compute_k8s.yaml
+    compute_on_k8s: True
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 21 600
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb 20 --error_rate 0  --data_save_path /tmp/ray
+  stable: false
+
 # Test large scale dask on ray test without spilling.
 - name: dask_on_ray_large_scale_test_no_spilling
+  team: core
   cluster:
     app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -175,6 +201,7 @@
 
 # Test large scale dask on ray test with spilling.
 - name: dask_on_ray_large_scale_test_spilling
+  team: core
   cluster:
     app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -196,6 +223,7 @@
 
 # Stress tests with many tasks
 - name: stress_test_many_tasks
+  team: core
   cluster:
     app_config: stress_tests/stress_tests_app_config.yaml
     compute_template: stress_tests/stress_tests_compute.yaml
@@ -215,6 +243,7 @@
 
 # Stress tests with dead actors
 - name: stress_test_dead_actors
+  team: core
   cluster:
     app_config: stress_tests/stress_tests_app_config.yaml
     compute_template: stress_tests/stress_tests_compute.yaml
@@ -234,6 +263,7 @@
 
 # Stress tests with placement groups
 - name: stress_test_placement_group
+  team: core
   cluster:
     app_config: stress_tests/stress_tests_app_config.yaml
     compute_template: stress_tests/placement_group_tests_compute.yaml
@@ -244,6 +274,7 @@
 
 # Stress tests with many threaded actors.
 - name: threaded_actors_stress_test
+  team: core
   cluster:
     app_config: stress_tests/stress_tests_app_config.yaml
     compute_template: stress_tests/stress_test_threaded_actor_compute.yaml
@@ -266,6 +297,7 @@
 
 # Test decision tree on autoscaling compute cluster.
 - name: decision_tree_autoscaling
+  team: core
   cluster:
     app_config: decision_tree/decision_tree_app_config.yaml
     compute_template: decision_tree/autoscaling_compute.yaml
@@ -276,6 +308,7 @@
 
 # Test 20 concurrent decision tree runs on autoscaling compute cluster.
 - name: decision_tree_autoscaling_20_runs
+  team: core
   cluster:
     app_config: decision_tree/decision_tree_app_config.yaml
     compute_template: decision_tree/autoscaling_compute.yaml
@@ -285,6 +318,7 @@
 
 # Stress test shuffle_data_loader.
 - name: shuffle_data_loader
+  team: core
   cluster:
     app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
     compute_template: shuffle_data_loader/shuffle_data_loader_compute.yaml
@@ -307,6 +341,7 @@
 
 # Stress test shuffle_data_loader.
 - name: shuffle_data_loader_4_nodes
+  team: core
   cluster:
     app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
     compute_template: shuffle_data_loader/shuffle_data_loader_compute_4_nodes.yaml
@@ -329,6 +364,7 @@
       --no-stats
 
 - name: dask_on_ray_1tb_sort
+  team: core
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
     compute_template: dask_on_ray/1tb_sort_compute.yaml
@@ -339,6 +375,7 @@
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
 
 - name: many_nodes_actor_test
+  team: core
   cluster:
     app_config: many_nodes_tests/app_config.yaml
     compute_template: many_nodes_tests/compute_config.yaml
@@ -349,6 +386,7 @@
     script: python many_nodes_tests/actor_test.py
 
 - name: pg_autoscaling_regression_test
+  team: core
   cluster:
     app_config: placement_group_tests/app_config.yaml
     compute_template: placement_group_tests/compute.yaml
@@ -358,6 +396,7 @@
     script: python placement_group_tests/pg_run.py
 
 - name: pg_long_running_performance_test
+  team: core
   cluster:
     app_config: placement_group_tests/app_config.yaml
     compute_template: placement_group_tests/long_running_test_compute.yaml
@@ -366,9 +405,9 @@
     timeout: 3600
     prepare: python wait_cluster.py 2 600
     script: python placement_group_tests/long_running_performance_test.py --num-stages 2000
-  stable: false
 
 - name: placement_group_performance_test
+  team: core
   cluster:
     app_config: placement_group_tests/app_config.yaml
     compute_template: placement_group_tests/pg_perf_test_compute.yaml

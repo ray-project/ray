@@ -120,12 +120,6 @@ class APPOTrainer(impala.ImpalaTrainer):
         self.workers.local_worker().foreach_trainable_policy(
             lambda p, _: p.update_target())
 
-    # TODO: Remove this once ImpalaTrainer directly inherits from Trainer
-    #  (instead of being created by `build_trainer()` utility).
-    @override(impala.ImpalaTrainer)
-    def _init(self, *args, **kwargs):
-        raise NotImplementedError
-
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:

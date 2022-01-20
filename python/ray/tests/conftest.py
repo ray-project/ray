@@ -4,14 +4,19 @@ This file defines the common pytest fixtures used in current directory.
 import os
 from contextlib import contextmanager
 import pytest
+import tempfile
+import socket
 import subprocess
 import json
 import time
+from pathlib import Path
 
 import ray
+import ray.ray_constants as ray_constants
 from ray.cluster_utils import (Cluster, AutoscalingCluster,
                                cluster_not_supported)
-from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance, \
+    wait_for_redis_to_start
 from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
                                      setup_tls, teardown_tls,
                                      get_and_run_node_killer)
@@ -46,6 +51,37 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
+@pytest.fixture
+def external_redis(request, monkeypatch):
+    # Setup external Redis and env var for initialization.
+    param = getattr(request, "param", {})
+    external_redis_ports = param.get("external_redis_ports")
+    if external_redis_ports is None:
+        with socket.socket() as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+        external_redis_ports = [port]
+    else:
+        del param["external_redis_ports"]
+    processes = []
+    for port in external_redis_ports:
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        port, proc = _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            port,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        processes.append(proc)
+        wait_for_redis_to_start("127.0.0.1", port,
+                                ray_constants.REDIS_DEFAULT_PASSWORD)
+    address_str = ",".join(
+        map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
+    yield None
+    for proc in processes:
+        proc.process.terminate()
+
+
 @contextmanager
 def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
@@ -78,6 +114,16 @@ def ray_start_no_cpu(request):
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_regular instead of creating this
+# separate fixture, if there is a good way to ensure external_redis runs before
+# ray_start_regular.
+@pytest.fixture
+def ray_start_regular_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -167,6 +213,16 @@ def ray_start_cluster_init(request):
 
 @pytest.fixture
 def ray_start_cluster_head(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_cluster_head instead of creating
+# this separate fixture, if there is a good way to ensure external_redis runs
+# before ray_start_cluster_head.
+@pytest.fixture
+def ray_start_cluster_head_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -269,6 +325,30 @@ def start_cluster(ray_start_cluster, request):
         address = cluster.address
 
     yield cluster, address
+
+
+@pytest.fixture(scope="function")
+def tmp_working_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+
+        hello_file = path / "hello"
+        with hello_file.open(mode="w") as f:
+            f.write("world")
+
+        module_path = path / "test_module"
+        module_path.mkdir(parents=True)
+
+        test_file = module_path / "test.py"
+        with test_file.open(mode="w") as f:
+            f.write("def one():\n")
+            f.write("    return 1\n")
+
+        init_file = module_path / "__init__.py"
+        with init_file.open(mode="w") as f:
+            f.write("from test_module.test import one\n")
+
+        yield tmp_dir
 
 
 @pytest.fixture

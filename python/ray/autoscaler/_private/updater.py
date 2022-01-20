@@ -307,7 +307,7 @@ class NodeUpdater:
             from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper \
                 import CloudwatchHelper
             CloudwatchHelper(self.provider.provider_config,
-                             [self.node_id], self.provider.cluster_name). \
+                             self.node_id, self.provider.cluster_name). \
                 update_from_config(self.is_head_node)
 
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:

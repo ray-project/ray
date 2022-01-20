@@ -40,6 +40,7 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
+    PIP = "pip", "For pip environments installed locally on each node."
     HTTPS = "https", ("Remote https path, "
                       "assumes everything packed in one zip file.")
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
@@ -283,6 +284,15 @@ def package_exists(pkg_uri: str) -> bool:
         return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+
+def get_uri_for_package(package: Path) -> str:
+    """Get a content-addressable URI from a package's contents.
+    """
+
+    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val)
 
 
 def get_uri_for_directory(directory: str,

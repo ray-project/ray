@@ -1,21 +1,26 @@
 import logging
 import numpy as np
+from typing import Type
 
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
 from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
     _get_shared_metrics
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.util.iter import from_actors
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -156,98 +161,105 @@ def inner_adaptation(workers, samples):
         e.learn_on_batch.remote(samples[i])
 
 
-def execution_plan(workers, config, **kwargs):
-    assert len(kwargs) == 0, (
-        "MAML execution_plan does NOT take any additional parameters")
+class MAMLTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    # Sync workers with meta policy
-    workers.sync_weights()
+    @override(Trainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
-    # Samples and sets worker tasks
-    use_meta_env = config["use_meta_env"]
-    set_worker_tasks(workers, use_meta_env)
+        if config["num_gpus"] > 1:
+            raise ValueError("`num_gpus` > 1 not yet supported for MAML!")
+        if config["inner_adaptation_steps"] <= 0:
+            raise ValueError("Inner Adaptation Steps must be >=1!")
+        if config["maml_optimizer_steps"] <= 0:
+            raise ValueError("PPO steps for meta-update needs to be >=0!")
+        if config["entropy_coeff"] < 0:
+            raise ValueError("`entropy_coeff` must be >=0.0!")
+        if config["batch_mode"] != "complete_episodes":
+            raise ValueError("`batch_mode`=truncate_episodes not supported!")
+        if config["num_workers"] <= 0:
+            raise ValueError("Must have at least 1 worker/task!")
+        if config["create_env_on_driver"] is False:
+            raise ValueError(
+                "Must have an actual Env created on the driver "
+                "(local) worker! Set `create_env_on_driver` to True.")
 
-    # Metric Collector
-    metric_collect = CollectMetrics(
-        workers,
-        min_history=config["metrics_smoothing_episodes"],
-        timeout_seconds=config["collect_metrics_timeout"])
+    @override(Trainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> \
+            Type[Policy]:
+        if config["framework"] == "torch":
+            return MAMLTorchPolicy
+        else:
+            return MAMLTFPolicy
 
-    # Iterator for Inner Adaptation Data gathering (from pre->post adaptation)
-    inner_steps = config["inner_adaptation_steps"]
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
+        assert len(kwargs) == 0, (
+            "MAML execution_plan does NOT take any additional parameters")
 
-    def inner_adaptation_steps(itr):
-        buf = []
-        split = []
-        metrics = {}
-        for samples in itr:
+        # Sync workers with meta policy
+        workers.sync_weights()
 
-            # Processing Samples (Standardize Advantages)
-            split_lst = []
-            for sample in samples:
-                sample["advantages"] = standardized(sample["advantages"])
-                split_lst.append(sample.count)
+        # Samples and sets worker tasks
+        use_meta_env = config["use_meta_env"]
+        set_worker_tasks(workers, use_meta_env)
 
-            buf.extend(samples)
-            split.append(split_lst)
+        # Metric Collector
+        metric_collect = CollectMetrics(
+            workers,
+            min_history=config["metrics_num_episodes_for_smoothing"],
+            timeout_seconds=config["metrics_episode_collection_timeout_s"])
 
-            adapt_iter = len(split) - 1
-            metrics = post_process_metrics(adapt_iter, workers, metrics)
-            if len(split) > inner_steps:
-                out = SampleBatch.concat_samples(buf)
-                out["split"] = np.array(split)
-                buf = []
-                split = []
+        # Iterator for Inner Adaptation Data gathering (from pre->post
+        # adaptation)
+        inner_steps = config["inner_adaptation_steps"]
 
-                # Reporting Adaptation Rew Diff
-                ep_rew_pre = metrics["episode_reward_mean"]
-                ep_rew_post = metrics["episode_reward_mean_adapt_" +
-                                      str(inner_steps)]
-                metrics["adaptation_delta"] = ep_rew_post - ep_rew_pre
-                yield out, metrics
-                metrics = {}
-            else:
-                inner_adaptation(workers, samples)
+        def inner_adaptation_steps(itr):
+            buf = []
+            split = []
+            metrics = {}
+            for samples in itr:
 
-    rollouts = from_actors(workers.remote_workers())
-    rollouts = rollouts.batch_across_shards()
-    rollouts = rollouts.transform(inner_adaptation_steps)
+                # Processing Samples (Standardize Advantages)
+                split_lst = []
+                for sample in samples:
+                    sample["advantages"] = standardized(sample["advantages"])
+                    split_lst.append(sample.count)
 
-    # Metaupdate Step
-    train_op = rollouts.for_each(
-        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect,
-                   use_meta_env))
-    return train_op
+                buf.extend(samples)
+                split.append(split_lst)
 
+                adapt_iter = len(split) - 1
+                metrics = post_process_metrics(adapt_iter, workers, metrics)
+                if len(split) > inner_steps:
+                    out = SampleBatch.concat_samples(buf)
+                    out["split"] = np.array(split)
+                    buf = []
+                    split = []
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
-        return MAMLTorchPolicy
-    return MAMLTFPolicy
+                    # Reporting Adaptation Rew Diff
+                    ep_rew_pre = metrics["episode_reward_mean"]
+                    ep_rew_post = metrics["episode_reward_mean_adapt_" +
+                                          str(inner_steps)]
+                    metrics["adaptation_delta"] = ep_rew_post - ep_rew_pre
+                    yield out, metrics
+                    metrics = {}
+                else:
+                    inner_adaptation(workers, samples)
 
+        rollouts = from_actors(workers.remote_workers())
+        rollouts = rollouts.batch_across_shards()
+        rollouts = rollouts.transform(inner_adaptation_steps)
 
-def validate_config(config):
-    if config["num_gpus"] > 1:
-        raise ValueError("`num_gpus` > 1 not yet supported for MAML!")
-    if config["inner_adaptation_steps"] <= 0:
-        raise ValueError("Inner Adaptation Steps must be >=1!")
-    if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("PPO steps for meta-update needs to be >=0!")
-    if config["entropy_coeff"] < 0:
-        raise ValueError("`entropy_coeff` must be >=0.0!")
-    if config["batch_mode"] != "complete_episodes":
-        raise ValueError("`batch_mode`=truncate_episodes not supported!")
-    if config["num_workers"] <= 0:
-        raise ValueError("Must have at least 1 worker/task!")
-    if config["create_env_on_driver"] is False:
-        raise ValueError("Must have an actual Env created on the driver "
-                         "(local) worker! Set `create_env_on_driver` to True.")
-
-
-MAMLTrainer = build_trainer(
-    name="MAML",
-    default_config=DEFAULT_CONFIG,
-    default_policy=MAMLTFPolicy,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
-    validate_config=validate_config)
+        # Metaupdate Step
+        train_op = rollouts.for_each(
+            MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect,
+                       use_meta_env))
+        return train_op

@@ -14,6 +14,7 @@ from ray.tests.test_autoscaler import (MockProvider, MockProcessRunner,
                                        MockNodeInfoStub, mock_raylet_id,
                                        MockAutoscaler)
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _clear_provider_cache,
@@ -195,6 +196,7 @@ class Simulator:
         # Manually create a node launcher. Note that we won't start it as a
         # separate thread.
         self.node_launcher = NodeLauncher(
+            event_summarizer=EventSummarizer(),
             provider=self.autoscaler.provider,
             queue=self.autoscaler.launch_queue,
             index=0,

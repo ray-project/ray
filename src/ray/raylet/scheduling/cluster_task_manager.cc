@@ -18,7 +18,7 @@
 
 #include <boost/range/join.hpp>
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -56,10 +56,7 @@ ClusterTaskManager::ClusterTaskManager(
       get_time_ms_(get_time_ms),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
-      metric_tasks_queued_(0),
-      metric_tasks_dispatched_(0),
-      metric_tasks_spilled_(0) {}
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -196,6 +193,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
   if (canceled) {
     // Task has been canceled.
     RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
+    RemoveFromRunningTasksIfExists(task);
     // All the cleaning work has been done when canceled task. Just return
     // false without doing anything.
     return false;
@@ -215,6 +213,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
+    RemoveFromRunningTasksIfExists(task);
 
     if (!worker) {
       // Empty worker popped.
@@ -376,14 +375,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       if (!spec.IsDetachedActor() && !is_owner_alive_(owner_worker_id, owner_node_id)) {
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
-        auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
-        auto it = info_by_sched_cls_.find(sched_cls);
-        if (it != info_by_sched_cls_.end()) {
-          it->second.running_tasks.erase(spec.TaskId());
-          if (it->second.running_tasks.size() == 0) {
-            info_by_sched_cls_.erase(it);
-          }
-        }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
@@ -447,6 +438,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
       }
     }
+    // In the beginning of the loop, we add scheduling_class
+    // to the `info_by_sched_cls_` map.
+    // In cases like dead owners, we may not add any tasks
+    // to `running_tasks` so we can remove the map entry
+    // for that scheduling_class to prevent memory leaks.
+    if (sched_cls_info.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(scheduling_class);
+    }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
       tasks_to_dispatch_.erase(shapes_it++);
@@ -480,7 +479,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  metric_tasks_queued_++;
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
@@ -516,20 +514,22 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
+void ClusterTaskManager::RemoveFromRunningTasksIfExists(const RayTask &task) {
+  auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
+  auto it = info_by_sched_cls_.find(sched_cls);
+  if (it != info_by_sched_cls_.end()) {
+    it->second.running_tasks.erase(task.GetTaskSpecification().TaskId());
+    if (it->second.running_tasks.size() == 0) {
+      info_by_sched_cls_.erase(it);
+    }
+  }
+}
+
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  {
-    auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-    auto it = info_by_sched_cls_.find(sched_cls);
-    if (it != info_by_sched_cls_.end()) {
-      it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
-      if (it->second.running_tasks.size() == 0) {
-        info_by_sched_cls_.erase(it);
-      }
-    }
-  }
+  RemoveFromRunningTasksIfExists(*task);
 
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
@@ -687,6 +687,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
+        RemoveFromRunningTasksIfExists(task);
         (*work_it)->SetStateCancelled();
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -942,7 +943,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-std::string ClusterTaskManager::DebugStr() const {
+void ClusterTaskManager::RecomputeDebugStats() const {
   auto accumulator =
       [](size_t state,
          const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
@@ -954,7 +955,7 @@ std::string ClusterTaskManager::DebugStr() const {
   size_t num_worker_not_started_by_job_config_not_exist = 0;
   size_t num_worker_not_started_by_registration_timeout = 0;
   size_t num_worker_not_started_by_process_rate_limit = 0;
-  size_t num_worker_waiting_for_workers = 0;
+  size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
 
   size_t num_infeasible_tasks = std::accumulate(
@@ -968,7 +969,7 @@ std::string ClusterTaskManager::DebugStr() const {
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
                                &num_worker_not_started_by_process_rate_limit,
-                               &num_worker_waiting_for_workers, &num_cancelled_tasks](
+                               &num_tasks_waiting_for_workers, &num_cancelled_tasks](
                                   size_t state,
                                   const std::pair<
                                       int, std::deque<std::shared_ptr<internal::Work>>>
@@ -977,7 +978,7 @@ std::string ClusterTaskManager::DebugStr() const {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       const auto &work = *work_it++;
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        num_worker_waiting_for_workers += 1;
+        num_tasks_waiting_for_workers += 1;
       } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
         num_cancelled_tasks += 1;
       } else if (work->GetUnscheduledCause() ==
@@ -1009,34 +1010,99 @@ std::string ClusterTaskManager::DebugStr() const {
       std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
                       per_work_accumulator);
 
-  if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
+  /// Update the internal states.
+  internal_stats_.num_waiting_for_resource = num_waiting_for_resource;
+  internal_stats_.num_waiting_for_plasma_memory = num_waiting_for_plasma_memory;
+  internal_stats_.num_waiting_for_remote_node_resources =
+      num_waiting_for_remote_node_resources;
+  internal_stats_.num_worker_not_started_by_job_config_not_exist =
+      num_worker_not_started_by_job_config_not_exist;
+  internal_stats_.num_worker_not_started_by_registration_timeout =
+      num_worker_not_started_by_registration_timeout;
+  internal_stats_.num_worker_not_started_by_process_rate_limit =
+      num_worker_not_started_by_process_rate_limit;
+  internal_stats_.num_tasks_waiting_for_workers = num_tasks_waiting_for_workers;
+  internal_stats_.num_cancelled_tasks = num_cancelled_tasks;
+  internal_stats_.num_infeasible_tasks = num_infeasible_tasks;
+  internal_stats_.num_tasks_to_schedule = num_tasks_to_schedule;
+  internal_stats_.num_tasks_to_dispatch = num_tasks_to_dispatch;
+}
+
+void ClusterTaskManager::RecordMetrics() const {
+  /// This method intentionally doesn't call RecomputeDebugStats() because
+  /// that function is expensive. RecomputeDebugStats is called by DebugStr method
+  /// and they are always periodically called by node manager.
+  stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
+  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
+
+  /// Worker startup failure
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_job_config_not_exist, "JobConfigMissing");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_registration_timeout,
+      "RegistrationTimedOut");
+  ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
+      internal_stats_.num_worker_not_started_by_process_rate_limit, "RateLimited");
+
+  /// Queued tasks.
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_cancelled_tasks,
+                                           "Cancelled");
+  ray::stats::STATS_scheduler_tasks.Record(executing_task_args_.size(), "Executing");
+  ray::stats::STATS_scheduler_tasks.Record(waiting_tasks_index_.size(), "Waiting");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_dispatch,
+                                           "Dispatched");
+  ray::stats::STATS_scheduler_tasks.Record(internal_stats_.num_tasks_to_schedule,
+                                           "Received");
+
+  /// Pending task count.
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_infeasible_tasks, "Infeasible");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_resource, "WaitingForResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_plasma_memory, "WaitingForPlasmaMemory");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_waiting_for_remote_node_resources, "WaitingForRemoteResources");
+  ray::stats::STATS_scheduler_unscheduleable_tasks.Record(
+      internal_stats_.num_tasks_waiting_for_workers, "WaitingForWorkers");
+}
+
+std::string ClusterTaskManager::DebugStr() const {
+  RecomputeDebugStats();
+  if (internal_stats_.num_tasks_to_schedule + internal_stats_.num_tasks_to_dispatch +
+          internal_stats_.num_infeasible_tasks >
+      1000) {
     RAY_LOG(WARNING)
         << "More than 1000 tasks are queued in this node. This can cause slow down.";
   }
 
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
-  buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
-  buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
-  buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
-  buffer << "num_waiting_for_resource: " << num_waiting_for_resource << "\n";
-  buffer << "num_waiting_for_plasma_memory: " << num_waiting_for_plasma_memory << "\n";
+  buffer << "Infeasible queue length: " << internal_stats_.num_infeasible_tasks << "\n";
+  buffer << "Schedule queue length: " << internal_stats_.num_tasks_to_schedule << "\n";
+  buffer << "Dispatch queue length: " << internal_stats_.num_tasks_to_dispatch << "\n";
+  buffer << "num_waiting_for_resource: " << internal_stats_.num_waiting_for_resource
+         << "\n";
+  buffer << "num_waiting_for_plasma_memory: "
+         << internal_stats_.num_waiting_for_plasma_memory << "\n";
   buffer << "num_waiting_for_remote_node_resources: "
-         << num_waiting_for_remote_node_resources << "\n";
+         << internal_stats_.num_waiting_for_remote_node_resources << "\n";
   buffer << "num_worker_not_started_by_job_config_not_exist: "
-         << num_worker_not_started_by_job_config_not_exist << "\n";
+         << internal_stats_.num_worker_not_started_by_job_config_not_exist << "\n";
   buffer << "num_worker_not_started_by_registration_timeout: "
-         << num_worker_not_started_by_registration_timeout << "\n";
+         << internal_stats_.num_worker_not_started_by_registration_timeout << "\n";
   buffer << "num_worker_not_started_by_process_rate_limit: "
-         << num_worker_not_started_by_process_rate_limit << "\n";
-  buffer << "num_worker_waiting_for_workers: " << num_worker_waiting_for_workers << "\n";
-  buffer << "num_cancelled_tasks: " << num_cancelled_tasks << "\n";
+         << internal_stats_.num_worker_not_started_by_process_rate_limit << "\n";
+  buffer << "num_tasks_waiting_for_workers: "
+         << internal_stats_.num_tasks_waiting_for_workers << "\n";
+  buffer << "num_cancelled_tasks: " << internal_stats_.num_cancelled_tasks << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
+
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
@@ -1085,23 +1151,6 @@ std::string ClusterTaskManager::DebugStr() const {
   return buffer.str();
 }
 
-void ClusterTaskManager::RecordMetrics() {
-  stats::NumReceivedTasks.Record(metric_tasks_queued_);
-  stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
-  stats::NumSpilledTasks.Record(metric_tasks_spilled_);
-  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-
-  metric_tasks_queued_ = 0;
-  metric_tasks_dispatched_ = 0;
-  metric_tasks_spilled_ = 0;
-
-  uint64_t num_infeasible_tasks = 0;
-  for (const auto &pair : infeasible_tasks_) {
-    num_infeasible_tasks += pair.second.size();
-  }
-  stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
-}
-
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
   for (auto shapes_it = infeasible_tasks_.begin();
        shapes_it != infeasible_tasks_.end();) {
@@ -1142,7 +1191,6 @@ void ClusterTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-  metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
@@ -1225,7 +1273,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
     return;
   }
 
-  metric_tasks_spilled_++;
+  internal_stats_.metric_tasks_spilled++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
@@ -1492,6 +1540,7 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
   int64_t _unused;
   return cluster_resource_scheduler_->GetBestSchedulableNode(
       work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
+      work.task.GetTaskSpecification().GetMessage().scheduling_strategy(),
       requires_object_store_memory,
       work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
       is_infeasible);

@@ -54,7 +54,7 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
-REDIS_KEY_DASHBOARD = "dashboard"
+DASHBOARD_ADDRESS = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
@@ -157,11 +157,9 @@ RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Number of attempts to ping the Redis server. See
-# `services.py:wait_for_redis_to_start`.
+# `services.py::wait_for_redis_to_start()` and
+# `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
-
-# Only unpickle and run exported functions from the same job if it's true.
-ISOLATE_EXPORTS = env_bool("RAY_ISOLATE_EXPORTS", True)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -283,15 +281,16 @@ CALL_STACK_LINE_DELIMITER = " | "
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
 
 # Internal kv namespaces
-KV_NAMESPACE_DASHBOARD = "dashboard"
-KV_NAMESPACE_SESSION = "session"
-KV_NAMESPACE_TRACING = "tracing"
-KV_NAMESPACE_PDB = "ray_pdb"
-KV_NAMESPACE_HEALTHCHECK = "healthcheck"
-KV_NAMESPACE_JOB = "job"
+KV_NAMESPACE_DASHBOARD = b"dashboard"
+KV_NAMESPACE_SESSION = b"session"
+KV_NAMESPACE_TRACING = b"tracing"
+KV_NAMESPACE_PDB = b"ray_pdb"
+KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
+KV_NAMESPACE_JOB = b"job"
+KV_NAMESPACE_CLUSTER = b"cluster"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
-KV_NAMESPACE_SERVE = "serve"
-KV_NAMESPACE_FUNCTION_TABLE = "fun"
+KV_NAMESPACE_SERVE = b"serve"
+KV_NAMESPACE_FUNCTION_TABLE = b"fun"
