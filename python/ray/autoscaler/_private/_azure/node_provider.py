@@ -11,7 +11,9 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
+from ray.autoscaler.tags import (TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME,
+                                 TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG,
+                                 TAG_RAY_USER_NODE_TYPE)
 from ray.autoscaler._private._azure.config import (bootstrap_azure,
                                                    get_azure_sdk_function)
 
@@ -46,7 +48,6 @@ class AzureNodeProvider(NodeProvider):
     appear immediately once started by ``create_node``, and transition
     immediately to terminated when ``terminate_node`` is called.
     """
-
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         subscription_id = provider_config["subscription_id"]
@@ -120,8 +121,7 @@ class AzureNodeProvider(NodeProvider):
         """Return a list of stopped node ids filtered by the specified tags dict."""
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
         return [
-            k for k, v in nodes.items()
-            if v["status"].startswith("deallocat")
+            k for k, v in nodes.items() if v["status"].startswith("deallocat")
         ]
 
     def non_terminated_nodes(self, tag_filters):
@@ -174,19 +174,28 @@ class AzureNodeProvider(NodeProvider):
         resource_group = self.provider_config["resource_group"]
 
         if self.cache_stopped_nodes:
-            filters = {} #TODO: Make sure reused nodes are compatible
-            reuse_nodes = self.stopped_nodes(filters)
+            VALIDITY_TAGS = [
+                TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG,
+                TAG_RAY_USER_NODE_TYPE
+            ]
+            filters = {tag: tags[tag] for tag in VALIDITY_TAGS if tag in tags}
+            reuse_nodes = self.stopped_nodes(filters)[:count]
+            logger.info(
+                f"Reusing nodes {list(reuse_nodes)}. "
+                "To disable reuse, set `cache_stopped_nodes: False` "
+                "under `provider` in the cluster configuration.", )
             start = get_azure_sdk_function(
-                    client=self.compute_client.virtual_machines,
-                    function_name="start")
+                client=self.compute_client.virtual_machines,
+                function_name="start")
             for node_id in reuse_nodes:
-                start(resource_group_name=resource_group, vm_name=node_id).wait()
+                start(resource_group_name=resource_group,
+                      vm_name=node_id).wait()
                 self.set_node_tags(node_id, tags)
             count -= len(reuse_nodes)
 
         if count:
             self._create_node(node_config, tags, count)
-    
+
     def _create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         resource_group = self.provider_config["resource_group"]
@@ -230,10 +239,9 @@ class AzureNodeProvider(NodeProvider):
         create_or_update = get_azure_sdk_function(
             client=self.resource_client.deployments,
             function_name="create_or_update")
-        create_or_update(
-            resource_group_name=resource_group,
-            deployment_name="ray-vm-{}".format(name_tag),
-            parameters=parameters).wait()
+        create_or_update(resource_group_name=resource_group,
+                         deployment_name="ray-vm-{}".format(name_tag),
+                         parameters=parameters).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):
@@ -243,10 +251,9 @@ class AzureNodeProvider(NodeProvider):
         update = get_azure_sdk_function(
             client=self.compute_client.virtual_machines,
             function_name="update")
-        update(
-            resource_group_name=self.provider_config["resource_group"],
-            vm_name=node_id,
-            parameters={"tags": node_tags})
+        update(resource_group_name=self.provider_config["resource_group"],
+               vm_name=node_id,
+               parameters={"tags": node_tags})
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
@@ -263,7 +270,11 @@ class AzureNodeProvider(NodeProvider):
 
         if self.cache_stopped_nodes:
             try:
-                # stop machine
+                # stop machine and leave all resources
+                logger.info(f"Stopping instance {node_id}"
+                            "(to fully terminate instead, "
+                            "set `cache_stopped_nodes: False` "
+                            "under `provider` in the cluster configuration)")
                 stop = get_azure_sdk_function(
                     client=self.compute_client.virtual_machines,
                     function_name="deallocate")
@@ -272,7 +283,7 @@ class AzureNodeProvider(NodeProvider):
                 logger.warning("Failed to stop VM: {}".format(e))
         else:
             vm = self.compute_client.virtual_machines.get(
-            resource_group_name=resource_group, vm_name=node_id)
+                resource_group_name=resource_group, vm_name=node_id)
             disks = {d.name for d in vm.storage_profile.data_disks}
             disks.add(vm.storage_profile.os_disk.name)
 
@@ -281,7 +292,8 @@ class AzureNodeProvider(NodeProvider):
                 delete = get_azure_sdk_function(
                     client=self.compute_client.virtual_machines,
                     function_name="delete")
-                delete(resource_group_name=resource_group, vm_name=node_id).wait()
+                delete(resource_group_name=resource_group,
+                       vm_name=node_id).wait()
             except Exception as e:
                 logger.warning("Failed to delete VM: {}".format(e))
 
@@ -290,9 +302,8 @@ class AzureNodeProvider(NodeProvider):
                 delete = get_azure_sdk_function(
                     client=self.network_client.network_interfaces,
                     function_name="delete")
-                delete(
-                    resource_group_name=resource_group,
-                    network_interface_name=metadata["nic_name"])
+                delete(resource_group_name=resource_group,
+                       network_interface_name=metadata["nic_name"])
             except Exception as e:
                 logger.warning("Failed to delete nic: {}".format(e))
 
@@ -302,9 +313,8 @@ class AzureNodeProvider(NodeProvider):
                     delete = get_azure_sdk_function(
                         client=self.network_client.public_ip_addresses,
                         function_name="delete")
-                    delete(
-                        resource_group_name=resource_group,
-                        public_ip_address_name=metadata["public_ip_name"])
+                    delete(resource_group_name=resource_group,
+                           public_ip_address_name=metadata["public_ip_name"])
                 except Exception as e:
                     logger.warning("Failed to delete public ip: {}".format(e))
 
@@ -312,7 +322,8 @@ class AzureNodeProvider(NodeProvider):
             for disk in disks:
                 try:
                     delete = get_azure_sdk_function(
-                        client=self.compute_client.disks, function_name="delete")
+                        client=self.compute_client.disks,
+                        function_name="delete")
                     delete(resource_group_name=resource_group, disk_name=disk)
                 except Exception as e:
                     logger.warning("Failed to delete disk: {}".format(e))
