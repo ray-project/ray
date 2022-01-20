@@ -53,8 +53,8 @@ from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, PolicyState, ResultDict, \
+from ray.rllib.utils.typing import AgentID, EnvCreator, EnvInfoDict, EnvType, \
+    EpisodeID, PartialTrainerConfigDict, PolicyID, PolicyState, ResultDict, \
     TensorStructType, TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
@@ -674,12 +674,17 @@ class Trainer(Trainable):
         # COMMON_CONFIG in self.setup().
         config = config or {}
 
-        # Trainers allow env ids to be passed directly to the constructor.
-        self._env_id = self._register_if_needed(
+        # Convert `env` provided in config into a string:
+        # - If `env` is a string: `self._env_id` = `env`.
+        # - If `env` is a class: `self._env_id` = `env.__name__` -> Already
+        #   register it with a auto-generated env creator.
+        # - If `env` is None: `self._env_id` is None.
+        self._env_id: Optional[str] = self._register_if_needed(
             env or config.get("env"), config)
+
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Optional[Callable[[EnvContext], EnvType]] = None
+        self.env_creator: EnvCreator = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -760,7 +765,7 @@ class Trainer(Trainable):
 
         # Setup the self.env_creator callable (to be passed
         # e.g. to RolloutWorkers' c'tors).
-        self._get_env_creator_from_env_id(self._env_id)
+        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -916,7 +921,7 @@ class Trainer(Trainable):
     #  If you don't need the env/workers/config/etc.. setup for you by super,
     #  simply do not call super().setup() from your overridden method.
     def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvContext], EnvType]) -> None:
+              env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
     @ExperimentalAPI
@@ -1718,8 +1723,6 @@ class Trainer(Trainable):
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=list(policies_to_train),
         )
-        #from copy import deepcopy#TEST
-        #kwargs = deepcopy(kwargs)#TEST
 
         def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
@@ -1914,11 +1917,20 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
-    def _get_env_creator_from_env_id(self, env_id):
+    def _get_env_creator_from_env_id(
+            self, env_id: Optional[str] = None) -> EnvCreator:
+        """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
+
+        Args:
+            env_id: An already tune registered env ID, a known gym env name,
+                or None (if no env is used).
+
+        Returns:
+        """
         if env_id:
             # An already registered env.
             if _global_registry.contains(ENV_CREATOR, env_id):
-                self.env_creator = _global_registry.get(ENV_CREATOR, env_id)
+                return _global_registry.get(ENV_CREATOR, env_id)
 
             # A class path specifier.
             elif "." in env_id:
@@ -1931,20 +1943,20 @@ class Trainer(Trainable):
                             ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
                     return env_obj
 
-                self.env_creator = env_creator_from_classpath
+                return env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                self.env_creator = functools.partial(
+                return functools.partial(
                     gym_env_creator, env_descriptor=env_id)
         # No env -> Env creator always returns None.
         else:
-            self.env_creator = lambda env_config: None
+            return lambda env_config: None
 
     @DeveloperAPI
     def _make_workers(
             self,
             *,
-            env_creator: Callable[[EnvContext], EnvType],
+            env_creator: EnvCreator,
             validate_env: Optional[Callable[[EnvType, EnvContext], None]],
             policy_class: Type[Policy],
             config: TrainerConfigDict,
