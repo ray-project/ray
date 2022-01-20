@@ -23,46 +23,22 @@
 
 namespace ray {
 
-class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
+class GlobalStateAccessorTest : public ::testing::Test {
  public:
-  GlobalStateAccessorTest() {
-    if(GetParam()) {
-      RayConfig::instance().bootstrap_with_gcs() = true;
-      RayConfig::instance().gcs_storage() = "memory";
-      RayConfig::instance().gcs_grpc_based_pubsub() = true;
-    } else {
-      RayConfig::instance().bootstrap_with_gcs() = false;
-      RayConfig::instance().gcs_storage() = "redis";
-      RayConfig::instance().gcs_grpc_based_pubsub() = false;
-    }
+  GlobalStateAccessorTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
-      TestSetupUtil::StartUpRedisServers(std::vector<int>());
-    }
-  }
-
-  virtual ~GlobalStateAccessorTest() {
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
-      TestSetupUtil::ShutDownRedisServers();
-    }
-  }
+  virtual ~GlobalStateAccessorTest() { TestSetupUtil::ShutDownRedisServers(); }
 
  protected:
   void SetUp() override {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
-    if(RayConfig::instance().bootstrap_with_gcs()) {
-      config.grpc_server_port = 6379;
-    } else {
-      config.grpc_server_port = 0;
-      config.redis_address = "127.0.0.1";
-      config.enable_sharding_conn = false;
-      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    }
-
-    config.node_ip_address = "127.0.0.1";
+    config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
-
+    config.redis_address = "127.0.0.1";
+    config.node_ip_address = "127.0.0.1";
+    config.enable_sharding_conn = false;
+    config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
@@ -75,19 +51,14 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Create GCS client and global state.
-    if(RayConfig::instance().bootstrap_with_gcs()) {
-      gcs::GcsClientOptions options("127.0.0.1:6379");
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    } else {
-      gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                    config.redis_password);
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    }
+    // Create GCS client.
+    gcs::GcsClientOptions options(config.redis_address, config.redis_port,
+                                  config.redis_password);
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
+    // Create global state.
+    global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK(global_state_->Connect());
   }
 
@@ -99,9 +70,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     gcs_server_->Stop();
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
-      TestSetupUtil::FlushAllRedisServers();
-    }
+    TestSetupUtil::FlushAllRedisServers();
 
     io_service_->stop();
     thread_io_service_->join();
@@ -122,11 +91,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
   std::unique_ptr<boost::asio::io_service::work> work_;
-
-
 };
 
-TEST_P(GlobalStateAccessorTest, TestJobTable) {
+TEST_F(GlobalStateAccessorTest, TestJobTable) {
   int job_count = 100;
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), 0);
   for (int index = 0; index < job_count; ++index) {
@@ -140,7 +107,7 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
 
-TEST_P(GlobalStateAccessorTest, TestNodeTable) {
+TEST_F(GlobalStateAccessorTest, TestNodeTable) {
   int node_count = 100;
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
   // It's useful to check if index value will be marked as address suffix.
@@ -162,7 +129,7 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   }
 }
 
-TEST_P(GlobalStateAccessorTest, TestNodeResourceTable) {
+TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
   int node_count = 100;
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
   for (int index = 0; index < node_count; ++index) {
@@ -198,7 +165,7 @@ TEST_P(GlobalStateAccessorTest, TestNodeResourceTable) {
   }
 }
 
-TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
+TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -268,7 +235,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 }
 
-TEST_P(GlobalStateAccessorTest, TestProfileTable) {
+TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
@@ -284,7 +251,7 @@ TEST_P(GlobalStateAccessorTest, TestProfileTable) {
             RayConfig::instance().maximum_profile_table_rows_count());
 }
 
-TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
+TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
   // Add worker info
   auto worker_table_data = Mocker::GenWorkerTableData();
@@ -305,14 +272,9 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
 }
 
 // TODO(sang): Add tests after adding asyncAdd
-TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
+TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
-
-INSTANTIATE_TEST_CASE_P(
-    RedisRemovalTest,
-    GlobalStateAccessorTest,
-    ::testing::Values(false, true));
 
 }  // namespace ray
 
