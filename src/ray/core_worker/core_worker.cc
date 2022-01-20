@@ -459,15 +459,50 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       {{"worker_id", worker_id.Hex()}});
 }
 
+CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
+
 void CoreWorker::Shutdown() {
-  io_service_.stop();
+  if (is_shutdown_) {
+    RAY_LOG(INFO)
+        << "Shutdown request has received although the core worker is already shutdown.";
+    return;
+  }
+
+  RAY_LOG(INFO) << "Shutting down a core worker.";
+  is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
+    // Running in a main thread.
     direct_task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
+    // Running in a main thread.
     options_.on_worker_shutdown(GetWorkerID());
   }
+
+  io_service_.stop();
+  if (gcs_client_) {
+    // TODO(sang): This causes a thread-safety bug because
+    // it invalidates a pointer that's used by a different thread.
+    // We should run Disconnect in a io_service thread.
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    gcs_client_->Disconnect();
+  }
+  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+
+  if (options_.worker_type == WorkerType::WORKER) {
+    // Asyncio coroutines could still run after CoreWorker is removed because it is
+    // running in a different thread. This can cause segfault because coroutines try to
+    // access CoreWorker methods that are already garbage collected. We should complete
+    // all coroutines before shutting down in order to prevent this.
+    if (worker_context_.CurrentActorIsAsync()) {
+      options_.terminate_asyncio_thread();
+    }
+  }
+  RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
 
 void CoreWorker::ConnectToRaylet() {
@@ -482,6 +517,7 @@ void CoreWorker::Disconnect(
     rpc::WorkerExitType exit_type,
     const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
+    RAY_LOG(INFO) << "Disconnecting to the raylet.";
     connected_ = false;
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(
@@ -569,6 +605,7 @@ void CoreWorker::RunIOService() {
 #endif
   SetThreadName("worker.io");
   io_service_.run();
+  RAY_LOG(INFO) << "Core worker main io service stopped.";
 }
 
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
@@ -592,26 +629,6 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
     auto recovered = object_recovery_manager_->RecoverObject(object_id);
     if (!recovered) {
       RAY_LOG(DEBUG) << "Object " << object_id << " lost due to node failure " << node_id;
-    }
-  }
-}
-
-void CoreWorker::WaitForShutdown() {
-  // Stop gcs client first since it runs in io_thread_
-  if (gcs_client_) {
-    gcs_client_->Disconnect();
-  }
-  if (io_thread_.joinable()) {
-    io_thread_.join();
-  }
-  if (options_.worker_type == WorkerType::WORKER) {
-    RAY_CHECK(task_execution_service_.stopped());
-    // Asyncio coroutines could still run after CoreWorker is removed because it is
-    // running in a different thread. This can cause segfault because coroutines try to
-    // access CoreWorker methods that are already garbage collected. We should complete
-    // all coroutines before shutting down in order to prevent this.
-    if (worker_context_.CurrentActorIsAsync()) {
-      options_.terminate_asyncio_thread();
     }
   }
 }
@@ -1979,7 +1996,11 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
   return std::make_unique<worker::ProfileEvent>(profiler_, event_type);
 }
 
-void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }
+void CoreWorker::RunTaskExecutionLoop() {
+  task_execution_service_.run();
+  RAY_CHECK(is_shutdown_)
+      << "Task execution loop was terminated without calling shutdown API.";
+}
 
 Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
@@ -2668,6 +2689,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
+  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
+    RAY_LOG(DEBUG) << "Attempting to add object location for a dead node. "
+                   << "Ignoring this request. object_id: " << object_id
+                   << ", node_id: " << node_id;
+    return;
+  }
   auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
