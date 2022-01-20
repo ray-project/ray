@@ -5,18 +5,11 @@ Repository for documentation of the Ray project, hosted at [docs.ray.io](https:/
 ## Installation
 
 To build the documentation, make sure you have `ray` installed first.
-For building the documentation locally, allowing for faster builds, install the _development_ dependencies:
+For building the documentation locally install the development dependencies:
 
 ```bash
-pip install -r requirements-dev.txt  # development dependencies for faster builds
+pip install -r requirements-dev.txt
 ```
-
-If you want to reproduce the production environment and its build, install the _production_ dependencies instead:
-
-
-```bash
-pip install -r requirements-doc.txt  # readthedocs.org dependencies
-````
 
 ## Building the documentation
 
@@ -24,13 +17,6 @@ To compile the documentation and open it locally, run the following command from
 
 ```bash
 make html && open _build/html/index.html
-```
-
-To build the documentation more strictly, by treating warnings as errors, run the following command
-(the `-W` flag is required for this to work):
-
-```bash
-sphinx-build -W -b html -d _build/doctrees source _build/html
 ```
 
 ## Building just one sub-project
@@ -41,10 +27,7 @@ To build just this one sub-project, and ignore the rest (leading to build warnin
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
 ```
-where `<project>` is the name of the sub-project and can be any of "cluster", "contribute",
-"ray-core", "ray-data", "ray-design-patterns", "ray-more-libs",
-"ray-observability", "ray-overview", "ray-rllib",  "ray-serve", "ray-train",
-"ray-tune", or "ray-workflows".
+where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/` directory starting with `ray-`, e.g. `ray-tune`.
 
 ## Announcements and includes
 
