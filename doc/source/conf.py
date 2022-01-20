@@ -19,7 +19,7 @@ import os
 import urllib
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import CustomGalleryItemDirective, fix_xgb_lgbm_docs
+from custom_directives import *
 from datetime import datetime
 
 # These lines added to enable Sphinx to work without installing Ray.
@@ -32,87 +32,9 @@ class ChildClassMock(mock.Mock):
         return mock.Mock
 
 
-MOCK_MODULES = [
-    "ax",
-    "ax.service.ax_client",
-    "blist",
-    "ConfigSpace",
-    "dask.distributed",
-    "gym",
-    "gym.spaces",
-    "horovod",
-    "horovod.runner",
-    "horovod.runner.common",
-    "horovod.runner.common.util",
-    "horovod.ray",
-    "horovod.ray.runner",
-    "horovod.ray.utils",
-    "hyperopt",
-    "hyperopt.hp"
-    "kubernetes",
-    "mlflow",
-    "modin",
-    "mxnet",
-    "mxnet.model",
-    "optuna",
-    "optuna.distributions",
-    "optuna.samplers",
-    "optuna.trial",
-    "psutil",
-    "ray._raylet",
-    "ray.core.generated",
-    "ray.core.generated.common_pb2",
-    "ray.core.generated.runtime_env_common_pb2",
-    "ray.core.generated.gcs_pb2",
-    "ray.core.generated.logging_pb2",
-    "ray.core.generated.ray.protocol.Task",
-    "ray.serve.generated",
-    "ray.serve.generated.serve_pb2",
-    "scipy.signal",
-    "scipy.stats",
-    "setproctitle",
-    "tensorflow_probability",
-    "tensorflow",
-    "tensorflow.contrib",
-    "tensorflow.contrib.all_reduce",
-    "tree",
-    "tensorflow.contrib.all_reduce.python",
-    "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn",
-    "tensorflow.contrib.slim",
-    "tensorflow.core",
-    "tensorflow.core.util",
-    "tensorflow.keras",
-    "tensorflow.python",
-    "tensorflow.python.client",
-    "tensorflow.python.util",
-    "torch",
-    "torch.distributed",
-    "torch.nn",
-    "torch.nn.parallel",
-    "torch.utils.data",
-    "torch.utils.data.distributed",
-    "wandb",
-    "zoopt",
-]
-
-CHILD_MOCK_MODULES = [
-    "pytorch_lightning",
-    "pytorch_lightning.accelerators",
-    "pytorch_lightning.plugins",
-    "pytorch_lightning.plugins.environments",
-    "pytorch_lightning.utilities",
-    "tensorflow.keras.callbacks",
-]
-
-import scipy.stats
-import scipy.linalg
-
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
 
-# ray.rllib.models.action_dist.py and
-# ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
 
 for mod_name in CHILD_MOCK_MODULES:
@@ -151,7 +73,18 @@ extensions = [
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_parser",
+    # "myst_nb",
+    "sphinx.ext.doctest",
+    "sphinx.ext.coverage",
+    "sphinx_external_toc",
 ]
+
+external_toc_exclude_missing = False
+external_toc_path = '_toc.yml'
+
+# There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
+# of imports.
+# autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
@@ -172,15 +105,19 @@ versionwarning_messages = {
 }
 
 versionwarning_body_selector = "#main-content"
+
 sphinx_gallery_conf = {
+    # Example sources are taken from these folders:
     "examples_dirs": [
-        "../examples",
-        "tune/_tutorials",
-        "data/_examples",
-    ],  # path to example scripts
-    # path where to save generated examples
-    "gallery_dirs": ["auto_examples", "tune/tutorials", "data/examples"],
-    "ignore_pattern": "../examples/doc_code/",
+        "ray-core/_examples",
+        "ray-tune/_tutorials",
+        "ray-data/_examples",
+    ],
+    # and then generated into these respective target folders:
+    "gallery_dirs": [
+        "ray-core/examples", "ray-tune/tutorials", "ray-data/examples"
+    ],
+    "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
@@ -246,6 +183,17 @@ language = None
 exclude_patterns = ["_build"]
 exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 
+# If "DOC_LIB" is found, only build that top-level navigation item.
+build_one_lib = os.getenv("DOC_LIB")
+
+# All doc libs start with a "ray-" prefix.
+all_toc_libs = [
+    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+]
+if build_one_lib and build_one_lib in all_toc_libs:
+    all_toc_libs.remove(build_one_lib)
+    exclude_patterns += all_toc_libs
+
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
 # default_role = None
@@ -292,7 +240,7 @@ html_theme_options = {
     "use_issues_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
-    "home_page_in_toc": True,
+    "home_page_in_toc": False,
     "show_navbar_depth": 0,
 }
 

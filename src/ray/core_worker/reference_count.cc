@@ -468,7 +468,7 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
           << " Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
              "(ObjectID.from_binary(...)) cannot be passed to ray.get(), ray.wait(), or "
              "as "
-             "a task argument because Ray does not know which task will create them. "
+             "a task argument because Ray does not know which task created them. "
              "If this was not how your object ID was generated, please file an issue "
              "at https://github.com/ray-project/ray/issues/";
       // TODO(swang): Java does not seem to keep the ref count properly, so the
@@ -638,6 +638,7 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
       lost_objects.push_back(object_id);
       ReleasePlasmaObject(it);
     }
+    RemoveObjectLocationInternal(it, raylet_id);
   }
   return lost_objects;
 }
@@ -1126,9 +1127,14 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                       "object is already evicted.";
     return false;
   }
+  RemoveObjectLocationInternal(it, node_id);
+  return true;
+}
+
+void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
+                                                    const NodeID &node_id) {
   it->second.locations.erase(node_id);
   PushToLocationSubscribers(it);
-  return true;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
