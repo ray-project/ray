@@ -36,7 +36,8 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
   // Start updating gcs server address.
   updater_runner_.RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds(), "ABCDE");
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      "GcsServerAddressUpdater.UpdateGcsServerAddress");
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
