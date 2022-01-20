@@ -86,6 +86,10 @@ external_toc_path = '_toc.yml'
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
+# To make sphinx.ext.autodoc work with sphinx_external_toc
+# e.g. https://github.com/executablebooks/sphinx-external-toc/issues/36
+suppress_warnings = ["etoc.toctree"]
+
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
