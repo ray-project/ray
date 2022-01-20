@@ -119,11 +119,6 @@ if __name__ == "__main__":
     if output is not None:
         from pathlib import Path
         p = Path(output)
-        if p.exists():
-            results = json.loads(p.read_text())
-        else:
-            results = []
-        results.append(result)
-        p.write_text(json.dumps(results))
+        p.write_text(json.dumps(result))
 
     print(result)

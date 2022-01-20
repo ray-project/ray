@@ -166,7 +166,7 @@
 
   stable: false
 
-- name: scheduling_test
+- name: scheduling_test_many_0s_tasks_single_node
   team: core
   cluster:
     app_config: app_config.yaml
@@ -176,3 +176,36 @@
     timeout: 3600
     prepare: python distributed/wait_cluster.py --num-nodes=32
     script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
+
+- name: scheduling_test_many_0s_tasks_many_nodes
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
+
+- name: scheduling_test_many_5s_tasks_single_node
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
+
+- name: scheduling_test_many_5s_tasks_many_nodes
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
