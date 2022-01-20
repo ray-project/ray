@@ -184,6 +184,10 @@ NIGHTLY_TESTS = {
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
+    "~/ray/release/train_tests/microbenchmarks/train_microbenchmark.yaml": [
+        "torch_microbenchmark_single_node",
+        "torch_microbenchmark_multi_node",
+    ],
     "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
         "aws_no_sync_down",
         "aws_ssh_sync",
