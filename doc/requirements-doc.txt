@@ -14,7 +14,7 @@ pickle5
 pillow
 pyarrow
 pydantic
-Pygments==2.3.1
+pygments
 pyyaml
 recommonmark
 redis
@@ -27,7 +27,6 @@ sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
 sphinx-book-theme==0.0.42
-sphinx-external-toc==0.2.3
 sphinxcontrib.yt
 starlette
 tabulate
@@ -40,4 +39,3 @@ git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
 sphinx-sitemap==2.2.0
 myst-parser
-myst-nb
