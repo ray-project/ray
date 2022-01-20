@@ -26,7 +26,7 @@ namespace ray {
 class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  public:
   GlobalStateAccessorTest() {
-    if(GetParam()) {
+    if (GetParam()) {
       RayConfig::instance().bootstrap_with_gcs() = true;
       RayConfig::instance().gcs_storage() = "memory";
       RayConfig::instance().gcs_grpc_based_pubsub() = true;
@@ -36,13 +36,13 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       RayConfig::instance().gcs_grpc_based_pubsub() = false;
     }
 
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!RayConfig::instance().bootstrap_with_gcs()) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
   }
 
   virtual ~GlobalStateAccessorTest() {
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!RayConfig::instance().bootstrap_with_gcs()) {
       TestSetupUtil::ShutDownRedisServers();
     }
   }
@@ -50,7 +50,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
-    if(RayConfig::instance().bootstrap_with_gcs()) {
+    if (RayConfig::instance().bootstrap_with_gcs()) {
       config.grpc_server_port = 6379;
       config.grpc_pubsub_enabled = true;
     } else {
@@ -65,7 +65,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
 
-
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
@@ -78,7 +77,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client and global state.
-    if(RayConfig::instance().bootstrap_with_gcs()) {
+    if (RayConfig::instance().bootstrap_with_gcs()) {
       gcs::GcsClientOptions options("127.0.0.1:6379");
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
@@ -101,7 +100,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     gcs_server_->Stop();
-    if(!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!RayConfig::instance().bootstrap_with_gcs()) {
       TestSetupUtil::FlushAllRedisServers();
     }
 
@@ -124,8 +123,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
   std::unique_ptr<boost::asio::io_service::work> work_;
-
-
 };
 
 TEST_P(GlobalStateAccessorTest, TestJobTable) {
@@ -311,10 +308,8 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(
-    RedisRemovalTest,
-    GlobalStateAccessorTest,
-    ::testing::Values(false, true));
+INSTANTIATE_TEST_CASE_P(RedisRemovalTest, GlobalStateAccessorTest,
+                        ::testing::Values(false, true));
 
 }  // namespace ray
 
