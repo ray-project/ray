@@ -109,6 +109,7 @@ class DashboardHead:
 
         self.gcs_address = None
         self.redis_address = None
+        self.redis_password = None
         if use_gcs_for_bootstrap():
             assert gcs_address is not None
             self.gcs_address = gcs_address
