@@ -175,4 +175,4 @@
   run:
     timeout: 3600
     prepare: python distributed/wait_cluster.py --num-nodes=32
-    script: python distributed/test_scheduling.py --total-num-task=1984000 -num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num_actors_per_nodes=1
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1

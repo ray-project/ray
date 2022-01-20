@@ -26,24 +26,24 @@ class SimpleActor:
 
 def start_tasks(num_task, num_cpu_per_task, task_duration):
     ray.get([
-        simple_task.options(num_cpu=num_cpu_per_task) for _ in range(num_task)
+        simple_task.options(num_cpus=num_cpu_per_task) for _ in range(num_task)
     ])
 
 
 def measure(f):
-    start = time.time()
+    start = time()
     ret = f()
-    end = time.time()
+    end = time()
     return (end - start, ret)
 
 
 def start_actor(num_actors, num_actors_per_nodes, job):
     resources = {"node": floor(1.0 / num_actors_per_nodes)}
     submission_cost, actors = measure(lambda: [
-        SimpleActor.options(resources=resources, num_cpu=0).remote(job)
+        SimpleActor.options(resources=resources, num_cpus=0).remote(job)
         for _ in range(num_actors)])
     ready_cost, _ = measure(
-        lambda: ray.get([actor.raedy.remote() for actor in actors]))
+        lambda: ray.get([actor.ready.remote() for actor in actors]))
     actor_job_cost, _ = measure(
         lambda: ray.get([actor.do_job.remote() for actor in actors]))
     return (submission_cost, ready_cost, actor_job_cost)
@@ -53,17 +53,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="Test Scheduling")
     # Task workloads
     parser.add_argument(
-        "total_num_task",
+        "--total-num-task",
         type=int,
         help="Total number of tasks.",
         required=False)
     parser.add_argument(
-        "num_cpu_per_task",
+        "--num-cpu-per-task",
         type=int,
         help="Resources needed for tasks.",
         required=False)
     parser.add_argument(
-        "task_duration_s",
+        "--task-duration-s",
         type=int,
         help="How long does each task execute.",
         required=False,
@@ -71,15 +71,17 @@ if __name__ == "__main__":
 
     # Actor workloads
     parser.add_argument(
-        "total_num_actors",
+        "--total-num-actors",
         type=int,
         help="Total number of actors.",
         required=True)
     parser.add_argument(
-        "num_actors_per_nodes",
+        "--num-actors-per-nodes",
         type=int,
         help="How many actors to allocate for each nodes.",
         required=True)
+
+    ray.init(address="auto")
 
     total_cpus_per_node = [node["Resources"]["CPU"] for node in ray.nodes()]
     num_nodes = len(total_cpus_per_node)
