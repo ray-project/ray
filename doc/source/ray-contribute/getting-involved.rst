@@ -1,7 +1,7 @@
 .. _getting-involved:
 
-Getting Involved / Contributing
-===============================
+Contributing to Ray
+===================
 
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.

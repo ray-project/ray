@@ -1,4 +1,4 @@
-Ray design patterns
+Ray Design Patterns
 ===================
 
 This document is a collection of common design patterns (and anti-patterns) for Ray programs.

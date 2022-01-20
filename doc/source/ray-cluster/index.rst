@@ -2,8 +2,8 @@
 
 .. _cluster-index:
 
-Ray Cluster Overview
-====================
+Understanding Ray Clusters
+==========================
 
 What is a Ray cluster?
 ------------------------

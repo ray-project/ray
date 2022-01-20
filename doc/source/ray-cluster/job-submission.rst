@@ -4,7 +4,6 @@
 Ray Job Submission: Going from your laptop to production
 ===========================================================
 
-
 .. note::
 
     This component is in **beta**.

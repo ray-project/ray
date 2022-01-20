@@ -2,8 +2,8 @@
 
 .. _ray-client:
 
-Ray Client
-==========
+Using the Ray Client
+====================
 
 **What is the Ray Client?**
 
