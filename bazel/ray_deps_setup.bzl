@@ -51,6 +51,7 @@ def auto_http_archive(
     if name == None:  # Deduce "com_github_user_project_name" from "https://github.com/user/project-name/..."
         name = "_".join(url_parts["netloc"][::-1] + url_path_parts[:2]).replace("-", "_")
 
+    # auto appending ray project namespace prefix for 3rd party library reusing.
     if build_file == True:
         build_file = "@com_github_ray_project_ray//%s:%s" % ("bazel", "BUILD." + name)
 
@@ -92,6 +93,8 @@ def ray_deps_setup():
         sha256 = "7892a35d979304a404400a101c46ce90e85ec9e2a766a86041bb361f626247f5",
     )
 
+    # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
+    # all of http/git_repository should add prefix for patches defined in ray directory.
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.redis",

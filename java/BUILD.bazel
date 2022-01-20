@@ -187,6 +187,8 @@ java_binary(
     ],
 )
 
+# We'd better make resource files can be accessed from 3rd party library.
+# More detail please see https://github.com/ray-project/ray/pull/21641.
 java_proto_compile(
     name = "common_java_proto",
     deps = ["@com_github_ray_project_ray//src/ray/protobuf:common_proto"],
