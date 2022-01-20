@@ -73,6 +73,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       reference_counter_->AddOwnedObject(return_id,
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
                                          /*is_reconstructable=*/is_reconstructable);
+      // Increment the local ref count to ensure that the object is considered in
+      // scope before we return the ObjectRef to the language frontend. Note that
+      // the language bindings should set skip_adding_local_ref=True to avoid
+      // double referencing the object.
+      reference_counter_->AddLocalReference(return_id, call_site);
     }
 
     return_ids.push_back(return_id);

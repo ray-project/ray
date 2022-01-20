@@ -853,7 +853,7 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
-Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
+Status CoreWorker::CreateOwnedAndIncrementLocalRef(const std::shared_ptr<Buffer> &metadata,
                                const size_t data_size,
                                const std::vector<ObjectID> &contained_object_ids,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
@@ -869,11 +869,6 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
-  // Increment the local ref count to ensure that the object is considered in
-  // scope before we return the ObjectRef to the language frontend. Note that
-  // the language bindings should set skip_adding_local_ref=True to avoid
-  // double referencing the object.
-  AddLocalReference(*object_id);
   if (owned_by_us) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
@@ -883,7 +878,15 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     RAY_UNUSED(reference_counter_->AddBorrowedObject(
         *object_id, ObjectID::Nil(), real_owner_address,
         /*foreign_owner_already_monitoring=*/true));
+  }
 
+  // Increment the local ref count to ensure that the object is considered in
+  // scope before we return the ObjectRef to the language frontend. Note that
+  // the language bindings should set skip_adding_local_ref=True to avoid
+  // double referencing the object.
+  AddLocalReference(*object_id);
+
+  if (!owned_by_us) {
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
     request.set_object_id(object_id->Binary());
@@ -945,16 +948,11 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
 
 Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
                              const std::unique_ptr<rpc::Address> &owner_address) {
-  bool owned_by_us = owner_address != nullptr
-                         ? WorkerID::FromBinary(owner_address->worker_id()) ==
-                               WorkerID::FromBinary(rpc_address_.worker_id())
-                         : true;
   auto status = SealExisting(object_id, pin_object, std::move(owner_address));
   if (status.ok()) return status;
-  if (owned_by_us) {
-    reference_counter_->RemoveOwnedObject(object_id);
-  } else {
-    RemoveLocalReference(object_id);
+  RemoveLocalReference(object_id);
+  if (reference_counter_->HasReference(object_id)) {
+    RAY_LOG(WARNING) << "Object " << object_id << " failed to be put but has a nonzero ref count. This object may leak.";
   }
   return status;
 }

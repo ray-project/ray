@@ -188,13 +188,14 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
-cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs):
+cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs, skip_adding_local_ref=False):
     result = []
     for i in range(object_refs.size()):
         result.append(ObjectRef(
             object_refs[i].object_id(),
             object_refs[i].owner_address().SerializeAsString(),
-            object_refs[i].call_site()))
+            object_refs[i].call_site(),
+            skip_adding_local_ref=skip_adding_local_ref))
     return result
 
 
@@ -355,10 +356,27 @@ cdef int prepare_actor_concurrency_groups(
         concurrency_groups.push_back(cg)
     return 1
 
-cdef prepare_args(
+cdef prepare_args_and_increment_put_refs(
         CoreWorker core_worker,
         Language language, args,
-        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor):
+        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
+        c_vector[CObjectID] *put_arg_ids):
+    try:
+        prepare_args_internal(core_worker, language, args, args_vector, function_descriptor, put_arg_ids)
+    except Exception as e:
+        # An error occurred during arg serialization. We must remove the
+        # initial local ref for all args that were successfully put into the
+        # local plasma store. These objects will then get released.
+        for put_arg_id in dereference(put_arg_ids):
+            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                put_arg_id)
+        raise e
+
+cdef prepare_args_internal(
+        CoreWorker core_worker,
+        Language language, args,
+        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
+        c_vector[CObjectID] *put_arg_ids):
     cdef:
         size_t size
         int64_t put_threshold
@@ -431,13 +449,15 @@ cdef prepare_args(
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
+                put_id = CObjectID.FromBinary(
+                        core_worker.put_serialized_object_and_increment_local_ref(
+                            serialized_arg, inline_small_object=False))
                 args_vector.push_back(unique_ptr[CTaskArg](
-                    new CTaskArgByReference(CObjectID.FromBinary(
-                        core_worker.put_serialized_object(
-                            serialized_arg, inline_small_object=False,
-                            skip_adding_local_ref=True)),
+                    new CTaskArgByReference(put_id,
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                        put_arg_call_site)))
+                        put_arg_call_site
+                        )))
+                put_arg_ids.push_back(put_id)
 
 
 cdef raise_if_dependency_failed(arg):
@@ -1207,7 +1227,7 @@ cdef class CoreWorker:
 
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwnedAndIncrementLocalRef(
                              metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
@@ -1261,11 +1281,10 @@ cdef class CoreWorker:
             owner_address: Owner address for this object ref.
         """
         cdef:
-            CObjectID c_object_id
+            CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
-            c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
 
@@ -1298,7 +1317,7 @@ cdef class CoreWorker:
                             c_object_id, pin_object=False,
                             owner_address=c_owner_address))
 
-    def put_serialized_object(self, serialized_object,
+    def put_serialized_object_and_increment_local_ref(self, serialized_object,
                               ObjectRef object_ref=None,
                               c_bool pin_object=True,
                               owner_address=None,
@@ -1472,6 +1491,7 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
+            c_vector[CObjectID] put_arg_ids
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1480,8 +1500,8 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(
-                self, language, args, &args_vector, function_descriptor)
+            prepare_args_and_increment_put_refs(
+                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1495,7 +1515,13 @@ cdef class CoreWorker:
                 c_scheduling_strategy,
                 debugger_breakpoint)
 
-            return VectorToObjectRefs(return_refs)
+            for put_arg_id in put_arg_ids:
+                CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                    put_arg_id)
+
+            # The initial local reference is already acquired internally when
+            # adding the pending task.
+            return VectorToObjectRefs(return_refs, skip_adding_local_ref=True)
 
     def create_actor(self,
                      Language language,
@@ -1525,6 +1551,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
+            c_vector[CObjectID] put_arg_ids
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1534,13 +1561,13 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(
-                self, language, args, &args_vector, function_descriptor)
+            prepare_args_and_increment_put_refs(
+                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
+                status = CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
@@ -1556,7 +1583,13 @@ cdef class CoreWorker:
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls),
                     extension_data,
-                    &c_actor_id))
+                    &c_actor_id)
+
+            for put_arg_id in put_arg_ids:
+                CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                    put_arg_id)
+
+            check_status(status)
 
             return ActorID(c_actor_id.Binary())
 
@@ -1637,14 +1670,15 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             optional[c_vector[CObjectReference]] return_refs
+            c_vector[CObjectID] put_arg_ids
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(
-                self, language, args, &args_vector, function_descriptor)
+            prepare_args_and_increment_put_refs(
+                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1655,8 +1689,14 @@ cdef class CoreWorker:
                 args_vector,
                 CTaskOptions(
                     name, num_returns, c_resources, concurrency_group_name))
+            for put_arg_id in put_arg_ids:
+                CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                    put_arg_id)
+
             if return_refs.has_value():
-                return VectorToObjectRefs(return_refs.value())
+                # The initial local reference is already acquired internally
+                # when adding the pending task.
+                return VectorToObjectRefs(return_refs.value(), skip_adding_local_ref=True)
             else:
                 actor = self.get_actor_handle(actor_id)
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()

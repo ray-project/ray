@@ -199,7 +199,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        const CObjectID &object_id)
-        CRayStatus CreateOwned(const shared_ptr[CBuffer] &metadata,
+        CRayStatus CreateOwnedAndIncrementLocalRef(const shared_ptr[CBuffer] &metadata,
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
                                CObjectID *object_id, shared_ptr[CBuffer] *data,

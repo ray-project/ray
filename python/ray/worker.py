@@ -299,12 +299,11 @@ class Worker:
         # removed before this one, it will corrupt the state in the
         # reference counter.
         return ray.ObjectRef(
-            self.core_worker.put_serialized_object(
+            self.core_worker.put_serialized_object_and_increment_local_ref(
                 serialized_value,
                 object_ref=object_ref,
                 owner_address=owner_address),
-            # The initial reference is already acquired
-            # internally in CoreWorker::CreateOwned.
+            # The initial local reference is already acquired internally.
             skip_adding_local_ref=True)
 
     def raise_errors(self, data_metadata_pairs, object_refs):
