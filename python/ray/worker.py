@@ -835,9 +835,8 @@ def init(
             job_config = ray.job_config.JobConfig()
         job_config.set_runtime_env(runtime_env)
 
-    # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
-        node_ip_address = services.address_to_ip(_node_ip_address)
+        node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
 
     bootstrap_address, redis_address, gcs_address = None, None, None

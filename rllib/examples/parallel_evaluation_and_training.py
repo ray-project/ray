@@ -74,7 +74,7 @@ class AssertEvalCallback(DefaultCallbacks):
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if "evaluation" in result:
+        if "evaluation" in result and "hist_stats" in result["evaluation"]:
             hist_stats = result["evaluation"]["hist_stats"]
             # We count in episodes.
             if trainer.config["evaluation_duration_unit"] == "episodes":

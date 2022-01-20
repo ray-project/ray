@@ -57,7 +57,8 @@ DOCKER_HEAD_CMD = (
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chmod 600 ~/ray_bootstrap_key.pem && "
-    "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
+    "sudo chown ray:users "
+    "~/.ssh ~/.ssh/authorized_keys ~/ray_bootstrap_key.pem && "
     "{ensure_ssh} && "
     "sleep 1 && "
     "RAY_FAKE_CLUSTER=1 ray start --head "
@@ -131,7 +132,8 @@ def create_node_spec(head: bool,
 
     ensure_ssh = ("((sudo apt update && sudo apt install -y openssh-server && "
                   "sudo service ssh start) || true)") if not bool(
-                      int(os.environ.get("RAY_HAS_SSH", "0"))) else "true"
+                      int(os.environ.get("RAY_HAS_SSH", "0")
+                          or "0")) else "sudo service ssh start"
 
     cmd_kwargs = dict(
         ensure_ssh=ensure_ssh,

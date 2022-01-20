@@ -53,7 +53,10 @@ class GcsClientOptions {
         password_(password),
         enable_sync_conn_(enable_sync_conn),
         enable_async_conn_(enable_async_conn),
-        enable_subscribe_conn_(enable_subscribe_conn) {}
+        enable_subscribe_conn_(enable_subscribe_conn) {
+    RAY_LOG(DEBUG) << "Connect to gcs server via redis: " << redis_ip << ":"
+                   << redis_port;
+  }
 
   /// Constructor of GcsClientOptions from gcs address
   ///
@@ -63,6 +66,7 @@ class GcsClientOptions {
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];
     gcs_port_ = std::stoi(address[1]);
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   }
 
   GcsClientOptions() {}
