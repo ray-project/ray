@@ -32,8 +32,8 @@ class TrainableUtil:
         Or,
         - checkpoint_00000
         -- .is_checkpoint
-        -- xxx.pkl
-        -- xxx.pkl.tune_metadata
+        -- checkpoint
+        -- checkpoint.tune_metadata
 
         The returned path is the path to xxx.pkl.
         """
