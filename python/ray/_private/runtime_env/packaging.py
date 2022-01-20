@@ -1,4 +1,5 @@
 from enum import Enum
+from tempfile import TemporaryDirectory
 from filelock import FileLock
 import hashlib
 import logging
@@ -22,14 +23,6 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # limit, but for some reason that causes failures when downloading.
 GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
 RAY_PKG_PREFIX = "_ray_pkg_"
-
-
-def generate_random_string(min_len: int = 0, max_len: int = 100):
-    if min_len > max_len:
-        raise ValueError(f"Got min_len={min_len} and max_len={max_len}. "
-                         f"min_len should be less than max_len.")
-    size = random.randint(min_len, max_len)
-    return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
 
 
 def _mib_string(num_bytes: float) -> str:
@@ -540,31 +533,25 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
     """
     base_dir: String path of the directory containing rdir
     rdir: String path of directory relative to base_dir whose contents should
-          be moved to its parent directory
+          be moved to its base_dir, its parent directory
 
     Removes rdir from the filepaths of all files and directories inside it.
     In other words, moves all the files inside rdir to the directory that
-    contains rdir.
+    contains rdir. Assumes base_dir's contents and rdir's contents have no
+    name conflicts.
     """
 
-    # Find a temporary name for rdir that's different than all children
-    temp_rdir = rdir
-    rdir_children = os.listdir(os.path.join(base_dir, rdir))
-    while temp_rdir in rdir_children:
-        temp_rdir = generate_random_string(min_len=20, max_len=100)
+    # Move rdir to a temporary directory, so its contents can be moved to
+    # base_dir without any name conflicts
+    with TemporaryDirectory() as tmp_dir:
+        os.rename(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
 
-    # Rename rdir to temporary name to avoid name collisions with children
-    os.rename(os.path.join(base_dir, rdir), os.path.join(base_dir, temp_rdir))
-
-    # Shift children out of rdir and into base_dir
-    temp_rdir_children = os.listdir(os.path.join(base_dir, temp_rdir))
-    for child in temp_rdir_children:
-        os.rename(
-            os.path.join(base_dir, temp_rdir, child),
-            os.path.join(base_dir, child))
-
-    # Remove any remnants of temp_rdir
-    shutil.rmtree(os.path.join(base_dir, temp_rdir))
+        # Shift children out of rdir and into base_dir
+        rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
+        for child in rdir_children:
+            os.rename(
+                os.path.join(tmp_dir, rdir, child),
+                os.path.join(base_dir, child))
 
 
 def unzip_package(package_path: str,
