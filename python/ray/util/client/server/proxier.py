@@ -212,12 +212,12 @@ class ProxyManager():
             Includes retry logic to handle the case when the agent is
             temporarily unreachable (e.g., hasn't been started up yet).
         """
-        if not check_dashboard_dependencies_installed():
-            raise RuntimeError("Not all required Ray dependencies for the "
-                               "runtime_env feature were found on the "
-                               "cluster. To install the required "
-                               "dependencies, please run `pip install "
-                               "\"ray[default]\"` on all cluster nodes.")
+        # if not check_dashboard_dependencies_installed():
+        #     raise RuntimeError("Not all required Ray dependencies for the "
+        #                        "runtime_env feature were found on the "
+        #                        "cluster. To install the required "
+        #                        "dependencies, please run `pip install "
+        #                        "\"ray[default]\"` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))

@@ -90,19 +90,20 @@ def test_ray_init(shutdown_only, capsys):
     # wait_for_condition(stderr_checker)
 
 
-# @pytest.mark.skipif(
-#     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-# @pytest.mark.skipif(
-#     os.environ.get("RAY_MINIMAL") != "1",
-#     reason="This test is only run in CI with a minimal Ray installation.")
-# @pytest.mark.parametrize(
-#     "call_ray_start",
-#     ["ray start --head --ray-client-server-port 25552 --port 0"],
-#     indirect=True)
-# def test_ray_client_init(call_ray_start):
-#     # with pytest.raises(ConnectionAbortedError) as excinfo:
-#     ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
-#     # assert "ray[default]" in str(excinfo.value)
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test is only run in CI with a minimal Ray installation.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    indirect=True)
+def test_ray_client_init(call_ray_start):
+    # with pytest.raises(ConnectionAbortedError) as excinfo:
+    ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
+    # assert "ray[default]" in str(excinfo.value)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
