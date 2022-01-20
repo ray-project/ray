@@ -560,14 +560,24 @@ if __name__ == "__main__":
     logger.info(f"Ray version: {ray.__version__}")
     logger.info(f"Ray commit: {ray.__commit__}")
     logger.info(f"Monitor started with command: {sys.argv}")
+    print(args)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
         autoscaling_config = None
 
+    # Kludge introduced for compatibility: In no-redis mode, interpret
+    # the `--redis-address` argument as the gcs address.
+    if use_gcs_for_bootstrap() and not args.gcs_address:
+        assert args.redis_address
+        gcs_address = args.redis_address
+    elif use_gcs_for_bootstrap() and args.gcs_address:
+        # The common case.
+        gcs_address = args.gcs_address
+
     monitor = Monitor(
-        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address,
+        gcs_address if use_gcs_for_bootstrap() else args.redis_address,
         autoscaling_config,
         redis_password=args.redis_password,
         monitor_ip=args.monitor_ip)
