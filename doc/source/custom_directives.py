@@ -213,6 +213,7 @@ CHILD_MOCK_MODULES = [
     "pytorch_lightning.accelerators",
     "pytorch_lightning.plugins",
     "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.trainer.states",
     "pytorch_lightning.utilities",
     "tensorflow.keras.callbacks",
 ]
