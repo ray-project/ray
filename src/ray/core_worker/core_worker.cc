@@ -2668,6 +2668,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
                                         const NodeID &node_id) {
+  if (gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true) == nullptr) {
+    RAY_LOG(DEBUG) << "Attempting to add object location for a dead node. "
+                   << "Ignoring this request. object_id: " << object_id
+                   << ", node_id: " << node_id;
+    return;
+  }
   auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG) << "Object " + object_id.Hex() + " not found";
