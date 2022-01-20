@@ -439,7 +439,7 @@ class Net(nn.Module):
 # Training functions in Pytorch
 # -----------------------------------------------------
 #
-# Nothing special to see here -- Ray lets you bring your Pytorch code with almost no modifications.
+# Nothing special to see here -- Ray lets you bring your PyTorch code with almost no modifications.
 #
 # Here, note that the input arg, ``dataset``, is in fact a PyTorch dataset, which Ray Datasets nicely provides an interface to creating from raw data (in our case, parquet files).
 
