@@ -1521,13 +1521,18 @@ def connect(node,
         job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
+    if not node.should_redirect_logs():
+        # Logging to stderr, so give core worker empty logs directory.
+        logs_dir = ""
+    else:
+        logs_dir = node.get_logs_dir_path()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
-        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
-        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
-        driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid, startup_token)
+        gcs_options, logs_dir, node.node_ip_address, node.node_manager_port,
+        node.raylet_ip_address, (mode == LOCAL_MODE), driver_name,
+        log_stdout_file_path, log_stderr_file_path, serialized_job_config,
+        node.metrics_agent_port, runtime_env_hash, worker_shim_pid,
+        startup_token)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

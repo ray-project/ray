@@ -178,6 +178,8 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
+LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
+
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"

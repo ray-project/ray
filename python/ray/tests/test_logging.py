@@ -273,8 +273,8 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     assert msgs.pop() == "done"
 
 
-def test_log_redirect_to_stdout(shutdown_only):
-    os.environ["GLOG_logtostderr"] = "1"
+def test_log_redirect_to_stderr(shutdown_only):
+    os.environ["RAY_LOG_TO_STDERR"] = "1"
     ray.init()
 
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
@@ -282,8 +282,20 @@ def test_log_redirect_to_stdout(shutdown_only):
     log_dir_path = session_path / "logs"
 
     log_components = [
-        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_DASHBOARD,
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
+        ray_constants.PROCESS_TYPE_LOG_MONITOR,
+        ray_constants.PROCESS_TYPE_MONITOR,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_REAPER,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        ray_constants.PROCESS_TYPE_REPORTER,
+        ray_constants.PROCESS_TYPE_WEB_UI,
+        ray_constants.PROCESS_TYPE_WORKER,
     ]
 
     # Run the basic workload.
@@ -294,12 +306,9 @@ def test_log_redirect_to_stdout(shutdown_only):
 
     ray.get(f.remote())
 
-    paths = list(log_dir_path.iterdir())
+    paths = list(path.stem for path in log_dir_path.iterdir())
 
-    for component in log_components:
-        for path in paths:
-            filename = path.stem
-            assert component not in filename
+    assert set(log_components).isdisjoint(set(paths)), paths
 
 
 def test_segfault_stack_trace(ray_start_cluster, capsys):
