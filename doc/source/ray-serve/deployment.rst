@@ -11,6 +11,8 @@ This section should help you:
 
 .. contents:: Deploying Ray Serve
 
+.. _ray-serve-instance-lifetime:
+
 Lifetime of a Ray Serve Instance
 ================================
 

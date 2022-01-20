@@ -118,7 +118,8 @@ Next, we start the Ray Serve runtime:
 
   ``detached=True`` means Ray Serve will continue running even when the Python
   script exits. If you would rather stop Ray Serve after the script exits, use
-  ``serve.start()`` instead (see :doc:`deployment` for details).
+  ``serve.start()`` instead (see :ref:`ray-serve-instance-lifetime` for
+  details).
 
 Now that we have defined our ``summarize`` function, connected to a Ray
 Cluster, and started the Ray Serve runtime, we can define a function that
