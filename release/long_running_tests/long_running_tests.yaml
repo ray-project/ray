@@ -1,4 +1,5 @@
 - name: actor_deaths
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -14,6 +15,7 @@
       timeout: 3600
 
 - name: apex
+  team: ml
   cluster:
     app_config: ../rllib_tests/app_config.yaml
     compute_template: tpl_cpu_3.yaml
@@ -30,6 +32,7 @@
 
 
 - name: impala
+  team: ml
   cluster:
     app_config: app_config_np.yaml
     compute_template: tpl_cpu_1_large.yaml
@@ -44,6 +47,7 @@
       timeout: 3600
 
 - name: many_actor_tasks
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -60,6 +64,7 @@
 
 
 - name: many_drivers
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -76,6 +81,7 @@
 
 
 - name: many_ppo
+  team: ml
   cluster:
     app_config: ../rllib_tests/app_config.yaml
     compute_template: many_ppo.yaml
@@ -93,6 +99,7 @@
 
 
 - name: many_tasks
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -108,6 +115,7 @@
       timeout: 3600
 
 - name: many_tasks_serialized_ids
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -124,6 +132,7 @@
 
 
 - name: node_failures
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -139,6 +148,7 @@
       timeout: 3600
 
 - name: pbt
+  team: ml
   cluster:
     app_config: ../rllib_tests/app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -154,6 +164,7 @@
       timeout: 3600
 
 - name: serve
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
@@ -169,6 +180,7 @@
       timeout: 3600
 
 - name: serve_failure
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: tpl_cpu_1.yaml
