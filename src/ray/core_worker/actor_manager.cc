@@ -111,9 +111,12 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
   if (!is_detached) {
+    // We don't need to add an initial local ref here because it will get added
+    // in AddActorHandle.
     reference_counter_->AddOwnedObject(actor_creation_return_id,
                                        /*inner_ids=*/{}, caller_address, call_site,
                                        /*object_size*/ -1,
+                                       /*add_local_ref=*/false,
                                        /*is_reconstructable=*/true);
   }
 

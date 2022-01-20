@@ -804,9 +804,10 @@ Status CoreWorker::Put(const RayObject &object,
                        ObjectID *object_id) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
                                    worker_context_.GetNextPutIndex());
-  reference_counter_->AddOwnedObject(
-      *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
-      /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
+  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
+                                     CurrentCallSite(), object.GetSize(),
+                                     /*is_reconstructable=*/false, /*add_local_ref=*/true,
+                                     NodeID::FromBinary(rpc_address_.raylet_id()));
   auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
   if (!status.ok()) {
     reference_counter_->RemoveOwnedObject(*object_id);
@@ -853,13 +854,11 @@ Status CoreWorker::Put(const RayObject &object,
   return PutInLocalPlasmaStore(object, object_id, pin_object);
 }
 
-Status CoreWorker::CreateOwnedAndIncrementLocalRef(const std::shared_ptr<Buffer> &metadata,
-                               const size_t data_size,
-                               const std::vector<ObjectID> &contained_object_ids,
-                               ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                               bool created_by_worker,
-                               const std::unique_ptr<rpc::Address> &owner_address,
-                               bool inline_small_object) {
+Status CoreWorker::CreateOwnedAndIncrementLocalRef(
+    const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+    const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+    std::shared_ptr<Buffer> *data, bool created_by_worker,
+    const std::unique_ptr<rpc::Address> &owner_address, bool inline_small_object) {
   auto status = WaitForActorRegistered(contained_object_ids);
   if (!status.ok()) {
     return status;
@@ -873,20 +872,19 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(const std::shared_ptr<Buffer>
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
+                                       /*add_local_ref=*/true,
                                        NodeID::FromBinary(rpc_address_.raylet_id()));
   } else {
     RAY_UNUSED(reference_counter_->AddBorrowedObject(
         *object_id, ObjectID::Nil(), real_owner_address,
         /*foreign_owner_already_monitoring=*/true));
-  }
+    // Because in the remote worker's `HandleAssignObjectOwner`,
+    // a `WaitForRefRemoved` RPC request will be sent back to
+    // the current worker. So we need to make sure ref count is > 0
+    // by invoking `AddLocalReference` first. Note that in worker.py we set
+    // skip_adding_local_ref=True to avoid double referencing the object.
+    AddLocalReference(*object_id);
 
-  // Increment the local ref count to ensure that the object is considered in
-  // scope before we return the ObjectRef to the language frontend. Note that
-  // the language bindings should set skip_adding_local_ref=True to avoid
-  // double referencing the object.
-  AddLocalReference(*object_id);
-
-  if (!owned_by_us) {
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
     request.set_object_id(object_id->Binary());
@@ -952,7 +950,9 @@ Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object,
   if (status.ok()) return status;
   RemoveLocalReference(object_id);
   if (reference_counter_->HasReference(object_id)) {
-    RAY_LOG(WARNING) << "Object " << object_id << " failed to be put but has a nonzero ref count. This object may leak.";
+    RAY_LOG(WARNING)
+        << "Object " << object_id
+        << " failed to be put but has a nonzero ref count. This object may leak.";
   }
   return status;
 }
@@ -2251,7 +2251,8 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
                                          /*inner_ids=*/{}, rpc_address_,
                                          CurrentCallSite(), -1,
-                                         /*is_reconstructable=*/false);
+                                         /*is_reconstructable=*/false,
+                                         /*add_local_ref=*/true);
     }
     rpc::ObjectReference ref;
     ref.set_object_id(task_spec.ReturnId(i).Binary());
@@ -3005,6 +3006,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
   reference_counter_->AddOwnedObject(
       object_id, contained_object_ids, rpc_address_, call_site, request.object_size(),
       /*is_reconstructable=*/false,
+      /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));

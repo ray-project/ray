@@ -169,6 +169,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       const rpc::Address &owner_address,
                                       const std::string &call_site,
                                       const int64_t object_size, bool is_reconstructable,
+                                      bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
@@ -197,6 +198,10 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   auto back_it = reconstructable_owned_objects_.end();
   back_it--;
   RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
+
+  if (add_local_ref) {
+    it->second.local_ref_count++;
+  }
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {

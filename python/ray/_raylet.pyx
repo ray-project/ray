@@ -188,7 +188,8 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
-cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs, skip_adding_local_ref=False):
+cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
+                        skip_adding_local_ref=False):
     result = []
     for i in range(object_refs.size()):
         result.append(ObjectRef(
@@ -362,7 +363,8 @@ cdef prepare_args_and_increment_put_refs(
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
         c_vector[CObjectID] *put_arg_ids):
     try:
-        prepare_args_internal(core_worker, language, args, args_vector, function_descriptor, put_arg_ids)
+        prepare_args_internal(core_worker, language, args, args_vector,
+                              function_descriptor, put_arg_ids)
     except Exception as e:
         # An error occurred during arg serialization. We must remove the
         # initial local ref for all args that were successfully put into the
@@ -453,9 +455,10 @@ cdef prepare_args_internal(
                         core_worker.put_serialized_object_and_increment_local_ref(
                             serialized_arg, inline_small_object=False))
                 args_vector.push_back(unique_ptr[CTaskArg](
-                    new CTaskArgByReference(put_id,
-                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
-                        put_arg_call_site
+                    new CTaskArgByReference(
+                            put_id,
+                            CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
+                            put_arg_call_site
                         )))
                 put_arg_ids.push_back(put_id)
 
@@ -1227,7 +1230,8 @@ cdef class CoreWorker:
 
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwnedAndIncrementLocalRef(
+                check_status(CCoreWorkerProcess.GetCoreWorker()
+                             .CreateOwnedAndIncrementLocalRef(
                              metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
@@ -1299,7 +1303,7 @@ cdef class CoreWorker:
         if not status.ok():
             logger.debug("Error putting restored object into plasma.")
             return
-        if data_buf == NULL: 
+        if data_buf == NULL:
             logger.debug("Object already exists in 'put_file_like_object'.")
             return
         data = Buffer.make(data_buf)
@@ -1318,10 +1322,10 @@ cdef class CoreWorker:
                             owner_address=c_owner_address))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,
-                              ObjectRef object_ref=None,
-                              c_bool pin_object=True,
-                              owner_address=None,
-                              c_bool inline_small_object=True):
+                                                      ObjectRef object_ref=None,
+                                                      c_bool pin_object=True,
+                                                      owner_address=None,
+                                                      c_bool inline_small_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -1696,7 +1700,8 @@ cdef class CoreWorker:
             if return_refs.has_value():
                 # The initial local reference is already acquired internally
                 # when adding the pending task.
-                return VectorToObjectRefs(return_refs.value(), skip_adding_local_ref=True)
+                return VectorToObjectRefs(return_refs.value(),
+                                          skip_adding_local_ref=True)
             else:
                 actor = self.get_actor_handle(actor_id)
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()
