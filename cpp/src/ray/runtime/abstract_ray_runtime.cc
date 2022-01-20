@@ -128,8 +128,13 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
           memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{},
+      auto id = ObjectID::FromBinary(*arg.id);
+      auto owner_address = ray::rpc::Address{};
+      if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
+        auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+        owner_address = core_worker.GetOwnerAddress(id);
+      }
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(id, owner_address,
                                                            /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
