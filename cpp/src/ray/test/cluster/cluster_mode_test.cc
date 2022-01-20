@@ -134,7 +134,7 @@ TEST(RayClusterModeTest, FullTest) {
   auto r2 = ray::Task(Plus).Remote(3, 22);
 
   std::vector<ray::ObjectRef<int>> objects = {r0, r1, r2};
-  auto result = ray::Wait(objects, 3, 1000);
+  auto result = ray::Wait(objects, 3, 5000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 

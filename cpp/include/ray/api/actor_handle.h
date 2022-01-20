@@ -37,10 +37,9 @@ class ActorHandle {
   template <typename F>
   ray::internal::ActorTaskCaller<F> Task(F actor_func) {
     static_assert(!IsXlang && !ray::internal::is_python_v<F>,
-                  "The actor function is not match with actor class");
-    static_assert(
-        std::is_member_function_pointer_v<F>,
-        "Incompatible type: non-member function cannot be called with Actor::Task.");
+                  "Actor method is not a member function of actor class.");
+    static_assert(std::is_member_function_pointer_v<F>,
+                  "Actor method is not a member function of actor class.");
     using Self = boost::callable_traits::class_of_t<F>;
     static_assert(
         std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
