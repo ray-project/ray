@@ -181,7 +181,7 @@ enum ErrorType {
 /// The information per ray error type.
 message RayErrorInfo {
   oneof error {
-    RayException actor_init_failure = 1;
+    ActorDeathCause actor_died_error = 2;
   }
 }
 

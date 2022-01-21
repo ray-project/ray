@@ -441,7 +441,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
             ray.get(a.dependent_task.remote(obj))
             return True
         except ray.exceptions.RayActorError as e:
-            return e.has_creation_task_error()
+            return e.actor_init_failed
         except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
             return True
 

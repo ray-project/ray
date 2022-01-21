@@ -145,6 +145,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
   /// \param[in] ray_error_info The error information of a given error type.
+  /// Nullptr means that there's no error information.
+  /// TODO(sang): Remove nullptr case. Every error message should have metadata.
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed.
   /// \return Whether the task will be retried or not.
