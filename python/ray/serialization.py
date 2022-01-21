@@ -300,6 +300,9 @@ class SerializationContext:
         # TODO(swang): Check that contained_object_refs is empty.
         try:
             self.set_in_band_serialization()
+
+            print("lalalalalla!!!!!")
+
             inband = pickle.dumps(
                 value, protocol=5, buffer_callback=writer.buffer_callback)
         except Exception as e:

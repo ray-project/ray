@@ -10,7 +10,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput, D4RLReader
+    ShuffledInput, D4RLReader, DatasetReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -433,6 +433,8 @@ class WorkerSet:
             input_creator = config["input"]
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
+        elif config["input"] == "dataset":
+            input_creator = (lambda ioctx: DatasetReader(ioctx))
         elif isinstance(config["input"], dict):
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
