@@ -496,36 +496,6 @@ A simple example for creating a callback that will print out results:
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
 
-
-Results Preprocessors
-^^^^^^^^^^^^^^^^^^^^^
-
-When defining a custom callback with ``handle_result`` defined, you may want to
-preprocess the raw results from the workers before ``handle_result`` is called.
-You can do this by defining a :ref:`train-api-results-preprocessor` and setting
-``self.results_preprocessor``.
-
-Preprocessing allows for better composability. The ``handle_result`` definition
-can focus on core callback functionality, and common preprocessing logic can be
-easily shared across different callbacks.
-
-In the following example, we show how you might implement a ``TrainingCallback``
-that only prints the results from worker 0.
-
-.. code-block:: python
-
-    from ray.train import TrainingCallback
-    from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
-    from typing import List, Dict
-
-    class FirstWorkerPrintingCallback(TrainingCallback):
-        def __init__(self):
-            self.results_preprocessor = IndexedResultsPreprocessor(0)
-
-        def handle_result(self, results: List[Dict], **info):
-            print(results)
-
-
 ..
     Advanced Customization
     ~~~~~~~~~~~~~~~~~~~~~~

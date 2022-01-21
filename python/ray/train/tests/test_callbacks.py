@@ -180,10 +180,10 @@ def _validate_tbx_result(events_dir):
     assert len(results["hello/world"]) == 1
 
 
-def test_TBX(ray_start_4_cpus, make_temp_dir):
+def test_TBX(ray_start_4_cpus, tmp_path):
     config = TestConfig()
 
-    temp_dir = make_temp_dir
+    temp_dir = tmp_path
     num_workers = 4
 
     def train_func():
