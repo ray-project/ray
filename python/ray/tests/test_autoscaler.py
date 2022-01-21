@@ -16,6 +16,7 @@ from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
 from typing import Dict, Callable, List, Optional
+from unittest.mock import patch
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -3308,6 +3309,84 @@ MemAvailable:   33000000 kB
         head_node_config = node_types["ray.head.default"]
         assert head_node_config["min_workers"] == 0
         assert head_node_config["max_workers"] == 0
+
+    @patch("ray.autoscaler._private.commands.request_resources")
+    def testResourceRequestUpdatedDuringUpdateIfItExpires(
+            self, request_resources_mock):
+        """
+        Tests autoscaler handling request resources with expire_when_satisfied
+        """
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["min_workers"] = 0
+        config["max_workers"] = 100
+        del config["docker"]
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockNodeInfoStub(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+
+        autoscaler.load_metrics.set_resource_requests({
+            "resources": [{
+                "CPU": 1
+            }] * 100,
+            "expire_when_satisfied": True
+        })
+
+        # Scale up to two up-to-date workers
+        autoscaler.update()
+        self.waitForNodes(6)
+        autoscaler.update()
+
+        request_resources_mock.assert_called_with(0)
+
+    @patch("ray.autoscaler._private.commands.request_resources")
+    def testResourceRequestNotUpdatedDuringUpdateIfItDoesntExpire(
+            self, request_resources_mock):
+        """
+        Tests autoscaler handling request resources without expire_when_satisfied
+        """
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["min_workers"] = 0
+        config["max_workers"] = 100
+        del config["docker"]
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockNodeInfoStub(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+
+        autoscaler.load_metrics.set_resource_requests({
+            "resources": [{
+                "CPU": 1
+            }] * 100,
+            "expire_when_satisfied": False
+        })
+
+        # Scale up to two up-to-date workers
+        autoscaler.update()
+        self.waitForNodes(6)
+        autoscaler.update()
+
+        request_resources_mock.assert_not_called()
 
 
 if __name__ == "__main__":
