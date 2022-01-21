@@ -14,11 +14,11 @@ except ImportError:
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, Deprecated, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
 from ray.rllib.utils.typing import FileType, SampleBatchType
 from ray.util.ml_utils.json import SafeFallbackEncoder
-from typing import Any, List
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,10 @@ WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
 @PublicAPI
+@Deprecated(
+    old="ray.rllib.offline.JsonWriter",
+    new="ray.rllib.offline.DatasetWriter",
+    error=False)
 class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
 
@@ -106,7 +110,7 @@ def _to_jsonable(v, compress: bool) -> Any:
     return v
 
 
-def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
+def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
     out = {}
     if isinstance(batch, MultiAgentBatch):
         out["type"] = "MultiAgentBatch"
@@ -122,4 +126,9 @@ def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
         out["type"] = "SampleBatch"
         for k, v in batch.items():
             out[k] = _to_jsonable(v, compress=k in compress_columns)
+    return out
+
+
+def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
+    out = _to_json_dict(batch, compress_columns)
     return json.dumps(out, cls=SafeFallbackEncoder)

@@ -483,6 +483,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
     #  - a function that returns a rllib.offline.OutputWriter
     "output": None,
+    # Arguments accessible from the IOContext for configuring custom output
+    "output_config": {},
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
@@ -639,7 +641,7 @@ class Trainer(Trainable):
         "optimizer", "multiagent", "custom_resources_per_worker",
         "evaluation_config", "exploration_config",
         "extra_python_environs_for_driver", "extra_python_environs_for_worker",
-        "input_config"
+        "input_config", "output_config"
     ]
 
     # List of top level keys with value=dict, for which we always override the

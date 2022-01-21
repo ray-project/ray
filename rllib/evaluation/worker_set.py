@@ -5,12 +5,13 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
+from ray import data
 from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput, D4RLReader
+    ShuffledInput, D4RLReader, DatasetReader, DatasetWriter
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -84,6 +85,15 @@ class WorkerSet:
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
+
+            if trainer_config["input"] == "dataset":
+                # Create the set of dataset readers to be shared by all the
+                # rollout workers.
+                self._ds, self._ds_shards = self._get_dataset_and_shards(
+                    trainer_config, num_workers, local_worker)
+            else:
+                self._ds = None
+                self._ds_shards = None
 
             # Create a number of @ray.remote workers.
             self._remote_workers = []
@@ -397,6 +407,40 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
+    def _get_dataset_and_shards(self, config: TrainerConfigDict,
+                                num_workers: int, local_worker: bool)\
+            -> (ray.data.dataset.Dataset,
+                List[ray.data.dataset.Dataset]):
+        assert config["input"] == "dataset"
+        assert "input_config" in config, (
+            "Must specify input_config dict if using Dataset input.")
+
+        input_config = config["input_config"]
+        if (not input_config.get("type", None) or
+            not input_config.get("path", None)):
+            raise ValueError(
+                "Must specify type and path via input_config key"
+                " when using Ray dataset input.")
+
+        type = input_config["type"]
+        path = input_config["path"]
+        if type == "json":
+            dataset = data.read_json(path)
+        elif type == "parquet":
+            dataset = data.read_parquet(path)
+        else:
+            raise ValueError("Un-supported Ray dataset type: ", type)
+
+        if local_worker and num_workers == 0:
+            # Local worker will be responsible for sampling.
+            # Dataset is the only shard we need.
+            return dataset, [dataset]
+        else:
+            # Each remote worker gets 1 shard.
+            # The first None shard is for the local worker, which
+            # shouldn't be doing rollout work anyways.
+            return dataset, [None] + dataset.split(num_workers, equal=True)
+
     def _make_worker(
             self,
             *,
@@ -433,6 +477,11 @@ class WorkerSet:
             input_creator = config["input"]
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
+        elif config["input"] == "dataset":
+            # Input dataset shards should have already been prepared.
+            # We just need to take the proper shard here.
+            input_creator = (lambda ioctx: DatasetReader(
+                ioctx, self._ds_shards[worker_index]))
         elif isinstance(config["input"], dict):
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
@@ -455,6 +504,10 @@ class WorkerSet:
             output_creator = config["output"]
         elif config["output"] is None:
             output_creator = (lambda ioctx: NoopOutput())
+        elif config["output"] == "dataset":
+            output_creator = (lambda ioctx: DatasetWriter(
+                ioctx,
+                compress_columns=config["output_compress_columns"]))
         elif config["output"] == "logdir":
             output_creator = (lambda ioctx: JsonWriter(
                 ioctx.log_dir,
