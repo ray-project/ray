@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Benchmark test for single deployment at 1k no-op replica scale.
+Benchmark test for single deployment at 1k no-op replica scale with
+autoscaling.
 
 1) Start with a single head node.
-2) Scale to 1k no-op replicas over N nodes.
+2) Autoscale up to 1k no-op replicas over N nodes.
 3) Launch wrk in each running node to simulate load balanced request
 5) Run a 10-minute wrk trial on each node, aggregate results.
 
@@ -46,19 +47,31 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
-DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 4
+DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
 
 # Deployment configs
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
-DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
+DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "15s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+def deploy_replicas(min_replicas, max_replicas, max_batch_size):
+    @serve.deployment(
+        name="echo",
+        _autoscaling_config={
+            "metrics_interval_s": 0.1,
+            "min_replicas": min_replicas,
+            "max_replicas": max_replicas,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 0.2,
+            "upscale_delay_s": 0.2
+        },
+        version="v1")
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
         async def handle_batch(self, requests):
@@ -78,32 +91,37 @@ def save_results(final_result, default_name):
 
 
 @click.command()
-@click.option("--num-replicas", type=int)
-@click.option("--trial-length", type=str)
+@click.option("--min-replicas", "-min", type=int)
+@click.option("--max-replicas", "-max", type=int)
+@click.option("--trial-length", "-tl", type=str)
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
-def main(num_replicas: Optional[int], trial_length: Optional[str],
-         max_batch_size: Optional[int]):
+def main(min_replicas: Optional[int], max_replicas: Optional[int],
+         trial_length: Optional[str], max_batch_size: Optional[int]):
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
     smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
     if smoke_test == "1":
-        num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
+        min_replicas = min_replicas or DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA
+        max_replicas = max_replicas or DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
         logger.info(
-            f"Running local / smoke test with {num_replicas} replicas ..\n")
+            f"Running local / smoke test with min {min_replicas} and max "
+            f"{max_replicas} replicas ..\n")
 
         # Choose cluster setup based on user config. Local test uses Cluster()
         # to mock actors that requires # of nodes to be specified, but ray
         # client doesn't need to
-        num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
+        num_nodes = int(math.ceil(max_replicas / NUM_CPU_PER_NODE))
         logger.info(
             f"Setting up local ray cluster with {num_nodes} nodes ..\n")
         serve_client = setup_local_single_node_cluster(num_nodes)[0]
     else:
-        num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
+        min_replicas = min_replicas or DEFAULT_FULL_TEST_MIN_NUM_REPLICA
+        max_replicas = max_replicas or DEFAULT_FULL_TEST_MAX_NUM_REPLICA
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
-        logger.info(f"Running full test with {num_replicas} replicas ..\n")
+        logger.info(f"Running full test with min {min_replicas} and max "
+                    f"{max_replicas} replicas ..\n")
         logger.info("Setting up anyscale ray cluster .. \n")
         serve_client = setup_anyscale_cluster()
 
@@ -111,8 +129,9 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     http_port = str(serve_client._http_config.port)
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
-    logger.info(f"Deploying with {num_replicas} target replicas ....\n")
-    deploy_replicas(num_replicas, max_batch_size)
+    logger.info(f"Deploying with min {min_replicas} and max {max_replicas} "
+                f"target replicas ....\n")
+    deploy_replicas(min_replicas, max_replicas, max_batch_size)
 
     logger.info("Warming up cluster ....\n")
     warm_up_one_cluster.remote(10, http_host, http_port, "echo")
@@ -137,7 +156,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
         logger.info(f"{key}: {val}")
     save_test_results(
         aggregated_metrics,
-        default_output_file="/tmp/single_deployment_1k_noop_replica.json")
+        default_output_file="/tmp/autoscaling_single_deployment.json")
 
 
 if __name__ == "__main__":

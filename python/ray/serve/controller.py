@@ -112,6 +112,10 @@ class ServeController:
         return self.deployment_state_manager._deployment_states[
             deployment_name]._replicas
 
+    def _stop_one_running_replica_for_testing(self, deployment_name):
+        self.deployment_state_manager._deployment_states[
+            deployment_name]._stop_one_running_replica_for_testing()
+
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         return await self.goal_manager.wait_for_goal(goal_id)
 

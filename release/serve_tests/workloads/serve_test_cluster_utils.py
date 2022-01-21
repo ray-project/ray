@@ -63,14 +63,23 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
 
 
 @ray.remote
-def warm_up_one_cluster(
-        num_warmup_iterations: int,
-        http_host: str,
-        http_port: str,
-        endpoint: str,
-) -> None:
+def warm_up_one_cluster(num_warmup_iterations: int,
+                        http_host: str,
+                        http_port: str,
+                        endpoint: str,
+                        nonblocking: bool = False) -> None:
+    # Specifying a low timeout effectively makes requests.get() nonblocking
+    timeout = 0.0001 if nonblocking else None
     logger.info(f"Warming up {endpoint} ..")
     for _ in range(num_warmup_iterations):
-        resp = requests.get(f"http://{http_host}:{http_port}/{endpoint}").text
-        logger.info(resp)
+        try:
+            resp = requests.get(
+                f"http://{http_host}:{http_port}/{endpoint}",
+                timeout=timeout).text
+            logger.info(resp)
+        except requests.exceptions.ReadTimeout:
+            # This exception only gets raised if a timeout is specified in the
+            # requests.get() call.
+            logger.info("Issued nonblocking HTTP request.")
+
     return endpoint
