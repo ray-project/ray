@@ -1,16 +1,12 @@
-from datetime import datetime
-import logging
-import platform
-import random
 import sys
-from threading import Event, Thread
 import time
+import platform
 
 import pytest
 import ray
+
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
-from ray.cluster_utils import Cluster
 from ray._private.test_utils import (wait_for_condition,
                                      run_string_as_driver_nonblocking)
 
@@ -144,56 +140,6 @@ time.sleep(100)
     cluster.remove_node(head)
 
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Cluster unsupported on Windows.")
-def test_concurrent_shutdown(monkeypatch):
-    """Safe to shut down Ray with concurrent access to core workers."""
-    monkeypatch.setenv("RAY_ENABLE_AUTO_CONNECT", "0")
-    terminate = Event()
-
-    @ray.remote(num_cpus=1)
-    def work():
-        time.sleep(random.uniform(0, 0.1))
-
-    @ray.remote(num_cpus=1)
-    class TestActor:
-        def run(self):
-            time.sleep(random.uniform(0, 0.1))
-
-    def worker():
-        while not terminate.is_set():
-            try:
-                if random.uniform(0, 1) < 0.5:
-                    ray.wait([work.remote()], timeout=1)
-                else:
-                    actor = TestActor.remote()
-                    ray.wait([actor.run.remote()], timeout=1)
-            except Exception:
-                if ray.is_initialized():
-                    logging.exception(
-                        "Ray task failed, likely during Ray shutdown")
-
-    workers = [Thread(target=worker, name=f"worker_{i}") for i in range(4)]
-    for w in workers:
-        w.start()
-
-    start = time.time()
-    while time.time() - start < 60:
-        address = ray.init(num_cpus=4)["address"]
-        print(f"{datetime.now()} Started cluster at {address}")
-
-        time.sleep(random.uniform(1, 5))
-
-        print(f"{datetime.now()} Shutting down cluster at {address}")
-        ray.shutdown()
-
-        time.sleep(random.uniform(0, 1))
-
-    terminate.set()
-    for w in workers:
-        w.join(timeout=10)
 
 
 if __name__ == "__main__":
