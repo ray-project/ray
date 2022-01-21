@@ -749,10 +749,11 @@ class StandardAutoscaler:
         unfulfilled, used_resource_requests = \
             get_bin_pack_residual(max_node_resources,
                                   self.load_metrics.get_resource_requests())
-        
+
         # If we've met the requested resources and the request is set to expire:
         # remove the request
-        if self.load_metrics.expire_resource_requests_when_satisfied and len(unfulfilled) == 0:
+        if self.load_metrics.expire_resource_requests_when_satisfied and len(
+                unfulfilled) == 0:
             commands.request_resources(0)
 
         # Remove the first entry (the head node).

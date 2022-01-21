@@ -342,7 +342,6 @@ class LoadMetrics:
 
         self.expire_resource_requests_when_satisfied = expire_when_satisfied
 
-
     def info_string(self):
         return " - " + "\n - ".join(
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])

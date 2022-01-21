@@ -1627,13 +1627,19 @@ class AutoscalingTest(unittest.TestCase):
         # 1 head node.
         self.waitForNodes(1)
         autoscaler.load_metrics.set_resource_requests({
-            "resources": [{"CPU": 1}]
+            "resources": [{
+                "CPU": 1
+            }]
         })
         autoscaler.update()
         # still 1 head node because request_resources fits in the headnode.
         self.waitForNodes(1)
         autoscaler.load_metrics.set_resource_requests({
-            "resources": [{"CPU": 1}] + [{"CPU": 2}] * 9
+            "resources": [{
+                "CPU": 1
+            }] + [{
+                "CPU": 2
+            }] * 9
         })
         autoscaler.update()
         self.waitForNodes(2)  # Adds a single worker to get its resources.
