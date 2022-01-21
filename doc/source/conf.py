@@ -183,7 +183,9 @@ build_one_lib = os.getenv("DOC_LIB")
 all_toc_libs = [
     f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
 ]
-all_toc_libs += ["cluster", "tune", "data", "raysgd", "train", "rllib", "serve", "workflows"]
+all_toc_libs += [
+    "cluster", "tune", "data", "raysgd", "train", "rllib", "serve", "workflows"
+]
 if build_one_lib and build_one_lib in all_toc_libs:
     all_toc_libs.remove(build_one_lib)
     exclude_patterns += all_toc_libs
@@ -198,7 +200,6 @@ if build_one_lib and build_one_lib in all_toc_libs:
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "lovelace"
-
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []

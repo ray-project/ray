@@ -27,7 +27,9 @@ To build just this one sub-project, and ignore the rest (leading to build warnin
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
 ```
-where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/` directory starting with `ray-`, e.g. `ray-tune`.
+where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/`
+directory either called `tune`, `rllib`, `train`, `cluster`, `serve`, `raysgd`, `data` or the ones starting
+with `ray-`, e.g. `ray-observability`.
 
 ## Announcements and includes
 
