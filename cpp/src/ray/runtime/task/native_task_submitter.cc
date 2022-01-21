@@ -25,9 +25,19 @@ using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
-  auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.remote_function_holder.function_name);
-  return RayFunction(ray::Language::CPP, function_descriptor);
+  if (invocation.remote_function_holder.lang_type == LangType::CPP) {
+    auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
+        invocation.remote_function_holder.function_name);
+    return RayFunction(ray::Language::CPP, function_descriptor);
+  } else if (invocation.remote_function_holder.lang_type == LangType::PYTHON) {
+    auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
+        invocation.remote_function_holder.module_name,
+        invocation.remote_function_holder.class_name,
+        invocation.remote_function_holder.function_name, "");
+    return RayFunction(ray::Language::PYTHON, function_descriptor);
+  } else {
+    throw RayException("not supported yet");
+  }
 }
 
 template <typename T>
