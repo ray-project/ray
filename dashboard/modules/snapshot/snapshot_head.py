@@ -56,10 +56,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
-        job_data = await self.get_job_info()
-        actor_data = await self.get_actor_info()
-        serve_data = await self.get_serve_info()
-        session_name = await self.get_session_name()
+        job_data, actor_data, serve_data, session_name = await asyncio.gather(
+            self.get_job_info(), self.get_actor_info(), self.get_serve_info(),
+            self.get_session_name())
         snapshot = {
             "jobs": job_data,
             "actors": actor_data,
@@ -164,6 +163,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
+        # TODO: Convert to async GRPC, if CPU usage is not a concern.
         def get_deployments():
             serve_keys = _internal_kv_list(
                 SERVE_CONTROLLER_NAME,
@@ -191,14 +191,18 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 for name, info in deployments.items()
             }
 
-        return await asyncio.get_running_loop().run_in_executor(
+        return await asyncio.get_event_loop().run_in_executor(
             executor=self._thread_pool, func=get_deployments)
 
     async def get_session_name(self):
-        # TODO(yic): Use async version if performance is an issue
-        encoded_name = ray.experimental.internal_kv._internal_kv_get(
-            "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION)
-        return encoded_name.decode()
+        # TODO(yic): Convert to async GRPC.
+        def get_session():
+            return ray.experimental.internal_kv._internal_kv_get(
+                "session_name",
+                namespace=ray_constants.KV_NAMESPACE_SESSION).decode()
+
+        return await asyncio.get_event_loop().run_in_executor(
+            executor=self._thread_pool, func=get_session)
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
