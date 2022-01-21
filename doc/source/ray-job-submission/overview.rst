@@ -1,21 +1,19 @@
-
+.. _jobs-overview:
 
 ===========================================================
 Ray Job Submission: Going from your laptop to production
 ===========================================================
 
-.. warning::
-
-    Ray Job Submission is at an Alpha phase with APIs mostly stable but subject to change in the future.
-
 .. note::
 
-  The goal of Ray Job submission is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running remote Ray cluster, thus enabling the user to package, deploy, and manage their Ray application as Jobs. These Jobs can be submitted by a Job manager of their choice.
+    This component is in **beta**.
+
+Ray Job submission is a mechanism to submit locally developed and tested applications to a running remote Ray cluster. It simplifies the user experience of packaging, deploying, and manage their Ray application as a "job". Jobs can be submitted by a "job manager", like Airflow or Kubernetes Jobs.
 
 Concepts
 --------
 
-- **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained). Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
+- **Package**: A collection of files and configurations that defines a Ray application, thus allowing it to be executed in a different environment remotely (ideally self-contained). Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
 - **Job**: A Ray application submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are bound to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs on that cluster will be terminated.
 

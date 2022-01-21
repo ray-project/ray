@@ -469,9 +469,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             "GCS server port on head node.", cf.bold("--gcs-server-port"),
             cf.bold("--port"))
 
-    # Convert hostnames to numerical IP address.
+    # Whether the original arguments include node_ip_address.
+    include_node_ip_address = False
     if node_ip_address is not None:
-        node_ip_address = services.address_to_ip(node_ip_address)
+        include_node_ip_address = True
+        node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     try:
         resources = json.loads(resources)
@@ -554,16 +556,17 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             # not provided.
             num_redis_shards = len(redis_shard_ports)
 
-        address_env = os.environ.get("RAY_REDIS_ADDRESS")
-        underlying_address = \
-            address_env if address_env is not None else address
-        if underlying_address is not None:
+        # This logic is deprecated and will be removed later.
+        if address is not None:
+            cli_logger.warning(
+                "Specifying {} for external Redis address is deprecated. "
+                "Please specify environment variable {}={} instead.",
+                cf.bold("--address"), cf.bold("RAY_REDIS_ADDRESS"), address)
             cli_logger.print(
                 "Will use `{}` as external Redis server address(es). "
                 "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.", cf.bold(underlying_address),
-                cf.bold("--port"))
-            external_addresses = underlying_address.split(",")
+                "with `{}` in local.", cf.bold(address), cf.bold("--port"))
+            external_addresses = address.split(",")
 
             # We reuse primary redis as sharding when there's only one
             # instance provided.
@@ -653,12 +656,18 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
+                # Note: In the case of joining an existing cluster using
+                # `address="auto"`, the _node_ip_address parameter is
+                # unnecessary.
                 cli_logger.print(
-                    "ray{}init(address{}{}{})", cf.magenta("."),
+                    "ray{}init(address{}{}{}{})", cf.magenta("."),
                     cf.magenta("="), cf.yellow("'auto'"),
                     ", _redis_password{}{}".format(
                         cf.magenta("="), cf.yellow("'" + redis_password + "'"))
-                    if redis_password else "")
+                    if redis_password else "", ", _node_ip_address{}{}".format(
+                        cf.magenta("="),
+                        cf.yellow("'" + node_ip_address + "'"))
+                    if include_node_ip_address else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")

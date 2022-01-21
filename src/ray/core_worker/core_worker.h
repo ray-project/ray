@@ -71,6 +71,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   CoreWorker(CoreWorker const &) = delete;
 
+  /// Core worker's deallocation lifecycle
+  ///
+  /// Shutdown API must be called before deallocating a core worker.
+  /// Otherwise, it can have various destruction order related memory corruption.
+  ///
+  /// If the core worker is initiated at a driver, the driver is responsible for calling
+  /// the shutdown API before terminating. If the core worker is initated at a worker,
+  /// shutdown must be called before terminating the task execution loop.
+  ~CoreWorker();
+
   void operator=(CoreWorker const &other) = delete;
 
   ///
@@ -93,11 +103,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shut down the worker completely.
   ///
+  /// This must be called before deallocating a worker / driver's core worker for memory
+  /// safety.
+  ///
   /// \return void.
   void Shutdown();
-
-  /// Block the current thread until the worker is shut down.
-  void WaitForShutdown();
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -794,7 +804,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
       const std::string &concurrency_group_name = "");
-  void SetCurrentTaskId(const TaskID &task_id);
+  void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   void SetActorId(const ActorID &actor_id);
 
@@ -1027,14 +1037,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
+  // Client to the GCS shared by core worker interfaces.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
       std::make_pair<std::string, int>("", 0);
   /// To protect accessing the `gcs_server_address_`.
   absl::Mutex gcs_server_address_mutex_;
   std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
-  // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -1166,6 +1176,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.
   std::atomic<bool> exiting_ = false;
+
+  std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 

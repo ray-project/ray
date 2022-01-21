@@ -1,17 +1,16 @@
 import collections
 
-from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar
+from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar, \
+    TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
 
-T = TypeVar("T")
+if TYPE_CHECKING:
+    from ray.data.impl.sort import SortKeyT
 
-# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
-# e.g. [("column1", "ascending"), ("column2", "descending")]
-SortKeyT = List[Tuple[str, str]]
-GroupKeyT = Union[None, str]
+T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
@@ -170,10 +169,10 @@ class TableBlockAccessor(BlockAccessor):
     def _empty_table() -> Any:
         raise NotImplementedError
 
-    def _sample(self, n_samples: int, key: SortKeyT) -> Any:
+    def _sample(self, n_samples: int, key: "SortKeyT") -> Any:
         raise NotImplementedError
 
-    def sample(self, n_samples: int, key: SortKeyT) -> Any:
+    def sample(self, n_samples: int, key: "SortKeyT") -> Any:
         if key is None or callable(key):
             raise NotImplementedError(
                 f"Table sort key must be a column name, was: {key}")

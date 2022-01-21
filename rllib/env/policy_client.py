@@ -15,7 +15,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.multi_agent import check_multi_agent
+from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 

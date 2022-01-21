@@ -231,7 +231,7 @@ class ClientCallManager {
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
       std::string call_name, int64_t method_timeout_ms = -1) {
-    auto stats_handle = main_service_.RecordStart(call_name);
+    auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
