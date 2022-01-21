@@ -283,14 +283,24 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
 
 
 @workflow.step
-def exponential(k, n):
+def exponential_fail(k, n):
     if n > 0:
-        return exponential.step(k * 2, n - 1)
+        if n < 3:
+            raise Exception("Failed intentionally")
+        return exponential_fail.options(name=f"step_{n}").step(k * 2, n - 1)
     return k
 
 
 def test_dynamic_output(workflow_start_regular_shared):
-    assert exponential.step(3, 10).run(workflow_id="dynamic_output") == 3072
+    try:
+        exponential_fail.options(name="step_0").step(
+            3, 10).run(workflow_id="dynamic_output")
+    except Exception:
+        pass
+    from ray.workflow.workflow_storage import get_workflow_storage
+    wf_storage = get_workflow_storage(workflow_id="dynamic_output")
+    result = wf_storage.inspect_step("step_0")
+    assert result.output_step_id == "step_3"
 
 
 if __name__ == "__main__":
