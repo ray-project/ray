@@ -37,5 +37,5 @@ smart_open==5.1.0
 timm==0.4.5
 transformers==4.10.0
 wandb==0.12.5
-xgboost==1.3.3
+xgboost==1.5.2
 zoopt==0.4.1
