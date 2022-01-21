@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Tests from the doc/source/ray-core/_examples directory.
+# Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
