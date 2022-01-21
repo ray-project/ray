@@ -205,12 +205,13 @@ def request_resources(num_cpus: Optional[int] = None,
 
     Args:
         num_cpus (int): Scale the cluster to ensure this number of CPUs are
-            available. This request is persistent until another call to
-            request_resources() is made to override.
+            available.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
-            resource shapes can fit. This request is persistent until another
-            call to request_resources() is made to override.
-        # TODO expire_when_satisfied docs
+            resource shapes can fit.
+        expire_when_satisfied (bool): Whether to scale the cluster
+            back down once the requested resources are met.
+            If False the request is persistent until another call to
+            request_resources() is made.
 
     Examples:
         >>> # Request 1000 CPUs.
