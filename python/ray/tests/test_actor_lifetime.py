@@ -16,6 +16,7 @@ from ray.exceptions import RayActorError
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
+
 @pytest.mark.parametrize("default_actor_lifetime",
                          ["detached", "non_detached"])
 @pytest.mark.parametrize("child_actor_lifetime",
