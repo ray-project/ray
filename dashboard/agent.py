@@ -126,6 +126,11 @@ class DashboardAgent(object):
         logger.info("Loaded %d modules.", len(modules))
         return modules
 
+    @property
+    def http_session(self):
+        assert self.http_server, "Accessing unsupported API in a minimal ray."
+        return self.http_server.http_session
+
     async def run(self):
         async def _check_parent():
             """Check if raylet is dead and fate-share if it is."""
