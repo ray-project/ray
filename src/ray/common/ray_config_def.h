@@ -315,7 +315,7 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
-RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
+RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 5)
 
 /// The batch size for metrics export.
 RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
