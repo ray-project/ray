@@ -28,10 +28,6 @@ except AttributeError:
 logger = logging.getLogger(__name__)
 
 
-class FrontendNotFoundError(OSError):
-    pass
-
-
 class DashboardAgentModule(abc.ABC):
     def __init__(self, dashboard_agent):
         """
