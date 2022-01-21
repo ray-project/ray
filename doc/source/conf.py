@@ -86,7 +86,7 @@ external_toc_path = '_toc.yml'
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
 # This is used to suppress warnings about explicit "toctree" directives.
-# suppress_warnings = ["etoc.toctree"]
+suppress_warnings = ["etoc.toctree"]
 
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "Join the Ray Discuss Forums!"
