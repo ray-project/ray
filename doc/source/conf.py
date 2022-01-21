@@ -115,9 +115,7 @@ sphinx_gallery_conf = {
         "data/_examples",
     ],
     # and then generated into these respective target folders:
-    "gallery_dirs": [
-        "ray-core/examples", "tune/tutorials", "data/examples"
-    ],
+    "gallery_dirs": ["ray-core/examples", "tune/tutorials", "data/examples"],
     "ignore_pattern": "ray-core/examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
@@ -181,14 +179,13 @@ exclude_patterns += sphinx_gallery_conf["examples_dirs"]
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
 
-# TODO fix this later
-# All doc libs start with a "ray-" prefix.
-# all_toc_libs = [
-#     f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
-# ]
-# if build_one_lib and build_one_lib in all_toc_libs:
-#     all_toc_libs.remove(build_one_lib)
-#     exclude_patterns += all_toc_libs
+all_toc_libs = [
+    f.path for f in os.scandir(".") if f.is_dir() and "ray-" in f.path
+]
+all_toc_libs += ["cluster", "tune", "data", "raysgd", "train", "rllib", "serve", "workflows"]
+if build_one_lib and build_one_lib in all_toc_libs:
+    all_toc_libs.remove(build_one_lib)
+    exclude_patterns += all_toc_libs
 
 # If true, the current module name will be prepended to all description
 # unit titles (such as .. function::).
@@ -200,6 +197,7 @@ build_one_lib = os.getenv("DOC_LIB")
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "lovelace"
+
 
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
