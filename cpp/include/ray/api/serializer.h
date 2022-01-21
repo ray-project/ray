@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/ray_exception.h>
+#include <ray/api/xlang_function.h>
 
 #include <msgpack.hpp>
 
@@ -63,6 +64,12 @@ class Serializer {
   static bool HasError(char *data, size_t size) {
     msgpack::unpacked unpacked = msgpack::unpack(data, size);
     return unpacked.get().is_nil() && size > 1;
+  }
+
+  static bool IsXLang(char *data, size_t size) {
+    msgpack::unpacked unpacked = msgpack::unpack(data, size);
+    return unpacked.get().type == msgpack::type::POSITIVE_INTEGER &&
+           size >= XLANG_HEADER_LEN;
   }
 };
 

@@ -558,5 +558,23 @@ class TestTailLogs:
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
 
 
+def test_logs_streaming(job_manager):
+    """Test that logs are streamed during the job, not just at the end."""
+
+    stream_logs_script = """
+import time
+print('STREAMED')
+while True:
+    time.sleep(1)
+"""
+
+    stream_logs_cmd = f"python -c \"{stream_logs_script}\""
+
+    job_id = job_manager.submit_job(entrypoint=stream_logs_cmd)
+    wait_for_condition(lambda: "STREAMED" in job_manager.get_job_logs(job_id))
+
+    job_manager.stop_job(job_id)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
