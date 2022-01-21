@@ -38,7 +38,7 @@ Concepts
 
 - **Packages**: External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  The recommended way to connect to a remote Ray cluster is to use :ref:`Ray Client<ray-client>`, and we will call the machine running Ray Client your *local machine*.  
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client<ray-client>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
@@ -97,7 +97,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster or using :ref:`Ray Client<ray-client>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client<ray-client>`:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -112,13 +112,13 @@ You can specify a runtime environment for your whole job, whether running a scri
     # Connecting to remote cluster using Ray Client
     ray.init("ray://123.456.7.89:10001", runtime_env=runtime_env)
 
-This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.  
+This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.
 
 .. note::
 
   There are two options for when to install the runtime environment:
 
-    1. As soon as the job starts (i.e., as soon as ``ray.init()`` is called), the dependencies are eagerly downloaded and installed.  
+    1. As soon as the job starts (i.e., as soon as ``ray.init()`` is called), the dependencies are eagerly downloaded and installed.
     2. The dependencies are installed only when a task is invoked or an actor is created.
 
   The default is option 1. To change the behavior to option 2, add ``"eager_install": False`` to the ``runtime_env``.
@@ -152,7 +152,7 @@ This section describes some common use cases for runtime environments. These use
 Using Local Files
 """""""""""""""""
 
-Your Ray application might depend on source files or data files.  
+Your Ray application might depend on source files or data files.
 For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.
 
 The following simple example explains how to get your local files on the cluster.
@@ -205,7 +205,7 @@ However, using runtime environments you can dynamically specify packages to be a
   @ray.remote
   def reqs():
       return requests.get("https://www.ray.io/")
-    
+
   print(ray.get(reqs.remote())) # <Response [200]>
 
 
@@ -254,7 +254,7 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be an existing directory on the local machine with total size at most 100 MiB, or a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 100 MiB, (2) a local existing zipped file with total unzipped size at most 100 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
 
   - Examples
@@ -262,6 +262,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
     - ``"."  # cwd``
 
     - ``"/src/my_project"``
+
+    - ``"/src/my_project.zip"``
 
     - ``"s3://path/to/my_dir.zip"``
 
@@ -308,7 +310,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
-  - Example: ``{"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}``
+  - Example: ``{"dependencies": ["pytorch", "torchvision", "pip", {"pip": ["pendulum"]}]}``
 
   - Example: ``"./environment.yml"``
 
@@ -319,12 +321,22 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
+- ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
+  The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
+  The `run_options` list spec is here: https://docs.docker.com/engine/reference/run/.
+
+  - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
+
+  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`.
+
 - ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
   If set to ``False``, the runtime environment will be only installed when the first task is invoked or when the first actor is created.
   Currently, specifying this option per-actor or per-task is not supported.
 
   - Example: ``{"eager_install": False}``
 
+**Garbage Collection**.  Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` folders) will be removed when they are no longer
+referenced by any actor, task or job.  To disable this (for example, for debugging purposes) set the environment variable ``RAY_runtime_env_skip_local_gc`` to ``1`` on each node in your cluster before starting Ray (e.g. with ``ray start``).
 
 Inheritance
 """""""""""
@@ -413,7 +425,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   To use packages via ``HTTPS`` URIs, you must have the ``smart_open`` library (you can install it using ``pip install smart_open``).
 
   - Example:
-    
+
     - ``runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}``
 
 - ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
@@ -433,7 +445,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   Follow the steps on Google Cloud Storage's `Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>`_ guide to set up your credentials, which allow Ray to access your remote package.
 
   - Example:
-    
+
     - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
@@ -464,7 +476,7 @@ To find a GitHub URL, navigate to your repository on `GitHub <https://github.com
 .. figure:: ray_repo.png
    :width: 500px
 
-This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository, 
+This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository,
 "Open with GitHub Desktop", and "Download ZIP."
 Right-click on "Download Zip."
 This will open a pop-up near your cursor. Select "Copy Link Address":
@@ -480,7 +492,7 @@ Now your HTTPS link is copied to your clipboard. You can paste it into your ``ru
   For instance, using this method on GitHub generates a link that always points to the latest commit on the chosen branch.
 
   By specifying this link in the ``runtime_env`` dictionary, your Ray Cluster always uses the chosen branch's latest commit.
-  This creates a consistency risk: if you push an update to your remote Git repository while your cluster's nodes are pulling the repository's contents, 
+  This creates a consistency risk: if you push an update to your remote Git repository while your cluster's nodes are pulling the repository's contents,
   some nodes may pull the version of your package just before you pushed, and some nodes may pull the version just after.
   For consistency, it is better to specify a particular commit, so all the nodes use the same package.
   See "Option 2: Manually Create URL" to create a URL pointing to a specific commit.
@@ -536,6 +548,6 @@ Here is a list of different use cases and corresponding URLs:
   This prevents consistency issues on a multi-node Ray Cluster.
   See the warning below "Option 1: Download Zip" for more info.
 
-Once you have specified the URL in your ``runtime_env`` dictionary, you can pass the dictionary 
-into a ``ray.init()`` or ``.options()`` call. Congratulations! You have now hosted a ``runtime_env`` dependency 
+Once you have specified the URL in your ``runtime_env`` dictionary, you can pass the dictionary
+into a ``ray.init()`` or ``.options()`` call. Congratulations! You have now hosted a ``runtime_env`` dependency
 remotely on GitHub!

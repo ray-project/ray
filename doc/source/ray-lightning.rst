@@ -75,9 +75,9 @@ You no longer have to set environment variables or configurations and run your t
 Multi-node Training from your Laptop
 ------------------------------------
 
-Ray provides capabilities to run multi-node and GPU training all from your laptop through `Ray Client <https://docs.ray.io/en/master/cluster/ray-client.html>`__
+Ray provides capabilities to run multi-node and GPU training all from your laptop through `Ray Client <ray-client>`__
 
-You can follow the instructions `here <https://docs.ray.io/en/master/cluster/ray-client.html>`__ to setup the cluster.
+You can follow the instructions `here <ray-client>`__ to setup the cluster.
 Then, add this line to the beginning of your script to connect to the cluster:
 
 .. code-block:: python
@@ -225,5 +225,5 @@ Tune Integration
 
 .. autoclass:: ray_lightning.tune.TuneReportCheckpointCallback
 
-.. autofunction:: ray_lightning.tune.get_tune_ddp_resources
+.. autofunction:: ray_lightning.tune.get_tune_resources
 

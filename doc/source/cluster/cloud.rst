@@ -83,7 +83,7 @@ Ray with cloud providers
            :alt: Deploy to Azure
 
         Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
-        Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py37_tensorflow by default) to connect to the Ray cluster.
+        Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
 
         .. code-block:: python
 

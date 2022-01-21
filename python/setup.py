@@ -140,7 +140,6 @@ ray_files = [
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
-    "ray/streaming/_streaming.so",
 ]
 
 if BUILD_JAVA or os.path.exists(
@@ -160,7 +159,6 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
-    "ray/streaming/generated",
     "ray/serve/generated",
 ]
 
@@ -213,7 +211,9 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open"
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": [
+            "uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"
+        ],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -378,9 +378,8 @@ def replace_symlinks_with_junctions():
 
     # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
-        r"ray\new_dashboard": "../../dashboard",
+        r"ray\dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
-        r"ray\streaming": "../../streaming/python/",
     }
     root_dir = os.path.dirname(__file__)
     for link, default in _LINKS.items():
@@ -417,7 +416,7 @@ def replace_symlinks_with_junctions():
                 os.path.join(os.path.dirname(path), target))
             logger.info("Setting {} -> {}".format(link, target))
             subprocess.check_call(
-                f"MKLINK /J '{os.path.basename(link)}' '{target}'",
+                f'MKLINK /J "{os.path.basename(link)}" "{target}"',
                 shell=True,
                 cwd=os.path.dirname(path))
 
@@ -706,7 +705,7 @@ setuptools.setup(
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
     install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.15", "wheel"],
+    setup_requires=["cython >= 0.29.26", "wheel"],
     extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [

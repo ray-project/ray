@@ -161,6 +161,39 @@ class TestTrainer(unittest.TestCase):
             self.assertTrue("episode_reward_mean" in r1["evaluation"])
             self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
+    def test_evaluation_option_always_attach_eval_metrics(self):
+        config = dqn.DEFAULT_CONFIG.copy()
+        config.update({
+            "env": "CartPole-v0",
+            "evaluation_interval": 2,
+            "evaluation_duration": 2,
+            "evaluation_duration_unit": "episodes",
+            "evaluation_config": {
+                "gamma": 0.98,
+            },
+            "always_attach_evaluation_results": True,
+            # Use a custom callback that asserts that we are running the
+            # configured exact number of episodes per evaluation.
+            "callbacks": AssertEvalCallback,
+        })
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = dqn.DQNTrainer(config=config)
+            # Should always see latest available eval results.
+            r0 = trainer.train()
+            r1 = trainer.train()
+            r2 = trainer.train()
+            r3 = trainer.train()
+            trainer.stop()
+
+            # Eval results are not available at step 0.
+            # But step 3 should still have it, even though no eval was
+            # run during that step.
+            self.assertTrue("evaluation" in r0)
+            self.assertTrue("evaluation" in r1)
+            self.assertTrue("evaluation" in r2)
+            self.assertTrue("evaluation" in r3)
+
     def test_evaluation_wo_evaluation_worker_set(self):
         config = a3c.DEFAULT_CONFIG.copy()
         config.update({
@@ -175,7 +208,7 @@ class TestTrainer(unittest.TestCase):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
-            self.assertRaisesRegexp(
+            self.assertRaisesRegex(
                 ValueError, "Cannot evaluate w/o an evaluation worker set",
                 trainer_wo_env_on_driver.evaluate)
             trainer_wo_env_on_driver.stop()

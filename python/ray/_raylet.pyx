@@ -98,9 +98,12 @@ from ray.includes.libcoreworker cimport (
     CActorHandle,
 )
 
-from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
+
+from ray.includes.optional cimport (
+    optional
+)
 
 import ray
 from ray.exceptions import (
@@ -112,6 +115,7 @@ from ray.exceptions import (
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
+    PendingCallsLimitExceeded,
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
@@ -139,7 +143,6 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
-include "includes/gcs_client.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -506,11 +509,11 @@ cdef execute_task(
             # We need to handle this separately because `__repr__` may not be
             # runnable until after `__init__` (e.g., if it accesses fields
             # defined in the constructor).
-            actor_magic_token = "{}{}".format(
+            actor_magic_token = "{}{}\n".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
             # Flush to both .out and .err
-            print(actor_magic_token)
-            print(actor_magic_token, file=sys.stderr)
+            print(actor_magic_token, end="")
+            print(actor_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
@@ -537,11 +540,11 @@ cdef execute_task(
         function_executor = execution_info.function
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        task_name_magic_token = "{}{}".format(
+        task_name_magic_token = "{}{}\n".format(
             ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
         # Print on both .out and .err
-        print(task_name_magic_token)
-        print(task_name_magic_token, file=sys.stderr)
+        print(task_name_magic_token, end="")
+        print(task_name_magic_token, file=sys.stderr, end="")
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -674,11 +677,11 @@ cdef execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         "__repr__" in
                         actor_class.__ray_actor_class__.__dict__):
-                    actor_magic_token = "{}{}".format(
+                    actor_magic_token = "{}{}\n".format(
                         ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
                     # Flush on both stdout and stderr.
-                    print(actor_magic_token)
-                    print(actor_magic_token, file=sys.stderr)
+                    print(actor_magic_token, end="")
+                    print(actor_magic_token, file=sys.stderr, end="")
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
@@ -771,7 +774,7 @@ cdef CRayStatus task_execution_handler(
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
-                   e.has_creation_task_error():
+                   e.actor_init_failed:
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
@@ -1020,14 +1023,6 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.destroy_event_loop_if_exists()
 
 
-def connect_to_gcs(ip, port, password):
-    return GcsClient.make_from_address(ip, port, password)
-
-
-def disconnect_from_gcs(gcs_client):
-    gcs_client.disconnect()
-
-
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -1110,10 +1105,6 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
-
-    def get_gcs_client(self):
-        return GcsClient.make_from_existing(
-            CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
 
     def notify_raylet(self):
         with nogil:
@@ -1273,7 +1264,6 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
         # TODO(suquark): This method does not support put objects to
@@ -1312,16 +1302,12 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
-            c_bool put_small_object_in_memory_store
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
-        put_small_object_in_memory_store = (
-            RayConfig.instance().put_small_object_in_memory_store() and
-            inline_small_object)
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -1334,8 +1320,7 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 (<SerializedObject>serialized_object).write_to(
                     Buffer.make(data))
-            if self.is_local_mode or (put_small_object_in_memory_store
-               and <int64_t>total_bytes < put_threshold):
+            if self.is_local_mode:
                 contained_object_refs = (
                         CCoreWorkerProcess.GetCoreWorker().
                         GetObjectRefs(contained_object_ids))
@@ -1522,6 +1507,7 @@ cdef class CoreWorker:
                      c_string extension_data,
                      c_string serialized_runtime_env,
                      concurrency_groups_dict,
+                     int32_t max_pending_calls,
                      scheduling_strategy,
                      ):
         cdef:
@@ -1561,7 +1547,8 @@ cdef class CoreWorker:
                         c_concurrency_groups,
                         # execute out of order for
                         # async or threaded actors.
-                        is_asyncio or max_concurrency > 1),
+                        is_asyncio or max_concurrency > 1,
+                        max_pending_calls),
                     extension_data,
                     &c_actor_id))
 
@@ -1635,14 +1622,15 @@ cdef class CoreWorker:
                           args,
                           c_string name,
                           int num_returns,
-                          double num_method_cpus):
+                          double num_method_cpus,
+                          c_string concurrency_group_name):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[CObjectReference] return_refs
+            optional[c_vector[CObjectReference]] return_refs
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -1658,9 +1646,28 @@ cdef class CoreWorker:
             return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                 c_actor_id,
                 ray_function,
-                args_vector, CTaskOptions(name, num_returns, c_resources))
-
-            return VectorToObjectRefs(return_refs)
+                args_vector,
+                CTaskOptions(
+                    name, num_returns, c_resources, concurrency_group_name))
+            if return_refs.has_value():
+                return VectorToObjectRefs(return_refs.value())
+            else:
+                actor = self.get_actor_handle(actor_id)
+                actor_handle = (CCoreWorkerProcess.GetCoreWorker()
+                                .GetActorHandle(c_actor_id))
+                raise PendingCallsLimitExceeded("The task {} could not be "
+                                                "submitted to {} because more "
+                                                "than {} tasks are queued on "
+                                                "the actor. This limit "
+                                                "can be adjusted with the "
+                                                "`max_pending_calls` actor "
+                                                "option.".format(
+                                                    function_descriptor
+                                                    .function_name,
+                                                    repr(actor),
+                                                    (dereference(actor_handle)
+                                                        .MaxPendingCalls())
+                                                ))
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

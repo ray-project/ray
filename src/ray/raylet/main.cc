@@ -30,10 +30,10 @@ DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
-DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
+DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
-DEFINE_string(redis_address, "", "The ip address of redis server.");
+DEFINE_string(redis_address, "", "The IP address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -43,7 +43,7 @@ DEFINE_string(worker_port_list, "",
               "An explicit list of ports that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
-DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
+DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
@@ -66,7 +66,7 @@ DEFINE_string(plasma_directory, "/dev/shm",
 DEFINE_string(plasma_directory, "/tmp",
               "The shared memory directory of the object store.");
 #endif
-DEFINE_bool(huge_pages, false, "Whether enable huge pages");
+DEFINE_bool(huge_pages, false, "Enable huge pages.");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
@@ -122,17 +122,21 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
-  // `enable_async_conn` as false.
-  ray::gcs::GcsClientOptions client_options(
-      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
-      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-
-  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  if (RayConfig::instance().bootstrap_with_gcs()) {
+    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  } else {
+    // Async context is not used by `redis_client_` in `gcs_client`, so we set
+    // `enable_async_conn` as false.
+    ray::gcs::GcsClientOptions client_options(
+        redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+        /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
+    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
+  }
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-  std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
+  std::unique_ptr<ray::raylet::Raylet> raylet;
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
@@ -171,7 +175,9 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_workers_soft_limit = num_cpus;
+        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
+        node_manager_config.num_workers_soft_limit =
+            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
@@ -256,10 +262,9 @@ int main(int argc, char *argv[]) {
         ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
-        raylet.reset(new ray::raylet::Raylet(
-            main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-            redis_password, node_manager_config, object_manager_config, gcs_client,
-            metrics_export_port));
+        raylet = std::make_unique<ray::raylet::Raylet>(
+            main_service, raylet_socket_name, node_ip_address, node_manager_config,
+            object_manager_config, gcs_client, metrics_export_port);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {

@@ -63,28 +63,65 @@ class ActorInfoAccessor {
   /// \param name The name of the detached actor to look up in the GCS.
   /// \param ray_namespace The namespace to filter to.
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
   /// \return Status
-  virtual Status AsyncGetByName(
-      const std::string &name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::ActorTableData> &callback);
+  virtual Status AsyncGetByName(const std::string &name, const std::string &ray_namespace,
+                                const OptionalItemCallback<rpc::ActorTableData> &callback,
+                                int64_t timeout_ms = -1);
+
+  /// Get actor specification for a named actor from the GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param name The name of the detached actor to look up in the GCS.
+  /// \param ray_namespace The namespace to filter to.
+  /// \return Status. TimedOut status if RPC is timed out.
+  /// NotFound if the name doesn't exist.
+  virtual Status SyncGetByName(const std::string &name, const std::string &ray_namespace,
+                               rpc::ActorTableData &actor_table_data);
 
   /// List all named actors from the GCS asynchronously.
   ///
   /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
   /// \param ray_namespace The namespace to filter to if all_namespaces is false.
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status
   virtual Status AsyncListNamedActors(
       bool all_namespaces, const std::string &ray_namespace,
-      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback);
+      const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+      int64_t timeout_ms = -1);
+
+  /// List all named actors from the GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all Ray namespaces.
+  /// \param ray_namespace The namespace to filter to if all_namespaces is false.
+  /// \param[out] actors The pair of list of named actors. Each pair includes the
+  /// namespace and name of the actor. \return Status. TimeOut if RPC times out.
+  virtual Status SyncListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      std::vector<std::pair<std::string, std::string>> &actors);
 
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \param timeout_ms RPC timeout ms. -1 means there's no timeout.
   /// \return Status
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const StatusCallback &callback);
+                                    const StatusCallback &callback,
+                                    int64_t timeout_ms = -1);
+
+  /// Register actor to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \return Status. Timedout if actor is not registered by the global
+  /// GCS timeout.
+  virtual Status SyncRegisterActor(const ray::TaskSpecification &task_spec);
 
   /// Kill actor via GCS asynchronously.
   ///
@@ -220,104 +257,6 @@ class JobInfoAccessor {
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_operation_;
-
-  GcsClient *client_impl_;
-};
-
-/// \class TaskInfoAccessor
-/// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
-/// This class includes all the methods that are related to accessing
-/// task information in the GCS.
-class TaskInfoAccessor {
- public:
-  TaskInfoAccessor() = default;
-  explicit TaskInfoAccessor(GcsClient *client_impl);
-  virtual ~TaskInfoAccessor() = default;
-  /// Add a task to GCS asynchronously.
-  ///
-  /// \param data_ptr The task that will be added to GCS.
-  /// \param callback Callback that will be called after task has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
-                          const StatusCallback &callback);
-
-  /// Get task information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGet(const TaskID &task_id,
-                          const OptionalItemCallback<rpc::TaskTableData> &callback);
-
-  /// Add a task lease to GCS asynchronously.
-  ///
-  /// \param data_ptr The task lease that will be added to GCS.
-  /// \param callback Callback that will be called after task lease has been added
-  /// to GCS.
-  /// \return Status
-  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
-                                   const StatusCallback &callback);
-
-  /// Get task lease information from GCS asynchronously.
-  ///
-  /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGetTaskLease(
-      const TaskID &task_id, const OptionalItemCallback<rpc::TaskLeaseData> &callback);
-
-  /// Subscribe asynchronously to the event that the given task lease is added in GCS.
-  ///
-  /// \param task_id The ID of the task to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the task lease is
-  /// updated or the task lease is empty currently.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeTaskLease(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-      const StatusCallback &done);
-
-  /// Cancel subscription to a task lease asynchronously.
-  ///
-  /// \param task_id The ID of the task to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id);
-
-  /// Attempt task reconstruction to GCS asynchronously.
-  ///
-  /// \param data_ptr The task reconstruction that will be added to GCS.
-  /// \param callback Callback that will be called after task reconstruction
-  /// has been added to GCS.
-  /// \return Status
-  virtual Status AttemptTaskReconstruction(
-      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-      const StatusCallback &callback);
-
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
-
-  /// Check if the specified task lease is unsubscribed.
-  ///
-  /// \param task_id The ID of the task.
-  /// \return Whether the specified task lease is unsubscribed.
-  virtual bool IsTaskLeaseUnsubscribed(const TaskID &task_id);
-
- private:
-  /// Save the subscribe operations, so we can call them again when PubSub
-  /// server restarts from a failure.
-  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
 
   GcsClient *client_impl_;
 };
@@ -727,15 +666,16 @@ class PlacementGroupInfoAccessor {
   PlacementGroupInfoAccessor() = default;
   explicit PlacementGroupInfoAccessor(GcsClient *client_impl);
   virtual ~PlacementGroupInfoAccessor() = default;
-  /// Create a placement group to GCS asynchronously.
+
+  /// Create a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
-  /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS.
-  /// \return Status.
-  virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec,
-      const StatusCallback &callback);
+  /// \return Status. The status of the RPC. TimedOut if the RPC times out. Invalid if the
+  /// same name placement group is registered. NotFound if the placement group is removed.
+  virtual Status SyncCreatePlacementGroup(
+      const ray::PlacementGroupSpecification &placement_group_spec);
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -748,10 +688,14 @@ class PlacementGroupInfoAccessor {
   /// Get a placement group data from GCS asynchronously by name.
   ///
   /// \param placement_group_name The name of a placement group to obtain from GCS.
+  /// \param ray_namespace The ray namespace.
+  /// \param callback The callback that's called when the RPC is replied.
+  /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
       const std::string &placement_group_name, const std::string &ray_namespace,
-      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback);
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get all placement group info from GCS asynchronously.
   ///
@@ -760,22 +704,22 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
 
-  /// Remove a placement group to GCS asynchronously.
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
   ///
   /// \param placement_group_id The id for the placement group to remove.
-  /// \param callback Callback that will be called after the placement group is
-  /// removed from GCS.
   /// \return Status
-  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
-                                           const StatusCallback &callback);
+  virtual Status SyncRemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Wait for a placement group until ready asynchronously.
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
   /// \param placement_group_id The id for the placement group to wait for until ready.
-  /// \param callback Callback that will be called after the placement group is created.
-  /// \return Status
-  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
-                                     const StatusCallback &callback);
+  /// \return Status. TimedOut if the RPC times out. NotFound if the placement has already
+  /// removed.
+  virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id);
 
  private:
   GcsClient *client_impl_;
@@ -788,57 +732,70 @@ class InternalKVAccessor {
   virtual ~InternalKVAccessor() = default;
   /// Asynchronously list keys with prefix stored in internal kv
   ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
-      const std::string &prefix,
+      const std::string &ns, const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
   ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(const std::string &key,
+  virtual Status AsyncInternalKVGet(const std::string &ns, const std::string &key,
                                     const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
+  /// \param ns The namespace to put the key.
   /// \param key The key in <key, value> pair
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
-                                    bool overwrite,
+  virtual Status AsyncInternalKVPut(const std::string &ns, const std::string &key,
+                                    const std::string &value, bool overwrite,
                                     const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
-  /// \param key The key to check
+  /// \param ns The namespace to check.
+  /// \param key The key to check.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVExists(const std::string &key,
+  virtual Status AsyncInternalKVExists(const std::string &ns, const std::string &key,
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
   ///
-  /// \param key The key to delete
+  /// \param ns The namespace to delete from.
+  /// \param key The key to delete.
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVDel(const std::string &key,
-                                    const StatusCallback &callback);
+  virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
+                                    bool del_by_prefix, const StatusCallback &callback);
 
   // These are sync functions of the async above
 
   /// List keys with prefix stored in internal kv
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
-  virtual Status Keys(const std::string &prefix, std::vector<std::string> &value);
+  virtual Status Keys(const std::string &ns, const std::string &prefix,
+                      std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param ns The namespace to put the key.
   /// \param key The key of the pair
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
@@ -846,29 +803,39 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
-  virtual Status Put(const std::string &key, const std::string &value, bool overwrite,
-                     bool &added);
+  virtual Status Put(const std::string &ns, const std::string &key,
+                     const std::string &value, bool overwrite, bool &added);
 
   /// Retrive the value associated with a key
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param ns The namespace to lookup.
   /// \param key The key to lookup
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
-  virtual Status Get(const std::string &key, std::string &value);
+  virtual Status Get(const std::string &ns, const std::string &key, std::string &value);
 
   /// Delete the key
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param ns The namespace to delete from.
   /// \param key The key to delete
+  /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \return Status
-  virtual Status Del(const std::string &key);
+  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
 
   /// Check existence of a key in the store
   ///
+  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  ///
+  /// \param ns The namespace to check.
   /// \param key The key to check
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
-  virtual Status Exists(const std::string &key, bool &exist);
+  virtual Status Exists(const std::string &ns, const std::string &key, bool &exist);
 
  private:
   GcsClient *client_impl_;

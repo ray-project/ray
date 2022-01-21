@@ -40,7 +40,7 @@ pandas>=1.2.0; python_version >= '3.7'
 scipy==1.4.1
 tabulate
 tensorboardX >= 1.9
-uvicorn
+uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette
 aiorwlock
@@ -48,11 +48,14 @@ aiorwlock
 # Requirements for running tests
 pyarrow==4.0.1
 blist; platform_system != "Windows"
-azure-common
-azure-mgmt-resource
-msrestazure
+azure-cli-core==2.29.1
+azure-identity==1.7.0
+azure-mgmt-compute==23.1.0
+azure-mgmt-network==19.0.0
+azure-mgmt-resource==20.0.0
+msrestazure==0.6.4
 boto3
-cython >= 0.29.15
+cython >= 0.29.26
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
@@ -75,7 +78,7 @@ Pillow; platform_system != "Windows"
 pygments
 pyspark==3.1.2
 pytest==5.4.3
-pytest-asyncio
+pytest-asyncio==0.16.0
 pytest-rerunfailures
 pytest-sugar
 pytest-lazy-fixture

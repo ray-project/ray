@@ -65,13 +65,18 @@ def no_resource_leaks():
 ray.init(address="auto")
 
 test_utils.wait_for_condition(no_resource_leaks)
+monitor_actor = test_utils.monitor_memory_usage()
 start_time = time.time()
 test_many_placement_groups()
 end_time = time.time()
+ray.get(monitor_actor.stop_run.remote())
+used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+print(f"Peak memory usage: {round(used_gb, 2)}GB")
+print(f"Peak memory usage per processes:\n {usage}")
+del monitor_actor
 test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
-
 print(f"Success! Started {MAX_PLACEMENT_GROUPS} pgs in "
       f"{end_time - start_time}s. ({rate} pgs/s)")
 
@@ -81,6 +86,8 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "pgs_per_second": rate,
         "num_pgs": MAX_PLACEMENT_GROUPS,
         "time": end_time - start_time,
-        "success": "1"
+        "success": "1",
+        "_peak_memory": round(used_gb, 2),
+        "_peak_process_memory": usage
     }
     json.dump(results, out_file)

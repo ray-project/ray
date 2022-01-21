@@ -72,13 +72,23 @@ template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
     Args &&...args) {
-  StaticCheck<F, Args...>();
   CheckTaskOptions(task_options_.resources);
-  using ReturnType = boost::callable_traits::return_type_t<F>;
-  using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
-  Arguments::WrapArgs<ArgsTuple>(&args_, std::make_index_sequence<sizeof...(Args)>{},
-                                 std::forward<Args>(args)...);
+
+  if constexpr (is_python_v<F>) {
+    using ArgsTuple = std::tuple<Args...>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/true, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  } else {
+    StaticCheck<F, Args...>();
+    using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<F>>;
+    Arguments::WrapArgs<ArgsTuple>(/*cross_lang=*/false, &args_,
+                                   std::make_index_sequence<sizeof...(Args)>{},
+                                   std::forward<Args>(args)...);
+  }
+
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_, task_options_);
+  using ReturnType = boost::callable_traits::return_type_t<F>;
   return ObjectRef<ReturnType>(returned_object_id);
 }
 }  // namespace internal

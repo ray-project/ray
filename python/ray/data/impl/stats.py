@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List, Optional, Dict, Set, Tuple
+from typing import List, Optional, Dict, Set, Tuple, Union
 import time
 import collections
 import numpy as np
@@ -51,6 +51,15 @@ class _DatasetStatsBuilder:
         self.parent = parent
         self.start_time = time.perf_counter()
 
+    def build_multistage(
+            self, stages: Dict[str, List[BlockMetadata]]) -> "DatasetStats":
+        stats = DatasetStats(
+            stages={self.stage_name + "_" + k: v
+                    for k, v in stages.items()},
+            parent=self.parent)
+        stats.time_total_s = time.perf_counter() - self.start_time
+        return stats
+
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
             stages={self.stage_name: final_blocks.get_metadata()},
@@ -70,18 +79,23 @@ class _StatsActor:
     extracted without using an out-of-band actor."""
 
     def __init__(self):
-        self.start_time = time.time()
         # Mapping from uuid -> dataset-specific stats.
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
+        self.start_time = {}
 
-    def add(self, stats_uuid, i, metadata):
+    def record_start(self, stats_uuid):
+        self.start_time[stats_uuid] = time.perf_counter()
+
+    def record_task(self, stats_uuid, i, metadata):
         self.metadata[stats_uuid][i] = metadata
-        self.last_time[stats_uuid] = time.time()
+        self.last_time[stats_uuid] = time.perf_counter()
 
     def get(self, stats_uuid):
+        if stats_uuid not in self.metadata:
+            return {}, 0.0
         return self.metadata[stats_uuid], \
-            self.last_time[stats_uuid] - self.start_time
+            self.last_time[stats_uuid] - self.start_time[stats_uuid]
 
 
 # Actor handle, job id the actor was created for.
@@ -114,7 +128,7 @@ class DatasetStats:
     def __init__(self,
                  *,
                  stages: Dict[str, List[BlockMetadata]],
-                 parent: Optional["DatasetStats"],
+                 parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
                  stats_actor=None,
                  stats_uuid=None):
         """Create dataset stats.
@@ -122,7 +136,8 @@ class DatasetStats:
         Args:
             stages: Dict of stages used to create this Dataset from the
                 previous one. Typically one entry, e.g., {"map": [...]}.
-            parent: Reference to parent Dataset's stats.
+            parent: Reference to parent Dataset's stats, or a list of parents
+                if there are multiple.
             stats_actor: Reference to actor where stats should be pulled
                 from. This is only used for Datasets using LazyBlockList.
             stats_uuid: The uuid for the stats, used to fetch the right stats
@@ -130,8 +145,14 @@ class DatasetStats:
         """
 
         self.stages: Dict[str, List[BlockMetadata]] = stages
-        self.parent: Optional["DatasetStats"] = parent
-        self.number: int = 0 if not parent else parent.number + 1
+        self.parents: List["DatasetStats"] = []
+        if parent:
+            if isinstance(parent, list):
+                self.parents.extend(parent)
+            else:
+                self.parents.append(parent)
+        self.number: int = (0 if not self.parents else
+                            max(p.number for p in self.parents) + 1)
         self.dataset_uuid: str = None
         self.time_total_s: float = 0
         self.stats_actor = stats_actor
@@ -159,6 +180,8 @@ class DatasetStats:
 
     def summary_string(self, already_printed: Set[str] = None) -> str:
         """Return a human-readable summary of this Dataset's stats."""
+        if already_printed is None:
+            already_printed = set()
 
         if self.stats_actor:
             # XXX this is a super hack, clean it up.
@@ -167,16 +190,22 @@ class DatasetStats:
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
         out = ""
-        if self.parent:
-            out += self.parent.summary_string(already_printed)
-            out += "\n"
-        for stage_name, metadata in self.stages.items():
+        if self.parents:
+            for p in self.parents:
+                out += p.summary_string(already_printed)
+                out += "\n"
+        first = True
+        for stage_name, metadata in sorted(self.stages.items()):
+            stage_uuid = self.dataset_uuid + stage_name
+            if first:
+                first = False
+            else:
+                out += "\n"
             out += "Stage {} {}: ".format(self.number, stage_name)
-            if already_printed and self.dataset_uuid in already_printed:
+            if stage_uuid in already_printed:
                 out += "[execution cached]"
             else:
-                if already_printed is not None:
-                    already_printed.add(self.dataset_uuid)
+                already_printed.add(stage_uuid)
                 out += self._summarize_blocks(metadata)
         out += self._summarize_iter()
         return out

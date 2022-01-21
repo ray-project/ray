@@ -71,9 +71,7 @@ class A2CTrainer(A3CTrainer):
                     sgd_minibatch_size=config["train_batch_size"],
                     num_sgd_iter=1,
                     num_gpus=config["num_gpus"],
-                    shuffle_sequences=True,
-                    _fake_gpus=config["_fake_gpus"],
-                    framework=config.get("framework"))
+                    _fake_gpus=config["_fake_gpus"])
 
             train_op = rollouts.combine(
                 ConcatBatches(

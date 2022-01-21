@@ -1,5 +1,6 @@
+import logging
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
-    Union
+    Union, Set
 
 import gym
 import ray
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
     from ray.rllib.env.vector_env import VectorEnv
 
 ASYNC_RESET_RETURN = "async_reset_return"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -195,6 +198,15 @@ class BaseEnv:
         return []
 
     @PublicAPI
+    def get_agent_ids(self) -> Set[AgentID]:
+        """Return the agent ids for the sub_environment.
+
+        Returns:
+            All agent ids for each the environment.
+        """
+        return {_DUMMY_AGENT_ID}
+
+    @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         """Tries to render the sub-environment with the given id or all.
 
@@ -221,8 +233,8 @@ class BaseEnv:
 
     @PublicAPI
     @property
-    def observation_space(self) -> gym.spaces.Dict:
-        """Returns the observation space for each environment.
+    def observation_space(self) -> gym.Space:
+        """Returns the observation space for each agent.
 
         Note: samples from the observation space need to be preprocessed into a
             `MultiEnvDict` before being used by a policy.
@@ -235,7 +247,7 @@ class BaseEnv:
     @PublicAPI
     @property
     def action_space(self) -> gym.Space:
-        """Returns the action space for each environment.
+        """Returns the action space for each agent.
 
         Note: samples from the action space need to be preprocessed into a
             `MultiEnvDict` before being passed to `send_actions`.
@@ -245,14 +257,77 @@ class BaseEnv:
         """
         raise NotImplementedError
 
+    @PublicAPI
+    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random action for each environment, and potentially each
+            agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("action_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
+        """Returns a random observation for each environment, and potentially
+            each agent in that environment.
+
+        Args:
+            agent_id: List of agent ids to sample actions for. If None or empty
+                list, sample actions for all agents in the environment.
+
+        Returns:
+            A random action for each environment.
+        """
+        logger.warning("observation_space_sample() has not been implemented")
+        del agent_id
+        return {}
+
+    @PublicAPI
+    def last(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        """Returns the last observations, rewards, and done flags that were
+            returned by the environment.
+
+        Returns:
+            The last observations, rewards, and done flags for each environment
+        """
+        logger.warning("last has not been implemented for this environment.")
+        return {}, {}, {}, {}, {}
+
+    @PublicAPI
     def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given observation is valid for each environment.
+
+        Args:
+            x: Observations to check.
+
+        Returns:
+            True if the observations are contained within their respective
+                spaces. False otherwise.
+        """
         self._space_contains(self.observation_space, x)
 
+    @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
+        """Checks if the given actions is valid for each environment.
+
+        Args:
+            x: Actions to check.
+
+        Returns:
+            True if the actions are contained within their respective
+                spaces. False otherwise.
+        """
         return self._space_contains(self.action_space, x)
 
-    @staticmethod
-    def _space_contains(space: gym.Space, x: MultiEnvDict) -> bool:
+    def _space_contains(self, space: gym.Space, x: MultiEnvDict) -> bool:
         """Check if the given space contains the observations of x.
 
         Args:
@@ -262,17 +337,14 @@ class BaseEnv:
         Returns:
             True if the observations of x are contained in space.
         """
-        # this removes the agent_id key and inner dicts
-        # in MultiEnvDicts
-        flattened_obs = {
-            env_id: list(obs.values())
-            for env_id, obs in x.items()
-        }
-        ret = True
-        for env_id in flattened_obs:
-            for obs in flattened_obs[env_id]:
-                ret = ret and space[env_id].contains(obs)
-        return ret
+        agents = set(self.get_agent_ids())
+        for multi_agent_dict in x.values():
+            for agent_id, obs in multi_agent_dict:
+                if (agent_id not in agents) or (
+                        not space[agent_id].contains(obs)):
+                    return False
+
+        return True
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -647,7 +719,7 @@ def convert_to_base_env(
         The resulting BaseEnv object.
     """
 
-    from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+    from ray.rllib.env.remote_base_env import RemoteBaseEnv
     from ray.rllib.env.external_env import ExternalEnv
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
     from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
