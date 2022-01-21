@@ -106,7 +106,6 @@ f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
 f_name = f.name
 f.close()
 f = open(f_name, "w+")
-print("f_name: ", f_name)
 f.write(temporary_python_file)
 f.flush()
 directory = os.path.dirname(f_name)
@@ -133,7 +132,6 @@ a = Foo.remote()
     assert "RuntimeError: The actor with name Foo failed to import" in err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_task(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -147,12 +145,15 @@ def temporary_helper_function():
    return 1
 '''
 
-f = tempfile.NamedTemporaryFile(suffix=".py")
-f.write(temporary_python_file.encode("ascii"))
+f = tempfile.NamedTemporaryFile("w+", suffix=".py", prefix="_", delete=True)
+f_name = f.name
+f.close()
+f = open(f_name, "w+")
+f.write(temporary_python_file)
 f.flush()
-directory = os.path.dirname(f.name)
+directory = os.path.dirname(f_name)
 # Get the module name and strip ".py" from the end.
-module_name = os.path.basename(f.name)[:-3]
+module_name = os.path.basename(f_name)[:-3]
 sys.path.append(directory)
 module = __import__(module_name)
 
