@@ -28,7 +28,8 @@ PullManager::PullManager(
     const std::function<double()> get_time_seconds, int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
-    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
+    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url,
+    std::function<std::shared_ptr<raylet::RayletClient>(const NodeID &)> get_rpc_client)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -36,6 +37,7 @@ PullManager::PullManager(
       restore_spilled_object_(restore_spilled_object),
       get_time_seconds_(get_time_seconds),
       pull_timeout_ms_(pull_timeout_ms),
+      get_rpc_client_(get_rpc_client),
       num_bytes_available_(num_bytes_available),
       pin_object_(pin_object),
       get_locally_spilled_object_url_(get_locally_spilled_object_url),
@@ -525,6 +527,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
+      object_pull_nodes_.insert_or_assign(object_id, spilled_node_id);
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
@@ -566,6 +569,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
+  object_pull_nodes_.insert_or_assign(object_id, node_id);
   send_pull_request_(object_id, node_id);
   return true;
 }
@@ -611,12 +615,39 @@ void PullManager::Tick() {
 void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
   absl::MutexLock lock(&active_objects_mu_);
   bool active = active_object_pull_requests_.count(object_id) > 0;
-  if (active) {
-    if (TryPinObject(object_id)) {
-      RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
-    } else {
-      RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
+  if (!active) {
+    return;
+  }
+  if (TryPinObject(object_id)) {
+    RAY_LOG(DEBUG) << "Pinned newly created object " << object_id;
+    // If system flag send_unpin is set, then:
+    // Notify primary copy holder that it can unpin its copy.
+    if (RayConfig::instance().send_unpin()) { 
+      auto it = object_pull_nodes_.find(object_id);
+      if (it != object_pull_nodes_.end()) {
+        auto node_id = it->second;
+        auto rpc_client = get_rpc_client_(node_id);
+        if (rpc_client) {
+          rpc_client->UnpinObjectIDs(
+              {object_id},
+              [this, object_id, node_id](const Status &status,
+        				 const rpc::UnpinObjectIDsReply &reply) {
+        	if (!status.ok()) {
+        	  RAY_LOG(WARNING) << "Send unpin " << object_id << " request to client "
+        			   << node_id << " failed due to " << status.message();
+        	}
+              });
+        } else {
+          RAY_LOG(WARNING) << "Couldn't send unpin " << object_id << " request to node "
+        		   << node_id << ", setup RPC connection failed";
+        }
+      } else {
+        RAY_LOG(WARNING) << "Couldn't send unpin " << object_id
+      		 << " because we don't know where to send";
+      }
     }
+  } else {
+    RAY_LOG(DEBUG) << "Failed to pin newly created object " << object_id;
   }
 }
 
@@ -626,10 +657,10 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
     if (ref != nullptr) {
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
-      return false;
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {

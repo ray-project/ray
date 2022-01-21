@@ -17,6 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
@@ -99,9 +100,10 @@ ObjectManager::ObjectManager(
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
-  push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
-      static_cast<int64_t>(1L),
-      static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
+  push_manager_.reset(new PushManager(
+      /* max_chunks_in_flight= */ std::max(
+          static_cast<int64_t>(1L), static_cast<int64_t>(config_.max_bytes_in_flight /
+                                                         config_.object_chunk_size))));
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
@@ -123,10 +125,13 @@ ObjectManager::ObjectManager(
   if (available_memory < 0) {
     available_memory = 0;
   }
+  const auto &get_rpc_client = [this](const NodeID &client_id) {
+    return GetRayletClient(client_id);
+  };
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       fail_pull_request, restore_spilled_object_, get_time, config.pull_timeout_ms,
-      available_memory, pin_object, get_spilled_object_url));
+      available_memory, pin_object, get_spilled_object_url, get_rpc_client));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -649,6 +654,29 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
 
     it = remote_object_manager_clients_.emplace(node_id, std::move(object_manager_client))
              .first;
+  }
+  return it->second;
+}
+
+std::shared_ptr<raylet::RayletClient> ObjectManager::GetRayletClient(
+    const NodeID &node_id) {
+  auto it = remote_raylet_clients_.find(node_id);
+  if (it == remote_raylet_clients_.end()) {
+    RemoteConnectionInfo node_manager_connection_info(node_id);
+    object_directory_->LookupNodeManagerRemoteConnectionInfo(node_manager_connection_info);
+    if (!node_manager_connection_info.Connected()) {
+      return nullptr;
+    }
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        node_manager_connection_info.ip, node_manager_connection_info.port, client_call_manager_);
+    auto raylet_client = std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+
+    RAY_LOG(DEBUG) << "Get rpc client, address: " << node_manager_connection_info.ip
+                   << ", port: " << node_manager_connection_info.port
+                   << ", local port: " << GetServerPort();
+
+    it = remote_raylet_clients_.emplace(node_id, std::move(raylet_client)).first;
   }
   return it->second;
 }

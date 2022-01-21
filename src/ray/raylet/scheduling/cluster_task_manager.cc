@@ -130,6 +130,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work>
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
+    const auto &debug_string =task.GetTaskSpecification().DebugString();
+    RAY_LOG(DEBUG) << "Requesting task dependencies for " << task_id << "; Debug string: " << debug_string;
     bool args_ready =
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {

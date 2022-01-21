@@ -140,6 +140,9 @@ class LocalObjectManager {
 
   std::string DebugString() const;
 
+  /// Release an object that has been freed by its owner.
+  void ReleaseFreedObject(const ObjectID &object_id);
+
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
@@ -159,9 +162,6 @@ class LocalObjectManager {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
-
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.
