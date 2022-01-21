@@ -665,6 +665,69 @@ def test_recreate_child_actor(ray_start_cluster):
     ray.get(p.ready.remote())
 
 
+def test_actor_failure_per_type(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(address="auto")
+
+    @ray.remote
+    class Actor:
+        def check_alive(self):
+            return os.getpid()
+
+        def create_actor(self):
+            self.a = Actor.remote()
+            return self.a
+
+    # Test actor is dead because its reference is gone.
+    # Q(sang): Should we raise RayACtorError in this case?
+    with pytest.raises(
+            RuntimeError, match="Lost reference to actor") as exc_info:
+        ray.get(Actor.remote().check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed by ray.kill
+    a = Actor.remote()
+    ray.kill(a)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="it was killed by `ray.kill") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed because of worker failure.
+    a = Actor.remote()
+    pid = ray.get(a.check_alive.remote())
+    os.kill(pid, 9)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match=("The actor is dead because its worker process has died"
+                   )) as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test acator killed because of owner failure.
+    owner = Actor.remote()
+    a = ray.get(owner.create_actor.remote())
+    ray.kill(owner)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="The actor is dead because its owner has died") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed because the node is dead.
+    node_to_kill = cluster.add_node(resources={"worker": 1})
+    a = Actor.options(resources={"worker": 1}).remote()
+    ray.get(a.check_alive.remote())
+    cluster.remove_node(node_to_kill)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="The actor is dead because its node has died.") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
