@@ -774,7 +774,7 @@ cdef CRayStatus task_execution_handler(
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
-                   e.has_creation_task_error():
+                   e.actor_init_failed:
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
