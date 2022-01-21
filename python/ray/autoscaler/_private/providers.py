@@ -74,6 +74,12 @@ def _import_kubernetes(provider_config):
     return KubernetesNodeProvider
 
 
+def _import_kuberay(provider_config):
+    from ray.autoscaler._private.kuberay.node_provider import \
+        KuberayNodeProvider
+    return KuberayNodeProvider
+
+
 def _import_staroid(provider_config):
     from ray.autoscaler._private.staroid.node_provider import \
         StaroidNodeProvider
@@ -143,6 +149,7 @@ _NODE_PROVIDERS = {
     "azure": _import_azure,
     "staroid": _import_staroid,
     "kubernetes": _import_kubernetes,
+    "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external  # Import an external module
 }
@@ -157,6 +164,7 @@ _PROVIDER_PRETTY_NAMES = {
     "azure": "Azure",
     "staroid": "Staroid",
     "kubernetes": "Kubernetes",
+    "kuberay": "Kuberay",
     "aliyun": "Aliyun",
     "external": "External"
 }
