@@ -14,6 +14,8 @@
 
 #include "ray/pubsub/subscriber.h"
 
+#include "absl/base/thread_annotations.h"
+
 namespace ray {
 
 namespace pubsub {
@@ -220,7 +222,11 @@ std::string SubscriberChannel::DebugString() const {
 ///////////////////////////////////////////////////////////////////////////////
 
 Subscriber::~Subscriber() {
-  // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
+  // Keeping the shared state alive past Subscriber destruction can avoid accessing
+  // invalid memory. But it can further improve by cancelling all inflight requests so
+  // draining the event loop does not need to wait for the inflight requests to return.
+  absl::MutexLock lock(&state_->mutex);
+  state_->destructed = true;
 }
 
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
@@ -256,7 +262,7 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   command->cmd.set_key_id(key_id);
   command->cmd.mutable_unsubscribe_message();
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
@@ -271,7 +277,7 @@ bool Subscriber::UnsubscribeChannel(const rpc::ChannelType channel_type,
   command->cmd.set_channel_type(channel_type);
   command->cmd.mutable_unsubscribe_message();
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
@@ -282,7 +288,7 @@ bool Subscriber::UnsubscribeChannel(const rpc::ChannelType channel_type,
 bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,
                               const rpc::Address &publisher_address,
                               const std::string &key_id) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   auto *channel = Channel(channel_type);
   if (channel == nullptr) {
     return false;
@@ -308,7 +314,7 @@ bool Subscriber::SubscribeInternal(
   command->done_cb = std::move(subscribe_done_callback);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
   MakeLongPollingConnectionIfNotConnected(publisher_address);
@@ -330,14 +336,20 @@ void Subscriber::MakeLongPollingConnectionIfNotConnected(
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
-  auto subscriber_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
 
+  auto subscriber_client = get_client_(publisher_address);
   subscriber_client->PubsubLongPolling(
-      long_polling_request,
-      [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
-        absl::MutexLock lock(&mutex_);
+      long_polling_request, [this, state = state_, publisher_address](
+                                Status status, const rpc::PubsubLongPollingReply &reply)
+      // There seems to be no way to make thread safety analysis aware that state
+      // and this->state_ are equivalent, so turning the analysis off.
+      ABSL_NO_THREAD_SAFETY_ANALYSIS {
+        absl::MutexLock lock(&state->mutex);
+        if (state->destructed) {
+          return;
+        }
         HandleLongPollingResponse(publisher_address, status, reply);
       });
 }
@@ -425,10 +437,17 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
     auto subscriber_client = get_client_(publisher_address);
     subscriber_client->PubsubCommandBatch(
         command_batch_request,
-        [this, publisher_address, publisher_id, done_cb = std::move(done_cb)](
-            Status status, const rpc::PubsubCommandBatchReply &reply) {
+        [this, state = state_, publisher_address, publisher_id,
+         done_cb = std::move(done_cb)](Status status,
+                                       const rpc::PubsubCommandBatchReply &reply)
+        // There seems to be no way to make thread safety analysis aware that state
+        // and this->state_ are equivalent, so turning the analysis off.
+        ABSL_NO_THREAD_SAFETY_ANALYSIS {
           {
-            absl::MutexLock lock(&mutex_);
+            absl::MutexLock lock(&state->mutex);
+            if (state->destructed) {
+              return;
+            }
             auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
             RAY_CHECK(command_batch_sent_it != command_batch_sent_.end());
             command_batch_sent_.erase(command_batch_sent_it);
@@ -446,7 +465,10 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
                            << " has failed";
           }
           {
-            absl::MutexLock lock(&mutex_);
+            absl::MutexLock lock(&state->mutex);
+            if (state->destructed) {
+              return;
+            }
             SendCommandBatchIfPossible(publisher_address);
           }
         });
@@ -454,7 +476,7 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
 }
 
 bool Subscriber::CheckNoLeaks() const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   bool leaks = false;
   for (const auto &channel_it : channels_) {
     if (!channel_it.second->CheckNoLeaks()) {
@@ -469,7 +491,7 @@ bool Subscriber::CheckNoLeaks() const {
 }
 
 std::string Subscriber::DebugString() const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(&state_->mutex);
   std::stringstream result;
   result << "Subscriber:";
   for (const auto &channel_it : channels_) {
