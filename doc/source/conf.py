@@ -63,6 +63,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
+    # "sphinx_panels",
     "sphinx_tabs.tabs",
     "sphinx-jsonschema",
     "sphinx_gallery.gen_gallery",
@@ -253,6 +254,19 @@ html_favicon = "_static/favicon.ico"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
+# TODO: this adds algolia search. can activate this once sphinx-tabs has been
+# replaced by sphinx-panels.
+# html_css_files = [
+#     "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css",
+# ]
+#
+# html_js_files = [
+#     (
+#         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
+#         {"defer": "defer"},
+#     ),
+#     ("docsearch.sbt.js", {"defer": "defer"}),
+# ]
 html_static_path = ["_static"]
 
 # Add any extra paths that contain custom files (such as robots.txt or
