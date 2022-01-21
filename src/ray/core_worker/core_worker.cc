@@ -1462,13 +1462,13 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     std::vector<std::string> *runtime_env_uris) {
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "{}") {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
       return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "{}") {
       *runtime_env_uris =
           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
       return worker_context_.GetCurrentSerializedRuntimeEnv();
