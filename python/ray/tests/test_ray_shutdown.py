@@ -157,41 +157,43 @@ def test_concurrent_shutdown(monkeypatch):
     def work():
         time.sleep(random.uniform(0, 0.1))
 
+    @ray.remote(num_cpus=1)
+    class TestActor:
+        def run(self):
+            time.sleep(random.uniform(0, 0.1))
+
     def worker():
         while not terminate.is_set():
             try:
-                ray.wait([work.remote()], timeout=1)
+                if random.uniform(0, 1) < 0.5:
+                    ray.wait([work.remote()], timeout=1)
+                else:
+                    actor = TestActor.remote()
+                    ray.wait([actor.run.remote()], timeout=1)
             except Exception:
                 if ray.is_initialized():
                     logging.exception(
                         "Ray task failed, likely during Ray shutdown")
 
-    w_0 = Thread(target=worker, name="worker_0")
-    w_1 = Thread(target=worker, name="worker_1")
-    w_0.start()
-    w_1.start()
+    workers = [Thread(target=worker, name=f"worker_{i}") for i in range(4)]
+    for w in workers:
+        w.start()
 
     start = time.time()
     while time.time() - start < 60:
-        cluster = Cluster()
-        for _ in range(2):
-            cluster.add_node(num_cpus=1)
-        cluster.wait_for_nodes()
-
-        ray.init(address=cluster.address)
-        print(f"{datetime.now()} Started cluster at {cluster.address}")
+        address = ray.init(num_cpus=4)["address"]
+        print(f"{datetime.now()} Started cluster at {address}")
 
         time.sleep(random.uniform(1, 5))
 
-        print(f"{datetime.now()} Shutting down cluster at {cluster.address}")
+        print(f"{datetime.now()} Shutting down cluster at {address}")
         ray.shutdown()
-        cluster.shutdown()
 
         time.sleep(random.uniform(0, 1))
 
     terminate.set()
-    w_0.join(timeout=10)
-    w_1.join(timeout=10)
+    for w in workers:
+        w.join(timeout=10)
 
 
 if __name__ == "__main__":

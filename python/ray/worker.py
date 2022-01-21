@@ -1046,8 +1046,10 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
-        del global_worker.core_worker
+        core_worker = global_worker.core_worker
+        global_worker.core_worker = None
+        core_worker.shutdown()
+        del core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.

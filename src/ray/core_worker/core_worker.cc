@@ -462,14 +462,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
 
 void CoreWorker::Shutdown() {
-  if (is_shutdown_) {
+  if (is_shutdown_.exchange(true)) {
     RAY_LOG(INFO)
         << "Shutdown request has received although the core worker is already shutdown.";
     return;
   }
 
   RAY_LOG(INFO) << "Shutting down a core worker.";
-  is_shutdown_ = true;
   if (options_.worker_type == WorkerType::WORKER) {
     // Running in a main thread.
     direct_task_receiver_->Stop();
