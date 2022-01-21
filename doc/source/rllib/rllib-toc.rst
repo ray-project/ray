@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Table of Contents
 =======================
@@ -242,10 +242,10 @@ It returns three values:
 
 `See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
 
-.. |tensorflow| image:: tensorflow.png
+.. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
 
-.. |pytorch| image:: pytorch.png
+.. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 16

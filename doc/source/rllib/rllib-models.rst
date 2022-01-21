@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Models, Preprocessors, and Action Distributions
 =====================================================
@@ -9,7 +9,7 @@ The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for r
 before being sent to a neural network ``Model``. The model output is in turn
 interpreted by an ``ActionDistribution`` to determine the next action.
 
-.. image:: rllib-components.svg
+.. image:: images/rllib-components.svg
 
 The components highlighted in green can be replaced with custom user-defined
 implementations, as described in the next sections. The purple components are
@@ -65,7 +65,7 @@ These include options for the ``FullyConnectedNetworks`` (``fcnet_hiddens`` and 
 ``VisionNetworks`` (``conv_filters`` and ``conv_activation``), auto-RNN wrapping, auto-Attention (`GTrXL <https://arxiv.org/abs/1910.06764>`__) wrapping,
 and some special options for Atari environments:
 
-.. literalinclude:: ../../rllib/models/catalog.py
+.. literalinclude:: ../../../rllib/models/catalog.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -299,7 +299,7 @@ Wrapping a Custom Model (TF and PyTorch) with an LSTM- or Attention Net
 You can also use a custom (TF or PyTorch) model with our auto-wrappers for LSTMs (``use_lstm=True``) or Attention networks (``use_attention=True``).
 For example, if you would like to wrap some non-default model logic with an LSTM, simply do:
 
-.. literalinclude:: ../../rllib/examples/lstm_auto_wrapping.py
+.. literalinclude:: ../../../rllib/examples/lstm_auto_wrapping.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -380,7 +380,7 @@ The following code adds a ``get_q_values()`` method to the automatically chosen
 default Model (e.g. a ``FullyConnectedNetwork`` if the observation space is a 1D Box
 or Discrete):
 
-.. literalinclude:: ../../rllib/examples/models/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/models/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_api_1_begin__
    :end-before: __sphinx_doc_model_api_1_end__
@@ -389,7 +389,7 @@ Now, for your algorithm that needs to have this model API to work properly (e.g.
 you use this following code to construct the complete final Model using the
 ``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
 
-.. literalinclude:: ../../rllib/examples/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_construct_1_begin__
    :end-before: __sphinx_doc_model_construct_1_end__
@@ -407,7 +407,7 @@ for a single (**continuous**) action, given an observation and that particular a
 
 Let's take a look at how we would construct this API and wrap it around a custom model:
 
-.. literalinclude:: ../../rllib/examples/models/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/models/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_api_2_begin__
    :end-before: __sphinx_doc_model_api_2_end__
@@ -416,7 +416,7 @@ Now, for your algorithm that needs to have this model API to work properly (e.g.
 you use this following code to construct the complete final Model using the
 ``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
 
-.. literalinclude:: ../../rllib/examples/custom_model_api.py
+.. literalinclude:: ../../../rllib/examples/custom_model_api.py
    :language: python
    :start-after: __sphinx_doc_model_construct_2_begin__
    :end-before: __sphinx_doc_model_construct_2_end__
@@ -444,7 +444,7 @@ with the remaining non-image (flat) inputs (the 1D Box and discrete/one-hot comp
 
 Take a look at this model example that does exactly that:
 
-.. literalinclude:: ../../rllib/models/tf/complex_input_net.py
+.. literalinclude:: ../../../rllib/models/tf/complex_input_net.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -467,7 +467,7 @@ Here is a simple (non-RNN/Attention) example of a Model that takes as input
 the last 3 observations (very similar to the recommended "framestacking" for
 learning in Atari environments):
 
-.. literalinclude:: ../../rllib/examples/models/trajectory_view_utilizing_models.py
+.. literalinclude:: ../../../rllib/examples/models/trajectory_view_utilizing_models.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -530,7 +530,7 @@ RLlib supports complex and variable-length observation spaces, including ``gym.s
 
 To enable batching of struct observations, RLlib unpacks them in a `StructTensor-like format <https://github.com/tensorflow/community/blob/master/rfcs/20190910-struct-tensor.md>`__. In summary, repeated fields are "pushed down" and become the outer dimensions of tensor batches, as illustrated in this figure from the StructTensor RFC.
 
-.. image:: struct-tensor.png
+.. image:: images/struct-tensor.png
 
 For further information about complex observation spaces, see:
   * A custom environment and model that uses `repeated struct fields <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__.

@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Algorithms
 ================
@@ -81,7 +81,7 @@ Distributed Prioritized Experience Replay (Ape-X)
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__
 Ape-X variations of DQN and DDPG (`APEX_DQN <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/apex.py>`__, `APEX_DDPG <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/apex.py>`__) use a single GPU learner and many CPU workers for experience collection. Experience collection can scale to hundreds of CPU workers due to the distributed prioritization of experience prior to storage in replay buffers.
 
-.. figure:: apex-arch.svg
+.. figure:: images/apex-arch.svg
 
     Ape-X architecture
 
@@ -109,13 +109,13 @@ Qbert          4083                              ~500
 SpaceInvaders  646                               ~300
 =============  ================================  ========================================
 
-.. figure:: apex.png
+.. figure:: images/apex.png
 
     Ape-X using 32 workers in RLlib vs vanilla DQN (orange) and A3C (blue) on PongNoFrameskip-v4.
 
 **Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/dqn/apex.py
+.. literalinclude:: ../../../rllib/agents/dqn/apex.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -129,7 +129,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/impala/impala.py>`__
 In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we do not provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
 
-.. figure:: impala-arch.svg
+.. figure:: images/impala-arch.svg
 
     IMPALA architecture
 
@@ -157,14 +157,14 @@ Qbert          10850                            ~500
 SpaceInvaders  843                              ~300
 =============  ===============================  =================================
 
-.. figure:: impala.png
+.. figure:: images/impala.png
 
    Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
    The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/impala/impala.py
+.. literalinclude:: ../../../rllib/agents/impala/impala.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -182,7 +182,7 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
     APPO is not always more efficient; it is often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
-.. figure:: impala-arch.svg
+.. figure:: images/impala-arch.svg
 
     APPO architecture (same as IMPALA)
 
@@ -190,7 +190,7 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ppo/appo.py
+.. literalinclude:: ../../../rllib/agents/ppo/appo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -208,7 +208,7 @@ Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized
 
     DD-PPO is best for envs that require GPUs to function, or if you need to scale out SGD to multiple nodes. If you don't meet these requirements, `standard PPO <#proximal-policy-optimization-ppo>`__ will be more efficient.
 
-.. figure:: ddppo-arch.svg
+.. figure:: images/ddppo-arch.svg
 
     DD-PPO architecture (both sampling and learning are done on worker GPUs)
 
@@ -216,7 +216,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ppo/ddppo.py
+.. literalinclude:: ../../../rllib/agents/ppo/ddppo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -234,7 +234,7 @@ RLlib implements both A2C and A3C. These algorithms scale to 16-32+ worker proce
 
 A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory.
 
-.. figure:: a2c-arch.svg
+.. figure:: images/a2c-arch.svg
 
     A2C architecture
 
@@ -256,7 +256,7 @@ SpaceInvaders  692                       ~600
 
 **A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/a3c/a3c.py
+.. literalinclude:: ../../../rllib/agents/a3c/a3c.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -269,7 +269,7 @@ Deep Deterministic Policy Gradients (DDPG, TD3)
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
 DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
 
-.. figure:: dqn-arch.svg
+.. figure:: images/dqn-arch.svg
 
     DDPG architecture (same as DQN)
 
@@ -277,7 +277,7 @@ Tuned examples: `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ddpg/ddpg.py
+.. literalinclude:: ../../../rllib/agents/ddpg/ddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -290,7 +290,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 `[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/dqn.py>`__
 DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
 
-.. figure:: dqn-arch.svg
+.. figure:: images/dqn-arch.svg
 
     DQN architecture
 
@@ -322,7 +322,7 @@ SpaceInvaders  650                       1001                           1025    
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/dqn/dqn.py
+.. literalinclude:: ../../../rllib/agents/dqn/dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -348,7 +348,7 @@ Policy Gradients
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__
 We include a vanilla policy gradients implementation as an example algorithm.
 
-.. figure:: a2c-arch.svg
+.. figure:: images/a2c-arch.svg
 
     Policy gradients architecture (same as A2C)
 
@@ -356,7 +356,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/pg/default_config.py
+.. literalinclude:: ../../../rllib/agents/pg/default_config.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -374,7 +374,7 @@ PPO's clipped objective supports multiple SGD passes over the same batch of expe
 
     If you need to scale out with GPUs on multiple nodes, consider using `decentralized PPO <#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__.
 
-.. figure:: ppo-arch.svg
+.. figure:: images/ppo-arch.svg
 
     PPO architecture
 
@@ -409,14 +409,14 @@ MuJoCo env     RLlib PPO 16-workers @ 1h  Fan et al PPO 16-workers @ 1h
 HalfCheetah    9664                       ~7700
 =============  =========================  =============================
 
-.. figure:: ppo.png
+.. figure:: images/ppo.png
    :width: 500px
 
    RLlib's multi-GPU PPO scales to multiple GPUs and hundreds of CPUs on solving the Humanoid-v1 task. Here we compare against a reference MPI-based implementation.
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ppo/ppo.py
+.. literalinclude:: ../../../rllib/agents/ppo/ppo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -429,7 +429,7 @@ Soft Actor Critic (SAC)
 `[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
 
-.. figure:: dqn-arch.svg
+.. figure:: images/dqn-arch.svg
 
     SAC architecture (same as DQN)
 
@@ -452,7 +452,7 @@ HalfCheetah    13000       ~15000
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/sac/sac.py
+.. literalinclude:: ../../../rllib/agents/sac/sac.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -472,7 +472,7 @@ Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ra
 
 **MAML-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/maml/maml.py
+.. literalinclude:: ../../../rllib/agents/maml/maml.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -506,7 +506,7 @@ Hopper         620           ~650
 
 **MBMPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/mbmpo/mbmpo.py
+.. literalinclude:: ../../../rllib/agents/mbmpo/mbmpo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -535,7 +535,7 @@ Cheetah-Run    640             ~800
 
 **Dreamer-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/dreamer/dreamer.py
+.. literalinclude:: ../../../rllib/agents/dreamer/dreamer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -553,7 +553,7 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 
 **SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/slateq/slateq.py
+.. literalinclude:: ../../../rllib/agents/slateq/slateq.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -577,7 +577,7 @@ Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/mas
 
 **CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/cql/cql.py
+.. literalinclude:: ../../../rllib/agents/cql/cql.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -597,7 +597,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ars/ars.py
+.. literalinclude:: ../../../rllib/agents/ars/ars.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -614,14 +614,14 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **Scalability:**
 
-.. figure:: es.png
+.. figure:: images/es.png
    :width: 500px
 
    RLlib's ES implementation scales further and is faster than a reference Redis implementation on solving the Humanoid-v1 task.
 
 **ES-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/es/es.py
+.. literalinclude:: ../../../rllib/agents/es/es.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -642,7 +642,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/marwil/marwil.py
+.. literalinclude:: ../../../rllib/agents/marwil/marwil.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -665,7 +665,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/marwil/bc.py
+.. literalinclude:: ../../../rllib/agents/marwil/bc.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -708,7 +708,7 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ucb.py
+.. literalinclude:: ../../../rllib/contrib/bandits/agents/lin_ucb.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -732,17 +732,17 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 **LinTS-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/bandits/agents/lin_ts.py
+.. literalinclude:: ../../../rllib/contrib/bandits/agents/lin_ts.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
 
-.. |tensorflow| image:: tensorflow.png
+.. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 24
 
-.. |pytorch| image:: pytorch.png
+.. |pytorch| image:: images/pytorch.png
     :class: inline-figure
     :width: 24
 
@@ -758,7 +758,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
+.. literalinclude:: ../../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
 
@@ -777,7 +777,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/qmix/qmix.py
+.. literalinclude:: ../../../rllib/agents/qmix/qmix.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -793,7 +793,7 @@ Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
-.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
+.. literalinclude:: ../../../rllib/contrib/maddpg/maddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

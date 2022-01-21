@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Environments
 ==================
@@ -9,7 +9,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
     Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
-.. image:: rllib-envs.svg
+.. image:: images/rllib-envs.svg
 
 Configuring Environments
 ------------------------
@@ -98,7 +98,7 @@ There are two ways to scale experience collection with Gym environments:
 
     2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_workers": N}`` config.
 
-.. image:: throughput.png
+.. image:: images/throughput.png
 
 You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
@@ -121,7 +121,7 @@ Multi-Agent and Hierarchical
 
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car"- and "traffic light" agents in the environment. The model for multi-agent in RLlib is as follows: (1) as a user, you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
-.. image:: multi-agent.svg
+.. image:: images/multi-agent.svg
 
 The environment itself must subclass the `MultiAgentEnv <https://github.com/ray-project/ray/blob/master/rllib/env/multi_agent_env.py>`__ interface, which can return observations and rewards from multiple ready agents per step:
 
@@ -238,7 +238,7 @@ Rock Paper Scissors Example
 
 The `rock_paper_scissors_multiagent.py <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__ example demonstrates several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
 
-.. figure:: rock-paper-scissors.png
+.. figure:: images/rock-paper-scissors.png
 
     TensorBoard output of running the rock-paper-scissors example, where a learned policy faces off between a random selection of the same-move and beat-last-move heuristics. Here the performance of heuristic policies vs the learned policy is compared with LSTM enabled (blue) and a plain feed-forward policy (red). While the feedforward policy can easily beat the same-move heuristic by simply avoiding the last move taken, it takes a LSTM policy to distinguish between and consistently beat both policies.
 
@@ -294,7 +294,7 @@ Grouping Agents
 
 It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space. The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies such as :ref:`Q-Mix <qmix>` that implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
 
-.. literalinclude:: ../../rllib/env/multi_agent_env.py
+.. literalinclude:: ../../../rllib/env/multi_agent_env.py
    :language: python
    :start-after: __grouping_doc_begin__
    :end-before: __grouping_doc_end__
@@ -406,7 +406,7 @@ Example:
 To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
 
 .. https://docs.google.com/drawings/d/1hJvT9bVGHVrGTbnCZK29BYQIcYNRbZ4Dr6FOPMJDjUs/edit
-.. image:: rllib-external.svg
+.. image:: images/rllib-external.svg
 
 Try it yourself by launching either a
 `simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__ (see below), and connecting it to any number of clients

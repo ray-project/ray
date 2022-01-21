@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Sample Collection and Trajectory Views
 ============================================
@@ -277,7 +277,7 @@ Model's constructor.
 For example, our auto-LSTM wrapper classes (tf and torch) have these additional
 lines in their constructors (torch version shown here):
 
-.. literalinclude:: ../../rllib/models/torch/recurrent_net.py
+.. literalinclude:: ../../../rllib/models/torch/recurrent_net.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -290,7 +290,7 @@ used for postprocessing and training.
 Another example are our attention nets, which make sure the last n (memory) model outputs
 are always fed back into the model on the next time step (tf version shown here).
 
-.. literalinclude:: ../../rllib/models/tf/attention_net.py
+.. literalinclude:: ../../../rllib/models/tf/attention_net.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

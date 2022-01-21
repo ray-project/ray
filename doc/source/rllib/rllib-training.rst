@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Training APIs
 ===================
@@ -10,7 +10,7 @@ At a high level, RLlib provides an ``Trainer`` class which
 holds a policy for environment interaction. Through the trainer interface, the policy can
 be trained, checkpointed, or an action computed. In multi-agent training, the trainer manages the querying and optimization of multiple policies at once.
 
-.. image:: rllib-api.svg
+.. image:: images/rllib-api.svg
 
 You can train a simple DQN trainer with the following commands:
 
@@ -116,7 +116,7 @@ the same GPU. To do this for an amount of ``n`` GPUS:
     num_gpus_per_worker = (gpu_count - num_gpus) / num_workers
 
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
-.. image:: rllib-config.svg
+.. image:: images/rllib-config.svg
 
 If you specify ``num_gpus`` and your machine does not have the required number of GPUs
 available, a RuntimeError will be thrown by the respective worker. On the other hand,
@@ -146,7 +146,7 @@ Common Parameters
 
 The following is a list of the common algorithm hyperparameters:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../rllib/agents/trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -612,7 +612,7 @@ Visualizing Custom Metrics
 
 Custom metrics can be accessed and visualized like any other training result:
 
-.. image:: custom_metric.png
+.. image:: images/custom_metric.png
 
 .. _exploration-api:
 
@@ -657,7 +657,7 @@ a timestep (the global env-sampling steps already taken),
 and an ``explore`` switch and outputs a tuple of a) action and
 b) log-likelihood:
 
-.. literalinclude:: ../../rllib/utils/exploration/exploration.py
+.. literalinclude:: ../../../rllib/utils/exploration/exploration.py
    :language: python
    :start-after: __sphinx_doc_begin_get_exploration_action__
    :end-before: __sphinx_doc_end_get_exploration_action__

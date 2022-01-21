@@ -23,23 +23,23 @@ Ray Examples
 .. customgalleryitem::
    :tooltip: Tips for first time users.
    :figure: /images/pipeline.png
-   :description: :doc:`/auto_examples/tips-for-first-time`
+   :description: :doc:`tips-for-first-time`
 
 .. customgalleryitem::
    :tooltip: Tips for testing Ray applications
-   :description: :doc:`/auto_examples/testing-tips`
+   :description: :doc:`testing-tips`
 
 .. customgalleryitem::
    :tooltip: Progress Bar for Ray Tasks
-   :description: :doc:`/auto_examples/progress_bar`
+   :description: :doc:`progress_bar`
 
 .. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
-   :description: :doc:`/auto_examples/plot_streaming`
+   :description: :doc:`plot_streaming`
 
 .. customgalleryitem::
    :tooltip: Learn placement group use cases with examples.
-   :description: :doc:`/auto_examples/placement-group`
+   :description: :doc:`placement-group`
 
 .. raw:: html
 
@@ -67,34 +67,34 @@ Machine Learning Examples
 
 .. customgalleryitem::
    :tooltip: Build a simple parameter server using Ray.
-   :figure: /images/param_actor.png
-   :description: :doc:`/auto_examples/plot_parameter_server`
+   :figure: /ray-core/images/param_actor.png
+   :description: :doc:`plot_parameter_server`
 
 .. customgalleryitem::
    :tooltip: Simple parallel asynchronous hyperparameter evaluation.
-   :figure: /images/hyperparameter.png
-   :description: :doc:`/auto_examples/plot_hyperparameter`
+   :figure: /ray-core/images/hyperparameter.png
+   :description: :doc:`plot_hyperparameter`
 
 .. customgalleryitem::
    :tooltip: Walkthrough of parallelizing the L-BFGS algorithm.
-   :description: :doc:`/auto_examples/plot_lbfgs`
+   :description: :doc:`plot_lbfgs`
 
 
 .. customgalleryitem::
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
-   :description: :doc:`/auto_examples/plot_example-lm`
+   :description: :doc:`plot_example-lm`
 
 .. customgalleryitem::
    :tooltip: Implementing a simple news reader using Ray.
-   :description: :doc:`/auto_examples/plot_newsreader`
+   :description: :doc:`plot_newsreader`
 
 .. customgalleryitem::
    :tooltip: Train an XGBoost-Ray model using Dask for data processing.
-   :description: :doc:`/auto_examples/dask_xgboost/dask_xgboost`
+   :description: :doc:`dask_xgboost/dask_xgboost`
 
 .. customgalleryitem::
    :tooltip: Train an XGBoost-Ray model using Modin for data processing.
-   :description: :doc:`/auto_examples/modin_xgboost/modin_xgboost`
+   :description: :doc:`modin_xgboost/modin_xgboost`
 
 
 .. raw:: html
@@ -119,13 +119,13 @@ These are simple examples that show you how to leverage Ray Core. For Ray's prod
 
 .. customgalleryitem::
    :tooltip: Asynchronous Advantage Actor Critic agent using Ray.
-   :figure: /images/a3c.png
-   :description: :doc:`/auto_examples/plot_example-a3c`
+   :figure: /ray-core/images/a3c.png
+   :description: :doc:`plot_example-a3c`
 
 .. customgalleryitem::
    :tooltip: Parallelizing a policy gradient calculation on OpenAI Gym Pong.
    :figure: /images/pong.png
-   :description: :doc:`/auto_examples/plot_pong_example`
+   :description: :doc:`plot_pong_example`
 
 .. raw:: html
 
@@ -148,4 +148,4 @@ These are full guides on how you can use Ray with various Machine Learning libra
 .. customgalleryitem::
    :tooltip: Using Ray with PyTorch Lightning.
    :figure: /images/pytorch_lightning_small.png
-   :description: :doc:`/auto_examples/using-ray-with-pytorch-lightning`
+   :description: :doc:`using-ray-with-pytorch-lightning`

@@ -1,4 +1,4 @@
-.. include:: rllib/we_are_hiring.rst
+.. include:: we_are_hiring.rst
 
 RLlib Offline Datasets
 ======================
@@ -66,7 +66,7 @@ Then, we can tell DQN to train using these previously generated experiences with
 
 This example plot shows the Q-value metric in addition to importance sampling (IS) and weighted importance sampling (WIS) gain estimates (>1.0 means there is an estimated improvement over the original policy):
 
-.. image:: offline-q.png
+.. image:: images/offline-q.png
 
 **Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.estimate(episode_batch)`` to perform counterfactual estimation as needed. The estimators take in a policy object and gamma value for the environment:
 
@@ -94,7 +94,7 @@ Example: Converting external experiences to batch format
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
 This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
 
-.. literalinclude:: ../../rllib/examples/saving_experiences.py
+.. literalinclude:: ../../../rllib/examples/saving_experiences.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -157,7 +157,7 @@ Input API
 
 You can configure experience input for an agent using the following options:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../rllib/agents/trainer.py
    :language: python
    :start-after: === Offline Datasets ===
    :end-before: Specify where experiences should be saved
@@ -208,7 +208,7 @@ Output API
 
 You can configure experience output for an agent using the following options:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../rllib/agents/trainer.py
    :language: python
    :start-after: shuffle_buffer_size
    :end-before: Settings for Multi-Agent Environments

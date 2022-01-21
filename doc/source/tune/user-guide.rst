@@ -1190,4 +1190,4 @@ There are some environment variables that are mostly relevant for integrated lib
 Further Questions or Issues?
 ----------------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

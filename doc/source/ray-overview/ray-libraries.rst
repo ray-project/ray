@@ -155,78 +155,78 @@ LightGBM is a high-performance gradient boosting library for classification and 
 [`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
 
 
-.. |airflow| image:: images/airflow.png
+.. |airflow| image:: ../images/airflow.png
     :class: inline-figure
     :height: 30
 
-.. |classyvision| image:: images/classyvision.png
+.. |classyvision| image:: ../images/classyvision.png
     :class: inline-figure
     :height: 30
 
-.. |dask| image:: images/dask.png
+.. |dask| image:: ../images/dask.png
     :class: inline-figure
     :height: 30
 
-.. |flambe| image:: images/flambe.png
+.. |flambe| image:: ../images/flambe.png
     :class: inline-figure
     :height: 30
 
-.. |mars| image:: images/mars.png
+.. |mars| image:: ../images/mars.png
     :class: inline-figure
     :height: 30
 
-.. |modin| image:: images/modin.png
+.. |modin| image:: ../images/modin.png
     :class: inline-figure
     :height: 30
 
-.. |horovod| image:: images/horovod.png
+.. |horovod| image:: ../images/horovod.png
     :class: inline-figure
     :height: 30
 
-.. |ludwig| image:: images/ludwig.png
+.. |ludwig| image:: ../images/ludwig.png
     :class: inline-figure
     :height: 30
 
-.. |hugging| image:: images/hugging.png
+.. |hugging| image:: ../images/hugging.png
     :class: inline-figure
     :height: 30
 
-.. |zoo| image:: images/zoo.png
+.. |zoo| image:: ../images/zoo.png
     :class: inline-figure
     :height: 30
 
-.. |pycaret| image:: images/pycaret.png
+.. |pycaret| image:: ../images/pycaret.png
     :class: inline-figure
     :height: 30
 
-.. |ptl| image:: images/pytorch_lightning_small.png
+.. |ptl| image:: ../images/pytorch_lightning_small.png
     :class: inline-figure
     :height: 30
 
-.. |raydp| image:: images/intel.png
+.. |raydp| image:: ../images/intel.png
     :class: inline-figure
     :height: 30
 
-.. |scikit| image:: images/scikit.png
+.. |scikit| image:: ../images/scikit.png
     :class: inline-figure
     :height: 30
 
-.. |seldon| image:: images/seldon.png
+.. |seldon| image:: ../images/seldon.png
     :class: inline-figure
     :height: 30
 
-.. |spacy| image:: images/spacy.png
+.. |spacy| image:: ../images/spacy.png
     :class: inline-figure
     :height: 30
 
-.. |xgboost| image:: images/xgboost_logo.png
+.. |xgboost| image:: ../images/xgboost_logo.png
     :class: inline-figure
     :height: 30
 
-.. |lightgbm| image:: images/lightgbm_logo.png
+.. |lightgbm| image:: ../images/lightgbm_logo.png
     :class: inline-figure
     :height: 30
 
-.. |nlu| image:: images/nlu.png
+.. |nlu| image:: ../images/nlu.png
     :class: inline-figure
     :height: 30
