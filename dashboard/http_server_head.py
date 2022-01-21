@@ -42,8 +42,7 @@ def setup_static_dir():
 
 
 class HttpServerDashboardHead:
-    def __init__(self, ip, http_host, http_port, http_port_retries):
-        self.ip = ip
+    def __init__(self, http_host, http_port, http_port_retries):
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
