@@ -1541,7 +1541,8 @@ cdef class CoreWorker:
                 concurrency_groups_dict, &c_concurrency_groups)
 
             if is_detached is not None:
-                is_detached_optional = make_optional[c_bool](True if is_detached else False)
+                is_detached_optional = make_optional[c_bool](
+                    True if is_detached else False)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
