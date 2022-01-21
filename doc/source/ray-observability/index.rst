@@ -4,7 +4,6 @@ Observability
 .. toctree::
     :maxdepth: 1
     :caption: Observability, Debugging, and Profiling
-    :hidden:
 
     ../ray-core/ray-dashboard.rst
     ray-debugging.rst

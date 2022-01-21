@@ -89,13 +89,6 @@ parts:
           - file: workflows/advanced
       - file: ray-more-libs/index
         title: More Ray ML Libraries
-        sections:
-          - file: ray-more-libs/multiprocessing
-          - file: ray-more-libs/joblib
-          - file: ray-more-libs/xgboost-ray.md
-          - file: ray-more-libs/lightgbm-ray
-          - file: ray-more-libs/ray-lightning
-          - file: ray-more-libs/ray-collective
 
   - caption: Ray Core
     chapters:
@@ -173,14 +166,6 @@ parts:
           - file: ray-contribute/fake-autoscaler
       - file: ray-core/configure
       - file: ray-observability/index
-        sections:
-          - file: ray-core/ray-dashboard
-          - file: ray-observability/ray-metrics
-          - file: ray-observability/ray-debugging
-          - file: ray-observability/ray-logging
-          - file: ray-observability/ray-tracing
-          - file: ray-contribute/debugging
-          - file: ray-contribute/profiling
       - file: ray-design-patterns/index
       - file: ray-contribute/whitepaper
 

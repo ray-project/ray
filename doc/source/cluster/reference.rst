@@ -2,7 +2,7 @@
 
 .. _cluster-reference:
 
-Config YAML and CLI Reference
+Cluster Config YAML and CLI Reference
 =============================
 
 .. toctree::

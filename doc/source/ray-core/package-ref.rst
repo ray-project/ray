@@ -1,5 +1,5 @@
-API and Package Reference
-=========================
+Core API Reference
+==================
 
 Python API
 ----------
