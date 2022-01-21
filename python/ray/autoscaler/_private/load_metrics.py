@@ -331,7 +331,7 @@ class LoadMetrics:
         assert isinstance(request, dict), request
 
         requested_resources = request.get("resources")
-        expire_when_satisfied = request.get("expire_when_satisfied")
+        expire_when_satisfied = request.get("expire_when_satisfied", False)
 
         assert isinstance(requested_resources, list), requested_resources
         assert isinstance(expire_when_satisfied, bool), expire_when_satisfied
