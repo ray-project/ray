@@ -1,12 +1,16 @@
-import sys
-import time
+from datetime import datetime
+import logging
 import platform
+import random
+import sys
+from threading import Event, Thread
+import time
 
 import pytest
 import ray
-
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
+from ray.cluster_utils import Cluster
 from ray._private.test_utils import (wait_for_condition,
                                      run_string_as_driver_nonblocking)
 
@@ -140,6 +144,54 @@ time.sleep(100)
     cluster.remove_node(head)
 
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Cluster unsupported on Windows.")
+def test_concurrent_shutdown(monkeypatch):
+    """Safe to shut down Ray with concurrent access to core workers."""
+    monkeypatch.setenv("RAY_ENABLE_AUTO_CONNECT", "0")
+    terminate = Event()
+
+    @ray.remote(num_cpus=1)
+    def work():
+        time.sleep(random.uniform(0, 0.1))
+
+    def worker():
+        while not terminate.is_set():
+            try:
+                ray.wait([work.remote()], timeout=1)
+            except Exception:
+                if ray.is_initialized():
+                    logging.exception(
+                        "Ray task failed, likely during Ray shutdown")
+
+    w_0 = Thread(target=worker, name="worker_0")
+    w_1 = Thread(target=worker, name="worker_1")
+    w_0.start()
+    w_1.start()
+
+    start = time.time()
+    while time.time() - start < 60:
+        cluster = Cluster()
+        for _ in range(2):
+            cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+
+        ray.init(address=cluster.address)
+        print(f"{datetime.now()} Started cluster at {cluster.address}")
+
+        time.sleep(random.uniform(1, 5))
+
+        print(f"{datetime.now()} Shutting down cluster at {cluster.address}")
+        ray.shutdown()
+        cluster.shutdown()
+
+        time.sleep(random.uniform(0, 1))
+
+    terminate.set()
+    w_0.join(timeout=10)
+    w_1.join(timeout=10)
 
 
 if __name__ == "__main__":

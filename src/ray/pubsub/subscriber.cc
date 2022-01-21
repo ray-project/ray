@@ -348,6 +348,9 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
       ABSL_NO_THREAD_SAFETY_ANALYSIS {
         absl::MutexLock lock(&state->mutex);
         if (state->destructed) {
+          RAY_LOG(ERROR) << "PubsubLongPolling callback running after Subscriber has "
+                            "destructed. Stop the io context for subscriber callbacks "
+                            "before deleting the subscriber.";
           return;
         }
         HandleLongPollingResponse(publisher_address, status, reply);
@@ -446,6 +449,9 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
           {
             absl::MutexLock lock(&state->mutex);
             if (state->destructed) {
+              RAY_LOG(ERROR) << "PubsubCommandBatch callback running after Subscriber "
+                                "has destructed. Stop the io context for subscriber "
+                                "callbacks before deleting the subscriber.";
               return;
             }
             auto command_batch_sent_it = command_batch_sent_.find(publisher_id);
@@ -467,6 +473,9 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
           {
             absl::MutexLock lock(&state->mutex);
             if (state->destructed) {
+              RAY_LOG(ERROR) << "PubsubCommandBatch callback running after Subscriber "
+                                "has destructed. Stop the io context for subscriber "
+                                "callbacks before deleting the subscriber.";
               return;
             }
             SendCommandBatchIfPossible(publisher_address);

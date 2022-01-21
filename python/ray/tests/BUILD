@@ -371,6 +371,7 @@ py_test_module_list(
     "test_object_spilling_3.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
+    "test_ray_shutdown.py",
     "test_array.py"
   ],
   size = "large",

@@ -444,9 +444,8 @@ class Subscriber : public SubscriberInterface {
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;
 
-  /// State of the subscriber that needs to be kept alive after destruction, when there
-  /// are inflight requests during the destruction.
-  /// Implements a poor man's cancellation.
+  /// State of the subscriber that needs to be kept alive after destruction, for the
+  /// requests inflight during the destruction. Helps to avoid accessing invalid memory.
   struct State {
     /// Protects other fields in the Subscriber.
     absl::Mutex mutex;
@@ -454,8 +453,6 @@ class Subscriber : public SubscriberInterface {
     bool destructed GUARDED_BY(mutex) = false;
   };
   std::shared_ptr<State> state_ = std::make_shared<State>();
-
-  mutable absl::Mutex mutex_;
 
   /// Commands queue. Commands are reported in FIFO order to the publisher. This
   /// guarantees the ordering of commands because they are delivered only by a single RPC
