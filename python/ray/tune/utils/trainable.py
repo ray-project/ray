@@ -117,8 +117,12 @@ class TrainableUtil:
     def find_rel_checkpoint_dir(logdir, checkpoint_path):
         """Returns the (relative) directory name of the checkpoint.
 
+        Note, the assumption here is `logdir` should be the prefix of
+        `checkpoint_path`.
         For example, returns `checkpoint00000/`.
         """
+        assert (checkpoint_path.startswith(logdir),
+                "expecting `logdir` to be a prefix of `checkpoint_path`")
         rel_path = os.path.relpath(checkpoint_path, logdir)
         tokens = rel_path.split(os.sep)
         return os.path.join(tokens[0], "")
