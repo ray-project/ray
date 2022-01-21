@@ -78,7 +78,8 @@ class JobConfig:
                 gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
         else:
             raise ValueError(
-                "Default actor lifetime must be one of `detached`, `non_detached`")
+                "Default actor lifetime must be one of `detached`, `non_detached`"
+            )
 
     def _validate_runtime_env(self):
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported

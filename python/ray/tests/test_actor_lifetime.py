@@ -16,8 +16,10 @@ from ray.exceptions import RayActorError
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
-@pytest.mark.parametrize("default_actor_lifetime", ["detached", "non_detached"])
-@pytest.mark.parametrize("child_actor_lifetime", [None, "detached", "non_detached"])
+@pytest.mark.parametrize("default_actor_lifetime",
+                         ["detached", "non_detached"])
+@pytest.mark.parametrize("child_actor_lifetime",
+                         [None, "detached", "non_detached"])
 def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     @ray.remote
     class OwnerActor:
@@ -29,8 +31,10 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
                     lifetime=child_actor_lifetime).remote()
             assert "ok" == ray.get(self._child_actor.ready.remote())
             return self._child_actor
+
         def get_pid(self):
             return os.getpid()
+
         def ready(self):
             return "ok"
 
@@ -40,7 +44,9 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
             return "ok"
 
     if default_actor_lifetime is not None:
-        ray.init(job_config=JobConfig(default_actor_lifetime=default_actor_lifetime))
+        ray.init(
+            job_config=JobConfig(
+                default_actor_lifetime=default_actor_lifetime))
     else:
         ray.init()
 
@@ -52,6 +58,7 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     owner_pid = ray.get(owner.get_pid.remote())
     os.kill(owner_pid, SIGKILL)
     wait_for_pid_to_exit(owner_pid)
+
     # 3. Assert child state.
 
     def is_child_actor_dead():
@@ -68,11 +75,12 @@ def test_default_actor_lifetime(default_actor_lifetime, child_actor_lifetime):
     assert actual_lifetime is not None
     if actual_lifetime == "detached":
         time.sleep(5)
-        assert not is_child_actor_dead() 
+        assert not is_child_actor_dead()
     else:
         wait_for_condition(is_child_actor_dead, timeout=5)
 
     ray.shutdown()
+
 
 if __name__ == "__main__":
     import pytest
