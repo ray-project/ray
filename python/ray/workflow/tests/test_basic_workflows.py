@@ -282,6 +282,17 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
     assert isinstance(err, ValueError)
 
 
+@workflow.step
+def exponential(k, n):
+    if n > 0:
+        return exponential.step(k * 2, n - 1)
+    return k
+
+
+def test_dynamic_output(workflow_start_regular_shared):
+    assert exponential.step(3, 10).run(workflow_id="dynamic_output") == 3072
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
