@@ -2312,7 +2312,7 @@ if __name__ == "__main__":
         "--report",
         action="store_true",
         default=False,
-        help="Do not report any results or upload to S3")
+        help="Whether to report results and upload to S3")
     parser.add_argument(
         "--kick-off-only",
         action="store_true",
