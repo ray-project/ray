@@ -20,7 +20,7 @@ Tune includes distributed implementations of early stopping algorithms such as `
 
 .. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.
 
-When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix. Certain schedulers cannot be used with Search Algorithms, and certain schedulers are require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
+When using schedulers, you may face compatibility issues, as shown in the below compatibility matrix. Certain schedulers cannot be used with Search Algorithms, and certain schedulers require :ref:`checkpointing to be implemented <tune-checkpoint-syncing>`.
 
 Schedulers can dynamically change trial resource requirements during tuning. This is currently implemented in ``ResourceChangingScheduler``, which can wrap around any other scheduler.
 
