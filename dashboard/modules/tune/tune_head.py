@@ -7,7 +7,8 @@ import aiohttp.web
 import ray.dashboard.modules.tune.tune_consts \
     as tune_consts
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.utils import async_loop_forever, rest_response
+from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.optional_utils import rest_response
 
 logger = logging.getLogger(__name__)
 
