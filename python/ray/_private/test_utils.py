@@ -1135,7 +1135,6 @@ def check_local_files_gced(cluster):
                     list(
                         filter(lambda f: not f.endswith((".lock", ".txt")),
                                all_files))) > 0:
-                print(str(all_files))
                 return False
 
     return True
