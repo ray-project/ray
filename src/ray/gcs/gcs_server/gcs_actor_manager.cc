@@ -54,8 +54,7 @@ const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its node has died. Node Id: ", node_id.Hex()));
+      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
   return death_cause;
 }
 
@@ -66,8 +65,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its worker process has died. Worker exit type: ",
+      "The actor is dead because its worker process has died. Worker exit type: ",
       ray::rpc::WorkerExitType_Name(disconnect_type)));
   return death_cause;
 }
@@ -976,7 +974,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 
   RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", death context type = " << GetDeathCauseString(&death_cause)
+                << ", death context type = " << GetActorDeathCauseString(death_cause)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
 
