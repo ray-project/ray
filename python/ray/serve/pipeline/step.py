@@ -107,9 +107,9 @@ def step(_func_or_class: Optional[Callable] = None,
 
     Example:
 
-    >>> @pipeline.step(execution_mode="actors", num_replicas=10)\
-        def my_step(*args):\
-            pass\
+    >>> @pipeline.step(execution_mode="actors", num_replicas=10)
+        def my_step(*args):
+            pass
 
     Returns:
         :class:`PipelineStep`

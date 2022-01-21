@@ -153,7 +153,7 @@ An Overview of the Ray Libraries
 
 Ray has a rich ecosystem of libraries and frameworks built on top of it. The main ones being:
 
-- :doc:`/ray-tune/index`
+- :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`train-docs`
 - :ref:`rayserve`

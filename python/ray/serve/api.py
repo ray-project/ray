@@ -562,10 +562,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 
     Example:
     >>> app = FastAPI()
-    >>> @serve.deployment\
-        @serve.ingress(app)\
-        class App:\
-            pass\
+    >>> @serve.deployment
+        @serve.ingress(app)
+        class App:
+            pass
     >>> App.deploy()
     """
 
@@ -1022,11 +1022,10 @@ def deployment(
 
     Example:
 
-    >>> @serve.deployment(name="deployment1", version="v1")\
-        class MyDeployment:\
-            pass\
+    >>> @serve.deployment(name="deployment1", version="v1")
+        class MyDeployment:
+            pass
 
-    >>> init_args = dict()
     >>> MyDeployment.deploy(*init_args)
     >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
 
@@ -1086,7 +1085,6 @@ def get_deployment(name: str) -> Deployment:
 
     Example:
 
-    >>> from ray import serve
     >>> MyDeployment = serve.get_deployment("name")
     >>> MyDeployment.options(num_replicas=10).deploy()
 
