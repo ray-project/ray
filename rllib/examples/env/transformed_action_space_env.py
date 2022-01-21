@@ -68,6 +68,11 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
         def render(self, mode=None):
             return self.env.render(mode)
 
+        @override(gym.Env)
+        def seed(self, seed):
+            super().seed(seed)
+            self.env.seed(seed)
+
     return TransformedActionSpaceEnv
 
 
