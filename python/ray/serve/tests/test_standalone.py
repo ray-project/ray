@@ -333,7 +333,7 @@ def test_http_root_path(ray_shutdown):
     # check advertized routes are prefixed correctly
     resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
-    assert resp.json() == {"/serve/hello": "hello"}
+    assert resp.json() == {"/hello": "hello"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

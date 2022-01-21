@@ -331,13 +331,11 @@ class ServeController:
 
         goal_id, updating = self.deployment_state_manager.deploy(
             name, deployment_info)
-        if route_prefix is not None:
-            # construct complete url
-            root_path = self.get_http_config().root_path
-            route_prefix = root_path + route_prefix
 
+        if route_prefix is not None:
             endpoint_info = EndpointInfo(route=route_prefix)
             self.endpoint_state.update_endpoint(name, endpoint_info)
+
         return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

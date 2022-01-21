@@ -235,13 +235,18 @@ class HTTPProxy:
         """
 
         assert scope["type"] == "http"
+
+        # only use the non-root part of the path for routing
+        root_path = scope["root_path"]
+        path = scope["path"][len(root_path):]
+
         self.request_counter.inc(tags={"route": scope["path"]})
 
-        if scope["path"] == scope["root_path"] + "/-/routes":
+        if path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
-        route_prefix, handle = self.prefix_router.match_route(scope["path"])
+        route_prefix, handle = self.prefix_router.match_route(path)
         if route_prefix is None:
             return await self._not_found(scope, receive, send)
 
@@ -251,7 +256,7 @@ class HTTPProxy:
         if route_prefix != "/":
             assert not route_prefix.endswith("/")
             scope["path"] = scope["path"].replace(route_prefix, "", 1)
-            scope["root_path"] = route_prefix
+            scope["root_path"] = root_path + route_prefix
 
         await _send_request_to_handle(handle, scope, receive, send)
 
