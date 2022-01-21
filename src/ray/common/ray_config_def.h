@@ -205,8 +205,8 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
-/// Allow up to 5 seconds for connecting to Redis.
-RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
+/// Allow up to 60 seconds for connecting to Redis.
+RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
 /// The object manager's global timer interval in milliseconds.
@@ -301,7 +301,7 @@ RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
-RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
+RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
