@@ -126,63 +126,29 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
-                # TODO(architkulkarni): Unify the below using Plugin class
-                # Set up working_dir
-                working_dir_uri = self._working_dir_manager.get_uri(
-                    runtime_env)
-                if working_dir_uri is not None:
-                    if working_dir_uri not in self._working_dir_uri_cache:
-                        size_bytes = self._working_dir_manager.create(
-                            working_dir_uri,
-                            runtime_env,
-                            context,
-                            logger=per_job_logger)
-                        self._working_dir_uri_cache.add(
-                            working_dir_uri, size_bytes, logger=per_job_logger)
-                    else:
-                        self._working_dir_uri_cache.mark_used(
-                            working_dir_uri, logger=per_job_logger)
-                    self._working_dir_manager.modify_context(
-                        working_dir_uri, runtime_env, context)
+                for (manager, uri_cache) in [(self._working_dir_manager,
+                                              self._working_dir_uri_cache),
+                                             (self._conda_manager,
+                                              self._conda_uri_cache),
+                                             (self._pip_manager,
+                                              self._pip_uri_cache)]:
+                    uri = manager.get_uri(runtime_env)
+                    if uri is not None:
+                        if uri not in uri_cache:
+                            size_bytes = manager.create(
+                                uri,
+                                runtime_env,
+                                context,
+                                logger=per_job_logger)
+                            uri_cache.add(
+                                uri, size_bytes, logger=per_job_logger)
+                        else:
+                            uri_cache.mark_used(uri, logger=per_job_logger)
+                    manager.modify_context(uri, runtime_env, context)
 
-                # Set up conda
-                conda_uri = self._conda_manager.get_uri(runtime_env)
-                if conda_uri is not None:
-                    if conda_uri not in self._conda_uri_cache:
-                        size_bytes = self._conda_manager.create(
-                            conda_uri,
-                            runtime_env,
-                            context,
-                            logger=per_job_logger)
-                        self._conda_uri_cache.add(
-                            conda_uri, size_bytes, logger=per_job_logger)
-                    else:
-                        self._conda_uri_cache.mark_used(
-                            conda_uri, logger=per_job_logger)
-                # Even if conda_uri is None, it might be the case that we're
-                # specifying an existing conda env, so run modify_context
-                # to prepend `conda activate <env_name>` to the entrypoint.
-                self._conda_manager.modify_context(
-                    conda_uri, runtime_env, context, logger=per_job_logger)
-
-                # Set up pip
-                pip_uri = self._pip_manager.get_uri(runtime_env)
-                if pip_uri is not None:
-                    if pip_uri not in self._pip_uri_cache:
-                        size_bytes = self._pip_manager.create(
-                            pip_uri,
-                            runtime_env,
-                            context,
-                            logger=per_job_logger)
-                        self._pip_uri_cache.add(
-                            pip_uri, size_bytes, logger=per_job_logger)
-                    else:
-                        self._pip_uri_cache.mark_used(
-                            pip_uri, logger=per_job_logger)
-                self._pip_manager.modify_context(
-                    pip_uri, runtime_env, context, logger=per_job_logger)
-
-                # Set up py_modules
+                # Set up py_modules. For now, py_modules uses multiple URIs so
+                # the logic is slightly different from working_dir, conda, and
+                # pip above.
                 py_modules_uris = self._py_modules_manager.get_uris(
                     runtime_env)
                 if py_modules_uris is not None:
@@ -198,8 +164,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         else:
                             self._py_modules_uri_cache.mark_used(
                                 uri, logger=per_job_logger)
-                    self._py_modules_manager.modify_context(
-                        py_modules_uris, runtime_env, context)
+                self._py_modules_manager.modify_context(
+                    py_modules_uris, runtime_env, context)
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.

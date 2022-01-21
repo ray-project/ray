@@ -107,8 +107,11 @@ class WorkingDirManager:
         self._uris_to_local_dirs[uri] = local_dir
         return get_directory_size(local_dir)
 
-    def modify_context(self, uri: str, runtime_env_dict: Dict,
+    def modify_context(self, uri: Optional[str], runtime_env_dict: Dict,
                        context: RuntimeEnvContext):
+        if uri is None:
+            return
+
         local_dir = self._uris_to_local_dirs.get(uri)
         if local_dir is None:
             raise ValueError(f"Local directory not found for URI {uri}")

@@ -118,8 +118,10 @@ class PyModulesManager:
         self._uris_to_module_dirs[uri] = module_dir
         return get_directory_size(module_dir)
 
-    def modify_context(self, uris: List[str], runtime_env_dict: Dict,
+    def modify_context(self, uris: Optional[List[str]], runtime_env_dict: Dict,
                        context: RuntimeEnvContext):
+        if uris is None:
+            return
         module_dirs = []
         for uri in uris:
             module_dir = self._uris_to_module_dirs.get(uri)
