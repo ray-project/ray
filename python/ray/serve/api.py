@@ -381,7 +381,7 @@ def _check_http_and_checkpoint_options(
         checkpoint_path: str,
 ) -> None:
     if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warn(
+        logger.warning(
             f"The new client checkpoint path '{checkpoint_path}' "
             f"is different from the existing one '{client.checkpoint_path}'. "
             "The new checkpoint path is ignored.")
@@ -398,7 +398,7 @@ def _check_http_and_checkpoint_options(
                 different_fields.append(field)
 
         if len(different_fields):
-            logger.warn(
+            logger.warning(
                 "The new client HTTP config differs from the existing one "
                 f"in the following fields: {different_fields}. "
                 "The new HTTP config is ignored.")
