@@ -10,3 +10,4 @@ More Ray ML Libraries
     multiprocessing.rst
     ray-collective.rst
     ray-lightning.rst
+    xgboost-ray.md
