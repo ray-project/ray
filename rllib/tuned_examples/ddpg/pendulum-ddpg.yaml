@@ -3,8 +3,8 @@ pendulum-ddpg:
     env: Pendulum-v1
     run: DDPG
     stop:
-        episode_reward_mean: -600
-        timesteps_total: 30000
+      episode_reward_mean: -225
+      timesteps_total: 30000
     config:
         # Works for both torch and tf.
         seed: 42
