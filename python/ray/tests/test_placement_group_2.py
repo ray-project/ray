@@ -697,14 +697,14 @@ ray.shutdown()
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis", [
         generate_system_config_map(
             num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
-        ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
@@ -735,14 +735,14 @@ def test_create_placement_group_after_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis", [
         generate_system_config_map(
             num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
-        ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 
@@ -759,14 +759,14 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis", [
         generate_system_config_map(
             num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
-        ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
 

@@ -4,6 +4,10 @@ import subprocess
 import sys
 
 import ray
+import ray.ray_constants as ray_constants
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
+from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
@@ -83,16 +87,28 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     check_call_ray(["stop"])
 
-    # Test starting Ray with invalid external address.
-    # It will fall back to creating a new one.
-    check_call_ray(
-        ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
-    check_call_ray(["stop"])
+    temp_dir = ray._private.utils.get_ray_temp_dir()
+    if not use_gcs_for_bootstrap():
+        # Test starting Ray with --address flag (deprecated).
+        _, proc = _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            7777,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        check_call_ray(["start", "--head", "--address", "127.0.0.1:7777"])
+        check_call_ray(["stop"])
+        proc.process.terminate()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
-    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:6379"
-    check_call_ray(["start", "--head", "--port", "0"])
+    _, proc = _start_redis_instance(
+        REDIS_EXECUTABLE,
+        temp_dir,
+        8888,
+        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    os.environ["RAY_REDIS_ADDRESS"] = "127.0.0.1:8888"
+    check_call_ray(["start", "--head"])
     check_call_ray(["stop"])
+    proc.process.terminate()
     del os.environ["RAY_REDIS_ADDRESS"]
 
     # Test --block. Killing a child process should cause the command to exit.
@@ -136,7 +152,18 @@ for i in range(0, 5):
     blocked.poll()
     assert blocked.returncode is None
 
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
+    # Include GCS, autoscaler monitor, client server, dashboard, raylet and
+    # log_monitor.py
+    num_children = 6
+    if not use_gcs_for_bootstrap():
+        # Account for Redis
+        num_children += 1
+    if not detect_fate_sharing_support():
+        # Account for ray_process_reaper.py
+        num_children += 1
+    # Check a set of child process commands & scripts instead?
+    wait_for_children_of_pid(
+        blocked.pid, num_children=num_children, timeout=30)
 
     blocked.terminate()
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)

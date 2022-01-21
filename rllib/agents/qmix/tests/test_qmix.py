@@ -23,6 +23,7 @@ class AvailActionsTestEnv(MultiAgentEnv):
     })
 
     def __init__(self, env_config):
+        super().__init__()
         self.state = None
         self.avail = env_config.get("avail_actions", [3])
         self.action_mask = np.array([0] * 10)

@@ -179,16 +179,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def get_next_failed_trial(self) -> Optional[Trial]:
-        """Non-blocking call that detects and returns one failed trial.
-
-        Returns:
-            A Trial object that is ready for failure processing. None if
-            no failure detected.
-        """
-        pass
-
-    @abstractmethod
     def fetch_result(self, trial: Trial) -> List[Trial]:
         """Fetches one result for the trial.
 

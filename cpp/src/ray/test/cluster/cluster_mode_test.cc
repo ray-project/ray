@@ -196,6 +196,13 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
+  /// Test Put, Get & Remote for large objects
+  std::array<int, 100000> arr;
+  auto r17 = ray::Put(arr);
+  auto r18 = ray::Task(ReturnLargeArray).Remote(r17);
+  EXPECT_EQ(arr, *(ray::Get(r17)));
+  EXPECT_EQ(arr, *(ray::Get(r18)));
+
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
@@ -286,20 +293,20 @@ TEST(RayClusterModeTest, LocalRefrenceTest) {
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
-  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
-  auto object_id = ray::ObjectID::FromBinary(r1->ID());
-  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    auto object_id = ray::ObjectID::FromBinary(r1.ID());
+    EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
 
-  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 1)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r2->Get();
-  EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 0)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r1.reset();
-  r2.reset();
+    auto r2 = ray::Task(Plus1).Remote(r1);
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 1)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+    r2.Get();
+    EXPECT_TRUE(
+        CheckRefCount({{object_id, std::make_pair(1, 0)},
+                       {ray::ObjectID::FromBinary(r2.ID()), std::make_pair(1, 0)}}));
+  }
   EXPECT_TRUE(CheckRefCount({}));
 }
 

@@ -67,6 +67,7 @@ class PettingZooEnv(MultiAgentEnv):
     """
 
     def __init__(self, env):
+        super().__init__()
         self.env = env
         env.reset()
 
@@ -134,6 +135,7 @@ class PettingZooEnv(MultiAgentEnv):
 
 class ParallelPettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
+        super().__init__()
         self.par_env = env
         self.par_env.reset()
 
