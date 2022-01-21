@@ -201,12 +201,12 @@ def test_TBX(ray_start_4_cpus, tmp_path):
     _validate_tbx_result(temp_dir)
 
 
-def test_mlflow(ray_start_4_cpus, make_temp_dir):
+def test_mlflow(ray_start_4_cpus, tmp_path):
     config = TestConfig()
 
     params = {"p1": "p1"}
 
-    temp_dir = make_temp_dir
+    temp_dir = tmp_path
     num_workers = 4
 
     def train_func(config):
