@@ -250,7 +250,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             std::vector<ObjectID> object_ids = {object_id};
             std::vector<std::unique_ptr<RayObject>> results;
             std::unique_ptr<RayObject> result;
-            if (GetObjectsFromPlasma(object_ids, &results) && results.size() > 0) {
+            if (GetObjectsFromPlasma(object_ids, &results)) {
               result = std::move(results[0]);
             }
             return result;
@@ -2123,11 +2123,13 @@ bool NodeManager::GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
 
   for (const auto &plasma_result : plasma_results) {
     if (plasma_result.data == nullptr) {
-      results->push_back(nullptr);
-    } else {
-      results->emplace_back(std::unique_ptr<RayObject>(
-          new RayObject(plasma_result.data, plasma_result.metadata, {})));
+      return false;
     }
+  }
+
+  for (const auto &plasma_result : plasma_results) {
+    results->emplace_back(std::unique_ptr<RayObject>(
+        new RayObject(plasma_result.data, plasma_result.metadata, {})));
   }
   return true;
 }
