@@ -454,8 +454,11 @@ class Monitor:
             gcs_publisher=gcs_publisher)
 
     def _signal_handler(self, sig, frame):
-        self._handle_failure(f"Terminated with signal {sig}\n" +
-                             "".join(traceback.format_stack(frame)))
+        try:
+            self._handle_failure(f"Terminated with signal {sig}\n" +
+                                 "".join(traceback.format_stack(frame)))
+        except Exception:
+            logger.exception("Monitor: Failure in signal handler.")
         sys.exit(sig + 128)
 
     def run(self):
