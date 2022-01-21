@@ -95,10 +95,8 @@ def create_conda_env_if_needed(conda_yaml_file: str,
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
 
-    env_names = [os.path.basename(env) for env in envs]
-    if prefix in env_names:
-        logger.info(f"Conda environment {prefix} already exists; "
-                    "skipping creation.")
+    if prefix in envs:
+        logger.info(f"Conda environment {prefix} already exists.")
         return
 
     create_cmd = [
