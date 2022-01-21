@@ -1,0 +1,172 @@
+format: jb-book
+root: index
+parts:
+  - caption: Overview
+    chapters:
+      - file: ray-overview/index
+      - file: ray-overview/installation
+      - file: ray-overview/ray-libraries
+
+  - caption: Ray ML
+    chapters:
+      - file: data/dataset
+        title: Ray Data
+        sections:
+          - file: data/dataset-pipeline
+          - file: data/dataset-ml-preprocessing
+          - file: data/dataset-execution-model
+          - file: data/dataset-tensor-support
+          - file: data/examples/big_data_ingestion
+          - file: data/dask-on-ray
+          - file: data/mars-on-ray
+          - file: data/modin/index
+          - file: data/raydp
+      - file: train/train
+        title: Ray Train
+        sections:
+          - file: train/user_guide
+          - file: train/examples
+          - file: train/architecture
+          - file: train/migration-guide
+          - file: raysgd/raysgd
+            title: "RaySGD v1: Distributed Training Wrappers"
+      - file: tune/index
+        title: Ray Tune
+        sections:
+          - file: tune/key-concepts
+          - file: tune/user-guide
+          - file: tune/tutorials/overview
+            sections:
+              - file: tune/tutorials/tune-tutorial.rst
+              - file: tune/tutorials/tune-advanced-tutorial.rst
+              - file: tune/tutorials/tune-distributed.rst
+              - file: tune/tutorials/tune-lifecycle.rst
+              - file: tune/tutorials/tune-mlflow.rst
+              - file: tune/tutorials/tune-pytorch-cifar.rst
+              - file: tune/tutorials/tune-pytorch-lightning.rst
+              - file: tune/tutorials/tune-serve-integration-mnist.rst
+              - file: tune/tutorials/tune-sklearn.rst
+              - file: tune/tutorials/tune-xgboost.rst
+              - file: tune/tutorials/tune-wandb.rst
+          - file: tune/examples/index
+          - file: tune/contrib
+      - file: serve/index
+        title: Ray Serve
+        sections:
+          - file: serve/tutorial
+          - file: serve/core-apis
+          - file: serve/http-servehandle
+          - file: serve/deployment
+          - file: serve/ml-models
+          - file: serve/pipeline
+          - file: serve/performance
+          - file: serve/architecture
+          - file: serve/tutorials/index
+          - file: serve/faq
+      - file: rllib/index
+        title: Ray RLlib
+        sections:
+          - file: rllib/rllib-toc
+          - file: rllib/core-concepts
+          - file: rllib/rllib-training
+          - file: rllib/rllib-env
+          - file: rllib/rllib-models
+          - file: rllib/rllib-algorithms
+          - file: rllib/rllib-sample-collection
+          - file: rllib/rllib-offline
+          - file: rllib/rllib-concepts
+          - file: rllib/rllib-examples
+          - file: rllib/rllib-dev
+      - file: workflows/concepts
+        title: Ray Workflows
+        sections:
+          - file: workflows/basics
+          - file: workflows/management
+          - file: workflows/actors
+          - file: workflows/metadata
+          - file: workflows/events
+          - file: workflows/comparison
+          - file: workflows/advanced
+      - file: ray-more-libs/index
+        title: More Ray ML Libraries
+
+  - caption: Ray Core
+    chapters:
+      - file: ray-core/walkthrough
+        title: Getting Started
+      - file: ray-core/using-ray
+        title: "User Guide"
+        sections:
+          - file: ray-core/starting-ray
+          - file: ray-core/actors
+          - file: ray-core/namespaces
+          - file: ray-core/handling-dependencies
+          - file: ray-core/async_api
+          - file: ray-core/concurrency_group_api
+          - file: ray-core/using-ray-with-gpus
+          - file: ray-core/serialization
+          - file: ray-core/memory-management
+          - file: ray-core/placement-group
+          - file: ray-core/troubleshooting
+          - file: ray-core/fault-tolerance
+          - file: ray-core/advanced
+          - file: ray-core/cross-language
+          - file: ray-core/using-ray-with-tensorflow
+          - file: ray-core/using-ray-with-pytorch
+          - file: ray-core/using-ray-with-jupyter
+      - file: ray-core/examples/overview
+        title: "Tutorials and Examples"
+        sections:
+          - file: ray-core/examples/tips-for-first-time
+          - file: ray-core/examples/testing-tips
+          - file: ray-core/examples/progress_bar
+          - file: ray-core/examples/plot_streaming
+          - file: ray-core/examples/placement-group
+          - file: ray-core/examples/plot_parameter_server
+          - file: ray-core/examples/plot_hyperparameter
+          - file: ray-core/examples/plot_lbfgs
+          - file: ray-core/examples/plot_example-lm
+          - file: ray-core/examples/plot_newsreader
+          - file: ray-core/examples/dask_xgboost/dask_xgboost
+          - file: ray-core/examples/modin_xgboost/modin_xgboost
+          - file: ray-core/examples/plot_pong_example
+          - file: ray-core/examples/plot_example-a3c
+          - file: ray-core/examples/using-ray-with-pytorch-lightning
+
+  - caption: Deploying Ray Clusters
+    chapters:
+      - file: cluster/quickstart
+      - file: cluster/user-guide
+        sections:
+          - file: cluster/index
+          - file: cluster/guide
+          - file: cluster/job-submission
+            title: "Submitting Ray Jobs"
+          - file: cluster/ray-client
+      - file: cluster/cloud
+        sections:
+          - file: cluster/aws-tips
+      - file: cluster/deploy
+        sections:
+          - file: cluster/kubernetes
+          - file: cluster/yarn
+          - file: cluster/slurm
+          - file: cluster/lsf
+
+  - caption: References
+    chapters:
+      - file: ray-references/api
+      - file: ray-references/faq
+
+  - caption: Developer Guide
+    chapters:
+      - file: ray-contribute/getting-involved
+        sections:
+          - file: ray-contribute/development
+          - file: ray-contribute/fake-autoscaler
+      - file: ray-core/configure
+      - file: ray-observability/index
+      - file: ray-design-patterns/index
+      - file: ray-contribute/whitepaper
+
+# TODO: Add examples section
