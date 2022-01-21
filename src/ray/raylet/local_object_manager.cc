@@ -35,19 +35,20 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       continue;
     }
 
-    const auto inserted = objects_waiting_for_free_.emplace(object_id, owner_address);
+    const auto inserted =
+        local_objects_.emplace(object_id, std::make_pair<>(owner_address, false));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;
       pinned_objects_size_ += object->GetSize();
       pinned_objects_.emplace(object_id, std::move(object));
     } else {
-      if (inserted.first->second.worker_id() != owner_address.worker_id()) {
+      auto original_worker_id =
+          WorkerID::FromBinary(inserted.first->second.first.worker_id());
+      auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+      if (original_worker_id != new_worker_id) {
         // TODO(swang): Handle this case. We should use the new owner address
         // and object copy.
-        auto original_worker_id =
-            WorkerID::FromBinary(inserted.first->second.worker_id());
-        auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
         RAY_LOG(WARNING)
             << "Received PinObjects request from a different owner " << new_worker_id
             << " from the original " << original_worker_id << ". Object " << object_id
@@ -95,18 +96,31 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-  if (!objects_waiting_for_free_.erase(object_id)) {
+  // Only free the object if it is not already freed.
+  auto it = local_objects_.find(object_id);
+  if (it == local_objects_.end() || it->second.second) {
     return;
   }
-  // The object should be in one of these stats. pinned, spilling, or spilled.
+  // Mark the object as freed. NOTE(swang): We have to mark this instead of
+  // deleting the entry immediately in case the object is currently being
+  // spilled. In that case, we should process the free event once the object
+  // spill is complete.
+  it->second.second = true;
+
+  RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  // The object should be in one of these states: pinned, spilling, or spilled.
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
-  spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id]->GetSize();
     pinned_objects_.erase(object_id);
+    local_objects_.erase(it);
+  } else {
+    // If the object is being spilled or is already spilled, then we will clean
+    // up the local_objects_ entry once the spilled copy has been
+    // freed.
+    spilled_object_pending_delete_.push(object_id);
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -258,14 +272,14 @@ void LocalObjectManager::SpillObjectsInternal(
         std::vector<ObjectID> requested_objects_to_spill;
         for (const auto &object_id : objects_to_spill) {
           RAY_CHECK(objects_pending_spill_.count(object_id));
-          auto owner_it = objects_waiting_for_free_.find(object_id);
+          auto freed_it = local_objects_.find(object_id);
           // If the object hasn't already been freed, spill it.
-          if (owner_it == objects_waiting_for_free_.end()) {
+          if (freed_it == local_objects_.end() || freed_it->second.second) {
             objects_pending_spill_.erase(object_id);
           } else {
             auto ref = request.add_object_refs_to_spill();
             ref->set_object_id(object_id.Binary());
-            ref->mutable_owner_address()->CopyFrom(owner_it->second);
+            ref->mutable_owner_address()->CopyFrom(freed_it->second.first);
             RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
             requested_objects_to_spill.push_back(object_id);
           }
@@ -349,14 +363,14 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     request.set_spilled_node_id(node_id_object_spilled.Binary());
     request.set_size(object_size);
 
-    auto owner_it = objects_waiting_for_free_.find(object_id);
-    if (owner_it == objects_waiting_for_free_.end()) {
+    auto freed_it = local_objects_.find(object_id);
+    if (freed_it == local_objects_.end() || freed_it->second.second) {
       RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
                         "object directory for object "
                      << object_id;
       continue;
     }
-    const auto &worker_addr = owner_it->second;
+    const auto &worker_addr = freed_it->second.first;
     auto owner_client = owner_client_pool_.GetOrConnect(worker_addr);
     RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
                    << " to owner " << WorkerID::FromBinary(worker_addr.worker_id());
@@ -485,7 +499,12 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
+    } else {
+      // If the object was not spilled, it gets pinned again. Unpin here to
+      // prevent a memory leak.
+      pinned_objects_.erase(object_id);
     }
+    local_objects_.erase(object_id);
     spilled_object_pending_delete_.pop();
   }
   if (object_urls_to_delete.size() > 0) {

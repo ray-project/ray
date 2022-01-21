@@ -63,10 +63,10 @@ class GcsClientOptions {
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];
     gcs_port_ = std::stoi(address[1]);
-    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   }
 
   GcsClientOptions() {}

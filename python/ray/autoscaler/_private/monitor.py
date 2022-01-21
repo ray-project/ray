@@ -146,7 +146,7 @@ class Monitor:
                 redis_address, password=redis_password)
             (ip, port) = address.split(":")
             # Initialize the gcs stub for getting all node resource usage.
-            gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+            gcs_address = get_gcs_address_from_redis(self.redis)
         else:
             gcs_address = address
             redis_address = None
@@ -333,35 +333,40 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
-            if self.stop_event and self.stop_event.is_set():
-                break
-            self.update_load_metrics()
-            self.update_resource_requests()
-            self.update_event_summary()
-            status = {
-                "load_metrics_report": asdict(self.load_metrics.summary()),
-                "time": time.time(),
-                "monitor_pid": os.getpid()
-            }
+            try:
+                if self.stop_event and self.stop_event.is_set():
+                    break
+                self.update_load_metrics()
+                self.update_resource_requests()
+                self.update_event_summary()
+                status = {
+                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "time": time.time(),
+                    "monitor_pid": os.getpid()
+                }
 
-            # Process autoscaling actions
-            if self.autoscaler:
-                # Only used to update the load metrics for the autoscaler.
-                self.autoscaler.update()
-                status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                # Process autoscaling actions
+                if self.autoscaler:
+                    # Only used to update the load metrics for the autoscaler.
+                    self.autoscaler.update()
+                    status["autoscaler_report"] = asdict(
+                        self.autoscaler.summary())
 
-                for msg in self.event_summarizer.summary():
-                    # Need to prefix each line of the message for the lines to
-                    # get pushed to the driver logs.
-                    for line in msg.split("\n"):
-                        logger.info("{}{}".format(
-                            ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
-                self.event_summarizer.clear()
+                    for msg in self.event_summarizer.summary():
+                        # Need to prefix each line of the message for the lines to
+                        # get pushed to the driver logs.
+                        for line in msg.split("\n"):
+                            logger.info("{}{}".format(
+                                ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
+                    self.event_summarizer.clear()
 
-            as_json = json.dumps(status)
-            if _internal_kv_initialized():
-                _internal_kv_put(
-                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                as_json = json.dumps(status)
+                if _internal_kv_initialized():
+                    _internal_kv_put(
+                        DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+            except Exception:
+                logger.exception(
+                    "Monitor: Execution exception. Trying again...")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

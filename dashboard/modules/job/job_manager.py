@@ -210,7 +210,9 @@ class JobSupervisor:
             os.environ[
                 ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = \
                 ray._private.services.get_ray_address_from_environment()
-
+            # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
+            # only streaming them upon completion of the job.
+            os.environ["PYTHONUNBUFFERED"] = "1"
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
 

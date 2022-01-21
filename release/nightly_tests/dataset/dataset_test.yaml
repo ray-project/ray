@@ -1,8 +1,5 @@
 - name: inference
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: inference.yaml
@@ -13,10 +10,7 @@
     script: python inference.py
   
 - name: shuffle_data_loader
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: shuffle_app_config.yaml
     compute_template: shuffle_compute.yaml
@@ -26,10 +20,7 @@
     script: python dataset_shuffle_data_loader.py
 
 - name: pipelined_training_50_gb
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: pipelined_training_app.yaml
     compute_template: pipelined_training_compute.yaml
@@ -40,10 +31,7 @@
     script: python pipelined_training.py --epochs 1
 
 - name: pipelined_ingestion_1500_gb_15_windows
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: pipelined_ingestion_app.yaml
     compute_template: pipelined_ingestion_compute.yaml
@@ -54,10 +42,7 @@
     script: python pipelined_training.py --epochs 2 --num-windows 15  --num-files 915 --debug
 
 - name: datasets_ingest_train_infer
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: ray_sgd_training_compute.yaml
@@ -80,10 +65,7 @@
       script: python ray_sgd_training.py --address auto --use-s3 --num-workers 8 --use-gpu
 
 - name: datasets_preprocess_ingest
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: ray_sgd_training_compute_no_gpu.yaml
@@ -96,10 +78,7 @@
   stable: false
 
 - name: datasets_ingest_400G
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Chen Shen"
-
+  team: core
   cluster:
     app_config: ray_sgd_training_app.yaml
     compute_template: dataset_ingest_400G_compute.yaml
