@@ -234,6 +234,7 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
 
 
 class ParametricLinearModelUCB(ParametricLinearModel):
+    @override(ParametricLinearModel)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         x = self._check_inputs(x)
@@ -245,6 +246,7 @@ class ParametricLinearModelUCB(ParametricLinearModel):
 
 
 class ParametricLinearModelThompsonSampling(ParametricLinearModel):
+    @override(ParametricLinearModel)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict["obs"]["item"]
         x = self._check_inputs(x)
