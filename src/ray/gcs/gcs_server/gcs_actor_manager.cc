@@ -54,8 +54,7 @@ const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its node has died. Node Id: ", node_id.Hex()));
+      "The actor is dead because its node has died. Node Id: ", node_id.Hex()));
   return death_cause;
 }
 
@@ -66,8 +65,7 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause(
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(absl::StrCat(
-      "(ip=", ip_address,
-      ") The actor is dead because its worker process has died. Worker exit type: ",
+      "The actor is dead because its worker process has died. Worker exit type: ",
       ray::rpc::WorkerExitType_Name(disconnect_type)));
   return death_cause;
 }
@@ -194,6 +192,7 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<GcsTableStorage> gcs_table_storage,
     std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+    GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -207,6 +206,7 @@ GcsActorManager::GcsActorManager(
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
       get_job_config_(get_job_config),
       runtime_env_manager_(runtime_env_manager),
+      function_manager_(function_manager),
       run_delayed_(run_delayed),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
@@ -470,6 +470,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
   registered_actors_.emplace(actor->GetActorID(), actor);
+  function_manager_.AddJobReference(actor_id.JobId());
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = NodeID::FromBinary(owner_address.raylet_id());
@@ -722,8 +723,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   } else {
-    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
+    runtime_env_manager_.RemoveURIReference(actor_id.Hex());
   }
+  function_manager_.RemoveJobReference(actor_id.JobId());
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
@@ -972,7 +974,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 
   RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", death context type = " << GetDeathCauseString(&death_cause)
+                << ", death context type = " << GetActorDeathCauseString(death_cause)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
 
@@ -1115,7 +1117,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     auto actor = std::make_shared<GcsActor>(entry.second);
     if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
       registered_actors_.emplace(entry.first, actor);
-
+      function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
         auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
         actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());

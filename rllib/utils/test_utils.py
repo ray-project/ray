@@ -402,6 +402,11 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
+        if unsquash is None:
+            unsquash = what.config["normalize_actions"]
+        if clip is None:
+            clip = what.config["clip_actions"]
+
         # Test whether unsquash/clipping works on the Trainer's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
@@ -448,8 +453,9 @@ def check_compute_single_action(trainer,
                 for full_fetch in ([False, True]
                                    if what is trainer else [False]):
                     timestep = random.randint(0, 100000)
-                    for unsquash in [True, False]:
-                        for clip in ([False] if unsquash else [True, False]):
+                    for unsquash in [True, False, None]:
+                        for clip in ([False]
+                                     if unsquash else [True, False, None]):
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
 
@@ -601,6 +607,13 @@ def run_learning_tests_from_yaml(
 
     start_time = time.monotonic()
 
+    def should_check_eval(experiment):
+        # If we have evaluation workers, use their rewards.
+        # This is useful for offline learning tests, where
+        # we evaluate against an actual environment.
+        return experiment["config"].get("evaluation_interval",
+                                        None) is not None
+
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
@@ -631,11 +644,13 @@ def run_learning_tests_from_yaml(
                 # create its trainer and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
+                check_eval = should_check_eval(e)
+                episode_reward_key = ("episode_reward_mean" if not check_eval
+                                      else "evaluation/episode_reward_mean")
                 # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria",
-                                   {}).get("episode_reward_mean")
+                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
                 if min_reward is not None:
-                    e["stop"]["episode_reward_mean"] = min_reward
+                    e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -717,11 +732,7 @@ def run_learning_tests_from_yaml(
                     trials_for_experiment.append(t)
             print(f" ... Trials: {trials_for_experiment}.")
 
-            # If we have evaluation workers, use their rewards.
-            # This is useful for offline learning tests, where
-            # we evaluate against an actual environment.
-            check_eval = experiments[experiment]["config"].get(
-                "evaluation_interval", None) is not None
+            check_eval = should_check_eval(experiments[experiment])
 
             # Error: Increase failure count and repeat.
             if any(t.status == "ERROR" for t in trials_for_experiment):

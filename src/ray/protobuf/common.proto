@@ -181,7 +181,7 @@ enum ErrorType {
 /// The information per ray error type.
 message RayErrorInfo {
   oneof error {
-    RayException actor_init_failure = 1;
+    ActorDeathCause actor_died_error = 2;
   }
 }
 
@@ -292,6 +292,9 @@ message TaskSpec {
   int64 depth = 26;
   // Strategy about how to schedule this task.
   SchedulingStrategy scheduling_strategy = 27;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 28;
 }
 
 message Bundle {

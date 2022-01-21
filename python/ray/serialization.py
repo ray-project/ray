@@ -6,6 +6,7 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
+from ray.core.generated.common_pb2 import RayErrorInfo
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
@@ -184,6 +185,25 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
+    def _deserialize_actor_died_error(self, data, metadata_fields):
+        if not data:
+            return RayActorError()
+        pb_bytes = self._deserialize_msgpack_data(data, metadata_fields)
+        assert pb_bytes
+
+        ray_error_info = RayErrorInfo()
+        ray_error_info.ParseFromString(pb_bytes)
+        assert ray_error_info.HasField("actor_died_error")
+        if ray_error_info.actor_died_error.HasField(
+                "creation_task_failure_context"):
+            return RayError.from_ray_exception(
+                ray_error_info.actor_died_error.creation_task_failure_context)
+        else:
+            assert ray_error_info.actor_died_error.HasField(
+                "actor_died_error_context")
+            return RayActorError(
+                cause=ray_error_info.actor_died_error.actor_died_error_context)
+
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -218,12 +238,8 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
-                if data:
-                    pb_bytes = self._deserialize_msgpack_data(
-                        data, metadata_fields)
-                    if pb_bytes:
-                        return RayError.from_bytes(pb_bytes)
-                return RayActorError()
+                return self._deserialize_actor_died_error(
+                    data, metadata_fields)
             elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
                 return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):

@@ -164,7 +164,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     RAY_CHECK(java_actor_lifetime != nullptr);
     jint actor_lifetime_value =
         env->GetIntField(java_actor_lifetime, java_actor_lifetime_value);
-    is_detached = (actor_lifetime_value == 1);
+    is_detached = (actor_lifetime_value == 0);
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
     jobject java_resources =
