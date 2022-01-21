@@ -612,7 +612,7 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
     from tempfile import mkstemp
     from ray.serve.utils import logger
     from ray._private.services import new_port
-    
+
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
     warning_msg = []
@@ -627,17 +627,14 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
     serve.start(detached=True)
 
     # create a different config
-    test_http = dict(host="127.1.1.8",
-                     port=new_port())
+    test_http = dict(host="127.1.1.8", port=new_port())
     _, tmp_path = mkstemp()
     test_ckpt = f"file://{tmp_path}"
 
-    serve.start(detached=True,
-                http_options=test_http,
-                _checkpoint_path=test_ckpt)
+    serve.start(
+        detached=True, http_options=test_http, _checkpoint_path=test_ckpt)
 
-    for test_config, msg in zip([[test_ckpt], ["host", "port"]],
-                                warning_msg):
+    for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
         for test_msg in test_config:
             assert test_msg in msg
 
