@@ -63,10 +63,10 @@ class GcsClientOptions {
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
     gcs_address_ = address[0];
     gcs_port_ = std::stoi(address[1]);
-    RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   }
 
   GcsClientOptions() {}
@@ -188,7 +188,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.
-  bool is_connected_{false};
+  std::atomic<bool> is_connected_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
