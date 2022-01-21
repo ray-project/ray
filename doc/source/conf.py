@@ -75,12 +75,11 @@ extensions = [
     # "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
-    # "sphinx_external_toc",
+    "sphinx_external_toc",
 ]
 
 external_toc_exclude_missing = False
-# TODO activate later
-# external_toc_path = '_toc.yml'
+external_toc_path = '_toc.yml'
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
