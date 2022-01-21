@@ -1104,7 +1104,7 @@ class Node:
                 f" Local system config: {self._config},"
                 f" GCS system config: {new_config}")
             self._config = new_config
-        self.destroy_external_storage()
+        #self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.

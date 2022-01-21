@@ -591,7 +591,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param[in] object_ids The objects to get.
   /// \param[out] results The pointers to objects stored in
   /// plasma.
-  /// \return Whether the request was successful.
+  /// \return Whether the request was successful and all objects were found in
+  /// plasma.
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
