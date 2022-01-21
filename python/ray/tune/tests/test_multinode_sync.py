@@ -3,7 +3,10 @@ import time
 import unittest
 
 import ray
+from ray import tune
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
+from ray.tune.callback import Callback
+from ray.tune.trial import Trial
 
 
 @ray.remote
@@ -71,6 +74,99 @@ class MultiNodeSyncTest(unittest.TestCase):
             table = ray.util.placement_group_table(pg)
 
         print("Node was restarted.")
+
+    def testAutoscalingNewNode(self):
+        """Test that newly added nodes from autoscaling are not stale."""
+        self.cluster.update_config({
+            "provider": {
+                "head_resources": {
+                    "CPU": 4,
+                    "GPU": 0
+                }
+            },
+            "available_node_types": {
+                "ray.worker.cpu": {
+                    "resources": {
+                        "CPU": 4
+                    },
+                    "min_workers": 0,  # No minimum nodes
+                    "max_workers": 2,
+                },
+                "ray.worker.gpu": {
+                    "min_workers": 0,
+                    "max_workers": 0,  # No GPU nodes
+                }
+            },
+        })
+        self.cluster.start()
+        self.cluster.connect(client=True, timeout=120)
+
+        def autoscaling_train(config):
+            time.sleep(120)
+            tune.report(1.)
+
+        tune.run(
+            autoscaling_train,
+            num_samples=3,
+            resources_per_trial={"cpu": 4},
+            fail_fast=True)
+
+    def testFaultTolerance(self):
+        """Test that Tune run can recover from a failed node.
+
+        When `max_failures` is set to larger than zero.
+        """
+
+        self.cluster.update_config({
+            "provider": {
+                "head_resources": {
+                    "CPU": 4,
+                    "GPU": 0
+                }
+            },
+            "available_node_types": {
+                "ray.worker.cpu": {
+                    "resources": {
+                        "CPU": 4
+                    },
+                    "min_workers": 0,  # No minimum nodes
+                    "max_workers": 2,
+                },
+                "ray.worker.gpu": {
+                    "min_workers": 0,
+                    "max_workers": 0,  # No GPU nodes
+                }
+            },
+        })
+        self.cluster.start()
+        self.cluster.connect(client=True, timeout=120)
+
+        def train(config):
+            time.sleep(120)
+            tune.report(1.)
+
+        class FailureInjectionCallback(Callback):
+            def __init__(self, cluster):
+                self._cluster = cluster
+                self._killed = False
+
+            def on_step_begin(self, iteration, trials, **info):
+                if not self._killed and len(trials) == 3 and all(
+                        trial.status == Trial.RUNNING for trial in trials):
+                    self._cluster.kill_node(num=2)
+                    self._killed = True
+
+        tune.run(
+            train,
+            num_samples=3,
+            resources_per_trial={"cpu": 4},
+            max_failures=1,
+            callbacks=[FailureInjectionCallback(self.cluster)],
+            # The following two are to be removed once we have proper setup
+            # for killing nodes while in ray client mode.
+            _remote=False,
+            local_dir="/tmp/ray_results/",
+        )
 
 
 if __name__ == "__main__":

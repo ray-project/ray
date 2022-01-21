@@ -2,6 +2,7 @@
 
 #include "hiredis/hiredis.h"
 #include "ray/common/common_protocol.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -22,12 +23,15 @@ static void flushall_redis(void) {
 /// Base class for real-world tests with streaming queue
 class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
-  StreamingQueueTestBase(int num_nodes, int port)
-      : gcs_options_("127.0.0.1", 6379, ""), node_manager_port_(port) {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
-
-    // flush redis first.
-    flushall_redis();
+  StreamingQueueTestBase(int num_nodes, int port) : node_manager_port_(port) {
+    if (RayConfig::instance().bootstrap_with_gcs()) {
+      gcs_options_ = gcs::GcsClientOptions("127.0.0.1:6379");
+    } else {
+      gcs_options_ = gcs::GcsClientOptions("127.0.0.1", 6379, "");
+      TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
+      // flush redis first.
+      flushall_redis();
+    }
 
     RAY_CHECK(num_nodes >= 0);
     if (num_nodes > 0) {
@@ -36,15 +40,26 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
 
     // start gcs server
-    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
+    if (RayConfig::instance().bootstrap_with_gcs()) {
+      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("");
+    } else {
+      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
+    }
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] =
-          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
-                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
-                                     &raylet_store_socket_names_[i]);
+      if (RayConfig::instance().bootstrap_with_gcs()) {
+        raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
+            "127.0.0.1", node_manager_port_ + i, "127.0.0.1:6379",
+            "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+            &raylet_store_socket_names_[i]);
+      } else {
+        raylet_socket_names_[i] =
+            TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
+                                       "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+                                       &raylet_store_socket_names_[i]);
+      }
     }
   }
 
@@ -55,7 +70,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
 
     TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
-    TestSetupUtil::ShutDownRedisServers();
+    if (!RayConfig::instance().bootstrap_with_gcs()) {
+      TestSetupUtil::ShutDownRedisServers();
+    }
   }
 
   JobID NextJobId() const {

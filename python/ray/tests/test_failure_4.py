@@ -6,6 +6,7 @@ import ray
 import pytest
 import grpc
 from grpc._channel import _InactiveRpcError
+import numpy as np
 import psutil
 import subprocess
 
@@ -500,6 +501,77 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+
+def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
+    """Test that locality-ware scheduling can handle dead nodes."""
+    # Create a cluster with 4 nodes.
+    config = {
+        "num_heartbeats_timeout": 5,
+        "raylet_heartbeat_period_milliseconds": 50,
+    }
+    cluster = Cluster()
+    cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
+    node3 = cluster.add_node(num_cpus=4, resources={"node3": 1})
+    node4 = cluster.add_node(num_cpus=4, resources={"node4": 1})
+    cluster.wait_for_nodes()
+
+    # Create 2 objects on node 2.
+    @ray.remote(resources={"node2": 0.1})
+    def create_object():
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    obj1 = create_object.remote()
+    obj2 = create_object.remote()
+
+    # Push these 2 objects to other nodes.
+    # node2 will have obj1 and obj2.
+    # node3 will have obj1.
+    # node4 will have obj2.
+    @ray.remote
+    class MyActor:
+        def __init__(self, obj_refs):
+            # Note, we need to keep obj_refs to prevent the objects from
+            # being garbage collected.
+            self.obj_refs = obj_refs
+            self.obj = ray.get(obj_refs)
+
+        def ready(self):
+            return True
+
+    actors = [
+        MyActor.options(resources={
+            "node2": 0.1
+        }).remote([obj1, obj2]),
+        MyActor.options(resources={
+            "node3": 0.1
+        }).remote([obj1]),
+        MyActor.options(resources={
+            "node4": 0.1
+        }).remote([obj2]),
+    ]
+
+    assert all(ray.get(actor.ready.remote()) is True for actor in actors)
+
+    # This function requires obj1 and obj2.
+    @ray.remote
+    def func(obj1, obj2):
+        return ray.worker.global_worker.node.unique_id
+
+    # This function should be scheduled to node2. As node2 has both objects.
+    assert ray.get(func.remote(obj1, obj2)) == node2.unique_id
+
+    # Kill node2, and re-schedule the function.
+    # It should be scheduled to either node3 or node4.
+    node2.kill_raylet()
+    # Waits for the driver to receive the NodeRemoved notification.
+    time.sleep(1)
+    target_node = ray.get(func.remote(obj1, obj2))
+    assert target_node == node3.unique_id or target_node == node4.unique_id
 
 
 if __name__ == "__main__":
