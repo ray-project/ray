@@ -184,10 +184,9 @@ def make_recsim_env(
                 "seed": 0,
                 "convert_to_discrete_action_space": False,
             }
-            if env_ctx:
-                env_ctx.set_defaults(default_config)
-            else:
-                env_ctx = EnvContext(default_config)
+            if env_ctx is None or isinstance(env_ctx, dict):
+                env_ctx = EnvContext(env_ctx or default_config, worker_index=0)
+            env_ctx.set_defaults(default_config)
 
             # Create the RecSim user model instance.
             recsim_user_model = recsim_user_model_creator(env_ctx)
@@ -210,6 +209,8 @@ def make_recsim_env(
             # action space (from multi-discrete).
             self.env = rllib_gym_wrapper(
                 gym_env, env_ctx["convert_to_discrete_action_space"])
+            self.observation_space = self.env.observation_space
+            self.action_space = self.env.action_space
 
         @override(gym.Env)
         def reset(self):
@@ -218,5 +219,13 @@ def make_recsim_env(
         @override(gym.Env)
         def step(self, actions):
             return self.env.step(actions)
+
+        @override(gym.Env)
+        def seed(self, seed=None):
+            return self.env.seed(seed)
+
+        @override(gym.Env)
+        def render(self, mode="human"):
+            return self.env.render(mode)
 
     return _RecSimEnv
