@@ -73,8 +73,9 @@ def validate_config(config: Dict[str, Any]) -> None:
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    schema_path = os.path.join(os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
-    with open(RAY_SCHEMA_PATH) as f:
+    schema_path = os.path.join(
+        os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
+    with open(schema_path) as f:
         schema = json.load(f)
 
     try:

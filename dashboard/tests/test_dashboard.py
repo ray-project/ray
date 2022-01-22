@@ -23,7 +23,7 @@ from ray._private.test_utils import (
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray._private.gcs_pubsub import gcs_pubsub_enabled
 from ray.ray_constants import (DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+                               DEBUG_AUTOSCALING_ERROR)
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
