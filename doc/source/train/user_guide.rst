@@ -422,7 +422,7 @@ You may want to plug in your training code with your favorite experiment managem
 Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
 (the values passed into ``train.report(...)``).
 
-Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainingCallback`` interface.
 
 .. _train-builtin-callbacks:
 
@@ -503,7 +503,6 @@ A simple example for creating a callback that will print out results:
     # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
-
 
 ..
     Advanced Customization
