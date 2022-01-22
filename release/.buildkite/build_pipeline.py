@@ -117,6 +117,8 @@ SERVE_NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "autoscaling_single_deployment",
+        "autoscaling_multi_deployment",
         "serve_micro_benchmark",
         "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
