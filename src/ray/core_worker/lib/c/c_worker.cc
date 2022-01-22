@@ -9,6 +9,7 @@
 
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
+// #include "ray/core_worker/common.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 using namespace std;
@@ -272,7 +273,7 @@ RAY_EXPORT void c_worker_Run() {
   // _Exit(0);
 }
 
-//
+// TODO: create worker-static global state accessor?
 // RAY_EXPORT void *c_worker_CreateGlobalStateAccessor(char *redis_address,
 //                                                      char *redis_password) {
 //   ray::gcs::GlobalStateAccessor *gcs_accessor =
@@ -290,20 +291,7 @@ RAY_EXPORT void c_worker_Run() {
 //   auto job_id = gcs_accessor->GetNextJobID();
 //   return job_id.ToInt();
 // }
-//
-// RAY_EXPORT char *c_worker_GlobalStateAccessorGetInternalKV(void *p, char *key) {
-//   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
-//   auto value = gcs_accessor->GetInternalKV(key);
-//   if (value != nullptr) {
-//     std::string *v = value.release();
-//     int len = strlen(v->c_str());
-//     char *result = (char *)malloc(len + 1);
-//     std::memcpy(result, v->c_str(), len);
-//     return result;
-//   }
-//   return nullptr;
-// }
-//
+
 // RAY_EXPORT int c_worker_GetNodeToConnectForDriver(void *p, char *node_ip_address,
 //                                                    char **result) {
 //   RAY_LOG(DEBUG) << "Get nodeinfo:" << node_ip_address;
@@ -321,43 +309,60 @@ RAY_EXPORT void c_worker_Run() {
 //   memcpy(*result, node_to_connect.c_str(), result_length);
 //   return result_length;
 // }
-//
-// RAY_EXPORT int c_worker_CreateActor(char *type_name, char **result) {
-//   std::vector<std::string> function_descriptor_list = {type_name};
-//   ray::FunctionDescriptor function_descriptor =
-//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
-//                                                  function_descriptor_list);
-//   ActorID actor_id;
-//   ray::core::RayFunction ray_function =
-//       ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
-//   // TODO
-//   std::string full_name = "";
-//   std::string ray_namespace = "";
-//   ray::core::ActorCreationOptions actor_creation_options{0,
-//                                                          0,
-//                                                          static_cast<int>(1),
-//                                                          {},
-//                                                          {},
-//                                                          {},
-//                                                          /*is_detached=*/false,
-//                                                          full_name,
-//                                                          ray_namespace,
-//                                                          /*is_asyncio=*/false};
-//   // RUST struct constructor's args is always empty.
-//   auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
-//       ray_function, {}, actor_creation_options,
-//       /*extension_data*/ "", &actor_id);
-//   if (!status.ok()) {
-//     RAY_LOG(FATAL) << "Failed to create actor:" << status.message()
-//                    << " for:" << type_name;
-//     return 0;
-//   }
-//   int result_length = actor_id.Size();
-//   *result = (char *)malloc(result_length + 1);
-//   memcpy(*result, (char *)actor_id.Data(), result_length);
-//   return result_length;
-// }
-//
+
+// TODO: maybe make this
+RAY_EXPORT int c_worker_CreateActor(char *type_name, char **result) {
+  std::vector<std::string> function_descriptor_list = {type_name};
+  ray::FunctionDescriptor function_descriptor =
+      ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
+                                                 function_descriptor_list);
+  ActorID actor_id;
+  ray::core::RayFunction ray_function =
+      ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
+  // TODO
+  std::string full_name = "";
+  std::string ray_namespace = "";
+  ray::BundleID bundle_id = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+  ray::rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  if (!bundle_id.first.IsNil()) {
+    auto placement_group_scheduling_strategy =
+        scheduling_strategy.mutable_placement_group_scheduling_strategy();
+    placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
+    placement_group_scheduling_strategy->set_placement_group_bundle_index(
+        bundle_id.second);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+  }
+  ray::core::ActorCreationOptions actor_creation_options{0,
+                                                         0,
+                                                         static_cast<int>(1), // ???
+                                                         {},
+                                                         {},
+                                                         {},
+                                                         /*is_detached=*/false,
+                                                         full_name,
+                                                         ray_namespace,
+                                                         /*is_asyncio=*/false,
+                                                         scheduling_strategy};
+  auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
+      ray_function,
+      // TODO: args should not be empty
+      {}, actor_creation_options,
+      /*extension_data*/ "", &actor_id);
+  if (!status.ok()) {
+    RAY_LOG(FATAL) << "Failed to create actor:" << status.message()
+                   << " for:" << type_name;
+    return 0;
+  }
+  // For buffer overflow safety, the ActorID proto def needs to be consistent
+  // across the downstream language worker and the c_worker (here).
+  int result_length = ActorID::Size();
+  // TODO: wtf? why + 1?
+  *result = (char *)malloc(result_length + 1);
+  memcpy(*result, (char *)actor_id.Data(), result_length);
+  return result_length;
+}
+
 
 // Should this copy? I don't think it should own the data at this point...
 inline const std::shared_ptr<ray::Buffer> DataBufferToRayBuffer(const DataBuffer *db) {
@@ -376,59 +381,15 @@ inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue
   std::shared_ptr<ray::Buffer> meta = DataBufferToRayBuffer(in->meta);
   return std::make_shared<ray::RayObject>(data, meta, contained_object_refs);
 }
-//
-// RAY_EXPORT int c_worker_SubmitActorTask(void *actor_id, char *method_name,
-//                                          DataValue **input_values, int num_input_value,
-//                                          int num_returns, void **object_ids) {
-//   auto actor_id_obj = ByteArrayToId<ray::ActorID>((char *)actor_id);
-//   std::vector<std::string> function_descriptor_list = {method_name};
-//   ray::FunctionDescriptor function_descriptor =
-//       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
-//                                                  function_descriptor_list);
-//   ray::core::RayFunction ray_function =
-//       ray::core::RayFunction(ray::rpc::RUST, function_descriptor);
-//   std::string name = "";
-//   std::unordered_map<std::string, double> resources;
-//   ray::core::TaskOptions task_options{name, num_returns, resources};
-//   std::vector<std::unique_ptr<ray::TaskArg>> args;
-//
-//   for (size_t i = 0; i < num_input_value; i++) {
-//     //    auto java_id = env->GetObjectField(arg, java_function_arg_id);
-//     //    if (java_id) {
-//     //      auto java_id_bytes = static_cast<jbyteArray>(
-//     //          env->CallObjectMethod(java_id, java_base_id_get_bytes));
-//     //      RAY_CHECK_JAVA_EXCEPTION(env);
-//     //      auto id = JavaByteArrayToId<ObjectID>(env, java_id_bytes);
-//     //      auto java_owner_address =
-//     //          env->GetObjectField(arg, java_function_arg_owner_address);
-//     //      RAY_CHECK(java_owner_address);
-//     //      auto owner_address = JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
-//     //          env, java_owner_address);
-//     //      return std::unique_ptr<TaskArg>(new TaskArgByReference(id, owner_address));
-//     //    }
-//     //    auto java_value =
-//     //        static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
-//     //    RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
-//     auto value = DataValueToRayObject(static_cast<DataValue *>(input_values[i]));
-//     args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
-//   }
-//   std::vector<ObjectID> obj_ids;
-//   ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-//       actor_id_obj, ray_function, args, task_options, &obj_ids);
-//
-//   int object_id_size = ObjectID::Size();
-//   for (size_t i = 0; i < obj_ids.size(); i++) {
-//     void *result = malloc(object_id_size);
-//     memcpy(result, (char *)obj_ids[i].Data(), object_id_size);
-//     RAY_LOG(DEBUG) << "return object id:" << result;
-//     object_ids[i] = result;
-//   }
-//   return 0;
-// }
-//
 
 // TODO: make this more generic for char** method_names
-RAY_EXPORT int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
+//
+// TODO: support user-specified `PlacementGroup`s as well
+// (via protobuf shared datatype)
+//
+// TODO: return protobuf/.. ReturnObject instead? And generally, protobuf types...?
+RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
+                                   const char *method_name, bool *input_is_ref,
                                    const DataValue* const input_values[], char **input_refs,
                                    int num_input_value,
                                    int num_returns, char **object_ids) {
@@ -455,21 +416,44 @@ RAY_EXPORT int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
       args.push_back(std::unique_ptr<ray::TaskArg>(new ray::TaskArgByValue(value)));
     }
   }
-  ray::BundleID bundle_id = std::make_pair(ray::PlacementGroupID::Nil(), -1);
-  ray::rpc::SchedulingStrategy scheduling_strategy;
-  scheduling_strategy.mutable_default_scheduling_strategy();
-  if (!bundle_id.first.IsNil()) {
-    auto placement_group_scheduling_strategy =
-        scheduling_strategy.mutable_placement_group_scheduling_strategy();
-    placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
-    placement_group_scheduling_strategy->set_placement_group_bundle_index(
-        bundle_id.second);
-    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+
+  std::vector<ray::rpc::ObjectReference> return_refs;
+  // Convert to proto?
+  // Use switch instead?
+  if (task_type == ray::rpc::TaskType::NORMAL_TASK) {
+    // TODO: how to properly handle PlacementGroup ?
+    ray::BundleID bundle_id = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+    ray::rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
+    if (!bundle_id.first.IsNil()) {
+      auto placement_group_scheduling_strategy =
+          scheduling_strategy.mutable_placement_group_scheduling_strategy();
+      placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
+      placement_group_scheduling_strategy->set_placement_group_bundle_index(
+          bundle_id.second);
+      placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
+    }
+    return_refs = ray::core::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+        ray_function, args, task_options, /*max_retries=*/1, false, scheduling_strategy, "");
+  } else if (task_type == ray::rpc::TaskType::ACTOR_TASK) {
+      auto actor_id_obj = ByteArrayToId<ray::ActorID>(actor_id);
+      // TODO: why is there a different contract for SubmitActorTask and SubmitTask? (possibly null)
+      auto optional_result = ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+          actor_id_obj, ray_function, args, task_options);
+          // /*max_retries=*/1, false, scheduling_strategy, ""
+      // );
+      if (!optional_result) {
+        RAY_LOG(FATAL) << "Failed to get return values for actor task";
+        return 1;
+      }
+      // TODO: Does this introduce a copy?
+      return_refs = *optional_result;
+  } else {
+    // RAY_THROW("Invalid task type for c_worker task submission");
   }
 
-  auto return_refs = ray::core::CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, args, task_options, /*max_retries=*/1, false, scheduling_strategy, "");
-
+  // For buffer overflow safety, the ObjectID proto def needs to be consistent
+  // across the downstream language worker and the c_worker (here).
   int object_id_size = ObjectID::Size();
   for (size_t i = 0; i < return_refs.size(); i++) {
     char *result = (char *)malloc(object_id_size);
@@ -535,7 +519,7 @@ RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, DataValue **objects,
       ::ray::RayObject(buffer, nullptr, std::vector<ray::rpc::ObjectReference>()), {},
       &object_id);
 
-  // TODO (jon-chuang): RAY_THROW instead
+  // TODO (jon-chuang): RAY_THROW instead?
   if (!status.ok()) {
     RAY_LOG(INFO) << "Put object error: " << status.ToString();
     return 1;

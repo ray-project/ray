@@ -15,6 +15,7 @@ macro_rules! impl_ray_function {
                 raw_fn: fn($($argty),*) -> R,
                 wrapped_fn: InvokerFunction,
                 ffi_lookup_name: CString,
+                actor_id: Option<ActorID>,
             }
 
             // Have this be $argpBorrow: Borrow<argp> instead
@@ -23,9 +24,10 @@ macro_rules! impl_ray_function {
                 pub fn new(
                     raw_fn: fn($($argty),*) -> R,
                     wrapped_fn: InvokerFunction,
-                    ffi_lookup_name: CString
+                    ffi_lookup_name: CString,
+                    actor_id: Option<ActorID>,
                 ) -> Self {
-                    Self { raw_fn, wrapped_fn, ffi_lookup_name }
+                    Self { raw_fn, wrapped_fn, ffi_lookup_name, actor_id }
                 }
 
                 pub fn name<'a>(&'a self) -> &'a str {
@@ -47,7 +49,8 @@ macro_rules! impl_ray_function {
                         task_args.push(result.as_slice());
                     )*
                     ObjectRef::new(
-                        ray_rs_sys::internal::submit(self.ffi_lookup_name.clone(), &task_args)
+                        // TODO: make RayFunction generic
+                        ray_rs_sys::internal::submit(self.actor_id, self.ffi_lookup_name.clone(), &task_args)
                     )
                 }
 
@@ -146,19 +149,24 @@ macro_rules! remote_internal {
             }
 
             #[allow(non_upper_case_globals)]
-            lazy_static! {
-                pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
-                    = [<RayFunction $lit_n>]::new(
-                        [<ray_rust_private_ $name>],
-                        [<ray_rust_ffi_ $name>],
-                        CString::new(
-                            // concat!(module_path!(), "::", // we are temporarily disabling this
-                            // When using proc macros we can modify the extern "C" fn name itself to include the
-                            // module path
-                            // Else, one could also reasonably mangle for Ray namespace using a random string...
-                            stringify!([<ray_rust_ffi_ $name>])).unwrap()
-                    );
+            {
+                lazy_static! {
+                    pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
+                        = [<RayFunction $lit_n>]::new(
+                            [<ray_rust_private_ $name>],
+                            [<ray_rust_ffi_ $name>],
+                            CString::new(
+                                // concat!(module_path!(), "::", // we are temporarily disabling this
+                                // When using proc macros we can modify the extern "C" fn name itself to include the
+                                // module path
+                                // Else, one could also reasonably mangle for Ray namespace using a random string...
+                                stringify!([<ray_rust_ffi_ $name>])
+                            ).unwrap(),
+                            /*actor_id=*/ None,
+                        );
+                }
             }
+
 
             // Run this function before main
             #[ctor]
@@ -190,6 +198,11 @@ macro_rules! remote {
 pub fn get<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
     let buf = ray_rs_sys::internal::get_slice(id.as_raw(), -1);
     rmp_serde::from_read_ref::<_, R>(buf).unwrap()
+}
+
+#[macro_export]
+macro_rules! remote_actor {
+
 }
 
 // pub fn put<I: serde::Serialize, B: std::borrow::Borrow<I>>(input: B) -> UniquePtr<ray_api_ffi::ObjectID> {

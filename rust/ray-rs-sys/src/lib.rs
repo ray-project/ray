@@ -19,6 +19,7 @@ mod proto;
 const ID_ARRAY_LEN: usize = 28;
 const NUM_WORKERS: i32 = 1;
 
+pub type ActorID = ObjectID;
 pub struct ObjectID(CVec<c_char>);
 
 impl std::fmt::Debug for ObjectID {
@@ -37,6 +38,7 @@ impl std::fmt::Debug for ObjectID {
 
 impl ObjectID {
     fn new(ptr: *mut c_char) -> Self {
+        // assert_eq!(ObjectID::size(), ActorID::size());
         Self(
             unsafe {
                 CVec::new_with_dtor(ptr, ID_ARRAY_LEN, |ptr| {
@@ -159,7 +161,7 @@ pub mod util {
 pub mod internal {
     use super::*;
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
-    pub fn submit<'a>(fn_name: CString, args: &[&[u8]]) -> ObjectID {
+    pub fn submit<'a>(maybe_actor_id: Option<ActorID>, fn_name: CString, args: &[&[u8]]) -> ObjectID {
         unsafe {
             // Create data
             let mut meta_vec = vec![0u8];
@@ -179,8 +181,16 @@ pub mod internal {
             let mut obj_ids = vec![std::ptr::null_mut()];
             let mut is_refs = vec![false; args.len()];
 
+            let (actor_id_ptr, task_type) = if let Some(id) = maybe_actor_id {
+                (id.as_ptr(), proto::TaskType::NORMAL_TASK)
+            } else {
+                (std::ptr::null(), proto::TaskType::ACTOR_TASK)
+            };
+
             c_worker_SubmitTask(
-                fn_name.into_raw(),
+                task_type as i32,
+                actor_id_ptr,
+                fn_name.as_ptr(),
                 is_refs.as_mut_ptr(),
                 data.as_ptr(),
                 std::ptr::null_mut::<*mut c_char>(),
@@ -217,6 +227,44 @@ pub mod internal {
             );
             *d_value[0] as DataValue
         }
+    }
+
+    pub fn create_actor(fn_name: CString, args: &[&[u8]]) -> ActorID {
+        // Create data
+        let mut meta_vec = vec![0u8];
+        let mut data = args
+            .iter()
+            .map(|data_vec| {
+                c_worker_AllocateDataValue(
+                    // Why is this a void pointer, not a void/char ptr?
+                    (*data_vec).as_ptr(),
+                    data_vec.len() as u64,
+                    std::ptr::null(),
+                    0u64,
+                )
+            })
+            .collect::<Vec<*const DataValue>>();
+
+        let mut actor_ids = vec![std::ptr::null_mut()];
+        let mut is_refs = vec![false; args.len()];
+
+        c_worker_CreateActor(
+            fn_name.as_ptr(),
+            // is_refs.as_mut_ptr(),
+            // data.as_ptr(),
+            // std::ptr::null_mut::<*mut c_char>(),
+            // data.len() as i32,
+            actor_ids.as_mut_ptr()
+        );
+
+        for &dv in data.iter() {
+            c_worker_DeallocateDataValue(dv);
+        }
+
+        let id = ActorID::new(actor_ids[0]);
+        println!("ActorID: {:x?}", util::pretty_print_id(&id));
+        id
+
     }
 }
 

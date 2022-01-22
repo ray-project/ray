@@ -59,14 +59,15 @@ void c_worker_RemoveLocalRef(const char* id);
 
 // int c_worker_GetNextJobID(void *p);
 //
-// int c_worker_CreateActor(char *type_name, char **result);
+int c_worker_CreateActor(char *type_name, char **result);
 //
 // // todo calloptions
 // int c_worker_SubmitActorTask(void *actor_id, char *method_name,
 //                               DataValue **input_values, int num_input_value,
 //                               int num_returns, void **object_ids);
 //
-int c_worker_SubmitTask(char *method_name, bool *input_is_ref,
+int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
+                        const char *method_name, bool *input_is_ref,
                         const DataValue* const input_values[], char **input_refs,
                         int num_input_value,
                         int num_returns, char **object_ids);
