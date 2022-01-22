@@ -2,7 +2,7 @@ import ray
 
 import io
 import pickle
-from typing import Union, List, Dict, Any, TypeVar, Callable
+from typing import Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
 
 T = TypeVar("T")
 
@@ -10,9 +10,50 @@ T = TypeVar("T")
 class DAGNode:
     """Abstract class for a node in a Ray task graph."""
 
-    def __init__(self, args: List[Any], kwargs: Dict[str, Any]):
-        self._bound_args: List[Any] = args
+    def __init__(self, args: Tuple[Any], kwargs: Dict[str, Any]):
+        self._bound_args: Tuple[Any] = args
         self._bound_kwargs: Dict[str, Any] = kwargs
+
+    def get_args(self) -> Tuple[Any]:
+        """Return the tuple of arguments for this node."""
+
+        return self._bound_args
+
+    def get_kwargs(self) -> Dict[str, Any]:
+        """Return the dict of keyword arguments for this node."""
+
+        return self._bound_kwargs.copy()
+
+    def get_toplevel_child_nodes(self) -> Set["DAGNode"]:
+        """Return the set of nodes specified as top-level args.
+
+        For example, in `f.remote(a, [b])`, only `a` is a top-level arg.
+
+        This set of nodes are those that are typically resolved prior to
+        task execution in Ray. This does not include nodes nested within args.
+        For that, use ``get_all_child_nodes()``.
+        """
+
+        children = set()
+        for a in self.get_args():
+            if isinstance(a, DAGNode):
+                children.add(a)
+        for a in self.get_kwargs().values():
+            if isinstance(a, DAGNode):
+                children.add(a)
+        return children
+
+    def get_all_child_nodes(self) -> Set["DAGNode"]:
+        """Return the set of nodes referenced by the args of this node.
+
+        For example, in `f.remote(a, [b])`, this includes both `a` and `b`.
+        """
+
+        f = _PyObjFindReplace()
+        children = set()
+        for n in f.find_nodes([self._bound_args, self._bound_kwargs]):
+            children.add(n)
+        return children
 
     def transform_up(self,
                      visitor: "Callable[[DAGNode], T]",

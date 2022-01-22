@@ -23,6 +23,22 @@ def test_serialize_warning():
         pickle.dumps(node)
 
 
+def test_node_accessors():
+    @ray.remote
+    def a(*a, **kw):
+        pass
+
+    tmp1 = a._bind()
+    tmp2 = a._bind()
+    tmp3 = a._bind()
+    node = a._bind(1, tmp1, x=tmp2, y={"foo": tmp3})
+
+    assert node.get_args() == (1, tmp1)
+    assert node.get_kwargs() == {"x": tmp2, "y": {"foo": tmp3}}
+    assert node.get_toplevel_child_nodes() == {tmp1, tmp2}
+    assert node.get_all_child_nodes() == {tmp1, tmp2, tmp3}
+
+
 def test_basic_task_dag():
     ct = Counter.remote()
 
