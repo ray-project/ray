@@ -60,6 +60,35 @@ class DAGNode:
             children.add(n)
         return children
 
+    def replace_all_child_nodes(self,
+                                fn: "Callable[[DAGNode], T]") -> "DAGNode":
+        """Replace all immediate child nodes using a given function.
+
+        This is a shallow replacement only. To recursively transform nodes in
+        the DAG, use ``transform_up()``.
+
+        Args:
+            fn: Callable that will be applied once to each child of this node.
+
+        Returns:
+            New DAGNode after replacing all child nodes.
+        """
+
+        replace_table = {}
+
+        # Find all first-level nested DAGNode children in args.
+        f = _PyObjFindReplace()
+        children = f.find_nodes([self._bound_args, self._bound_kwargs])
+
+        # Update replacement table and execute the replace.
+        for node in children:
+            if node not in replace_table:
+                replace_table[node] = fn(node)
+        new_args, new_kwargs = f.replace_nodes(replace_table)
+
+        # Return updated copy of self.
+        return self.copy(new_args, new_kwargs)
+
     def transform_up(self,
                      visitor: "Callable[[DAGNode], T]",
                      _cache: Dict["DAGNode", T] = None) -> T:

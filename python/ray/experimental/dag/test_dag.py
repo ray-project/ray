@@ -38,6 +38,12 @@ def test_node_accessors():
     assert node.get_toplevel_child_nodes() == {tmp1, tmp2}
     assert node.get_all_child_nodes() == {tmp1, tmp2, tmp3}
 
+    tmp4 = a._bind()
+    tmp5 = a._bind()
+    replace = {tmp1: tmp4, tmp2: tmp4, tmp3: tmp5}
+    n2 = node.replace_all_child_nodes(lambda x: replace[x])
+    assert n2.get_all_child_nodes() == {tmp4, tmp5}
+
 
 def test_basic_task_dag():
     ct = Counter.remote()
