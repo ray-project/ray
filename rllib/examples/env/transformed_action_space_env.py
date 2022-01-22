@@ -1,8 +1,6 @@
 import gym
 from typing import Type
 
-from ray.rllib.utils.annotations import override
-
 
 class ActionTransform(gym.ActionWrapper):
     def __init__(self, env, low, high):
@@ -44,6 +42,7 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
          >>> pendulum_300_to_500.action_space
          ... gym.spaces.Box(-15.0, 1.0, (1, ), "float32")
     """
+
     def transformed_action_space_env(config):
         if isinstance(env_name_or_creator, str):
             inner_env = gym.make(env_name_or_creator)
@@ -53,6 +52,7 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
         _high = config.pop("high", 1.0)
         env = ActionTransform(inner_env, _low, _high)
         return env
+
     return transformed_action_space_env
 
 
