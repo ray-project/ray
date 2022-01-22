@@ -29,7 +29,9 @@ from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
-from ray.tune.suggest.util import set_search_properties_backwards_compatible
+from ray.tune.suggest.util import (
+    scheduler_set_search_properties_backwards_compatible,
+    set_search_properties_backwards_compatible)
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (SyncConfig, set_sync_periods, wait_for_sync)
 from ray.tune.trainable import Trainable
@@ -516,7 +518,9 @@ def run(
                 "does not contain any more parameter definitions - include "
                 "them in the search algorithm's search space if necessary.")
 
-    if not scheduler.set_search_properties(metric, mode):
+    if not scheduler_set_search_properties_backwards_compatible(
+            scheduler.set_search_properties, metric, mode, **
+            experiments[0].public_spec):
         raise ValueError(
             "You passed a `metric` or `mode` argument to `tune.run()`, but "
             "the scheduler you are using was already instantiated with their "

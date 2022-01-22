@@ -311,9 +311,9 @@ class ResourceChangingScheduler(TrialScheduler):
             self) -> Optional[Union[Resources, PlacementGroupFactory]]:
         return self._base_trial_resources
 
-    def set_search_properties(self, metric: Optional[str],
-                              mode: Optional[str]) -> bool:
-        return self._base_scheduler.set_search_properties(metric, mode)
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              **spec) -> bool:
+        return self._base_scheduler.set_search_properties(metric, mode, **spec)
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
                      trial: Trial, **kwargs):
