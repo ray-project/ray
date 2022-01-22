@@ -115,14 +115,22 @@ training.
 
             ...
 
-        -   data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+        -   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
 
-        +   data_loader = DataLoader(my_dataset)
+        +   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
         +   data_loader = train.torch.prepare_data_loader(data_loader)
 
             for X, y in data_loader:
         -       X = X.to_device(device)
         -       y = y.to_device(device)
+
+    .. tip::
+       Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+       The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+
+       .. code-block::
+
+            global_batch_size = worker_batch_size * train.world_size()
 
   .. group-tab:: TensorFlow
 
@@ -159,7 +167,7 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * num_workers
+        +batch_size = worker_batch_size * train.world_size()
 
   .. group-tab:: Horovod
 
