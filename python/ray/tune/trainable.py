@@ -129,6 +129,8 @@ class Trainable:
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
         log_sys_usage = self.config.get("log_sys_usage", False)
+        self._start_time = start_time
+        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
@@ -216,7 +218,8 @@ class Trainable:
             "config": self.config,
             "time_since_restore": self._time_since_restore,
             "timesteps_since_restore": self._timesteps_since_restore,
-            "iterations_since_restore": self._iterations_since_restore
+            "iterations_since_restore": self._iterations_since_restore,
+            "warmup_time": self._warmup_time,
         }
         if debug_metrics_only:
             autofilled = {
@@ -315,6 +318,8 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
+        if self._warmup_time is None:
+            self._warmup_time = time.time() - self._start_time
         start = time.time()
         result = self.step()
         assert isinstance(result, dict), "step() needs to return a dict."

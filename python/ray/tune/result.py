@@ -72,24 +72,11 @@ DEBUG_METRICS = (TRIAL_ID, "experiment_id", "date", "timestamp", PID, HOSTNAME,
                  NODE_IP, "config")
 
 # Make sure this doesn't regress
-AUTO_RESULT_KEYS = (
-    TRAINING_ITERATION,
-    TIME_TOTAL_S,
-    EPISODES_TOTAL,
-    TIMESTEPS_TOTAL,
-    NODE_IP,
-    HOSTNAME,
-    PID,
-    TIME_TOTAL_S,
-    TIME_THIS_ITER_S,
-    "timestamp",
-    "experiment_id",
-    "date",
-    "time_since_restore",
-    "iterations_since_restore",
-    "timesteps_since_restore",
-    "config",
-)
+AUTO_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, EPISODES_TOTAL,
+                    TIMESTEPS_TOTAL, NODE_IP, HOSTNAME, PID, TIME_TOTAL_S,
+                    TIME_THIS_ITER_S, "timestamp", "experiment_id", "date",
+                    "time_since_restore", "iterations_since_restore",
+                    "timesteps_since_restore", "config", "warmup_time")
 
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.
