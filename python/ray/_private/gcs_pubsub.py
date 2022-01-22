@@ -87,6 +87,13 @@ class _SubscriberBase:
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         self._subscriber_id = bytes(
             bytearray(random.getrandbits(8) for _ in range(28)))
+        self._last_batch_size = 0
+
+    # Batch size of the result from last poll. Used to indicate whether the
+    # subscriber can keep up.
+    @property
+    def last_batch_size(self):
+        return self._last_batch_size
 
     def _subscribe_request(self, channel):
         cmd = pubsub_pb2.Command(channel_type=channel, subscribe_message={})
@@ -259,6 +266,7 @@ class _SyncSubscriber(_SubscriberBase):
                     raise
 
             if fut.done():
+                self._last_batch_size = len(fut.result().pub_messages)
                 for msg in fut.result().pub_messages:
                     if msg.channel_type != self._channel:
                         logger.warn(
@@ -520,6 +528,7 @@ class _AioSubscriber(_SubscriberBase):
                 # Request timed out or subscriber closed.
                 break
             try:
+                self._last_batch_size = len(poll.result().pub_messages)
                 for msg in poll.result().pub_messages:
                     self._queue.append(msg)
             except grpc.RpcError as e:

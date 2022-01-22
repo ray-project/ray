@@ -607,5 +607,40 @@ def test_snapshot_always_written_to_internal_kv(
     assert hello_deployment["status"] == "RUNNING"
 
 
+def test_serve_start_different_http_checkpoint_options_warning(caplog):
+    import logging
+    from tempfile import mkstemp
+    from ray.serve.utils import logger
+    from ray._private.services import new_port
+
+    caplog.set_level(logging.WARNING, logger="ray.serve")
+
+    warning_msg = []
+
+    class WarningHandler(logging.Handler):
+        def emit(self, record):
+            warning_msg.append(self.format(record))
+
+    logger.addHandler(WarningHandler())
+
+    ray.init(namespace="serve-test")
+    serve.start(detached=True)
+
+    # create a different config
+    test_http = dict(host="127.1.1.8", port=new_port())
+    _, tmp_path = mkstemp()
+    test_ckpt = f"file://{tmp_path}"
+
+    serve.start(
+        detached=True, http_options=test_http, _checkpoint_path=test_ckpt)
+
+    for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
+        for test_msg in test_config:
+            assert test_msg in msg
+
+    serve.shutdown()
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

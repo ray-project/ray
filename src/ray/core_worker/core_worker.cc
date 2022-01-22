@@ -480,18 +480,23 @@ void CoreWorker::Shutdown() {
     options_.on_worker_shutdown(GetWorkerID());
   }
 
-  io_service_.stop();
   if (gcs_client_) {
-    // TODO(sang): This causes a thread-safety bug because
-    // it invalidates a pointer that's used by a different thread.
-    // We should run Disconnect in a io_service thread.
+    // We should disconnect gcs client first otherwise because it contains
+    // a blocking logic that can block the io service upon
+    // gcs shutdown.
+    // TODO(sang): Refactor GCS client to be more robust.
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
     gcs_client_->Disconnect();
   }
-  RAY_LOG(INFO) << "Waiting for joining a core worker io thread.";
+  io_service_.stop();
+  RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
+                   "might be deadlock or a high load in the core worker io service.";
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
+  // Now that gcs_client is not used within io service, we can reset the pointer and clean
+  // it up.
+  gcs_client_.reset();
 
   if (options_.worker_type == WorkerType::WORKER) {
     // Asyncio coroutines could still run after CoreWorker is removed because it is
@@ -1457,13 +1462,13 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
     std::vector<std::string> *runtime_env_uris) {
   std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
   if (options_.worker_type == WorkerType::DRIVER) {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
       return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {
-    if (serialized_runtime_env == "") {
+    if (serialized_runtime_env == "" || serialized_runtime_env == "{}") {
       *runtime_env_uris =
           GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
       return worker_context_.GetCurrentSerializedRuntimeEnv();

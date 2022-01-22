@@ -284,7 +284,7 @@ solicited by current reviewers.
 More Resources for Getting Involved
 -----------------------------------
 
-.. include:: involvement.rst
+.. include:: ../ray-contribute/involvement.rst
 
 
 .. note::

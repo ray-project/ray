@@ -54,7 +54,7 @@
 /doc/source/workflows/ @ericl @iycheng
 
 # RLlib.
-/python/ray/rllib/ @sven1977 @gjoliver @avnishn
+/rllib/ @sven1977 @gjoliver @avnishn
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng

@@ -117,6 +117,8 @@ SERVE_NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "autoscaling_single_deployment",
+        "autoscaling_multi_deployment",
         "serve_micro_benchmark",
         "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
@@ -146,6 +148,10 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        "scheduling_test_many_5s_tasks_single_node",
+        "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 

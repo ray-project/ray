@@ -257,7 +257,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-            logger.info(f"Received a log for {ip} and {pid}")
+            logger.debug(f"Received a log for {ip} and {pid}")
 
         if self._dashboard_head.gcs_log_subscriber:
             while True:
