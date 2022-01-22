@@ -8,7 +8,12 @@ T = TypeVar("T")
 
 
 class DAGNode:
-    """Abstract class for a node in a Ray task graph."""
+    """Abstract class for a node in a Ray task graph.
+
+    A node has a type (e.g., TaskNode), data (e.g., function options and body),
+    and arguments (Python values, DAGNodes, and DAGNodes nested within Python
+    argument values).
+    """
 
     def __init__(self, args: Tuple[Any], kwargs: Dict[str, Any]):
         self._bound_args: Tuple[Any] = args
@@ -122,7 +127,7 @@ class _PyObjFindReplace(ray.cloudpickle.CloudPickler):
     table and then replace the nodes via ``replace_nodes()``.
     """
 
-    # TODO(ekl) static instance ref used in deserialization hook.
+    # XXX(ekl) static instance ref used in deserialization hook.
     _cur = None
 
     def __init__(self):
