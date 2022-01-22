@@ -203,6 +203,7 @@ pub mod internal {
         dv_as_slice(get(id, timeout))
     }
 
+    // TODO: change to `get_data_value`
     #[inline]
     fn get(id: &ObjectID, timeout: i32) -> DataValue {
         let mut data = vec![id.as_ptr()];
@@ -338,6 +339,8 @@ type BufferDestructor = extern "C" fn(*mut u8, u64);
 // This is how to prevent memory leakage...
 // How does Rust allocate memory...? In terms of malloc slices?
 // Apprently, in terms of malloc slices but in the layout of a type....
+//
+// TODO: Doesn't need to be extern?
 pub extern "C" fn rust_raw_parts_dealloc(ptr: *mut u8, len: u64) {
     unsafe {
         std::ptr::drop_in_place(

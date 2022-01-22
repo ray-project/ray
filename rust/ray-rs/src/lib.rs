@@ -54,7 +54,9 @@ lazy_static::lazy_static! {
 }
 
 // Prints each argument on a separate line
-pub fn load_code_paths_from_cmdline(argc: i32, argv: *mut *mut c_char) {
+//
+// TODO: implement non-raw version
+pub fn load_code_paths_from_raw_c_cmdline(argc: i32, argv: *mut *mut c_char) {
     let slice = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
 
     for ptr in slice {
