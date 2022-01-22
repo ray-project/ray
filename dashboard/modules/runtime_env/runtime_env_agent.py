@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from collections import defaultdict
 from dataclasses import dataclass
 import json
@@ -187,7 +188,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     break
                 except Exception as ex:
                     logger.exception("Runtime env creation failed.")
-                    error_message = str(ex)
+                    error_message = "".join(
+                        traceback.format_exception(
+                            type(ex), ex, ex.__traceback__))
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )

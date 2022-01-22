@@ -235,7 +235,7 @@ class ProxyManager():
                       AGENT_RPC_STATUS_FAILED):
                     raise RuntimeError(
                         "Failed to create runtime_env for Ray client "
-                        f"server: {r.error_message}")
+                        f"server, it is caused by\n{r.error_message}")
                 else:
                     assert False, f"Unknown status: {r.status}."
             except grpc.RpcError as e:
