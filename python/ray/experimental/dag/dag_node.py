@@ -3,6 +3,7 @@ import ray
 import io
 import pickle
 from typing import Union, List, Tuple, Dict, Any, TypeVar, Callable, Set
+import uuid
 
 T = TypeVar("T")
 
@@ -16,8 +17,12 @@ class DAGNode:
     """
 
     def __init__(self, args: Tuple[Any], kwargs: Dict[str, Any]):
+        # Bound node arguments.
         self._bound_args: Tuple[Any] = args
+        # Bound node keyword arguments.
         self._bound_kwargs: Dict[str, Any] = kwargs
+        # UUID that is not changed over copies of this node.
+        self._stable_uuid = uuid.uuid4().hex
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -89,37 +94,34 @@ class DAGNode:
         # Return updated copy of self.
         return self.copy(new_args, new_kwargs)
 
-    def transform_up(self,
-                     visitor: "Callable[[DAGNode], T]",
-                     _cache: Dict["DAGNode", T] = None) -> T:
+    def transform_up(self, visitor: "Callable[[DAGNode], T]") -> T:
         """Transform each node in this DAG in a bottom-up tree walk.
 
         Args:
             visitor: Callable that will be applied once to each node in the
                 DAG. It will be applied recursively bottom-up, so nodes can
                 assume the visitor has been applied to their args already.
-            _cache: Dict used to de-duplicate applications of visitor.
 
         Returns:
             Return type of the visitor after application to the tree.
         """
 
-        if _cache is None:
-            _cache = {}
+        class _CachingVisitor:
+            def __init__(self, fn):
+                self.cache = {}
+                self.fn = fn
 
-        # Find all first-level nested DAGNode children in args.
-        f = _PyObjFindReplace()
-        children = f.find_nodes([self._bound_args, self._bound_kwargs])
+            def __call__(self, node):
+                if node._stable_uuid not in self.cache:
+                    self.cache[node._stable_uuid] = self.fn(node)
+                return self.cache[node._stable_uuid]
 
-        # Update replacement table and execute the replace.
-        for node in children:
-            if node not in _cache:
-                new_node = node.transform_up(visitor, _cache)
-                _cache[node] = new_node
-        new_args, new_kwargs = f.replace_nodes(_cache)
+        if not type(visitor).__name__ == "_CachingVisitor":
+            visitor = _CachingVisitor(visitor)
 
-        # Apply visitor after args have been recursively updated.
-        return visitor(self.copy(new_args, new_kwargs))
+        return visitor(
+            self.replace_all_child_nodes(
+                lambda node: node.transform_up(visitor)))
 
     def execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
@@ -134,10 +136,17 @@ class DAGNode:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
 
+    def _copy(self, new_args: List[Any],
+              new_kwargs: Dict[str, Any]) -> "DAGNode":
+        """Return a copy of this node with the given new args."""
+        raise NotImplementedError
+
     def copy(self, new_args: List[Any],
              new_kwargs: Dict[str, Any]) -> "DAGNode":
         """Return a copy of this node with the given new args."""
-        raise NotImplementedError
+        instance = self._copy(new_args, new_kwargs)
+        instance._stable_uuid = self._stable_uuid
+        return instance
 
     def __reduce__(self):
         """We disallow serialization to prevent inadvertent closure-capture.

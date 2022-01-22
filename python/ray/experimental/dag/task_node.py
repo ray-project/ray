@@ -10,7 +10,7 @@ class TaskNode(DAGNode):
         self._func_body = func_body
         DAGNode.__init__(self, func_args, func_kwargs)
 
-    def copy(self, new_args, new_kwargs):
+    def _copy(self, new_args, new_kwargs):
         return TaskNode(self._func_body, new_args, new_kwargs)
 
     def _execute(self):

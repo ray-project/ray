@@ -71,11 +71,14 @@ def test_basic_task_dag():
     a_ref = a._bind()
     b_ref = b._bind(a_ref)
     c_ref = c._bind(a_ref)
-    dag = d._bind(b_ref, c_ref)
+    d_ref = d._bind(b_ref, c_ref)
+    d1_ref = d._bind(d_ref, d_ref)
+    d2_ref = d._bind(d1_ref, d_ref)
+    dag = d._bind(d2_ref, d_ref)
     print(dag.tree_string())
 
-    assert ray.get(dag.execute()) == 7
-    assert ray.get(ct.get.remote()) == 4
+    assert ray.get(dag.execute()) == 28
+    assert ray.get(ct.get.remote()) == 7
 
 
 def test_nested_args():
