@@ -391,7 +391,7 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 Talks and Materials
 -------------------
 
-- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+- [video] `Unifying Large Scale Data Preprocessing and ML Pipelines with Ray Datasets (PyData 2021) <https://www.youtube.com/watch?v=wl4tvru9_Cg>`_ (`slides <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_)
 - [blog] `Data Ingest in a Third Generation ML Architecture <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`_
 - [blog] `Building an end-to-end ML pipeline using Mars and XGBoost on Ray <https://www.anyscale.com/blog/building-an-end-to-end-ml-pipeline-using-mars-and-xgboost-on-ray>`_
 
