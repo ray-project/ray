@@ -12,7 +12,6 @@ from ray._private.test_utils import (run_string_as_driver_nonblocking,
                                      run_string_as_driver)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_infeasible():
     script = """
 import ray
@@ -37,7 +36,6 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_warn_deadlock():
     script = """
 import ray
@@ -63,7 +61,6 @@ time.sleep(25)
     assert "Warning: The following resource request cannot" in out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_no_spam():
     script = """
 import ray
@@ -199,7 +196,6 @@ ray.get(foo.remote("abc", "def"))
     assert err_str.split("\n")[-2].endswith("def")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_core_worker_error_message():
     script = """
 import ray
@@ -218,7 +214,6 @@ ray._private.utils.push_error_to_driver(
     assert "Hello there" in err_str, err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time
@@ -259,7 +254,6 @@ ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("file", ["stdout", "stderr"])
 def test_multi_stdout_err(file):
     if file == "stdout":
@@ -296,12 +290,12 @@ ray.get(baz.remote())
     else:
         out_str = proc.stderr.read().decode("ascii")
 
+    out_str = "".join(out_str.splitlines())
     assert "(foo pid=" in out_str, out_str
     assert "(bar pid=" in out_str, out_str
     assert "(baz pid=" in out_str, out_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("file", ["stdout", "stderr"])
 def test_actor_stdout(file):
     if file == "stdout":
@@ -341,15 +335,15 @@ ray.get(b.f.remote())
         out_str = proc.stdout.read().decode("ascii")
     else:
         out_str = proc.stderr.read().decode("ascii")
-    print(out_str)
 
+    out_str = "".join(out_str.splitlines())
     assert "hi" in out_str, out_str
     assert "(Actor1 pid=" in out_str, out_str
     assert "bye" in out_str, out_str
     assert re.search("Actor2 pid=.*init", out_str), out_str
     assert not re.search("ActorX pid=.*init", out_str), out_str
     assert re.search("ActorX pid=.*bye", out_str), out_str
-    assert not re.search("Actor2 pid=.*bye", out_str), out_str
+    assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
 def test_output():
