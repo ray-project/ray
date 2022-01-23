@@ -340,6 +340,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
+
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
