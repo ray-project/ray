@@ -1089,17 +1089,56 @@ Status PlacementGroupInfoAccessor::AsyncSubscribeBundlesChangedEvent(
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing placement group bundles changed notification.";
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-    rpc::PlacementGroupBundlesChangedNotification bundles_change_notification;
-    bundles_change_notification.ParseFromString(data);
-    subscribe(PlacementGroupID(PlacementGroupID::FromHex(id)),
-              bundles_change_notification);
+
+  auto fetch_data_operation = [this, placement_group_id,
+                               subscribe](const StatusCallback &fetch_done) {
+    auto callback = [placement_group_id, subscribe, fetch_done](
+                        const Status &status,
+                        const boost::optional<rpc::PlacementGroupTableData> &result) {
+      if (result) {
+        // Generate the `PlacementGroupBundlesChangedNotification` for the first time.
+        auto notification = std::make_shared<rpc::PlacementGroupBundlesChangedNotification>();
+
+        notification->set_placement_group_id((*result).placement_group_id());
+        const auto &bundles = (*result).bundles();
+        for (const auto &bundle : bundles) {
+          notification->add_bundles(bundle.is_valid()); 
+        }
+        subscribe(placement_group_id, *notification);
+      }
+      if (fetch_done) {
+        fetch_done(status);
+      }
+    };
+    RAY_CHECK_OK(AsyncGet(placement_group_id, callback));
   };
-  Status status = client_impl_->GetGcsPubSub().Subscribe(
-      PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex(), on_subscribe,
-      done);
-  RAY_LOG(DEBUG) << "Finished subscribing placement group bundles changed notification.";
-  return status;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    resubscribe_operations_[placement_group_id] =
+        [this, placement_group_id, subscribe](const StatusCallback &subscribe_done) {
+          // Unregister the previous subscription before subscribing the to new
+          // GCS instance. Otherwise, the existing long poll on the previous GCS
+          // instance could leak or access invalid memory when returned.
+          // In future if long polls can be cancelled, this might become unnecessary.
+          while (true) {
+            Status s = client_impl_->GetGcsSubscriber().UnsubscribePlacementGroupBundlsChanged(placement_group_id);
+            if (s.ok()) {
+              break;
+            }
+            RAY_LOG(WARNING) << "Unsubscribing failed for placement group " << placement_group_id.Hex()
+                             << ", retrying ...";
+            absl::SleepFor(absl::Seconds(1));
+          }
+          return client_impl_->GetGcsSubscriber().SubscribePlacementGroupBundlsChanged(placement_group_id, subscribe,
+                                                                 subscribe_done);
+        };
+    fetch_data_operations_[placement_group_id] = fetch_data_operation;
+  }
+
+  return client_impl_->GetGcsSubscriber().SubscribePlacementGroupBundlsChanged(
+      placement_group_id, subscribe,
+      [fetch_data_operation, done](const Status &) { fetch_data_operation(done); });
 }
 
 Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(

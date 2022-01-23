@@ -310,6 +310,12 @@ class GcsSubscriber {
       const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done);
 
+  /// Uses Redis pubsub.
+  Status SubscribePlacementGroupBundlsChanged(
+      const PlacementGroupID &placement_group_id, const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+      const StatusCallback &done);
+  Status UnsubscribePlacementGroupBundlsChanged(const PlacementGroupID &placement_group_id);
+
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;
 

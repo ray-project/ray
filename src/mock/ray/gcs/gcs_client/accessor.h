@@ -230,16 +230,8 @@ namespace gcs {
 
 class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
-<<<<<<< HEAD:src/mock/ray/gcs/accessor.h
-  MOCK_METHOD(Status, AsyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncAddPlacementGroupBundles,
-              (const PlacementGroupID &placement_group_id,
-               (const std::vector<std::unordered_map<std::string, double>> &bundles),
-               const StatusCallback &callback),
-              (override));
+  MOCK_METHOD(Status, SyncCreatePlacementGroup,
+              (const PlacementGroupSpecification &placement_group_spec), (override));
   MOCK_METHOD(
       Status, AsyncSubscribeBundlesChangedEvent,
       (const PlacementGroupID &placement_group_id,
@@ -247,15 +239,6 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
            PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe),
        const StatusCallback &done),
       (override));
-||||||| 038bbb28f:src/mock/ray/gcs/accessor.h
-  MOCK_METHOD(Status, AsyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback),
-              (override));
-=======
-  MOCK_METHOD(Status, SyncCreatePlacementGroup,
-              (const PlacementGroupSpecification &placement_group_spec), (override));
->>>>>>> master:src/mock/ray/gcs/gcs_client/accessor.h
   MOCK_METHOD(Status, AsyncGet,
               (const PlacementGroupID &placement_group_id,
                const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),

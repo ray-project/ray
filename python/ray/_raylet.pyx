@@ -1483,23 +1483,17 @@ cdef class CoreWorker:
             prepare_args(
                 self, language, args, &args_vector, function_descriptor)
 
-            # Check whether the bundle index is valid or not
-            # if the actor is using placement group.
-            if (not c_placement_group_id.IsNil()):
-                check_status(CCoreWorkerProcess.GetCoreWorker().
-                             ValidatePlacementGroupBundleIndex(
-                    c_placement_group_id, placement_group_bundle_index))
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
             # https://github.com/ray-project/ray/pull/12803
-            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+            check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
                     serialized_runtime_env),
                 max_retries, retry_exceptions,
                 c_scheduling_strategy,
-                debugger_breakpoint)
+                debugger_breakpoint, &return_refs))
 
             return VectorToObjectRefs(return_refs)
 
@@ -1546,12 +1540,6 @@ cdef class CoreWorker:
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
-            # Check whether the bundle index is valid or not
-            # if the actor is using placement group.
-            if (not c_placement_group_id.IsNil()):
-                check_status(CCoreWorkerProcess.GetCoreWorker().
-                             ValidatePlacementGroupBundleIndex(
-                    c_placement_group_id, placement_group_bundle_index))
             if is_detached is not None:
                 is_detached_optional = make_optional[c_bool](
                     True if is_detached else False)

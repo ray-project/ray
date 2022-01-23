@@ -1524,11 +1524,11 @@ void CoreWorker::BuildCommonTaskSpec(
   }
 }
 
-std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
+Status CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
-    const std::string &debugger_breakpoint) {
+    const std::string &debugger_breakpoint, std::vector<rpc::ObjectReference> *returned_refs) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1554,11 +1554,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
-  std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
-    returned_refs = ExecuteTaskLocalMode(task_spec);
+    *returned_refs = ExecuteTaskLocalMode(task_spec);
   } else {
-    returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec,
+    *returned_refs = task_manager_->AddPendingTask(task_spec.CallerAddress(), task_spec,
                                                   CurrentCallSite(), max_retries);
     io_service_.post(
         [this, task_spec]() {
@@ -1566,7 +1565,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         },
         "CoreWorker.SubmitTask");
   }
-  return returned_refs;
+  return Status::OK();
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,

@@ -684,7 +684,7 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncAddPlacementGroupBundles(
       const ray::PlacementGroupID &placement_group_id,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const StatusCallback &callback) = 0;
+      const StatusCallback &callback);
 
   /// Subscribe to placement group bundles changed notification.
   ///
@@ -698,7 +698,7 @@ class PlacementGroupInfoAccessor {
       const PlacementGroupID &placement_group_id,
       const SubscribeCallback<PlacementGroupID,
                               rpc::PlacementGroupBundlesChangedNotification> &subscribe,
-      const StatusCallback &done) = 0;
+      const StatusCallback &done);
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -745,6 +745,17 @@ class PlacementGroupInfoAccessor {
   virtual Status SyncWaitUntilReady(const PlacementGroupID &placement_group_id);
 
  private:
+  // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.
+  absl::Mutex mutex_;
+
+  /// Resubscribe operations for placement groups.
+  std::unordered_map<PlacementGroupID, SubscribeOperation> resubscribe_operations_
+      GUARDED_BY(mutex_);
+
+  /// Save the fetch data operation of placement groups.
+  std::unordered_map<PlacementGroupID, FetchDataOperation> fetch_data_operations_
+      GUARDED_BY(mutex_);
+
   GcsClient *client_impl_;
 };
 

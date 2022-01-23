@@ -519,6 +519,31 @@ Status GcsSubscriber::SubscribeResourcesBatch(
   return pubsub_->Subscribe(RESOURCES_BATCH_CHANNEL, "", on_subscribe, done);
 }
 
+Status GcsSubscriber::SubscribePlacementGroupBundlsChanged(
+    const PlacementGroupID &placement_group_id, const SubscribeCallback<PlacementGroupID, rpc::PlacementGroupBundlesChangedNotification> &subscribe,
+    const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    // TODO: Implement it later.
+    return Status::OK();
+  }
+
+  // Redis subscriber.
+  auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+    rpc::PlacementGroupBundlesChangedNotification bundles_change_notification;
+    bundles_change_notification.ParseFromString(data);
+    subscribe(PlacementGroupID::FromHex(id), bundles_change_notification);
+  };
+  return pubsub_->Subscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex(), on_subscribe, done);
+}
+
+Status GcsSubscriber::UnsubscribePlacementGroupBundlsChanged(const PlacementGroupID &placement_group_id) {
+  if (subscriber_ != nullptr) {
+    // TODO: Implements later.
+    return Status::OK();
+  }
+  return pubsub_->Unsubscribe(PLACEMENT_GROUP_BUNDELS_CHANGED_CHANNEL, placement_group_id.Hex());
+}
+
 Status GcsSubscriber::SubscribeAllWorkerFailures(
     const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
   if (subscriber_ != nullptr) {
