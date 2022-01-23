@@ -83,8 +83,8 @@ message PrepareBundleResourcesReply {
 }
 
 message CommitBundleResourcesRequest {
-  // Bundle containing the requested resources.
-  Bundle bundle_spec = 1;
+  // Bundles containing the requested resources.
+  repeated Bundle bundle_specs = 1;
 }
 
 message CommitBundleResourcesReply {
