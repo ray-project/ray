@@ -148,6 +148,7 @@ class Monitor:
             # Initialize the gcs stub for getting all node resource usage.
             gcs_address = get_gcs_address_from_redis(self.redis)
         else:
+            logger.info("Not using Redis!")
             gcs_address = address
             redis_address = None
 
