@@ -13,6 +13,7 @@ from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
 from ray._raylet import ClientObjectRef
 from ray.util.client.worker import Worker
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 import grpc
 
 
@@ -25,6 +26,8 @@ def password():
 
 
 class TestRedisPassword:
+    @pytest.mark.skipif(
+        use_gcs_for_bootstrap(), reason="Not valid for gcs bootstrap")
     def test_redis_password(self, password, shutdown_only):
         @ray.remote
         def f():
@@ -103,10 +106,10 @@ def test_tmpdir_env_var(shutdown_only):
         """
 import ray
 context = ray.init()
-assert context["session_dir"].startswith("/tmp/qqq/"), context
+assert context["session_dir"].startswith("/tmp/qqq"), context
 print("passed")
 """,
-        env={"RAY_TMPDIR": "/tmp/qqq"})
+        env=dict(os.environ, **{"RAY_TMPDIR": "/tmp/qqq"}))
     assert "passed" in result, result
 
 
@@ -160,7 +163,7 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert info["node_ip_address"] == "127.0.0.3"
 
     node_info = ray._private.services.get_node_to_connect_for_driver(
-        address, "127.0.0.3", redis_password=password)
+        address, cluster.gcs_address, "127.0.0.3", redis_password=password)
     assert node_info.node_manager_port == node2.node_manager_port
 
 
@@ -298,6 +301,25 @@ def test_auto_init_client(call_ray_start, function):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_ray_init_using_hostname(ray_start_cluster):
+    import socket
+    hostname = socket.gethostname()
+    cluster = Cluster(
+        initialize_head=True, head_node_args={
+            "node_ip_address": hostname,
+        })
+
+    # Use `ray.init` to test the connection.
+    ray.init(address=cluster.address, _node_ip_address=hostname)
+
+    node_table = cluster.global_state.node_table()
+    assert len(node_table) == 1
+    assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
 if __name__ == "__main__":

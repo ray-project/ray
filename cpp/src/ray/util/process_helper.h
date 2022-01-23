@@ -41,6 +41,9 @@ class ProcessHelper {
   std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
       const std::string &redis_address, const std::string &redis_password);
 
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
+      const std::string &gcs_address);
+
   ProcessHelper(ProcessHelper const &) = delete;
   void operator=(ProcessHelper const &) = delete;
 

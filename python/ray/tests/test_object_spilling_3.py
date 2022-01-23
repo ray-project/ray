@@ -71,7 +71,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
     for temp_dir in temp_dirs:
         temp_folder = temp_dir
         wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
     # Now kill ray and see all directories are deleted.
     print("Check directories are deleted...")

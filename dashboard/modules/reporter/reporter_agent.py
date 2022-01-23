@@ -19,6 +19,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
@@ -27,6 +28,8 @@ from ray.util.debug import log_once
 import psutil
 
 logger = logging.getLogger(__name__)
+
+enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -146,8 +149,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                                 psutil.cpu_count(logical=False))
 
         self._ip = dashboard_agent.ip
-        self._redis_address, _ = dashboard_agent.redis_address
-        self._is_head_node = (self._ip == self._redis_address)
+        if not use_gcs_for_bootstrap():
+            self._redis_address, _ = dashboard_agent.redis_address
+            self._is_head_node = (self._ip == self._redis_address)
+        else:
+            self._is_head_node = (
+                self._ip == dashboard_agent.gcs_address.split(":")[0])
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -197,7 +204,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_gpu_usage():
-        if gpustat is None:
+        global enable_gpu_usage_check
+        if gpustat is None or not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
         gpus = []
@@ -205,6 +213,17 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gpus = gpustat.new_query().gpus
         except Exception as e:
             logger.debug(f"gpustat failed to retrieve GPU information: {e}")
+
+            # gpustat calls pynvml.nvmlInit()
+            # On machines without GPUs, this can run subprocesses that spew to
+            # stderr. Then with log_to_driver=True, we get log spew from every
+            # single raylet. To avoid this, disable the GPU usage check on
+            # certain errors.
+            # https://github.com/ray-project/ray/issues/14305
+            # https://github.com/ray-project/ray/pull/21686
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -549,16 +568,22 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     async def run(self, server):
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
         if gcs_pubsub_enabled():
-            gcs_addr = await aioredis_client.get("GcsServerAddress")
-            publisher = GcsAioPublisher(address=gcs_addr.decode())
+            gcs_addr = self._dashboard_agent.gcs_address
+            if gcs_addr is None:
+                aioredis_client = await aioredis.create_redis_pool(
+                    address=self._dashboard_agent.redis_address,
+                    password=self._dashboard_agent.redis_password)
+                gcs_addr = await aioredis_client.get("GcsServerAddress")
+                gcs_addr = gcs_addr.decode()
+            publisher = GcsAioPublisher(address=gcs_addr)
 
             async def publish(key: str, data: str):
                 await publisher.publish_resource_usage(key, data)
         else:
+            aioredis_client = await aioredis.create_redis_pool(
+                address=self._dashboard_agent.redis_address,
+                password=self._dashboard_agent.redis_password)
 
             async def publish(key: str, data: str):
                 await aioredis_client.publish(key, data)

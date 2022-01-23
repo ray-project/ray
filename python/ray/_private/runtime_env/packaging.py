@@ -1,4 +1,5 @@
 from enum import Enum
+from tempfile import TemporaryDirectory
 from filelock import FileLock
 import hashlib
 import logging
@@ -286,6 +287,15 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
+def get_uri_for_package(package: Path) -> str:
+    """Get a content-addressable URI from a package's contents.
+    """
+
+    hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val)
+
+
 def get_uri_for_directory(directory: str,
                           excludes: Optional[List[str]] = None) -> str:
     """Get a content-addressable URI from a directory's contents.
@@ -517,22 +527,29 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     return top_level_directory
 
 
-def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
-                                          zip_ref: ZipFile):
+def remove_dir_from_filepaths(base_dir: str, rdir: str):
     """
-    Extracts fname file from zip_ref zip file, removes the top level directory
-    from fname's file path, and stores fname in the base_dir.
+    base_dir: String path of the directory containing rdir
+    rdir: String path of directory relative to base_dir whose contents should
+          be moved to its base_dir, its parent directory
+
+    Removes rdir from the filepaths of all files and directories inside it.
+    In other words, moves all the files inside rdir to the directory that
+    contains rdir. Assumes base_dir's contents and rdir's contents have no
+    name conflicts.
     """
 
-    fname_without_top_level_dir = "/".join(fname.split("/")[1:])
+    # Move rdir to a temporary directory, so its contents can be moved to
+    # base_dir without any name conflicts
+    with TemporaryDirectory() as tmp_dir:
+        os.rename(os.path.join(base_dir, rdir), os.path.join(tmp_dir, rdir))
 
-    # If this condition is false, it means there was no top-level directory,
-    # so we do nothing
-    if fname_without_top_level_dir:
-        zip_ref.extract(fname, base_dir)
-        os.rename(
-            os.path.join(base_dir, fname),
-            os.path.join(base_dir, fname_without_top_level_dir))
+        # Shift children out of rdir and into base_dir
+        rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
+        for child in rdir_children:
+            os.rename(
+                os.path.join(tmp_dir, rdir, child),
+                os.path.join(base_dir, child))
 
 
 def unzip_package(package_path: str,
@@ -554,6 +571,8 @@ def unzip_package(package_path: str,
 
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
+    with ZipFile(str(package_path), "r") as zip_ref:
+        zip_ref.extractall(target_dir)
     if remove_top_level_directory:
         top_level_directory = get_top_level_dir_from_compressed_package(
             package_path)
@@ -562,20 +581,8 @@ def unzip_package(package_path: str,
                              "a single top level directory. Make sure there "
                              "are no hidden files at the same level as the "
                              "top level directory.")
-        with ZipFile(str(package_path), "r") as zip_ref:
-            for fname in zip_ref.namelist():
-                extract_file_and_remove_top_level_dir(
-                    base_dir=target_dir, fname=fname, zip_ref=zip_ref)
 
-            # Remove now-empty top_level_directory and any empty subdirectories
-            # left over from extract_file_and_remove_top_level_dir operations
-            leftover_top_level_directory = os.path.join(
-                target_dir, top_level_directory)
-            if os.path.isdir(leftover_top_level_directory):
-                shutil.rmtree(leftover_top_level_directory)
-    else:
-        with ZipFile(str(package_path), "r") as zip_ref:
-            zip_ref.extractall(target_dir)
+        remove_dir_from_filepaths(target_dir, top_level_directory)
 
     if unlink_zip:
         Path(package_path).unlink()

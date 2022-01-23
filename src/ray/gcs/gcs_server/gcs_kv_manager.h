@@ -32,38 +32,48 @@ class InternalKVInterface {
  public:
   /// Get the value associated with `key`.
   ///
+  /// \param ns The namespace of the key.
   /// \param key The key to fetch.
   /// \param callback Callback function.
-  virtual void Get(const std::string &key,
+  virtual void Get(const std::string &ns, const std::string &key,
                    std::function<void(std::optional<std::string>)> callback) = 0;
 
   /// Associate a key with the specified value.
   ///
+  /// \param ns The namespace of the key.
   /// \param key The key for the pair.
   /// \param value The value for the pair.
   /// \param overwrite Whether to overwrite existing values. Otherwise, the update
   ///   will be ignored.
   /// \param callback Callback function.
-  virtual void Put(const std::string &key, const std::string &value, bool overwrite,
+  virtual void Put(const std::string &ns, const std::string &key,
+                   const std::string &value, bool overwrite,
                    std::function<void(bool)> callback) = 0;
 
   /// Delete the key from the store.
   ///
+  /// \param ns The namespace of the key.
   /// \param key The key to be deleted.
+  /// \param del_by_prefix Whether to treat the key as prefix. If true, it'll
+  ///     delete all keys with `key` as the prefix.
   /// \param callback Callback function.
-  virtual void Del(const std::string &key, std::function<void(bool)> callback) = 0;
+  virtual void Del(const std::string &ns, const std::string &key, bool del_by_prefix,
+                   std::function<void(int64_t)> callback) = 0;
 
   /// Check whether the key exists in the store.
   ///
+  /// \param ns The namespace of the key.
   /// \param key The key to be checked.
   /// \param callback Callback function.
-  virtual void Exists(const std::string &key, std::function<void(bool)> callback) = 0;
+  virtual void Exists(const std::string &ns, const std::string &key,
+                      std::function<void(bool)> callback) = 0;
 
   /// Get the keys for a given prefix.
   ///
+  /// \param ns The namespace of the prefix.
   /// \param prefix The prefix to be scaned.
   /// \param callback Callback function.
-  virtual void Keys(const std::string &prefix,
+  virtual void Keys(const std::string &ns, const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;
 
   /// Return the event loop associated with the instance. This is where the
@@ -84,17 +94,19 @@ class RedisInternalKV : public InternalKVInterface {
     io_thread_.reset();
   }
 
-  void Get(const std::string &key,
+  void Get(const std::string &ns, const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
-  void Put(const std::string &key, const std::string &value, bool overwrite,
-           std::function<void(bool)> callback) override;
+  void Put(const std::string &ns, const std::string &key, const std::string &value,
+           bool overwrite, std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> callback) override;
+  void Del(const std::string &ns, const std::string &key, bool del_by_prefix,
+           std::function<void(int64_t)> callback) override;
 
-  void Exists(const std::string &key, std::function<void(bool)> callback) override;
+  void Exists(const std::string &ns, const std::string &key,
+              std::function<void(bool)> callback) override;
 
-  void Keys(const std::string &prefix,
+  void Keys(const std::string &ns, const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
   instrumented_io_context &GetEventLoop() override { return io_service_; }
@@ -111,17 +123,19 @@ class RedisInternalKV : public InternalKVInterface {
 class MemoryInternalKV : public InternalKVInterface {
  public:
   MemoryInternalKV(instrumented_io_context &io_context) : io_context_(io_context) {}
-  void Get(const std::string &key,
+  void Get(const std::string &ns, const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
-  void Put(const std::string &key, const std::string &value, bool overwrite,
-           std::function<void(bool)> callback) override;
+  void Put(const std::string &ns, const std::string &key, const std::string &value,
+           bool overwrite, std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> callback) override;
+  void Del(const std::string &ns, const std::string &key, bool del_by_prefix,
+           std::function<void(int64_t)> callback) override;
 
-  void Exists(const std::string &key, std::function<void(bool)> callback) override;
+  void Exists(const std::string &ns, const std::string &key,
+              std::function<void(bool)> callback) override;
 
-  void Keys(const std::string &prefix,
+  void Keys(const std::string &ns, const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
   instrumented_io_context &GetEventLoop() override { return io_context_; }

@@ -464,4 +464,4 @@ Now that you have a working understanding of the cluster launcher, check out:
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

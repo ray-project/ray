@@ -210,6 +210,7 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["num_gpus"] > 1:

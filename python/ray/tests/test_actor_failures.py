@@ -13,8 +13,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     generate_system_config_map,
-    get_other_nodes,
-    new_scheduler_enabled,
     SignalActor,
 )
 
@@ -33,6 +31,7 @@ def ray_init_with_task_retry_delay():
         "object_store_memory": 150 * 1024 * 1024,
     }],
     indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Segfaults on CI")
 def test_actor_spilled(ray_start_regular):
     object_store_memory = 150 * 1024 * 1024
 
@@ -66,7 +65,6 @@ def test_actor_spilled(ray_start_regular):
     assert num_success == len(objects)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
@@ -323,40 +321,6 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     assert result == 1 or result == results[-1] + 1
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
-def test_actor_restart_without_task(ray_start_regular):
-    """Test a dead actor can be restarted without sending task to it."""
-
-    @ray.remote(max_restarts=1, resources={"actor": 1})
-    class RestartableActor:
-        def __init__(self):
-            pass
-
-        def get_pid(self):
-            return os.getpid()
-
-    @ray.remote(resources={"actor": 1})
-    def probe():
-        return
-
-    # Returns whether the "actor" resource is available.
-    def actor_resource_available():
-        p = probe.remote()
-        ready, _ = ray.wait([p], timeout=1)
-        return len(ready) > 0
-
-    ray.experimental.set_resource("actor", 1)
-    actor = RestartableActor.remote()
-    wait_for_condition(lambda: not actor_resource_available())
-    # Kill the actor.
-    pid = ray.get(actor.get_pid.remote())
-
-    p = probe.remote()
-    os.kill(pid, SIGKILL)
-    ray.get(p)
-    wait_for_condition(lambda: not actor_resource_available())
-
-
 def test_caller_actor_restart(ray_start_regular):
     """Test tasks from a restarted actor can be correctly processed
        by the receiving actor."""
@@ -541,73 +505,6 @@ def test_decorated_method(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
-        "num_nodes": 3,
-    }], indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
-def test_ray_wait_dead_actor(ray_start_cluster):
-    """Tests that methods completed by dead actors are returned as ready"""
-    cluster = ray_start_cluster
-
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def __init__(self):
-            pass
-
-        def node_id(self):
-            return ray.worker.global_worker.node.unique_id
-
-        def ping(self):
-            time.sleep(1)
-
-    # Create some actors and wait for them to initialize.
-    num_nodes = len(cluster.list_all_nodes())
-    actors = [Actor.remote() for _ in range(num_nodes)]
-    ray.get([actor.ping.remote() for actor in actors])
-
-    def actor_dead():
-        # Ping the actors and make sure the tasks complete.
-        ping_ids = [actor.ping.remote() for actor in actors]
-        unready = ping_ids[:]
-        while unready:
-            _, unready = ray.wait(unready, timeout=0)
-            time.sleep(1)
-
-        try:
-            ray.get(ping_ids)
-            return False
-        except ray.exceptions.RayActorError:
-            return True
-
-    # Kill a node that must not be driver node or head node.
-    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
-    # Repeatedly submit tasks and call ray.wait until the exception for the
-    # dead actor is received.
-    wait_for_condition(actor_dead)
-
-    # Create an actor on the local node that will call ray.wait in a loop.
-    head_node_resource = "HEAD_NODE"
-    ray.experimental.set_resource(head_node_resource, 1)
-
-    @ray.remote(num_cpus=0, resources={head_node_resource: 1})
-    class ParentActor:
-        def __init__(self):
-            pass
-
-        def wait(self):
-            return actor_dead()
-
-        def ping(self):
-            return
-
-    # Repeatedly call ray.wait through the local actor until the exception for
-    # the dead actor is received.
-    parent_actor = ParentActor.remote()
-    wait_for_condition(lambda: ray.get(parent_actor.wait.remote()))
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 1,
         "num_nodes": 1,
     }], indirect=True)
 def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
@@ -766,6 +663,69 @@ def test_recreate_child_actor(ray_start_cluster):
     pid = ray.get(p.pid.remote())
     os.kill(pid, 9)
     ray.get(p.ready.remote())
+
+
+def test_actor_failure_per_type(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(address="auto")
+
+    @ray.remote
+    class Actor:
+        def check_alive(self):
+            return os.getpid()
+
+        def create_actor(self):
+            self.a = Actor.remote()
+            return self.a
+
+    # Test actor is dead because its reference is gone.
+    # Q(sang): Should we raise RayACtorError in this case?
+    with pytest.raises(
+            RuntimeError, match="Lost reference to actor") as exc_info:
+        ray.get(Actor.remote().check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed by ray.kill
+    a = Actor.remote()
+    ray.kill(a)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="it was killed by `ray.kill") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed because of worker failure.
+    a = Actor.remote()
+    pid = ray.get(a.check_alive.remote())
+    os.kill(pid, 9)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match=("The actor is dead because its worker process has died"
+                   )) as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test acator killed because of owner failure.
+    owner = Actor.remote()
+    a = ray.get(owner.create_actor.remote())
+    ray.kill(owner)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="The actor is dead because its owner has died") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
+
+    # Test actor killed because the node is dead.
+    node_to_kill = cluster.add_node(resources={"worker": 1})
+    a = Actor.options(resources={"worker": 1}).remote()
+    ray.get(a.check_alive.remote())
+    cluster.remove_node(node_to_kill)
+    with pytest.raises(
+            ray.exceptions.RayActorError,
+            match="The actor is dead because its node has died.") as exc_info:
+        ray.get(a.check_alive.remote())
+    print(exc_info._excinfo[1])
 
 
 if __name__ == "__main__":

@@ -694,8 +694,7 @@ if __name__ == "__main__":
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
             f.write(
-                code_test.format(
-                    repr(ray_start_regular_shared["redis_address"])))
+                code_test.format(repr(ray_start_regular_shared["address"])))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 
@@ -729,9 +728,9 @@ def test_use_dynamic_function_and_class():
     # Check whether the dynamic function is exported to GCS.
     # Note, the key format should be kept
     # the same as in `FunctionActorManager.export`.
-    key_func = (
-        b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
-        b":" + f._function_descriptor.function_id.binary())
+    key_func = (b"RemoteFunction:" +
+                ray.worker.global_worker.current_job_id.hex().encode() + b":" +
+                f._function_descriptor.function_id.binary())
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_func, KV_NAMESPACE_FUNCTION_TABLE)
     foo_actor = Foo.remote()
@@ -741,8 +740,8 @@ def test_use_dynamic_function_and_class():
     # Note, the key format should be kept
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
-        b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
-        b":" +
+        b"ActorClass:" +
+        ray.worker.global_worker.current_job_id.hex().encode() + b":" +
         foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
