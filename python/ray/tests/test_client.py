@@ -205,6 +205,10 @@ def test_put_get(ray_start_regular_shared):
         assert not objectref == 1
         # Make sure it returns True when necessary as well.
         assert objectref == ClientObjectRef(objectref.id)
+        # Assert output is correct type.
+        list_put = ray.put([1, 2, 3])
+        assert isinstance(list_put, ClientObjectRef)
+        assert ray.get(list_put) == [1, 2, 3]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

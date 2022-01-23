@@ -73,7 +73,7 @@ def export_test(alg_name, failures, framework="tf"):
     config = CONFIGS[alg_name].copy()
     config["framework"] = framework
     if "DDPG" in alg_name or "SAC" in alg_name:
-        algo = cls(config=config, env="Pendulum-v0")
+        algo = cls(config=config, env="Pendulum-v1")
     else:
         algo = cls(config=config, env="CartPole-v0")
 

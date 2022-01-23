@@ -21,6 +21,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -76,7 +77,7 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec,
+        const ray::TaskSpecification &resource_spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
       num_workers_requested += 1;
@@ -84,7 +85,7 @@ struct GcsServerMocker {
     }
 
     void RequestWorkerLease(
-        const rpc::TaskSpec &spec,
+        const rpc::TaskSpec &spec, bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
       num_workers_requested += 1;
@@ -174,10 +175,11 @@ struct GcsServerMocker {
 
     /// ResourceReserveInterface
     void PrepareBundleResources(
-        const BundleSpecification &bundle_spec,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
         override {
       num_lease_requested += 1;
+      num_prepared_bundle = bundle_specs.size();
       lease_callbacks.push_back(callback);
     }
 
@@ -298,6 +300,8 @@ struct GcsServerMocker {
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
+    // TODO(@clay4444): Remove this once we make the commit rpc request batched!
+    int num_prepared_bundle = 0;
 
     int num_release_unused_bundles_requested = 0;
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};

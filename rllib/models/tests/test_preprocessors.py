@@ -24,7 +24,7 @@ class TestPreprocessors(unittest.TestCase):
 
     def test_preprocessing_disabled(self):
         config = ppo.DEFAULT_CONFIG.copy()
-
+        config["seed"] = 42
         config["env"] = "ray.rllib.examples.env.random_env.RandomEnv"
         config["env_config"] = {
             "config": {
@@ -44,6 +44,11 @@ class TestPreprocessors(unittest.TestCase):
         # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
         # for obs-space=Dict(a=..., b=Tuple(..., ...)).
         config["_disable_preprocessor_api"] = True
+        # Speed things up a little.
+        config["train_batch_size"] = 100
+        config["sgd_minibatch_size"] = 10
+        config["rollout_fragment_length"] = 5
+        config["num_sgd_iter"] = 1
 
         num_iterations = 1
         # Only supported for tf so far.
@@ -60,7 +65,7 @@ class TestPreprocessors(unittest.TestCase):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
         self.assertEqual(type(p1), NoPreprocessor)
 
-        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
+        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
         p3 = ModelCatalog.get_preprocessor(gym.make("MsPacman-ram-v0"))
@@ -80,7 +85,7 @@ class TestPreprocessors(unittest.TestCase):
         self.assertTrue(isinstance(pp, TupleFlatteningPreprocessor))
         self.assertEqual(pp.shape, (8, ))
         self.assertEqual(
-            list(pp.transform((0, np.array([1, 2, 3])))),
+            list(pp.transform((0, np.array([1, 2, 3], np.float32)))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def test_dict_flattening_preprocessor(self):
@@ -94,7 +99,7 @@ class TestPreprocessors(unittest.TestCase):
         check(
             pp.transform({
                 "a": 1,
-                "b": (1, np.array([0.0, -0.5, 0.1, 0.6]))
+                "b": (1, np.array([0.0, -0.5, 0.1, 0.6], np.float32))
             }), [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1, 0.6])
 
     def test_one_hot_preprocessor(self):

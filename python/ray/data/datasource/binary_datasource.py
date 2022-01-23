@@ -19,9 +19,9 @@ class BinaryDatasource(FileBasedDatasource):
         include_paths = reader_args.pop("include_paths", False)
         data = f.readall()
         if include_paths:
-            return path, data
+            return [(path, data)]
         else:
-            return data
+            return [data]
 
     def _rows_per_file(self):
         return 1

@@ -15,8 +15,11 @@ import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
@@ -25,6 +28,8 @@ from ray.util.debug import log_once
 import psutil
 
 logger = logging.getLogger(__name__)
+
+enable_gpu_usage_check = True
 
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
@@ -57,7 +62,7 @@ def recursive_asdict(o):
     return o
 
 
-def jsonify_asdict(o):
+def jsonify_asdict(o) -> str:
     return json.dumps(dashboard_utils.to_google_style(recursive_asdict(o)))
 
 
@@ -143,13 +148,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             self._cpu_counts = (psutil.cpu_count(),
                                 psutil.cpu_count(logical=False))
 
-        self._ip = ray.util.get_node_ip_address()
-        self._redis_address, _ = dashboard_agent.redis_address
-        self._is_head_node = (self._ip == self._redis_address)
+        self._ip = dashboard_agent.ip
+        if not use_gcs_for_bootstrap():
+            self._redis_address, _ = dashboard_agent.redis_address
+            self._is_head_node = (self._ip == self._redis_address)
+        else:
+            self._is_head_node = (
+                self._ip == dashboard_agent.gcs_address.split(":")[0])
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
-        self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
+        self._metrics_agent = MetricsAgent(
+            "127.0.0.1" if self._ip == "127.0.0.1" else "",
+            dashboard_agent.metrics_export_port)
         self._key = f"{reporter_consts.REPORTER_PREFIX}" \
                     f"{self._dashboard_agent.node_id}"
 
@@ -193,7 +204,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_gpu_usage():
-        if gpustat is None:
+        global enable_gpu_usage_check
+        if gpustat is None or not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
         gpus = []
@@ -201,6 +213,17 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gpus = gpustat.new_query().gpus
         except Exception as e:
             logger.debug(f"gpustat failed to retrieve GPU information: {e}")
+
+            # gpustat calls pynvml.nvmlInit()
+            # On machines without GPUs, this can run subprocesses that spew to
+            # stderr. Then with log_to_driver=True, we get log spew from every
+            # single raylet. To avoid this, disable the GPU usage check on
+            # certain errors.
+            # https://github.com/ray-project/ray/issues/14305
+            # https://github.com/ray-project/ray/pull/21686
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -524,19 +547,19 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         ])
         return records_reported
 
-    async def _perform_iteration(self, aioredis_client):
+    async def _perform_iteration(self, publish):
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
-                formatted_status_string = await aioredis_client.hget(
-                    DEBUG_AUTOSCALING_STATUS, "value")
-                formatted_status = json.loads(formatted_status_string.decode(
+                formatted_status_string = internal_kv._internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS)
+                cluster_stats = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
 
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, formatted_status)
+                records_reported = self._record_stats(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_reported)
-                await aioredis_client.publish(self._key, jsonify_asdict(stats))
+                await publish(self._key, jsonify_asdict(stats))
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -544,8 +567,25 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        await self._perform_iteration(aioredis_client)
+        if gcs_pubsub_enabled():
+            gcs_addr = self._dashboard_agent.gcs_address
+            if gcs_addr is None:
+                aioredis_client = await aioredis.create_redis_pool(
+                    address=self._dashboard_agent.redis_address,
+                    password=self._dashboard_agent.redis_password)
+                gcs_addr = await aioredis_client.get("GcsServerAddress")
+                gcs_addr = gcs_addr.decode()
+            publisher = GcsAioPublisher(address=gcs_addr)
+
+            async def publish(key: str, data: str):
+                await publisher.publish_resource_usage(key, data)
+        else:
+            aioredis_client = await aioredis.create_redis_pool(
+                address=self._dashboard_agent.redis_address,
+                password=self._dashboard_agent.redis_password)
+
+            async def publish(key: str, data: str):
+                await aioredis_client.publish(key, data)
+
+        await self._perform_iteration(publish)

@@ -2,6 +2,7 @@
 
 #include "hiredis/hiredis.h"
 #include "ray/common/common_protocol.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -22,12 +23,15 @@ static void flushall_redis(void) {
 /// Base class for real-world tests with streaming queue
 class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
-  StreamingQueueTestBase(int num_nodes, int port)
-      : gcs_options_("127.0.0.1", 6379, ""), node_manager_port_(port) {
-    TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
-
-    // flush redis first.
-    flushall_redis();
+  StreamingQueueTestBase(int num_nodes, int port) : node_manager_port_(port) {
+    if (RayConfig::instance().bootstrap_with_gcs()) {
+      gcs_options_ = gcs::GcsClientOptions("127.0.0.1:6379");
+    } else {
+      gcs_options_ = gcs::GcsClientOptions("127.0.0.1", 6379, "");
+      TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
+      // flush redis first.
+      flushall_redis();
+    }
 
     RAY_CHECK(num_nodes >= 0);
     if (num_nodes > 0) {
@@ -36,15 +40,26 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
 
     // start gcs server
-    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
+    if (RayConfig::instance().bootstrap_with_gcs()) {
+      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("");
+    } else {
+      gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
+    }
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] =
-          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
-                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
-                                     &raylet_store_socket_names_[i]);
+      if (RayConfig::instance().bootstrap_with_gcs()) {
+        raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
+            "127.0.0.1", node_manager_port_ + i, "127.0.0.1:6379",
+            "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+            &raylet_store_socket_names_[i]);
+      } else {
+        raylet_socket_names_[i] =
+            TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
+                                       "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+                                       &raylet_store_socket_names_[i]);
+      }
     }
   }
 
@@ -55,7 +70,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
 
     TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
-    TestSetupUtil::ShutDownRedisServers();
+    if (!RayConfig::instance().bootstrap_with_gcs()) {
+      TestSetupUtil::ShutDownRedisServers();
+    }
   }
 
   JobID NextJobId() const {
@@ -117,7 +134,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                                                 "", "", "check_current_test_status", "")};
 
     auto return_refs = driver.SubmitActorTask(actor_id, func, args, options);
-    auto return_ids = ObjectRefsToIds(return_refs);
+    auto return_ids = ObjectRefsToIds(return_refs.value());
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
@@ -182,11 +199,14 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     std::string name = "";
     std::string ray_namespace = "";
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
     ActorCreationOptions actor_options{
         max_restarts,
         /*max_task_retries=*/0,
         /*max_concurrency=*/1,  resources, resources,     {},
-        /*is_detached=*/false,  name,      ray_namespace, /*is_asyncio=*/false};
+        /*is_detached=*/false,  name,      ray_namespace, /*is_asyncio=*/false,
+        scheduling_strategy};
     // Create an actor.
     ActorID actor_id;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().CreateActor(

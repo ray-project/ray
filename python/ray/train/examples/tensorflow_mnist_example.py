@@ -72,7 +72,7 @@ def train_func(config):
     return results
 
 
-def train_tensorflow_mnist(num_workers=2, use_gpu=False):
+def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
     trainer = Trainer(
         backend="tensorflow", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
@@ -81,7 +81,7 @@ def train_tensorflow_mnist(num_workers=2, use_gpu=False):
         config={
             "lr": 1e-3,
             "batch_size": 64,
-            "epochs": 4
+            "epochs": epochs
         })
     trainer.shutdown()
     print(f"Results: {results[0]}")
@@ -106,6 +106,8 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     parser.add_argument(
+        "--epochs", type=int, default=3, help="Number of epochs to train for.")
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
@@ -117,6 +119,10 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=2)
+        train_tensorflow_mnist()
     else:
         ray.init(address=args.address)
-    train_tensorflow_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        train_tensorflow_mnist(
+            num_workers=args.num_workers,
+            use_gpu=args.use_gpu,
+            epochs=args.epochs)

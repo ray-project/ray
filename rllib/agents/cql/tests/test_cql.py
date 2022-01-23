@@ -27,7 +27,7 @@ class TestCQL(unittest.TestCase):
 
         # Learns from a historic-data file.
         # To generate this data, first run:
-        # $ ./train.py --run=SAC --env=Pendulum-v0 \
+        # $ ./train.py --run=SAC --env=Pendulum-v1 \
         #   --stop='{"timesteps_total": 50000}' \
         #   --config='{"output": "/tmp/out"}'
         rllib_dir = Path(__file__).parent.parent.parent.parent
@@ -37,7 +37,7 @@ class TestCQL(unittest.TestCase):
                                               os.path.isfile(data_file)))
 
         config = cql.CQL_DEFAULT_CONFIG.copy()
-        config["env"] = "Pendulum-v0"
+        config["env"] = "Pendulum-v1"
         config["input"] = [data_file]
 
         # In the files, we use here for testing, actions have already
@@ -58,7 +58,7 @@ class TestCQL(unittest.TestCase):
         config["input_evaluation"] = ["is"]
 
         config["evaluation_interval"] = 2
-        config["evaluation_num_episodes"] = 10
+        config["evaluation_duration"] = 10
         config["evaluation_config"]["input"] = "sampler"
         config["evaluation_parallel_to_training"] = False
         config["evaluation_num_workers"] = 2
@@ -66,7 +66,7 @@ class TestCQL(unittest.TestCase):
         num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()
@@ -88,8 +88,8 @@ class TestCQL(unittest.TestCase):
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch -> SampleBatch).
-            from ray.rllib.agents.cql.cql import replay_buffer
-            batch = replay_buffer.replay().policy_batches["default_policy"]
+            batch = trainer.local_replay_buffer.replay().policy_batches[
+                "default_policy"]
 
             if fw == "torch":
                 obs = torch.from_numpy(batch["obs"])

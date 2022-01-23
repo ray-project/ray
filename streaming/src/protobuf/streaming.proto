@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package ray.streaming.proto;
 
-import "google/protobuf/any.proto";
-
 option java_package = "io.ray.streaming.runtime.generated";
 
 enum Language {

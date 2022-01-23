@@ -4,10 +4,12 @@ from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
     Optional, TYPE_CHECKING
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, BatchType
 from ray.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
 from ray.data.impl import progress_bar
+from ray.data.impl.stats import DatasetPipelineStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -69,6 +71,7 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._stats = DatasetPipelineStats()
 
     def iter_batches(self,
                      *,
@@ -98,13 +101,22 @@ class DatasetPipeline(Generic[T]):
         """
 
         def gen_batches() -> Iterator[BatchType]:
+            time_start = time.perf_counter()
+
             for ds in self.iter_datasets():
+                wait_start = time.perf_counter()
                 for batch in ds.iter_batches(
                         prefetch_blocks=prefetch_blocks,
                         batch_size=batch_size,
                         batch_format=batch_format,
                         drop_last=drop_last):
-                    yield batch
+                    self._stats.iter_wait_s.add(time.perf_counter() -
+                                                wait_start)
+                    with self._stats.iter_user_s.timer():
+                        yield batch
+                    wait_start = time.perf_counter()
+
+            self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return gen_batches()
 
@@ -197,7 +209,7 @@ class DatasetPipeline(Generic[T]):
                splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter)
+            self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -566,6 +578,18 @@ class DatasetPipeline(Generic[T]):
     def foreach_dataset(self, *a, **kw) -> None:
         raise DeprecationWarning(
             "`foreach_dataset` has been renamed to `foreach_window`.")
+
+    @DeveloperAPI
+    def stats(self, exclude_first_window: bool = True) -> str:
+        """Returns a string containing execution timing information.
+
+        Args:
+            exclude_first_window: Whether to exclude the first window from
+                the pipeline time breakdown. This is generally a good idea
+                since there is always a stall waiting for the first window to
+                be initially computed, which can be misleading in the stats.
+        """
+        return self._stats.summary_string(exclude_first_window)
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],

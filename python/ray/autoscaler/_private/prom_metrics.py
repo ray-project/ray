@@ -12,7 +12,8 @@ try:
     class AutoscalerPrometheusMetrics:
         def __init__(self, registry: CollectorRegistry = None):
             self.registry: CollectorRegistry = registry or \
-                CollectorRegistry(auto_describe=True)
+                                               CollectorRegistry(
+                                                   auto_describe=True)
             # Buckets: 5 seconds, 10 seconds, 20 seconds, 30 seconds,
             #          45 seconds, 1 minute, 1.5 minutes, 2 minutes,
             #          3 minutes, 4 minutes, 5 minutes, 6 minutes,
@@ -23,6 +24,9 @@ try:
                 5, 10, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600,
                 720, 900, 1200, 1500, 1800
             ]
+            # Buckets: .01 seconds to 1000 seconds.
+            # Used for autoscaler update time.
+            update_time_buckets = [.01, .1, 1, 10, 100, 1000]
             self.worker_create_node_time: Histogram = Histogram(
                 "worker_create_node_time_seconds",
                 "Worker launch time. This is the time it takes for a call to "
@@ -44,6 +48,14 @@ try:
                 namespace="autoscaler",
                 registry=self.registry,
                 buckets=histogram_buckets)
+            self.update_time: Histogram = Histogram(
+                "update_time",
+                "Autoscaler update time. This is the time for an autoscaler "
+                "update iteration to complete.",
+                unit="seconds",
+                namespace="autoscaler",
+                registry=self.registry,
+                buckets=update_time_buckets)
             self.pending_nodes: Gauge = Gauge(
                 "pending_nodes",
                 "Number of nodes pending to be started.",
@@ -137,7 +149,25 @@ try:
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry)
+            self.drain_node_exceptions: Counter = Counter(
+                "drain_node_exceptions",
+                "Number of exceptions raised when making a DrainNode rpc"
+                "prior to node termination.",
+                unit="exceptions",
+                namespace="autoscaler",
+                registry=self.registry)
 except ImportError:
 
-    def AutoscalerPrometheusMetrics():
-        return None
+    class NullMetric:
+        def set(self, value):
+            pass
+
+        def observe(self, value):
+            pass
+
+        def inc(self):
+            pass
+
+    class AutoscalerPrometheusMetrics(object):
+        def __getattr__(self, attr):
+            return NullMetric()

@@ -18,20 +18,17 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
-
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()){};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      local_node_id_(local_node_id),
+    : local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_);
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -42,10 +39,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+    : get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
@@ -172,42 +170,15 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-bool ClusterResourceScheduler::IsFeasible(const ResourceRequest &resource_request,
-                                          const NodeResources &resources) const {
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (resource_request.predefined_resources[i] >
-        resources.predefined_resources[i].total) {
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.first);
-
-    if (it == resources.custom_resources.end()) {
-      return false;
-    }
-    if (task_req_custom_resource.second > it->second.total) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
-                                                int64_t node_id,
-                                                const NodeResources &resources) const {
-  int violations = 0;
-
+bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
+                                             int64_t node_id,
+                                             const NodeResources &resources) const {
   if (resource_request.requires_object_store_memory && resources.object_pulls_queued &&
       node_id != local_node_id_) {
     // It's okay if the local node's pull manager is at capacity because we
     // will eventually spill the task back from the waiting queue if its args
     // cannot be pulled.
-    return -1;
+    return false;
   }
 
   // First, check predefined resources.
@@ -216,7 +187,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
         resources.predefined_resources[i].available) {
       // A hard constraint has been violated, so we cannot schedule
       // this resource request.
-      return -1;
+      return false;
     }
   }
 
@@ -227,21 +198,22 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
     if (it == resources.custom_resources.end()) {
       // Requested resource doesn't exist at this node.
       // This is a hard constraint so cannot schedule this resource request.
-      return -1;
+      return false;
     } else {
       if (task_req_custom_resource.second > it->second.available) {
         // Resource constraint is violated.
-        return -1;
+        return false;
       }
     }
   }
 
-  return violations;
+  return true;
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
-    const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    const ResourceRequest &resource_request,
+    const rpc::SchedulingStrategy &scheduling_strategy, bool actor_creation,
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
@@ -273,9 +245,14 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
-  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
-      force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
+  int64_t best_node_id = scheduling_policy_->HybridPolicy(
+      resource_request,
+      scheduling_strategy.scheduling_strategy_case() ==
+              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
+          ? 0.0
+          : RayConfig::instance().scheduler_spread_threshold(),
+      force_spillback, force_spillback,
+      [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
@@ -284,19 +261,24 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
-                 << ". Best node: " << best_node_id
+                 << ". Best node: " << best_node_id << " "
+                 << (string_to_int_map_.Get(best_node_id) == "-1"
+                         ? NodeID::Nil()
+                         : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
-    bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    const rpc::SchedulingStrategy &scheduling_strategy, bool requires_object_store_memory,
+    bool actor_creation, bool force_spillback, int64_t *total_violations,
+    bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
-  int64_t node_id = GetBestSchedulableNode(
-      resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
+  int64_t node_id =
+      GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
+                             force_spillback, total_violations, is_infeasible);
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.
@@ -317,7 +299,7 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   NodeResources *resources = it->second.GetMutableLocalView();
 
   // Just double check this node can still schedule the resource request.
-  if (IsSchedulable(resource_request, node_id, *resources) == -1) {
+  if (!IsSchedulable(resource_request, node_id, *resources)) {
     return false;
   }
 
@@ -587,6 +569,13 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   return buffer.str();
 }
 
+uint64_t ClusterResourceScheduler::GetNumCpus() const {
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  return static_cast<uint64_t>(
+      it->second.GetLocalView().predefined_resources[CPU].total.Double());
+}
+
 void ClusterResourceScheduler::InitResourceInstances(
     FixedPoint total, bool unit_instances, ResourceInstanceCapacities *instance_list) {
   if (unit_instances) {
@@ -677,9 +666,40 @@ std::vector<FixedPoint> ClusterResourceScheduler::SubtractAvailableResourceInsta
   return underflow;
 }
 
-bool ClusterResourceScheduler::AllocateResourceInstances(
-    FixedPoint demand, std::vector<FixedPoint> &available,
-    std::vector<FixedPoint> *allocation) {
+namespace {
+/// Allocate enough capacity across the instances of a resource to satisfy "demand".
+/// If resource has multiple unit-capacity instances, we consider two cases.
+///
+/// 1) If the constraint is hard, allocate full unit-capacity instances until
+/// demand becomes fractional, and then satisfy the fractional demand using the
+/// instance with the smallest available capacity that can satisfy the fractional
+/// demand. For example, assume a resource conisting of 4 instances, with available
+/// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
+/// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
+/// with the smalest available capacity that can satisfy the remaining demand of 0.2).
+/// As a result remaining available capacities will be (0., 1., .7, .3).
+/// Thus, if the constraint is hard, we will allocate a bunch of full instances and
+/// at most a fractional instance.
+///
+/// 2) If the constraint is soft, we can allocate multiple fractional resources,
+/// and even overallocate the resource. For example, in the previous case, if we
+/// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
+/// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
+/// all instances, and return success (true), despite the fact that the total
+/// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
+/// than the demand, 3.5. In this case, the remaining available resource is
+/// (0., 0., 0., 0.)
+///
+/// \param demand: The resource amount to be allocated.
+/// \param available: List of available capacities of the instances of the resource.
+/// \param allocation: List of instance capacities allocated to satisfy the demand.
+/// This is a return parameter.
+///
+/// \return true, if allocation successful. In this case, the sum of the elements in
+/// "allocation" is equal to "demand".
+
+bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
+                               std::vector<FixedPoint> *allocation) {
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
 
@@ -747,6 +767,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
   return true;
 }
+}  // namespace
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
@@ -787,6 +808,10 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         }
       }
     } else {
+      // Allocation failed because the custom resources don't exist in this local node.
+      // Restore node's local resources by freeing the resources
+      // of the failed allocation.
+      FreeTaskResourceInstances(task_allocation);
       return false;
     }
   }
@@ -800,10 +825,13 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
   auto local_view = it_local_node->second.GetMutableLocalView();
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     local_view->predefined_resources[i].available = 0;
+    local_view->predefined_resources[i].total = 0;
     for (size_t j = 0; j < local_resources_.predefined_resources[i].available.size();
          j++) {
       local_view->predefined_resources[i].available +=
           local_resources_.predefined_resources[i].available[j];
+      local_view->predefined_resources[i].total +=
+          local_resources_.predefined_resources[i].total[j];
     }
   }
 
@@ -981,16 +1009,6 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  // Reset all local views for remote nodes. This is needed in case tasks that
-  // we spilled back to a remote node were not actually scheduled on the
-  // node. Then, the remote node's resource availability may not change and
-  // so it may not send us another update.
-  for (auto &node : nodes_) {
-    if (node.first != local_node_id_) {
-      node.second.ResetLocalView();
-    }
-  }
-
   // Automatically report object store usage.
   // XXX: this MUTATES the resources field, which is needed since we are storing
   // it in last_report_resources_.
@@ -1095,7 +1113,7 @@ bool ClusterResourceScheduler::IsLocallySchedulable(
     const absl::flat_hash_map<std::string, double> &shape) {
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;
+  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources());
 }
 
 }  // namespace ray

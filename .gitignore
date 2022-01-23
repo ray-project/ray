@@ -57,6 +57,7 @@ python/.eggs
 *.so
 *.dylib
 *.dll
+python/ray/_raylet.pyd
 
 # Incremental linking files
 *.ilk
@@ -163,6 +164,8 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
+dependency-reduced-pom.xml
+
 # Cpp
 cpp/example/thirdparty/
 
@@ -214,3 +217,6 @@ test_state.json
 
 # workflow storage
 workflow_data/
+
+# vscode java extention generated
+.factorypath

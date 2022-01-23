@@ -32,7 +32,7 @@ b) Not a tune-registered environment creator.
 c) Not a valid env class string.
 
 Try one of the following:
-a) For Atari support: `pip install gym[atari] atari_py`.
+a) For Atari support: `pip install gym[atari] autorom[accept-rom-license]`.
    For VizDoom support: Install VizDoom
    (https://github.com/mwydmuch/ViZDoom/blob/master/doc/Building.md) and
    `pip install vizdoomgym`.

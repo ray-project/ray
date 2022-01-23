@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+import warnings
 
 from inspect import isclass
 from shlex import quote
@@ -18,7 +19,6 @@ from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
-from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
@@ -29,13 +29,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Syncing period for syncing local checkpoints to cloud.
-# In env variable is not set, sync happens every 300 seconds.
-CLOUD_SYNC_PERIOD = 300
+# Syncing period for syncing checkpoints between nodes or to cloud.
+SYNC_PERIOD = 300
 
-# Syncing period for syncing worker logs to driver.
-NODE_SYNC_PERIOD = 300
-
+CLOUD_CHECKPOINTING_URL = (
+    "https://docs.ray.io/en/master/tune/user-guide.html#using-cloud-storage")
 _log_sync_warned = False
 _syncers = {}
 
@@ -45,17 +43,55 @@ def wait_for_sync():
         syncer.wait()
 
 
-def set_sync_periods(sync_config):
-    """Sets sync periods from config."""
-    global CLOUD_SYNC_PERIOD
-    global NODE_SYNC_PERIOD
-    if os.environ.get("TUNE_CLOUD_SYNC_S"):
-        raise DeprecationWarning(
-            "'TUNE_CLOUD_SYNC_S' is deprecated. Set "
-            "`cloud_sync_period` via tune.SyncConfig instead.")
-        CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
-    NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
-    CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
+def set_sync_periods(sync_config: "SyncConfig"):
+    """Sets sync period from config."""
+    global SYNC_PERIOD
+    SYNC_PERIOD = int(sync_config.sync_period)
+
+
+def validate_sync_config(sync_config: "SyncConfig"):
+    if sync_config.node_sync_period >= 0 or sync_config.cloud_sync_period >= 0:
+        # Until fully deprecated, try to consolidate
+        if (sync_config.node_sync_period >= 0
+                and sync_config.cloud_sync_period >= 0):
+            sync_period = min(sync_config.node_sync_period,
+                              sync_config.cloud_sync_period)
+        else:
+            sync_period = max(sync_config.node_sync_period,
+                              sync_config.cloud_sync_period)
+
+        sync_config.sync_period = sync_period
+        sync_config.node_sync_period = -1
+        sync_config.cloud_sync_period = -1
+
+        warnings.warn(
+            "The `node_sync_period` and "
+            "`cloud_sync_period` properties of `tune.SyncConfig` are "
+            "deprecated. Pass the `sync_period` property instead. "
+            "\nFor now, the lower of the two values (if provided) will "
+            f"be used as the sync_period. This value is: {sync_period}",
+            DeprecationWarning)
+
+    if sync_config.sync_to_cloud or sync_config.sync_to_driver:
+        if bool(sync_config.upload_dir):
+            syncer = sync_config.sync_to_cloud
+            help = "set"
+        else:
+            syncer = sync_config.sync_to_driver
+            help = "not set"
+
+        sync_config.syncer = syncer
+        sync_config.sync_to_cloud = None
+        sync_config.sync_to_driver = None
+
+        warnings.warn(
+            "The `sync_to_cloud` and `sync_to_driver` properties of "
+            "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
+            "instead. Presence of an `upload_dir` decides if checkpoints "
+            "are synced to cloud or not. Syncing to driver is "
+            "automatically disabled if an `upload_dir` is given."
+            f"\nFor now, as the upload dir is {help}, the respective "
+            f"syncer is used. This value is: {syncer}", DeprecationWarning)
 
 
 def log_sync_template(options=""):
@@ -94,36 +130,44 @@ def log_sync_template(options=""):
 class SyncConfig:
     """Configuration object for syncing.
 
+    If an ``upload_dir`` is specified, both experiment and trial checkpoints
+    will be stored on remote (cloud) storage. Synchronization then only
+    happens via this remote storage.
+
     Args:
         upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
-        sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template that
-            includes `{source}` and `{target}` for the syncer to run. If not
-            provided, the sync command defaults to standard S3, gsutil or HDFS
-            sync commands. By default local_dir is synced to remote_dir every
-            300 seconds. To change this, set the TUNE_CLOUD_SYNC_S
-            environment variable in the driver machine.
-        sync_to_driver (func|str|bool): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If True or not provided, it defaults to using rsync. If False,
-            syncing to driver is disabled.
+            Specifying this will enable cloud-based checkpointing.
+        syncer (None|func|str): Function for syncing the local_dir to and
+            from remote storage. If string, then it must be a string template
+            that includes ``{source}`` and ``{target}`` for the syncer to run.
+            If not provided, it defaults to rsync for non cloud-based storage,
+            and to standard S3, gsutil or HDFS sync commands for cloud-based
+            storage.
+            If set to ``None``, no syncing will take place.
+            Defaults to ``"auto"`` (auto detect).
         sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
-            driver. If set to False, checkpoint syncing from worker to driver
+            driver (only non cloud-storage).
+            If set to False, checkpoint syncing from worker to driver
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
-        node_sync_period (int): Syncing period for syncing worker logs to
-            driver. Defaults to 300.
-        cloud_sync_period (int): Syncing period for syncing local
-            checkpoints to cloud. Defaults to 300.
+        sync_period (int): Syncing period for syncing between nodes.
+
     """
-    upload_dir: str = None
+    upload_dir: Optional[str] = None
+    syncer: Union[None, str] = "auto"
+
+    sync_on_checkpoint: bool = True
+    sync_period: int = 300
+
+    # Deprecated arguments
     sync_to_cloud: Any = None
     sync_to_driver: Any = None
-    sync_on_checkpoint: bool = True
-    node_sync_period: int = 300
-    cloud_sync_period: int = 300
+    node_sync_period: int = -1
+    cloud_sync_period: int = -1
+
+    def __post_init__(self):
+        validate_sync_config(self)
 
 
 class Syncer:
@@ -242,11 +286,11 @@ class CloudSyncer(Syncer):
 
     def sync_up_if_needed(self, exclude: Optional[List] = None):
         return super(CloudSyncer, self).sync_up_if_needed(
-            CLOUD_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         return super(CloudSyncer, self).sync_down_if_needed(
-            CLOUD_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
 
 class NodeSyncer(Syncer):
@@ -277,13 +321,13 @@ class NodeSyncer(Syncer):
         if not self.has_remote_target():
             return True
         return super(NodeSyncer, self).sync_up_if_needed(
-            NODE_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
         return super(NodeSyncer, self).sync_down_if_needed(
-            NODE_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_up_to_new_location(self, worker_ip):
         if worker_ip != self.worker_ip:
@@ -323,10 +367,17 @@ class NodeSyncer(Syncer):
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
-def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
+def get_cloud_syncer(local_dir, remote_dir=None,
+                     sync_function=None) -> CloudSyncer:
     """Returns a Syncer.
 
     This syncer is in charge of syncing the local_dir with upload_dir.
+
+    If no ``remote_dir`` is provided, it will return a no-op syncer.
+
+    If a ``sync_function`` is provided, it will return a CloudSyncer using
+    a custom SyncClient initialized by the sync function. Otherwise it will
+    return a CloudSyncer with default templates for s3/gs/hdfs.
 
     Args:
         local_dir (str): Source directory for syncing.
@@ -349,13 +400,20 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
         _syncers[key] = CloudSyncer(local_dir, remote_dir, NOOP)
         return _syncers[key]
 
+    if sync_function == "auto":
+        sync_function = None  # Auto-detect
+
+    # Maybe get user-provided sync client here
     client = get_sync_client(sync_function)
 
     if client:
+        # If the user provided a sync template or function
         _syncers[key] = CloudSyncer(local_dir, remote_dir, client)
-        return _syncers[key]
-    sync_client = get_cloud_sync_client(remote_dir)
-    _syncers[key] = CloudSyncer(local_dir, remote_dir, sync_client)
+    else:
+        # Else, get default cloud sync client (e.g. S3 syncer)
+        sync_client = get_cloud_sync_client(remote_dir)
+        _syncers[key] = CloudSyncer(local_dir, remote_dir, sync_client)
+
     return _syncers[key]
 
 
@@ -371,6 +429,9 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
             syncer to run. If True or not provided, it defaults rsync. If
             False, a noop Syncer is returned.
     """
+    if sync_function == "auto":
+        sync_function = None  # Auto-detect
+
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
@@ -413,10 +474,6 @@ class SyncerCallback(Callback):
         if checkpoint.storage == Checkpoint.MEMORY:
             return
 
-        # Local import to avoid circular dependencies between syncer and
-        # trainable
-        from ray.tune.durable_trainable import DurableTrainable
-
         trial_syncer = self._get_trial_syncer(trial)
         # If the sync_function is False, syncing to driver is disabled.
         # In every other case (valid values include None, True Callable,
@@ -441,7 +498,7 @@ class SyncerCallback(Callback):
                         "Trial %s: Checkpoint sync skipped. "
                         "This should not happen.", trial)
             except TuneError as e:
-                if issubclass(trial.get_trainable_cls(), DurableTrainable):
+                if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
                     logger.error("Trial %s: Sync error - %s", trial, str(e))
@@ -450,11 +507,18 @@ class SyncerCallback(Callback):
                     # to then this checkpoint may have been lost, so we
                     # shouldn't track it with the checkpoint_manager.
                     raise e
-            if not issubclass(trial.get_trainable_cls(), DurableTrainable):
+            if not trial.uses_cloud_checkpointing:
                 if not os.path.exists(checkpoint.value):
                     raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down.".format(
-                                        trial, checkpoint.value))
+                                    "found after successful sync down. "
+                                    "Are you running on a Kubernetes or "
+                                    "managed cluster? rsync will not function "
+                                    "due to a lack of SSH functionality. "
+                                    "You'll need to use cloud-checkpointing "
+                                    "if that's the case, see instructions "
+                                    "here: {} .".format(
+                                        trial, checkpoint.value,
+                                        CLOUD_CHECKPOINTING_URL))
 
     def on_trial_start(self, iteration: int, trials: List["Trial"],
                        trial: "Trial", **info):
@@ -482,20 +546,41 @@ class SyncerCallback(Callback):
         self._sync_trial_checkpoint(trial, checkpoint)
 
 
-def detect_sync_to_driver(
-        sync_to_driver: Union[None, bool, Type],
-        cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
+def detect_cluster_syncer(
+        sync_config: Optional[SyncConfig],
+        cluster_config_file: str = "~/ray_bootstrap_config.yaml"
+) -> Union[bool, Type, NodeSyncer]:
+    """Detect cluster Syncer given SyncConfig.
+
+    Returns False if cloud checkpointing is enabled (when upload dir is
+    set).
+
+    Else, returns sync config syncer if manually specified.
+
+    Else, detects cluster environment (e.g. Docker, Kubernetes) and returns
+    syncer accordingly.
+
+    """
     from ray.tune.integration.docker import DockerSyncer
 
-    if isinstance(sync_to_driver, Type):
-        return sync_to_driver
-    elif isinstance(sync_to_driver, bool) and sync_to_driver is False:
-        return sync_to_driver
+    sync_config = sync_config or SyncConfig()
+
+    if bool(sync_config.upload_dir) or sync_config.syncer is None:
+        # No sync to driver for cloud checkpointing or if manually disabled
+        return False
+
+    _syncer = sync_config.syncer
+
+    if _syncer == "auto":
+        _syncer = None
+
+    if isinstance(_syncer, Type):
+        return _syncer
 
     # Else: True or None. Auto-detect.
     cluster_config_file = os.path.expanduser(cluster_config_file)
     if not os.path.exists(cluster_config_file):
-        return sync_to_driver
+        return _syncer
 
     with open(cluster_config_file, "rt") as fp:
         config = yaml.safe_load(fp.read())
@@ -504,7 +589,7 @@ def detect_sync_to_driver(
         logger.debug(
             "Detected docker autoscaling environment. Using `DockerSyncer` "
             "as sync client. If this is not correct or leads to errors, "
-            "please pass a `sync_to_driver` parameter in the `SyncConfig` to "
+            "please pass a `syncer` parameter in the `SyncConfig` to "
             "`tune.run().` to manually configure syncing behavior.")
         return DockerSyncer
 
@@ -524,8 +609,8 @@ def detect_sync_to_driver(
             f"Detected Ray autoscaling environment on Kubernetes. Using "
             f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
             f"as sync client. If this is not correct or leads to errors, "
-            f"please pass a `sync_to_driver` parameter in the `SyncConfig` "
+            f"please pass a `syncer` parameter in the `SyncConfig` "
             f"to `tune.run()` to manually configure syncing behavior..")
         return NamespacedKubernetesSyncer(namespace)
 
-    return sync_to_driver
+    return _syncer

@@ -7,7 +7,7 @@ from ray.rllib.agents.dqn.dqn_torch_model import \
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.torch_ops import FLOAT_MIN, FLOAT_MAX
+from ray.rllib.utils.torch_utils import FLOAT_MIN, FLOAT_MAX
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()

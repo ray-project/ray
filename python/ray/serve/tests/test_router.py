@@ -78,12 +78,12 @@ async def test_replica_set(ray_instance):
 
     # We will test a scenario with two replicas in the replica set.
     rs = ReplicaSet(
-        "my_backend",
+        "my_deployment",
         asyncio.get_event_loop(),
     )
     replicas = [
         RunningReplicaInfo(
-            backend_tag="my_backend",
+            deployment_name="my_deployment",
             replica_tag=str(i),
             actor_handle=MockWorker.remote(),
             max_concurrent_queries=1) for i in range(2)

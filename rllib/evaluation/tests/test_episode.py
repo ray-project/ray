@@ -81,8 +81,9 @@ class EchoPolicy(Policy):
         return obs_batch.argmax(axis=1), [], {}
 
 
-class MultiAgentEpisodeEnv(MultiAgentEnv):
+class EpisodeEnv(MultiAgentEnv):
     def __init__(self, episode_length, num):
+        super().__init__()
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
         self.dones = set()
         self.observation_space = self.agents[0].observation_space
@@ -123,9 +124,9 @@ class TestEpisodeLastValues(unittest.TestCase):
         ev.sample()
 
     def test_multiagent_env(self):
-        temp_env = MultiAgentEpisodeEnv(NUM_STEPS, NUM_AGENTS)
+        temp_env = EpisodeEnv(NUM_STEPS, NUM_AGENTS)
         ev = RolloutWorker(
-            env_creator=lambda _: MultiAgentEpisodeEnv(NUM_STEPS, NUM_AGENTS),
+            env_creator=lambda _: EpisodeEnv(NUM_STEPS, NUM_AGENTS),
             policy_spec={
                 str(agent_id): (EchoPolicy, temp_env.observation_space,
                                 temp_env.action_space, {})

@@ -1,11 +1,11 @@
 import asyncio
 from asyncio.events import AbstractEventLoop
 import random
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
-                    Union)
+from typing import (Any, Tuple, Callable, DefaultDict, Dict, Set, Union)
 
 import ray
 from ray.serve.utils import logger
@@ -15,7 +15,15 @@ from ray.serve.utils import logger
 # that will slow down, or even block controller actor's event loop if near
 # its max_concurrency limit. Therefore we timeout a polling request after
 # a few seconds and let each client retry on their end.
-LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 5
+# We randomly select a timeout within this range to avoid a "thundering herd"
+# when there are many clients subscribing at the same time.
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (
+    int(
+        os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND",
+                       "30")),
+    int(
+        os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND",
+                       "60")))
 
 
 class LongPollNamespace(Enum):
@@ -48,18 +56,21 @@ class LongPollClient:
         host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
         key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
-        call_in_event_loop(Optional[AbstractEventLoop]): an optional event loop
-          to post the callback into. The callbacks were called within a cpp
-          core worker thread if the event loop is not passed in.
+        call_in_event_loop(AbstractEventLoop): an asyncio event loop
+          to post the callback into.
     """
 
     def __init__(
             self,
             host_actor,
             key_listeners: Dict[KeyType, UpdateStateCallable],
-            call_in_event_loop: Optional[AbstractEventLoop] = None,
+            call_in_event_loop: AbstractEventLoop,
     ) -> None:
         assert len(key_listeners) > 0
+        # We used to allow this to be optional, but due to Ray Client issue
+        # we now enforce all long poll client to post callback to event loop
+        # See https://github.com/ray-project/ray/issues/20971
+        assert call_in_event_loop is not None
 
         self.host_actor = host_actor
         self.key_listeners = key_listeners
@@ -102,6 +113,17 @@ class LongPollClient:
         self._current_ref._on_completed(
             lambda update: self._process_update(update))
 
+    def _schedule_to_event_loop(self, callback):
+        # Schedule the next iteration only if the loop is running.
+        # The event loop might not be running if users used a cached
+        # version across loops.
+        if self.event_loop.is_running():
+            self.event_loop.call_soon_threadsafe(callback)
+        else:
+            logger.error("The event loop is closed, shutting down long poll "
+                         "client.")
+            self.is_running = False
+
     def _process_update(self, updates: Dict[str, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
             # This can happen during shutdown where the controller is
@@ -120,14 +142,14 @@ class LongPollClient:
         if isinstance(updates, (ray.exceptions.RayTaskError)):
             if isinstance(updates.as_instanceof_cause(),
                           (asyncio.TimeoutError)):
-                logger.debug(
-                    f"LongPollClient polling timed out after "
-                    f"{LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S} secs. Retrying.")
+                logger.debug("LongPollClient polling timed out. Retrying.")
             else:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
-            self._poll_next()
+            # We must call this in event loop so it works in Ray Client.
+            # See https://github.com/ray-project/ray/issues/20971
+            self._schedule_to_event_loop(self._poll_next)
             return
 
         logger.debug(f"LongPollClient {self} received updates for keys: "
@@ -143,19 +165,7 @@ class LongPollClient:
                 callback(arg)
                 self._on_callback_completed(trigger_at=len(updates))
 
-            if self.event_loop is None:
-                chained()
-            else:
-                # Schedule the next iteration only if the loop is running.
-                # The event loop might not be running if users used a cached
-                # version across loops.
-                if self.event_loop.is_running():
-                    self.event_loop.call_soon_threadsafe(chained)
-                else:
-                    logger.error(
-                        "The event loop is closed, shutting down long poll "
-                        "client.")
-                    self.is_running = False
+            self._schedule_to_event_loop(chained)
 
 
 class LongPollHost:
@@ -222,7 +232,7 @@ class LongPollHost:
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S)
+            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S))
 
         [task.cancel() for task in not_done]
 

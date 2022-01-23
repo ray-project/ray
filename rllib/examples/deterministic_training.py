@@ -3,7 +3,6 @@ Example of a fully deterministic, repeatable RLlib train run using
 the "seed" config key.
 """
 import argparse
-import os
 
 import ray
 from ray import tune
@@ -20,10 +19,11 @@ parser.add_argument(
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)
+parser.add_argument("--num-gpus-trainer", type=float, default=0)
+parser.add_argument("--num-gpus-per-worker", type=float, default=0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
 
     param_storage = ParameterStorage.options(name="param-server").remote()
 
@@ -33,11 +33,12 @@ if __name__ == "__main__":
             "param_server": "param-server",
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 2,  # parallelism
-        # Make sure every environment gets a fixed seed.
+        "num_gpus": args.num_gpus_trainer,
+        "num_workers": 1,  # parallelism
+        "num_gpus_per_worker": args.num_gpus_per_worker,
         "num_envs_per_worker": 2,
         "framework": args.framework,
+        # Make sure every environment gets a fixed seed.
         "seed": args.seed,
 
         # Simplify to run this example script faster.

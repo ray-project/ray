@@ -46,8 +46,8 @@ class _DistributeResources:
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
         min_gpu = base_trial_resource.required_resources.get("GPU", 0)
 
-        min_cpu_bundle = base_trial_resource._bundles[0].get("CPU", 0)
-        min_gpu_bundle = base_trial_resource._bundles[0].get("GPU", 0)
+        min_cpu_bundle = base_trial_resource.bundles[0].get("CPU", 0)
+        min_gpu_bundle = base_trial_resource.bundles[0].get("GPU", 0)
 
         # Get the number of CPUs and GPUs avaialble in total (not just free)
         total_available_cpus = (
@@ -220,7 +220,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to
-    :ref:`load and save checkpoints <tune-checkpoint>`
+    :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
     If the Trainable (class) API is used, when the resources of a
@@ -319,19 +319,13 @@ class ResourceChangingScheduler(TrialScheduler):
                      trial: Trial, **kwargs):
         # use the first trial resources as the base
         if self._base_trial_resources is None:
-            if trial.uses_placement_groups:
-                self._base_trial_resources = trial.placement_group_factory
-            else:
-                self._base_trial_resources = trial.resources
+            self._base_trial_resources = trial.placement_group_factory
         # Raise error if the resources of a newly added trial don't match
         # base resources, but allow trials that have already had their
         # resources changed by ResourceChangingScheduler
         # (those can be added again during loading from a checkpoint)
         elif trial.trial_id not in self._reallocated_trial_ids:
-            if trial.uses_placement_groups:
-                trial_resources = trial.placement_group_factory
-            else:
-                trial_resources = trial.resources
+            trial_resources = trial.placement_group_factory
             if trial_resources != self._base_trial_resources:
                 raise RuntimeError(
                     "ResourceChangingScheduler doesn't support trials with "
@@ -413,8 +407,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def set_trial_resources(
             self, trial: Trial,
-            new_resources: Union[Dict, Callable, PlacementGroupFactory]
-    ) -> bool:
+            new_resources: Union[Dict, PlacementGroupFactory]) -> bool:
         """Returns True if new_resources were set."""
         if new_resources:
             logger.info(f"Setting trial {trial} resource to {new_resources}")
@@ -434,16 +427,15 @@ class ResourceChangingScheduler(TrialScheduler):
 
         Only checks for PlacementGroupFactories at this moment.
         """
-        if trial.uses_placement_groups:
-            if (isinstance(new_resources, PlacementGroupFactory)
-                    and trial.placement_group_factory == new_resources):
-                logger.debug(
-                    f"{trial} PGF "
-                    f"{trial.placement_group_factory.required_resources}"
-                    f" and {new_resources.required_resources}"
-                    f" are the same, skipping")
-                return True
-        return False
+        if (isinstance(new_resources, PlacementGroupFactory)
+                and trial.placement_group_factory == new_resources):
+            logger.debug(f"{trial} PGF "
+                         f"{trial.placement_group_factory.required_resources}"
+                         f" and {new_resources.required_resources}"
+                         f" are the same, skipping")
+            return True
+        else:
+            return False
 
     def reallocate_trial_resources_if_needed(
             self, trial_runner: "trial_runner.TrialRunner", trial: Trial,

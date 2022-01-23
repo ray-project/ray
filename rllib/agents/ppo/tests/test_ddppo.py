@@ -62,7 +62,6 @@ class TestDDPPO(unittest.TestCase):
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
         config["kl_coeff"] = 1.
         msg = "DDPPO doesn't support KL penalties like PPO-1"
-        # import ipdb; ipdb.set_trace()
         with pytest.raises(ValueError, match=msg):
             ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
         config["kl_coeff"] = 0.

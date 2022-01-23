@@ -123,7 +123,7 @@ like this:
         inputs, labels = inputs.to(device), labels.to(device)
 
 The code now supports training on CPUs, on a single GPU, and on multiple GPUs. Notably, Ray
-also supports :doc:`fractional GPUs </using-ray-with-gpus>`
+also supports :doc:`fractional GPUs <../../ray-core/using-ray-with-gpus>`
 so we can share GPUs among trials, as long as the model still fits on the GPU memory. We'll come back
 to that later.
 
@@ -148,7 +148,7 @@ to decide which hyperparameter configuration lead to the best results. These met
 can also be used to stop bad performing trials early in order to avoid wasting
 resources on those trials.
 
-The :ref:`checkpoint saving <tune-checkpoint>` is optional. However, it is necessary if we wanted to use advanced
+The :ref:`checkpoint saving <tune-checkpoint-syncing>` is optional. However, it is necessary if we wanted to use advanced
 schedulers like `Population Based Training <https://docs.ray.io/en/master/tune/tutorials/tune-advanced-tutorial.html>`_.
 In this cases, the created checkpoint directory will be passed as the ``checkpoint_dir`` parameter
 to the training function.

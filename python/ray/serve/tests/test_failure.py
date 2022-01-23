@@ -108,11 +108,11 @@ def test_http_proxy_failure(serve_instance):
     wait_for_condition(check_new)
 
 
-def _get_worker_handles(backend):
+def _get_worker_handles(deployment):
     controller = serve.api._global_client._controller
-    backend_dict = ray.get(controller._all_running_replicas.remote())
+    deployment_dict = ray.get(controller._all_running_replicas.remote())
 
-    return [replica.actor_handle for replica in backend_dict[backend]]
+    return [replica.actor_handle for replica in deployment_dict[deployment]]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue

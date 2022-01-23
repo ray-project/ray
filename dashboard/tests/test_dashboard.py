@@ -21,15 +21,33 @@ from ray import ray_constants
 from ray._private.test_utils import (
     format_web_url, wait_for_condition, wait_until_server_available,
     run_string_as_driver, wait_until_succeeded_without_exception)
+from ray._private.gcs_pubsub import gcs_pubsub_enabled
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules
+from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
+
+
+def make_gcs_client(address_info):
+    if not use_gcs_for_bootstrap():
+        address = address_info["redis_address"]
+        address = address.split(":")
+        assert len(address) == 2
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
+        gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    else:
+        address = address_info["gcs_address"]
+        gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    return gcs_client
 
 
 def cleanup_test_files():
@@ -67,14 +85,8 @@ def test_basic(ray_start_with_dashboard):
             is True)
     address_info = ray_start_with_dashboard
     node_id = address_info["node_id"]
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    gcs_client = make_gcs_client(address_info)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     all_processes = ray.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
@@ -145,15 +157,19 @@ def test_basic(ray_start_with_dashboard):
     raylet_proc.wait()
     agent_proc.wait(5)
 
-    # Check redis keys are set.
-    logger.info("Check redis keys are set.")
-    dashboard_address = client.get(ray_constants.REDIS_KEY_DASHBOARD)
+    # Check kv keys are set.
+    logger.info("Check kv keys are set.")
+    dashboard_address = ray.experimental.internal_kv._internal_kv_get(
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_address is not None
-    dashboard_rpc_address = client.get(
-        dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
+    dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
+        dashboard_consts.DASHBOARD_RPC_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = client.get(key)
+    agent_ports = ray.experimental.internal_kv._internal_kv_get(
+        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert agent_ports is not None
 
 
@@ -460,19 +476,12 @@ def test_get_cluster_status(ray_start_with_dashboard):
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
 
-    # Populate the GCS field, check that the data is returned from the
-    # endpoint.
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
-    client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
+    gcs_client = make_gcs_client(address_info)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    ray.experimental.internal_kv._internal_kv_put(
+        DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
+    ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR,
+                                                  "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
     response.raise_for_status()
@@ -598,23 +607,17 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     address_info = ray_start_with_dashboard
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    client = redis.StrictRedis(
-        host=address[0],
-        port=int(address[1]),
-        password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
+    gcs_client = make_gcs_client(address_info)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
     log_dir = "/tmp/ray/session_latest/logs"
     dashboard_cmd = [
         sys.executable, dashboard.__file__, f"--host={host}", f"--port={port}",
         f"--temp-dir={temp_dir}", f"--log-dir={log_dir}",
-        f"--redis-address={address[0]}:{address[1]}",
-        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}"
+        f"--redis-address={address_info['redis_address']}",
+        f"--redis-password={ray_constants.REDIS_DEFAULT_PASSWORD}",
+        f"--gcs-address={address_info['gcs_address']}"
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
     p = subprocess.Popen(dashboard_cmd)
@@ -628,7 +631,9 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            dashboard_url = client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+                ray_constants.DASHBOARD_ADDRESS,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
@@ -656,8 +661,13 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    # The dashboard exits by os._exit(-1)
-    assert dashboard_proc.wait(10) == 255
+    if gcs_pubsub_enabled():
+        # When pubsub enabled, the exits comes from pubsub errored.
+        # TODO: Fix this exits logic for pubsub
+        assert dashboard_proc.wait(10) != 0
+    else:
+        # The dashboard exits by os._exit(-1)
+        assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

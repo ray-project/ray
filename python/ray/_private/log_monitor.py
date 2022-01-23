@@ -12,9 +12,11 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
+import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -23,7 +25,7 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -91,12 +93,24 @@ class LogMonitor:
             false otherwise.
     """
 
-    def __init__(self, logs_dir, redis_address, redis_password=None):
+    def __init__(self,
+                 logs_dir,
+                 redis_address,
+                 gcs_address,
+                 redis_password=None):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
         self.logs_dir = logs_dir
-        self.redis_client = ray._private.services.create_redis_client(
-            redis_address, password=redis_password)
+        if gcs_utils.use_gcs_for_bootstrap():
+            self.redis_client = None
+        else:
+            self.redis_client = ray._private.services.create_redis_client(
+                redis_address, password=redis_password)
+            gcs_address = gcs_utils.get_gcs_address_from_redis(
+                self.redis_client)
+        self.publisher = None
+        if gcs_pubsub.gcs_pubsub_enabled():
+            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_address)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -260,17 +274,20 @@ class LogMonitor:
             nonlocal lines_to_publish
             nonlocal anything_published
             if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish,
-                        "actor_name": file_info.actor_name,
-                        "task_name": file_info.task_name,
-                    }))
+                data = {
+                    "ip": self.ip,
+                    "pid": file_info.worker_pid,
+                    "job": file_info.job_id,
+                    "is_err": file_info.is_err_file,
+                    "lines": lines_to_publish,
+                    "actor_name": file_info.actor_name,
+                    "task_name": file_info.task_name,
+                }
+                if self.publisher:
+                    self.publisher.publish_logs(data)
+                else:
+                    self.redis_client.publish(gcs_utils.LOG_FILE_CHANNEL,
+                                              json.dumps(data))
                 anything_published = True
                 lines_to_publish = []
 
@@ -289,6 +306,7 @@ class LogMonitor:
                         break
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
+
                     if next_line.startswith(
                             ray_constants.LOG_PREFIX_ACTOR_NAME):
                         flush()  # Possible change of task/actor name.
@@ -366,6 +384,11 @@ if __name__ == "__main__":
                      "log monitor to connect "
                      "to."))
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -428,7 +451,10 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count)
 
     log_monitor = LogMonitor(
-        args.logs_dir, args.redis_address, redis_password=args.redis_password)
+        args.logs_dir,
+        args.redis_address,
+        args.gcs_address,
+        redis_password=args.redis_password)
 
     try:
         log_monitor.run()
@@ -436,11 +462,21 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        gcs_publisher = None
+        if gcs_pubsub_enabled():
+            if gcs_utils.use_gcs_for_bootstrap():
+                gcs_publisher = GcsPublisher(address=args.gcs_address)
+            else:
+                gcs_publisher = GcsPublisher(
+                    address=gcs_utils.get_gcs_address_from_redis(redis_client))
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "
                    f"failed with the following error:\n{traceback_str}")
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
+        ray._private.utils.publish_error_to_driver(
+            ray_constants.LOG_MONITOR_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)
         logger.error(message)
         raise e

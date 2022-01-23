@@ -31,13 +31,13 @@ class MockWorkerLeaseInterface : public WorkerLeaseInterface {
  public:
   MOCK_METHOD(
       void, RequestWorkerLease,
-      (const ray::TaskSpecification &resource_spec,
+      (const ray::TaskSpecification &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
-      (const rpc::TaskSpec &task_spec,
+      (const rpc::TaskSpec &task_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
@@ -62,7 +62,7 @@ class MockResourceReserveInterface : public ResourceReserveInterface {
  public:
   MOCK_METHOD(
       void, PrepareBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(
@@ -122,13 +122,13 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
-      (const ray::TaskSpecification &resource_spec,
+      (const ray::TaskSpecification &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
-      (const rpc::TaskSpec &resource_spec,
+      (const rpc::TaskSpec &resource_spec, bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size),
       (override));
@@ -146,7 +146,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void, PrepareBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(

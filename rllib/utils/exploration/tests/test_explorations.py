@@ -112,7 +112,7 @@ class TestExplorations(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             ddpg.DDPGTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
@@ -153,7 +153,7 @@ class TestExplorations(unittest.TestCase):
     def test_ppo_cont(self):
         do_test_explorations(
             ppo.PPOTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             ppo.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
             prev_a=np.array([0.0]),
@@ -162,7 +162,7 @@ class TestExplorations(unittest.TestCase):
     def test_sac(self):
         do_test_explorations(
             sac.SACTrainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             sac.DEFAULT_CONFIG,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
@@ -174,7 +174,7 @@ class TestExplorations(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             td3.TD3Trainer,
-            "Pendulum-v0",
+            "Pendulum-v1",
             config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)

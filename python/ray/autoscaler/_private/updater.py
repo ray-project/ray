@@ -303,6 +303,13 @@ class NodeUpdater:
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
 
+        if self.provider_type == "aws" and self.provider.provider_config:
+            from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper \
+                import CloudwatchHelper
+            CloudwatchHelper(self.provider.provider_config,
+                             self.node_id, self.provider.cluster_name). \
+                update_from_config(self.is_head_node)
+
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.

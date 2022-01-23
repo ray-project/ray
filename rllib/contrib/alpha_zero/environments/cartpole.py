@@ -22,19 +22,25 @@ class CartPole:
 
     def reset(self):
         self.running_reward = 0
-        return {"obs": self.env.reset(), "action_mask": np.array([1, 1])}
+        return {
+            "obs": self.env.reset(),
+            "action_mask": np.array([1, 1], dtype=np.float32)
+        }
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         self.running_reward += rew
         score = self.running_reward if done else 0
-        return {"obs": obs, "action_mask": np.array([1, 1])}, score, done, info
+        return {
+            "obs": obs,
+            "action_mask": np.array([1, 1], dtype=np.float32)
+        }, score, done, info
 
     def set_state(self, state):
         self.running_reward = state[1]
         self.env = deepcopy(state[0])
         obs = np.array(list(self.env.unwrapped.state))
-        return {"obs": obs, "action_mask": np.array([1, 1])}
+        return {"obs": obs, "action_mask": np.array([1, 1], dtype=np.float32)}
 
     def get_state(self):
         return deepcopy(self.env), self.running_reward

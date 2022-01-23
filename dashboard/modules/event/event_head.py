@@ -7,7 +7,6 @@ from collections import OrderedDict, defaultdict
 import aiohttp.web
 
 import ray.dashboard.utils as dashboard_utils
-from ray.ray_constants import env_bool
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import (
     parse_event_strings,
@@ -24,8 +23,6 @@ JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
 
 
-@dashboard_utils.dashboard_module(
-    enable=env_bool(event_consts.EVENT_MODULE_ENVIRONMENT_KEY, False))
 class EventHead(dashboard_utils.DashboardHeadModule,
                 event_pb2_grpc.ReportEventServiceServicer):
     def __init__(self, dashboard_head):

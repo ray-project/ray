@@ -30,7 +30,7 @@ class TestIMPALA(unittest.TestCase):
         num_iterations = 1
         env = "CartPole-v0"
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             local_cfg = config.copy()
             for lstm in [False, True]:
                 local_cfg["num_aggregation_workers"] = 0 if not lstm else 1

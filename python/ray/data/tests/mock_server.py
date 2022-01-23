@@ -15,6 +15,8 @@ _proxy_bypass = {
 
 def start_service(service_name, host, port):
     moto_svr_path = shutil.which("moto_server")
+    if not moto_svr_path:
+        pytest.skip("moto not installed")
     args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | \

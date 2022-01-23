@@ -1,15 +1,16 @@
 import click
 import logging
-import os
-import subprocess
 import operator
+import os
+import shutil
+import subprocess
 from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import (DEFAULT_EXPERIMENT_INFO_KEYS, DEFAULT_RESULT_KEYS,
                              CONFIG_PREFIX)
-from ray.tune.analysis import Analysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
 try:
     from tabulate import tabulate
@@ -30,11 +31,7 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "last_updated",
 )
 
-try:
-    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
-    TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
-except subprocess.CalledProcessError:
-    TERM_HEIGHT, TERM_WIDTH = 100, 100
+TERM_WIDTH, TERM_HEIGHT = shutil.get_terminal_size(fallback=(100, 100))
 
 OPERATORS = {
     "<": operator.lt,
@@ -116,7 +113,8 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        checkpoints_df = Analysis(experiment_path).dataframe()  # last result
+        checkpoints_df = ExperimentAnalysis(
+            experiment_path).dataframe()  # last result
     except TuneError as e:
         raise click.ClickException("No trial data found!") from e
 

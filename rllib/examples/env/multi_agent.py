@@ -4,7 +4,7 @@ import random
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 
 
 @Deprecated(
@@ -19,6 +19,7 @@ class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
 
     def __init__(self, num):
+        super().__init__()
         self.agents = [MockEnv(25) for _ in range(num)]
         self.dones = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -44,6 +45,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
     """Env for testing when the env terminates (after agent 0 does)."""
 
     def __init__(self):
+        super().__init__()
         self.agents = [MockEnv(3), MockEnv(5)]
         self.dones = set()
         self.last_obs = {}
@@ -91,6 +93,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     """Env of independent agents, each of which exits after n steps."""
 
     def __init__(self):
+        super().__init__()
         self.agents = {}
         self.agentID = 0
         self.dones = set()
@@ -149,6 +152,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
     On each step() of the env, only one agent takes an action."""
 
     def __init__(self, num, increment_obs=False):
+        super().__init__()
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances
             self.agents = [MockEnv2(5) for _ in range(num)]
@@ -200,6 +204,6 @@ class RoundRobinMultiAgent(MultiAgentEnv):
 
 MultiAgentCartPole = make_multi_agent("CartPole-v0")
 MultiAgentMountainCar = make_multi_agent("MountainCarContinuous-v0")
-MultiAgentPendulum = make_multi_agent("Pendulum-v0")
+MultiAgentPendulum = make_multi_agent("Pendulum-v1")
 MultiAgentStatelessCartPole = make_multi_agent(
     lambda config: StatelessCartPole(config))

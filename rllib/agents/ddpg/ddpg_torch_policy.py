@@ -17,7 +17,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, huber_loss, l2_loss
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     LocalOptimizer, GradInfoDict
@@ -51,14 +51,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     huber_threshold = policy.config["huber_threshold"]
     l2_reg = policy.config["l2_reg"]
 
-    input_dict = {
-        "obs": train_batch[SampleBatch.CUR_OBS],
-        "is_training": True,
-    }
-    input_dict_next = {
-        "obs": train_batch[SampleBatch.NEXT_OBS],
-        "is_training": True,
-    }
+    input_dict = SampleBatch(
+        obs=train_batch[SampleBatch.CUR_OBS], _is_training=True)
+    input_dict_next = SampleBatch(
+        obs=train_batch[SampleBatch.NEXT_OBS], _is_training=True)
 
     model_out_t, _ = model(input_dict, [], None)
     model_out_tp1, _ = model(input_dict_next, [], None)

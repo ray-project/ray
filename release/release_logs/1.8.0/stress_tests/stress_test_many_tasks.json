@@ -1,0 +1,19 @@
+{
+   "success":1,
+   "stage_0_time":5.756206750869751,
+   "stage_1_time":190.08577489852905,
+   "stage_1_avg_iteration_time":19.008567762374877,
+   "stage_1_max_iteration_time":19.4687020778656,
+   "stage_1_min_iteration_time":18.608890295028687,
+   "stage_2_time":246.9729506969452,
+   "stage_2_avg_iteration_time":49.39428896903992,
+   "stage_2_max_iteration_time":50.23058724403381,
+   "stage_2_min_iteration_time":47.09399747848511,
+   "stage_3_creation_time":0.05593752861022949,
+   "stage_3_time":1843.905479669571,
+   "stage_4_spread":3.2320969134286446,
+   "_runtime":4446.973560810089,
+   "_session_url":"https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_wv1Ch4n2WCKNDLzUJwySyYJ2",
+   "_commit_url":"https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.8.0/d28be7e0c555808b38a5ce2da8d6c48d5162ce12/ray-1.8.0-cp37-cp37m-manylinux2014_x86_64.whl",
+   "_stable":true
+}

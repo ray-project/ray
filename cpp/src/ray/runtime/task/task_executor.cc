@@ -28,7 +28,7 @@ namespace ray {
 namespace internal {
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
-                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      const ArgsBufferList &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     throw std::invalid_argument("Task function name is empty");
@@ -64,6 +64,10 @@ std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
 GetRemoteFunctions() {
   return init_func_manager.GetRemoteFunctions();
 }
+
+void InitRayRuntime(std::shared_ptr<RayRuntime> runtime) {
+  RayRuntimeHolder::Instance().Init(runtime);
+}
 }  // namespace internal
 
 namespace internal {
@@ -72,20 +76,16 @@ using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
-TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
-    : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
-
 // TODO(SongGuyang): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
-  abstract_ray_tuntime_.GetWorkerContext();
   return std::make_unique<ObjectID>();
 };
 
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
-    const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
+    const std::string &func_name, const ArgsBufferList &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
     EntryFuntion entry_function;
@@ -142,8 +142,9 @@ Status TaskExecutor::ExecuteTask(
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
-  std::vector<msgpack::sbuffer> ray_args_buffer;
-  for (auto &arg : args_buffer) {
+  ArgsBufferList ray_args_buffer;
+  for (size_t i = 0; i < args_buffer.size(); i++) {
+    auto &arg = args_buffer.at(i);
     msgpack::sbuffer sbuf;
     sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
     ray_args_buffer.push_back(std::move(sbuf));
@@ -188,7 +189,7 @@ Status TaskExecutor::ExecuteTask(
     int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
-        task_output_inlined_bytes, result_ptr));
+        &task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {
@@ -211,11 +212,13 @@ void TaskExecutor::Invoke(
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
-  std::vector<msgpack::sbuffer> args_buffer;
+  ArgsBufferList args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
-      auto arg = runtime->Get(task_spec.ArgId(i).Binary());
-      args_buffer.push_back(std::move(*arg));
+      const auto &id = task_spec.ArgId(i).Binary();
+      msgpack::sbuffer sbuf;
+      sbuf.write(id.data(), id.size());
+      args_buffer.push_back(std::move(sbuf));
     } else {
       msgpack::sbuffer sbuf;
       sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));

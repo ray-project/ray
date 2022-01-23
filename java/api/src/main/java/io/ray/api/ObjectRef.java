@@ -12,4 +12,12 @@ public interface ObjectRef<T> {
    * available.
    */
   T get();
+
+  /**
+   * Fetch the object from the object store, this method will block until the object is locally
+   * available.
+   *
+   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   */
+  T get(long timeoutMs);
 }

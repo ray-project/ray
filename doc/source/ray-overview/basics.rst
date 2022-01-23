@@ -15,7 +15,7 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
-- :ref:`sgd-index`
+- :ref:`train-docs`
 - :ref:`datasets` (beta)
 
 As well as libraries for taking ML and distributed apps to production:

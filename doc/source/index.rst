@@ -121,7 +121,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      pip install ray[cpp]
+      pip install "ray[cpp]"
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
     | - The project template comes with a simple example application. You can try this example out in 2 ways:
@@ -146,7 +146,7 @@ You can also get started by visiting our `Tutorials <https://github.com/ray-proj
 Getting Involved
 ================
 
-.. include:: ray-overview/involvement.rst
+.. include:: ray-contribute/involvement.rst
 
 If you're interested in contributing to Ray, visit our page on :ref:`Getting Involved <getting-involved>` to read about the contribution process and see what you can work on!
 
@@ -181,6 +181,7 @@ Blog and Press
 Talks (Videos)
 --------------
 
+ - `Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Datasets | PyData 2021 <https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000>`_ `(slides) <https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing>`_
  - `Programming at any Scale with Ray | SF Python Meetup Sept 2019 <https://www.youtube.com/watch?v=LfpHyIXBhlE>`_
  - `Ray for Reinforcement Learning | Data Council 2019 <https://www.youtube.com/watch?v=Ayc0ca150HI>`_
  - `Scaling Interactive Pandas Workflows with Modin <https://www.youtube.com/watch?v=-HjLd_3ahCw>`_
@@ -218,161 +219,3 @@ Papers
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
 .. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Overview of Ray
-
-   ray-overview/index.rst
-   ray-libraries.rst
-   installation.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Core
-
-   walkthrough.rst
-   using-ray.rst
-   configure.rst
-   ray-dashboard.rst
-   Tutorial and Examples <auto_examples/overview.rst>
-   Design patterns and anti-patterns <ray-design-patterns/index.rst>
-   package-ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Multi-node Ray
-
-   cluster/index.rst
-   cluster/quickstart.rst
-   cluster/guide.rst
-   cluster/reference.rst
-   cluster/cloud.rst
-   cluster/ray-client.rst
-   cluster/deploy.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Serve
-
-   serve/index.rst
-   serve/tutorial.rst
-   serve/core-apis.rst
-   serve/http-servehandle.rst
-   serve/deployment.rst
-   serve/ml-models.rst
-   serve/performance.rst
-   serve/architecture.rst
-   serve/tutorials/index.rst
-   serve/faq.rst
-   serve/package-ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Data
-
-   data/dataset.rst
-   data/dataset-pipeline.rst
-   data/examples/big_data_ingestion
-   data/dataset-tensor-support.rst
-   data/package-ref.rst
-   data/dask-on-ray.rst
-   data/mars-on-ray.rst
-   data/modin/index.rst
-   data/raydp.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Workflows
-
-   workflows/concepts.rst
-   workflows/basics.rst
-   workflows/management.rst
-   workflows/actors.rst
-   workflows/events.rst
-   workflows/comparison.rst
-   workflows/package-ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Tune
-
-   tune/index.rst
-   tune/key-concepts.rst
-   tune/user-guide.rst
-   tune/tutorials/overview.rst
-   tune/examples/index.rst
-   tune/api_docs/overview.rst
-   tune/contrib.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray RLlib
-
-   rllib.rst
-   rllib-toc.rst
-   rllib-training.rst
-   rllib-env.rst
-   rllib-models.rst
-   rllib-algorithms.rst
-   rllib-sample-collection.rst
-   rllib-offline.rst
-   rllib-concepts.rst
-   rllib-examples.rst
-   rllib-package-ref.rst
-   rllib-dev.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Ray Train
-
-   train/train.rst
-   train/user_guide.rst
-   train/examples.rst
-   train/architecture.rst
-   train/api.rst
-   train/migration-guide.rst
-   RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: More Libraries
-
-   multiprocessing.rst
-   joblib.rst
-   xgboost-ray.rst
-   lightgbm-ray.rst
-   ray-lightning.rst
-   ray-collective.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Observability
-
-   ray-metrics.rst
-   ray-debugging.rst
-   ray-logging.rst
-   ray-tracing.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Contributor Guide
-
-   getting-involved.rst
-   development.rst
-   fake-autoscaler.rst
-   whitepaper.rst
-   debugging.rst
-   profiling.rst

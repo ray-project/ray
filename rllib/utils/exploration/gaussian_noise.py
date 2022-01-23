@@ -12,7 +12,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.utils.tf_ops import zero_logps_from_actions
+from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -21,9 +21,10 @@ torch, _ = try_import_torch()
 class GaussianNoise(Exploration):
     """An exploration that adds white noise to continuous actions.
 
-    If explore=True, returns actions plus scale (<-annealed over time) x
-        Gaussian noise. Also, some completely random period is possible at the
-        beginning.
+    If explore=True, returns actions plus scale (annealed over time) x
+    Gaussian noise. Also, some completely random period is possible at the
+    beginning.
+
     If explore=False, returns the deterministic action.
     """
 
@@ -39,22 +40,22 @@ class GaussianNoise(Exploration):
                  scale_timesteps: int = 10000,
                  scale_schedule: Optional[Schedule] = None,
                  **kwargs):
-        """Initializes a GaussianNoise Exploration object.
+        """Initializes a GaussianNoise instance.
 
         Args:
-            random_timesteps (int): The number of timesteps for which to act
+            random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
-            stddev (float): The stddev (sigma) to use for the
+            stddev: The stddev (sigma) to use for the
                 Gaussian noise to be added to the actions.
-            initial_scale (float): The initial scaling weight to multiply
+            initial_scale: The initial scaling weight to multiply
                 the noise with.
-            final_scale (float): The final scaling weight to multiply
+            final_scale: The final scaling weight to multiply
                 the noise with.
-            scale_timesteps (int): The timesteps over which to linearly anneal
+            scale_timesteps: The timesteps over which to linearly anneal
                 the scaling factor (after(!) having used random actions for
-                `random_timesteps` steps.
-            scale_schedule (Optional[Schedule]): An optional Schedule object
+                `random_timesteps` steps).
+            scale_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
         assert framework is not None
@@ -139,7 +140,7 @@ class GaussianNoise(Exploration):
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:
-                self.last_timestep.assign(timestep)
+                self.last_timestep.assign(tf.cast(timestep, tf.int64))
             return action, logp
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
@@ -212,5 +213,7 @@ class GaussianNoise(Exploration):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.last_timestep.load(state["last_timestep"], session=sess)
-        else:
+        elif isinstance(self.last_timestep, int):
             self.last_timestep = state["last_timestep"]
+        else:
+            self.last_timestep.assign(state["last_timestep"])

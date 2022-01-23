@@ -58,6 +58,44 @@ assert ray.get(lib.task.remote()) == {}
         subprocess.check_call([sys.executable, v2_driver])
 
 
+def test_export_queue_isolation(call_ray_start):
+    address = call_ray_start
+    driver_template = """
+import ray
+import ray.experimental.internal_kv as kv
+ray.init(address="{}")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+
+count = 0
+for k in kv._internal_kv_list(""):
+    if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
+        count += 1
+
+# Check exports aren't shared across the 5 jobs.
+assert count < 5, count
+"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, "v1"))
+        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
+        with open(v1_driver, "w") as f:
+            f.write(driver_template.format(address))
+
+        try:
+            subprocess.check_call([sys.executable, v1_driver])
+        except Exception:
+            # Ignore the first run, since it runs extra exports.
+            pass
+
+        # Further runs do not increase the num exports count.
+        for _ in range(5):
+            subprocess.check_call([sys.executable, v1_driver])
+
+
 def test_job_gc(call_ray_start):
     address = call_ray_start
 
@@ -145,22 +183,32 @@ import ray
 from time import sleep
 
 ray.init(address="{}")
+open("{}", "w+").close()
 
 print("My job id: ", str(ray.get_runtime_context().job_id))
 
 {}
 ray.shutdown()
     """
+    tmpfile1 = tempfile.NamedTemporaryFile("w+", suffix=".tmp", prefix="_")
+    tmpfile2 = tempfile.NamedTemporaryFile("w+", suffix=".tmp", prefix="_")
+    tmpfiles = [tmpfile1.name, tmpfile2.name]
+    tmpfile1.close()
+    tmpfile2.close()
+    for tmpfile in tmpfiles:
+        if os.path.exists(tmpfile):
+            os.unlink(tmpfile)
 
-    non_hanging = driver_template.format(ray_start_regular["redis_address"],
-                                         "sleep(1)")
-    hanging_driver = driver_template.format(ray_start_regular["redis_address"],
-                                            "sleep(60)")
+    non_hanging = driver_template.format(ray_start_regular["address"],
+                                         tmpfiles[0], "sleep(1)")
+    hanging_driver = driver_template.format(ray_start_regular["address"],
+                                            tmpfiles[1], "sleep(60)")
 
     out = run_string_as_driver(non_hanging)
     p = run_string_as_driver_nonblocking(hanging_driver)
     # The nonblocking process needs time to connect.
-    time.sleep(1)
+    while not os.path.exists(tmpfiles[1]):
+        time.sleep(1)
 
     jobs = list(ray.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
@@ -176,7 +224,7 @@ ray.shutdown()
 
     assert finished["EndTime"] > finished["StartTime"] > 0, out
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s, {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s, {finished}"
 
     assert running["StartTime"] > 0
     assert running["EndTime"] == 0
@@ -195,7 +243,7 @@ ray.shutdown()
     assert finished["EndTime"] > finished["StartTime"] > 0, f"{finished}"
     assert finished["EndTime"] == finished["Timestamp"]
     lapsed = finished["EndTime"] - finished["StartTime"]
-    assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
+    assert 0 < lapsed < 5000, f"Job should've taken ~1s {finished}"
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
 

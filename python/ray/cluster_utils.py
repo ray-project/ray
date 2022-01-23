@@ -1,3 +1,4 @@
+import copy
 import logging
 import json
 import yaml
@@ -8,9 +9,14 @@ import time
 
 import ray
 import ray._private.services
+from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
+from ray._raylet import GcsClientOptions
 
 logger = logging.getLogger(__name__)
+
+cluster_not_supported = (os.name == "nt")
 
 
 class AutoscalingCluster:
@@ -19,29 +25,37 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict):
+    def __init__(self, head_resources: dict, worker_node_types: dict,
+                 **config_kwargs):
         """Create the cluster.
 
         Args:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
         """
+        self._head_resources = head_resources
+        self._config = self._generate_config(head_resources, worker_node_types,
+                                             **config_kwargs)
+        self._process = None
+
+    def _generate_config(self, head_resources, worker_node_types,
+                         **config_kwargs):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
                     "autoscaler/_private/fake_multi_node/example.yaml")))
-        base_config["available_node_types"] = worker_node_types
-        base_config["available_node_types"]["ray.head.default"] = {
+        custom_config = copy.deepcopy(base_config)
+        custom_config["available_node_types"] = worker_node_types
+        custom_config["available_node_types"]["ray.head.default"] = {
             "resources": head_resources,
             "node_config": {},
             "max_workers": 0,
         }
-        self._head_resources = head_resources
-        self._config = base_config
-        self._process = None
+        custom_config.update(config_kwargs)
+        return custom_config
 
-    def start(self):
+    def start(self, _system_config=None):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
@@ -62,6 +76,9 @@ class AutoscalingCluster:
         if self._head_resources:
             cmd.append("--resources='{}'".format(
                 json.dumps(self._head_resources)))
+        if _system_config is not None:
+            cmd.append("--system-config={}".format(
+                json.dumps(_system_config, separators=(",", ":"))))
         env = os.environ.copy()
         env.update({
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
@@ -89,13 +106,18 @@ class Cluster:
             initialize_head (bool): Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
             connect (bool): If `initialize_head=True` and `connect=True`,
-                ray.init will be called with the redis address of this cluster
+                ray.init will be called with the address of this cluster
                 passed in.
             head_node_args (dict): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
+        if cluster_not_supported:
+            logger.warning(
+                "Ray cluster mode is currently experimental and untested on "
+                "Windows. If you are using it and running into issues please "
+                "file a report at https://github.com/ray-project/ray/issues.")
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
@@ -113,17 +135,26 @@ class Cluster:
                 self.connect()
 
     @property
+    def gcs_address(self):
+        if self.head_node is None:
+            return None
+        return self.head_node.gcs_address
+
+    @property
     def address(self):
-        return self.redis_address
+        if use_gcs_for_bootstrap():
+            return self.gcs_address
+        else:
+            return self.redis_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
-        assert self.redis_address is not None
+        assert self.address is not None
         assert not self.connected
         output_info = ray.init(
             namespace=namespace,
             ignore_reinit_error=True,
-            address=self.redis_address,
+            address=self.address,
             _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
@@ -154,40 +185,48 @@ class Cluster:
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
-        if self.head_node is None:
-            node = ray.node.Node(
-                ray_params,
-                head=True,
-                shutdown_at_exit=self._shutdown_at_exit,
-                spawn_reaper=self._shutdown_at_exit)
-            self.head_node = node
-            self.redis_address = self.head_node.redis_address
-            self.redis_password = node_args.get(
-                "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
-            self.webui_url = self.head_node.webui_url
-            # Init global state accessor when creating head node.
-            self.global_state._initialize_global_state(self.redis_address,
-                                                       self.redis_password)
-        else:
-            ray_params.update_if_absent(redis_address=self.redis_address)
-            # We only need one log monitor per physical node.
-            ray_params.update_if_absent(include_log_monitor=False)
-            # Let grpc pick a port.
-            ray_params.update_if_absent(node_manager_port=0)
-            node = ray.node.Node(
-                ray_params,
-                head=False,
-                shutdown_at_exit=self._shutdown_at_exit,
-                spawn_reaper=self._shutdown_at_exit)
-            self.worker_nodes.add(node)
+        with disable_client_hook():
+            if self.head_node is None:
+                node = ray.node.Node(
+                    ray_params,
+                    head=True,
+                    shutdown_at_exit=self._shutdown_at_exit,
+                    spawn_reaper=self._shutdown_at_exit)
+                self.head_node = node
+                self.redis_address = self.head_node.redis_address
+                self.redis_password = node_args.get(
+                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
+                self.webui_url = self.head_node.webui_url
+                # Init global state accessor when creating head node.
+                if use_gcs_for_bootstrap():
+                    gcs_options = GcsClientOptions.from_gcs_address(
+                        node.gcs_address)
+                else:
+                    gcs_options = GcsClientOptions.from_redis_address(
+                        self.redis_address, self.redis_password)
+                self.global_state._initialize_global_state(gcs_options)
+            else:
+                ray_params.update_if_absent(redis_address=self.redis_address)
+                ray_params.update_if_absent(gcs_address=self.gcs_address)
+                # We only need one log monitor per physical node.
+                ray_params.update_if_absent(include_log_monitor=False)
+                # Let grpc pick a port.
+                ray_params.update_if_absent(node_manager_port=0)
 
-        if wait:
-            # Wait for the node to appear in the client table. We do this so
-            # that the nodes appears in the client table in the order that the
-            # corresponding calls to add_node were made. We do this because in
-            # the tests we assume that the driver is connected to the first
-            # node that is added.
-            self._wait_for_node(node)
+                node = ray.node.Node(
+                    ray_params,
+                    head=False,
+                    shutdown_at_exit=self._shutdown_at_exit,
+                    spawn_reaper=self._shutdown_at_exit)
+                self.worker_nodes.add(node)
+
+            if wait:
+                # Wait for the node to appear in the client table. We do this
+                # so that the nodes appears in the client table in the order
+                # that the corresponding calls to add_node were made. We do
+                # this because in the tests we assume that the driver is
+                # connected to the first node that is added.
+                self._wait_for_node(node)
 
         return node
 
@@ -233,9 +272,9 @@ class Cluster:
             TimeoutError: An exception is raised if the timeout expires before
                 the node appears in the client table.
         """
-        ray._private.services.wait_for_node(self.redis_address,
-                                            node.plasma_store_socket_name,
-                                            self.redis_password, timeout)
+        ray._private.services.wait_for_node(
+            self.redis_address, node.gcs_address,
+            node.plasma_store_socket_name, self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
@@ -307,3 +346,5 @@ class Cluster:
 
         if self.head_node is not None:
             self.remove_node(self.head_node)
+        # need to reset internal kv since gcs is down
+        ray.experimental.internal_kv._internal_kv_reset()

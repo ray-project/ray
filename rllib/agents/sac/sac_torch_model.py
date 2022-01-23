@@ -250,13 +250,15 @@ class SACTorchModel(TorchModelV2, nn.Module):
             if self.concat_obs_and_actions:
                 input_dict = {"obs": torch.cat([model_out, actions], dim=-1)}
             else:
+                # TODO(junogng) : SampleBatch doesn't support list columns yet.
+                #     Use ModelInputDict.
                 input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}
         # Switch on training mode (when getting Q-values, we are usually in
         # training).
-        input_dict.is_training = True
+        input_dict["is_training"] = True
 
         out, _ = net(input_dict, [], None)
         return out

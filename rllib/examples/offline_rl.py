@@ -64,12 +64,12 @@ if __name__ == "__main__":
                                           os.path.isfile(data_file)))
     config["input"] = [data_file]
     config["log_level"] = "INFO"
-    config["env"] = "Pendulum-v0"
+    config["env"] = "Pendulum-v1"
 
     # Set up evaluation.
     config["evaluation_num_workers"] = 1
     config["evaluation_interval"] = 1
-    config["evaluation_num_episodes"] = 10
+    config["evaluation_duration"] = 10
     # This should be False b/c iterations are very long and this would
     # cause evaluation to lag one iter behind training.
     config["evaluation_parallel_to_training"] = False

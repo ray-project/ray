@@ -328,7 +328,8 @@ class QMixTorchPolicy(Policy):
                 feature_columns=input_list,
                 state_columns=[],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
-                dynamic_max=True)
+                dynamic_max=True,
+            )
         # These will be padded to shape [B * T, ...]
         if self.has_env_global_state:
             (rew, action_mask, next_action_mask, act, dones, obs, next_obs,

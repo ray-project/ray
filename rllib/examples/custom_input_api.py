@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     # config modified from rllib/tuned_examples/cql/pendulum-cql.yaml
     config = {
-        "env": "Pendulum-v0",
+        "env": "Pendulum-v1",
         # we can either use the tune registry, class path, or direct function
         # to connect our input api.
         "input": "custom_input",
@@ -98,10 +98,10 @@ if __name__ == "__main__":
         "train_batch_size": 2000,
         "learning_starts": 0,
         "bc_iters": 100,
-        "metrics_smoothing_episodes": 5,
+        "metrics_num_episodes_for_smoothing": 5,
         "evaluation_interval": 1,
         "evaluation_num_workers": 2,
-        "evaluation_num_episodes": 10,
+        "evaluation_duration": 10,
         "evaluation_parallel_to_training": True,
         "evaluation_config": {
             "input": "sampler",

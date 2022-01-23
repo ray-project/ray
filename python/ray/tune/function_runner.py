@@ -411,7 +411,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None):
+    def save(self, checkpoint_path=None) -> str:
         if checkpoint_path:
             raise ValueError(
                 "Checkpoint path should not be used with function API.")
@@ -448,6 +448,9 @@ class FunctionRunner(Trainable):
 
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
+
+        self._maybe_save_to_cloud(parent_dir)
+
         return checkpoint_path
 
     def save_to_object(self):
@@ -533,17 +536,12 @@ class FunctionRunner(Trainable):
 
 
 def wrap_function(train_func: Callable[[Any], Any],
-                  durable: bool = False,
                   warn: bool = True,
                   name: Optional[str] = None):
     inherit_from = (FunctionRunner, )
 
     if hasattr(train_func, "__mixins__"):
         inherit_from = train_func.__mixins__ + inherit_from
-
-    if durable:
-        from ray.tune import DurableTrainable
-        inherit_from = (DurableTrainable, ) + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
@@ -569,6 +567,9 @@ def wrap_function(train_func: Callable[[Any], Any],
     class ImplicitFunc(*inherit_from):
         _name = name or (train_func.__name__
                          if hasattr(train_func, "__name__") else "func")
+
+        def __repr__(self):
+            return self._name
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:

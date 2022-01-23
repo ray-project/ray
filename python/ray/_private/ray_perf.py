@@ -96,19 +96,15 @@ def main(results=None):
 
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
 
-    ray.init(_system_config={"put_small_object_in_memory_store": True})
+    ray.init()
 
     value = ray.put(0)
 
     def get_small():
         ray.get(value)
 
-    results += timeit("single client get calls", get_small)
-
     def put_small():
         ray.put(0)
-
-    results += timeit("single client put calls", put_small)
 
     @ray.remote
     def do_put_small():
@@ -118,12 +114,6 @@ def main(results=None):
     def put_multi_small():
         ray.get([do_put_small.remote() for _ in range(10)])
 
-    results += timeit("multi client put calls", put_multi_small, 1000)
-
-    ray.shutdown()
-    ray.init(_system_config={"put_small_object_in_memory_store": False})
-
-    value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 
     results += timeit("single client get calls (Plasma Store)", get_small)
@@ -283,6 +273,29 @@ def main(results=None):
         ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
+    ray.shutdown()
+
+    NUM_PGS = 100
+    NUM_BUNDLES = 1
+    ray.init(resources={"custom": 100})
+
+    def placement_group_create_removal(num_pgs):
+        pgs = [
+            ray.util.placement_group(bundles=[{
+                "custom": 0.001
+            } for _ in range(NUM_BUNDLES)]) for _ in range(num_pgs)
+        ]
+        [pg.wait(timeout_seconds=30) for pg in pgs]
+        # Include placement group removal here to clean up.
+        # If we don't clean up placement groups, the whole performance
+        # gets slower as it runs more.
+        # Since timeit function runs multiple times without
+        # the cleaning logic, we should have this method here.
+        for pg in pgs:
+            ray.util.remove_placement_group(pg)
+
+    results += timeit("placement group create/removal",
+                      lambda: placement_group_create_removal(NUM_PGS), NUM_PGS)
     ray.shutdown()
 
     client_microbenchmark_main(results)

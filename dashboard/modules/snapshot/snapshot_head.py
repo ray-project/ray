@@ -1,14 +1,19 @@
-from typing import Dict, Any, List
+import asyncio
+import concurrent.futures
+from typing import Any, Dict, List, Optional
 import hashlib
 
 import ray
+from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import (_initialize_internal_kv,
-                                          _internal_kv_initialized,
+from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
 import ray.dashboard.utils as dashboard_utils
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.dashboard.modules.job.common import (
+    JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY)
 
 import json
 import aiohttp.web
@@ -22,10 +27,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
-
-        # Initialize internal KV to be used by the working_dir setup code.
-        _initialize_internal_kv(dashboard_head.gcs_client)
         assert _internal_kv_initialized()
+        self._job_status_client = JobStatusStorageClient()
+        # For offloading CPU intensive work.
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="api_head")
 
     @routes.get("/api/actors/kill")
     async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
@@ -50,10 +56,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
-        job_data = await self.get_job_info()
-        actor_data = await self.get_actor_info()
-        serve_data = await self.get_serve_info()
-        session_name = await self.get_session_name()
+        job_data, actor_data, serve_data, session_name = await asyncio.gather(
+            self.get_job_info(), self.get_actor_info(), self.get_serve_info(),
+            self.get_session_name())
         snapshot = {
             "jobs": job_data,
             "actors": actor_data,
@@ -65,6 +70,13 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
 
+    def _get_job_status(self,
+                        metadata: Dict[str, str]) -> Optional[JobStatusInfo]:
+        # If a job submission ID has been added to a job, the status is
+        # guaranteed to be returned.
+        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        return self._job_status_client.get_status(job_submission_id)
+
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
@@ -72,13 +84,18 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         jobs = {}
         for job_table_entry in reply.job_info_list:
             job_id = job_table_entry.job_id.hex()
+            metadata = dict(job_table_entry.config.metadata)
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
-                "metadata": dict(job_table_entry.config.metadata),
-                "runtime_env": json.loads(
-                    job_table_entry.config.runtime_env.serialized_runtime_env),
+                "metadata": metadata,
+                "runtime_env": ParsedRuntimeEnv.deserialize(
+                    job_table_entry.config.runtime_env_info.
+                    serialized_runtime_env),
             }
+            status = self._get_job_status(metadata)
             entry = {
+                "status": None if status is None else status.status,
+                "status_message": None if status is None else status.message,
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,
@@ -146,34 +163,46 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
+        # TODO: Convert to async GRPC, if CPU usage is not a concern.
+        def get_deployments():
+            serve_keys = _internal_kv_list(
+                SERVE_CONTROLLER_NAME,
+                namespace=ray_constants.KV_NAMESPACE_SERVE)
+            serve_snapshot_keys = filter(
+                lambda k: SERVE_SNAPSHOT_KEY in str(k), serve_keys)
 
-        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME)
-        serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
-                                     serve_keys)
+            deployments_per_controller: List[Dict[str, Any]] = []
+            for key in serve_snapshot_keys:
+                val_bytes = _internal_kv_get(
+                    key, namespace=ray_constants.KV_NAMESPACE_SERVE
+                ) or "{}".encode("utf-8")
+                deployments_per_controller.append(
+                    json.loads(val_bytes.decode("utf-8")))
+            # Merge the deployments dicts of all controllers.
+            deployments: Dict[str, Any] = {
+                k: v
+                for d in deployments_per_controller for k, v in d.items()
+            }
+            # Replace the keys (deployment names) with their hashes to prevent
+            # collisions caused by the automatic conversion to camelcase by the
+            # dashboard agent.
+            return {
+                hashlib.sha1(name.encode()).hexdigest(): info
+                for name, info in deployments.items()
+            }
 
-        deployments_per_controller: List[Dict[str, Any]] = []
-        for key in serve_snapshot_keys:
-            val_bytes = _internal_kv_get(key) or "{}".encode("utf-8")
-            deployments_per_controller.append(
-                json.loads(val_bytes.decode("utf-8")))
-        # Merge the deployments dicts of all controllers.
-        deployments: Dict[str, Any] = {
-            k: v
-            for d in deployments_per_controller for k, v in d.items()
-        }
-        # Replace the keys (deployment names) with their hashes to prevent
-        # collisions caused by the automatic conversion to camelcase by the
-        # dashboard agent.
-        deployments = {
-            hashlib.sha1(name.encode()).hexdigest(): info
-            for name, info in deployments.items()
-        }
-        return deployments
+        return await asyncio.get_event_loop().run_in_executor(
+            executor=self._thread_pool, func=get_deployments)
 
     async def get_session_name(self):
-        encoded_name = await self._dashboard_head.aioredis_client.get(
-            "session_name")
-        return encoded_name.decode()
+        # TODO(yic): Convert to async GRPC.
+        def get_session():
+            return ray.experimental.internal_kv._internal_kv_get(
+                "session_name",
+                namespace=ray_constants.KV_NAMESPACE_SESSION).decode()
+
+        return await asyncio.get_event_loop().run_in_executor(
+            executor=self._thread_pool, func=get_session)
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(

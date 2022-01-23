@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,10 +17,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
@@ -80,8 +80,13 @@ def ppo_surrogate_loss(
     logp_ratio = tf.exp(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
         train_batch[SampleBatch.ACTION_LOGP])
-    action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl_loss = reduce_mean_valid(action_kl)
+
+    # Only calculate kl loss if necessary (kl-coeff > 0.0).
+    if policy.config["kl_coeff"] > 0.0:
+        action_kl = prev_action_dist.kl(curr_action_dist)
+        mean_kl_loss = reduce_mean_valid(action_kl)
+    else:
+        mean_kl_loss = 0.0
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -110,9 +115,12 @@ def ppo_surrogate_loss(
         vf_loss = mean_vf_loss = tf.constant(0.0)
 
     total_loss = reduce_mean_valid(-surrogate_loss +
-                                   policy.kl_coeff * action_kl +
                                    policy.config["vf_loss_coeff"] * vf_loss -
                                    policy.entropy_coeff * curr_entropy)
+    # Add mean_kl_loss (already processed through `reduce_mean_valid`),
+    # if necessary.
+    if policy.config["kl_coeff"] > 0.0:
+        total_loss += policy.kl_coeff * mean_kl_loss
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -357,7 +365,7 @@ def postprocess_ppo_gae(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

@@ -41,17 +41,8 @@ class TestTrialExecutorInheritance(unittest.TestCase):
             def get_next_available_trial(self):
                 return None
 
-            def get_next_failed_trial(self):
-                return None
-
             def get_running_trials(self):
                 return []
-
-            def has_resources(self):
-                return False
-
-            def resource_string(self):
-                return "This is a resource string."
 
         msg = ("_MyTrialExecutor inherits from TrialExecutor, which is being "
                "deprecated. "

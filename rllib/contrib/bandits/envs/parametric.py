@@ -67,12 +67,14 @@ class ParametricItemRecoEnv(gym.Env):
         # replacement
         self.item_pool_ids = np.random.choice(
             np.arange(self.num_items), self.num_candidates, replace=False)
-        self.item_pool = self.item_embeddings[self.item_pool_ids]
+        self.item_pool = self.item_embeddings[self.item_pool_ids].astype(
+            np.float32)
 
     @staticmethod
     def _gen_normalized_embeddings(size, dim):
         embeddings = np.random.rand(size, dim)
-        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings /= np.linalg.norm(
+            embeddings, axis=1, keepdims=True).astype(np.float32)
         return embeddings
 
     def _def_action_space(self):
@@ -130,7 +132,7 @@ class ParametricItemRecoEnv(gym.Env):
             self._gen_item_pool()
 
             obs = {
-                "item": self.item_pool,
+                "item": self.item_pool.astype(np.float32),
                 "item_id": self.item_pool_ids,
                 "response": [reward]
             }

@@ -94,7 +94,7 @@ class TrainingWorker:
         self.shard = shard
 
     def train(self):
-        for epoch, training_dataset in enumerate(self.shard.iter_datasets()):
+        for epoch, training_dataset in enumerate(self.shard.iter_epochs()):
             # Following code emulates epoch based SGD training.
             print(f"Training... worker: {self.rank}, epoch: {epoch}")
             for i, batch in enumerate(training_dataset.iter_batches()):

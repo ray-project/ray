@@ -16,10 +16,10 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/overload.h>
+
 #include "boost/utility/string_view.hpp"
 
 namespace ray {
-
 namespace internal {
 
 inline static std::vector<boost::string_view> GetFunctionNames(boost::string_view str) {

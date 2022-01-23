@@ -26,7 +26,7 @@ def _try_import_requests():
             "'requests' was not found, which is needed for "
             "this cluster configuration. "
             "Download this dependency by running `pip install requests` "
-            "or `pip install 'ray[default]'`.") from None
+            "or `pip install \"ray[default]\"`.") from None
     return requests
 
 

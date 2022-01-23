@@ -1,3 +1,4 @@
+import argparse
 import os
 import torch
 from torch import nn
@@ -38,15 +39,41 @@ class LitAutoEncoder(pl.LightningModule):
         return optimizer
 
 
-def main():
+def main(num_workers: int = 2, use_gpu: bool = False, max_steps: int = 10):
     dataset = MNIST(
         os.getcwd(), download=True, transform=transforms.ToTensor())
     train, val = random_split(dataset, [55000, 5000])
 
     autoencoder = LitAutoEncoder()
-    trainer = pl.Trainer(plugins=[RayPlugin(num_workers=2)], max_steps=10)
+    trainer = pl.Trainer(
+        plugins=[RayPlugin(num_workers=num_workers, use_gpu=use_gpu)],
+        max_steps=max_steps)
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Ray Lightning Example",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=2,
+        help="Number of workers to use for training.")
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=10,
+        help="Maximum number of steps to run for training.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Whether to enable GPU training.")
+
+    args = parser.parse_args()
+
+    main(
+        num_workers=args.num_workers,
+        max_steps=args.max_steps,
+        use_gpu=args.use_gpu)

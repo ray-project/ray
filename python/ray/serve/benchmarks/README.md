@@ -25,14 +25,14 @@ This directory contains code that setup benchmark for Serve.
         8 clients small data 1917.84 +- 95.61 requests/s
 ```
 
-### `noop_latency.py` set up a noop backend for external benchmarks.
+### `noop_latency.py` set up a noop deployment for external benchmarks.
 
 ```
 python noop_latency.py --blocking --num-replicas 8 --num-queries 500 --max-concurrent-queries 10000
 ```
 
 - `--blocking` flags will blocks the server after firing `--num-queries` for warm up.
-- `--num-replicas` and `--max-concurrent-queries` configures the backend replicas.
+- `--num-replicas` and `--max-concurrent-queries` configures replicas.
 
 Once you setup deployment, external benchmark services like `wrk`, ApacheBench, or locust can be used. Example
 

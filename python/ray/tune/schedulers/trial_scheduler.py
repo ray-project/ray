@@ -11,6 +11,11 @@ class TrialScheduler:
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
+    # Caution: Temporary and anti-pattern! This means Scheduler calls
+    # into Executor directly without going through TrialRunner.
+    # TODO(xwjiang): Deprecate this after we control the interaction
+    #  between schedulers and executor.
+    NOOP = "NOOP"
 
     _metric = None
 
@@ -140,11 +145,13 @@ class FIFOScheduler(TrialScheduler):
             self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING
-                    and trial_runner.has_resources_for_trial(trial)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PAUSED
-                    and trial_runner.has_resources_for_trial(trial)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         return None
 

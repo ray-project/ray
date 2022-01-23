@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
+import gym
+from typing import Any, Dict, List, Tuple, Union, TypeVar, \
+    TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.rllib.utils import try_import_tf, try_import_torch
@@ -32,7 +34,7 @@ ModelConfigDict = dict
 FromConfigSpec = Union[Dict[str, Any], type, str]
 
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
-# VectorEnv, or gym.Env.
+# VectorEnv, gym.Env, or ActorHandle.
 EnvType = Any
 
 # Represents a generic identifier for an agent (e.g., "agent1").
@@ -118,3 +120,10 @@ TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+
+# A (possibly nested) space struct: Either a gym.spaces.Space or a
+# (possibly nested) dict|tuple of gym.space.Spaces.
+SpaceStruct = Union[gym.spaces.Space, dict, tuple]
+
+# Generic type var.
+T = TypeVar("T")

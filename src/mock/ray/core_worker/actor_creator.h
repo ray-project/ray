@@ -19,7 +19,8 @@ namespace core {
 
 class MockActorCreatorInterface : public ActorCreatorInterface {
  public:
-  MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec), (override));
+  MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec),
+              (const, override));
   MOCK_METHOD(Status, AsyncRegisterActor,
               (const TaskSpecification &task_spec, gcs::StatusCallback callback),
               (override));
@@ -40,7 +41,8 @@ namespace core {
 
 class MockDefaultActorCreator : public DefaultActorCreator {
  public:
-  MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec), (override));
+  MOCK_METHOD(Status, RegisterActor, (const TaskSpecification &task_spec),
+              (const, override));
   MOCK_METHOD(Status, AsyncRegisterActor,
               (const TaskSpecification &task_spec, gcs::StatusCallback callback),
               (override));

@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
-from ray.rllib.utils.tf_ops import zero_logps_from_actions
+from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -41,27 +41,24 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 
         Args:
-            action_space (Space): The gym action space used by the environment.
-            ou_theta (float): The theta parameter of the Ornstein-Uhlenbeck
-                process.
-            ou_sigma (float): The sigma parameter of the Ornstein-Uhlenbeck
-                process.
-            ou_base_scale (float): A fixed scaling factor, by which all OU-
+            action_space: The gym action space used by the environment.
+            ou_theta: The theta parameter of the Ornstein-Uhlenbeck process.
+            ou_sigma: The sigma parameter of the Ornstein-Uhlenbeck process.
+            ou_base_scale: A fixed scaling factor, by which all OU-
                 noise is multiplied. NOTE: This is on top of the parent
                 GaussianNoise's scaling.
-            random_timesteps (int): The number of timesteps for which to act
+            random_timesteps: The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps, the
                 `self.scale` annealing process will start (see below).
-            initial_scale (float): The initial scaling weight to multiply
-                the noise with.
-            final_scale (float): The final scaling weight to multiply
-                the noise with.
-            scale_timesteps (int): The timesteps over which to linearly anneal
-                the scaling factor (after(!) having used random actions for
+            initial_scale: The initial scaling weight to multiply the
+                noise with.
+            final_scale: The final scaling weight to multiply the noise with.
+            scale_timesteps: The timesteps over which to linearly anneal the
+                scaling factor (after(!) having used random actions for
                 `random_timesteps` steps.
-            scale_schedule (Optional[Schedule]): An optional Schedule object
-                to use (instead of constructing one from the given parameters).
-            framework (Optional[str]): One of None, "tf", "torch".
+            scale_schedule: An optional Schedule object to use (instead
+                of constructing one from the given parameters).
+            framework: One of None, "tf", "torch".
         """
         # The current OU-state value (gets updated each time, an eploration
         # action is computed).
@@ -142,7 +139,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:
-                self.last_timestep.assign(timestep)
+                self.last_timestep.assign(tf.cast(timestep, tf.int64))
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
                          if timestep is None else tf1.assign(
@@ -234,6 +231,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.ou_state.load(state["ou_state"], session=sess)
-        else:
+        elif isinstance(self.ou_state, np.ndarray) or \
+                (torch and torch.is_tensor(self.ou_state)):
             self.ou_state = state["ou_state"]
+        else:
+            self.ou_state.assign(state["ou_state"])
         super().set_state(state, sess=sess)

@@ -37,7 +37,7 @@ enum SchedulingType {
 };
 
 // Status of resource scheduling result.
-enum SchedulingResultStatus {
+enum class SchedulingResultStatus {
   // Scheduling failed but retryable.
   FAILED = 0,
   // Scheduling failed and non-retryable.

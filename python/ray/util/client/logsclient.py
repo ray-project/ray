@@ -87,10 +87,10 @@ class LogstreamClient:
                     "the connection was down can be found on the head "
                     "node of the cluster in "
                     "`ray_client_server_[port].out`")
-            logger.info("Log channel dropped, retrying.")
+            logger.debug("Log channel dropped, retrying.")
             time.sleep(.5)
             return True
-        logger.info("Shutting down log channel.")
+        logger.debug("Shutting down log channel.")
         if not self.client_worker._in_shutdown:
             logger.exception("Unexpected exception:")
         return False

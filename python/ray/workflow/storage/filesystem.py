@@ -1,5 +1,5 @@
+import os
 import contextlib
-import itertools
 import json
 import shutil
 import pathlib
@@ -131,7 +131,7 @@ class FilesystemStorageImpl(Storage):
             self._workflow_root_dir.mkdir(parents=True)
 
     def make_key(self, *names: str) -> str:
-        return "/".join(itertools.chain([str(self._workflow_root_dir)], names))
+        return os.path.join(str(self._workflow_root_dir), *names)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         if is_json:

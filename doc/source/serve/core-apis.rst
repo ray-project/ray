@@ -2,6 +2,15 @@
 Core API: Deployments
 =====================
 
+This section should help you:
+
+- create, query, update and configure deployments
+- configure resources of your deployments
+- specify different Python dependencies across different deployment using Runtime Environments
+
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 .. contents::
 
 Creating a Deployment
@@ -40,7 +49,7 @@ To serve multiple deployments defined by the same class, use the ``name`` option
 .. code-block:: python
 
   MyFirstDeployment.options(name="hello_service").deploy("Hello!")
-  MyFirstDeployment.options(name="hi_service").deploy("Hi!)
+  MyFirstDeployment.options(name="hi_service").deploy("Hi!")
 
 You can also list all available deployments and dynamically get references to them:
 
@@ -70,7 +79,7 @@ Here's an example:
     def __call__(self, request):
         return "Hello world!"
 
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
+After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 .. code-block:: python
@@ -78,7 +87,7 @@ We can query the model to verify that it's working.
   import requests
   print(requests.get("http://127.0.0.1:8000/api").text)
 
-We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 .. code-block:: python
 
@@ -279,7 +288,7 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
@@ -313,4 +322,4 @@ using runtime environments.
 
 Example:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/delayed_import.py
