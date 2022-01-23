@@ -189,7 +189,7 @@ class TestTrainer(unittest.TestCase):
             # Eval results are not available at step 0.
             # But step 3 should still have it, even though no eval was
             # run during that step.
-            self.assertFalse("evaluation" in r0)
+            self.assertTrue("evaluation" in r0)
             self.assertTrue("evaluation" in r1)
             self.assertTrue("evaluation" in r2)
             self.assertTrue("evaluation" in r3)
@@ -208,7 +208,7 @@ class TestTrainer(unittest.TestCase):
             # Setup trainer w/o evaluation worker set and still call
             # evaluate() -> Expect error.
             trainer_wo_env_on_driver = a3c.A3CTrainer(config=config)
-            self.assertRaisesRegexp(
+            self.assertRaisesRegex(
                 ValueError, "Cannot evaluate w/o an evaluation worker set",
                 trainer_wo_env_on_driver.evaluate)
             trainer_wo_env_on_driver.stop()

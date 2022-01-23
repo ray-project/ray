@@ -1,3 +1,6 @@
+/* For Algolia*/
+/*#site-navigation { overflow: visible; }*/
+
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {
   display: block;

@@ -52,7 +52,7 @@ class ReplayBuffer:
     def __init__(self,
                  capacity: int = 10000,
                  size: Optional[int] = DEPRECATED_VALUE):
-        """Initializes a Replaybuffer instance.
+        """Initializes a ReplayBuffer instance.
 
         Args:
             capacity: Max number of timesteps to store in the FIFO
@@ -77,13 +77,21 @@ class ReplayBuffer:
         # started to evict older samples).
         self._eviction_started = False
 
+        # Number of (single) timesteps that have been added to the buffer
+        # over its lifetime. Note that each added item (batch) may contain
+        # more than one timestep.
         self._num_timesteps_added = 0
         self._num_timesteps_added_wrap = 0
+
+        # Number of (single) timesteps that have been sampled from the buffer
+        # over its lifetime.
         self._num_timesteps_sampled = 0
+
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
     def __len__(self) -> int:
+        """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
     @DeveloperAPI
@@ -99,6 +107,7 @@ class ReplayBuffer:
         assert item.count > 0, item
         warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
+        # Update our timesteps counts.
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
 
@@ -116,21 +125,18 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
+        # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:
             self._evicted_hit_stats.push(self._hit_count[self._next_idx])
             self._hit_count[self._next_idx] = 0
 
-    def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
-        out = SampleBatch.concat_samples([self._storage[i] for i in idxes])
-        out.decompress_if_needed()
-        return out
-
     @DeveloperAPI
-    def sample(self, num_items: int) -> SampleBatchType:
+    def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
         """Sample a batch of experiences.
 
         Args:
             num_items: Number of items to sample from this buffer.
+            beta: This is ignored (only used by prioritized replay buffers).
 
         Returns:
             Concatenated batch of items.
@@ -139,15 +145,17 @@ class ReplayBuffer:
             random.randint(0,
                            len(self._storage) - 1) for _ in range(num_items)
         ]
-        self._num_sampled += num_items
-        return self._encode_sample(idxes)
+        sample = self._encode_sample(idxes)
+        # Update our timesteps counters.
+        self._num_timesteps_sampled += len(sample)
+        return sample
 
     @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
         """Returns the stats of this buffer.
 
         Args:
-            debug: If true, adds sample eviction statistics to the returned
+            debug: If True, adds sample eviction statistics to the returned
                 stats dict.
 
         Returns:
@@ -193,6 +201,11 @@ class ReplayBuffer:
         self._eviction_started = state["eviction_started"]
         self._num_timesteps_sampled = state["sampled_count"]
         self._est_size_bytes = state["est_size_bytes"]
+
+    def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
+        out = SampleBatch.concat_samples([self._storage[i] for i in idxes])
+        out.decompress_if_needed()
+        return out
 
 
 @DeveloperAPI
@@ -253,7 +266,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def sample(self, num_items: int, beta: float) -> SampleBatchType:
-        """Sample a batch of experiences and return priority weights, indices.
+        """Sample `num_items` items from this buffer, including prio. weights.
+
+        If less than `num_items` records are in this buffer, some samples in
+        the results may be repeated to fulfil the batch size (`num_items`)
+        request.
 
         Args:
             num_items: Number of items to sample from this buffer.
@@ -272,11 +289,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = []
         batch_indexes = []
         p_min = self._it_min.min() / self._it_sum.sum()
-        max_weight = (p_min * len(self._storage))**(-beta)
+        max_weight = (p_min * len(self))**(-beta)
 
         for idx in idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
-            weight = (p_sample * len(self._storage))**(-beta)
+            weight = (p_sample * len(self))**(-beta)
             count = self._storage[idx].count
             # If zero-padded, count will not be the actual batch size of the
             # data.

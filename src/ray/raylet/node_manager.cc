@@ -141,11 +141,11 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
 }
 
 HeartbeatSender::~HeartbeatSender() {
-  heartbeat_runner_.reset();
   heartbeat_io_service_.stop();
   if (heartbeat_thread_->joinable()) {
     heartbeat_thread_->join();
   }
+  heartbeat_runner_.reset();
   heartbeat_thread_.reset();
 }
 
@@ -267,6 +267,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       temp_dir_(config.temp_dir),
       initial_config_(config),
       dependency_manager_(object_manager_),
+      wait_manager_(/*is_object_local*/
+                    [this](const ObjectID &object_id) {
+                      return dependency_manager_.CheckObjectLocal(object_id);
+                    },
+                    /*delay_executor*/
+                    [this](std::function<void()> fn, int64_t delay_ms) {
+                      RAY_UNUSED(execute_after(io_service_, fn, delay_ms));
+                    }),
       node_manager_server_("NodeManager", config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
       node_manager_service_(io_service, *this),
@@ -500,7 +508,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] {
           std::stringstream debug_msg;
           debug_msg << "Event stats:\n\n"
-                    << io_service_.StatsString() << "\n\n"
+                    << io_service_.stats().StatsString() << "\n\n"
                     << DebugString() << "\n\n";
           RAY_LOG(INFO) << AppendToEachLine(debug_msg.str(), "[state-dump] ");
         },
@@ -1384,10 +1392,6 @@ void NodeManager::ProcessWaitRequestMessage(
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
-  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
-  for (const auto &ref : refs) {
-    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
-  }
 
   bool resolve_objects = false;
   for (auto const &object_id : object_ids) {
@@ -1407,17 +1411,15 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
-  int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
-  // TODO Remove in the future since it should have already be done in other place
-  ray::Status status = object_manager_.Wait(
-      object_ids, owner_addresses, wait_ms, num_required_objects,
+  wait_manager_.Wait(
+      object_ids, message->timeout(), num_required_objects,
       [this, resolve_objects, was_blocked, client, current_task_id](
-          std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+          std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
-            fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
+            fbb, to_flatbuf(fbb, ready), to_flatbuf(fbb, remaining));
         fbb.Finish(wait_reply);
 
         auto status =
@@ -1433,7 +1435,6 @@ void NodeManager::ProcessWaitRequestMessage(
           DisconnectClient(client);
         }
       });
-  RAY_CHECK_OK(status);
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
@@ -1447,19 +1448,11 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // managers or store an error if the objects have failed.
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
-  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
-  for (const auto &ref : refs) {
-    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
-  }
   AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
-  // Reply to the client once a location has been found for all arguments.
-  // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
-  // has been found, so the object may still be on a remote node when the
-  // client receives the reply.
-  ray::Status status = object_manager_.Wait(
-      object_ids, owner_addresses, -1, object_ids.size(),
-      [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+  wait_manager_.Wait(
+      object_ids, -1, object_ids.size(),
+      [this, client, tag](std::vector<ObjectID> ready, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<WorkerInterface> worker =
             worker_pool_.GetRegisteredWorker(client);
@@ -1469,7 +1462,6 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
           worker->DirectActorCallArgWaitComplete(tag);
         }
       });
-  RAY_CHECK_OK(status);
 }
 
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
@@ -1950,6 +1942,9 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
                  << " tasks ready";
   cluster_task_manager_->TasksUnblocked(ready_task_ids);
 
+  // Notify the wait manager that this object is local.
+  wait_manager_.HandleObjectLocal(object_id);
+
   auto waiting_workers = absl::flat_hash_set<std::shared_ptr<WorkerInterface>>();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
@@ -2073,6 +2068,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << gcs_client_->DebugString();
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << dependency_manager_.DebugString();
+  result << "\n" << wait_manager_.DebugString();
   result << "\n" << core_worker_subscriber_->DebugString();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
@@ -2086,7 +2082,7 @@ std::string NodeManager::DebugString() const {
   }
 
   // Event stats.
-  result << "\nEvent stats:" << io_service_.StatsString();
+  result << "\nEvent stats:" << io_service_.stats().StatsString();
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();

@@ -257,13 +257,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-            logger.info(f"Received a log for {ip} and {pid}")
+            logger.debug(f"Received a log for {ip} and {pid}")
 
         if self._dashboard_head.gcs_log_subscriber:
             while True:
-                log_batch = await \
-                    self._dashboard_head.gcs_log_subscriber.poll()
                 try:
+                    log_batch = await \
+                        self._dashboard_head.gcs_log_subscriber.poll()
+                    if log_batch is None:
+                        continue
                     process_log_batch(log_batch)
                 except Exception:
                     logger.exception("Error receiving log from GCS.")
@@ -304,9 +306,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
         if self._dashboard_head.gcs_error_subscriber:
             while True:
-                _, error_data = await \
-                    self._dashboard_head.gcs_error_subscriber.poll()
                 try:
+                    _, error_data = await \
+                        self._dashboard_head.gcs_error_subscriber.poll()
+                    if error_data is None:
+                        continue
                     process_error(error_data)
                 except Exception:
                     logger.exception("Error receiving error info from GCS.")

@@ -266,14 +266,14 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
   // By this point, we have ascertained that the victim is available for stealing, so we
   // can go ahead with the RPC
   RAY_LOG(DEBUG) << "Executing StealTasks RPC!";
-  auto request = std::unique_ptr<rpc::StealTasksRequest>(new rpc::StealTasksRequest);
-  request->mutable_thief_addr()->CopyFrom(thief_addr.ToProto());
+  rpc::StealTasksRequest request;
+  request.mutable_thief_addr()->CopyFrom(thief_addr.ToProto());
   auto &victim_client = *client_cache_->GetOrConnect(victim_addr.ToProto());
   auto victim_wid = victim_addr.worker_id;
 
   RAY_UNUSED(victim_client.StealTasks(
-      std::move(request), [this, scheduling_key, victim_wid, victim_addr, thief_addr](
-                              Status status, const rpc::StealTasksReply &reply) {
+      request, [this, scheduling_key, victim_wid, victim_addr, thief_addr](
+                   Status status, const rpc::StealTasksReply &reply) {
         absl::MutexLock lock(&mu_);
 
         // Obtain the thief's lease entry (after ensuring that it still exists)
