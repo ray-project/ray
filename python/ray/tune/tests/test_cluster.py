@@ -366,13 +366,16 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
+    # Only added for fake_remote case.
+    # For durable case, we don't do sync to head.
     class _SyncerCallback(SyncerCallback):
         def _create_trial_syncer(self, trial: "Trial"):
             client = mock_storage_client()
             return MockNodeSyncer(trial.logdir, trial.logdir, client)
 
-    syncer_callback = _SyncerCallback(None)
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    syncer_callback = [_SyncerCallback(None)
+                       ] if trainable_id == "__fake_remote" else None
+    runner = TrialRunner(BasicVariantGenerator(), callbacks=syncer_callback)
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 4

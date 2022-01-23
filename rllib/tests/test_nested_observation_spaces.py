@@ -120,6 +120,16 @@ class RepeatedSpaceEnv(gym.Env):
 
 class NestedMultiAgentEnv(MultiAgentEnv):
     def __init__(self):
+        super().__init__()
+        self.observation_space = spaces.Dict({
+            "dict_agent": DICT_SPACE,
+            "tuple_agent": TUPLE_SPACE
+        })
+        self.action_space = spaces.Dict({
+            "dict_agent": spaces.Discrete(1),
+            "tuple_agent": spaces.Discrete(1)
+        })
+        self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
     def reset(self):
@@ -316,7 +326,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
 
     def test_invalid_model(self):
         ModelCatalog.register_custom_model("invalid", InvalidModel)
-        self.assertRaisesRegexp(
+        self.assertRaisesRegex(
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
             lambda: PGTrainer(
@@ -330,7 +340,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
 
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
-        self.assertRaisesRegexp(
+        self.assertRaisesRegex(
             ValueError, "State output is not a list",
             lambda: PGTrainer(
                 env="CartPole-v0", config={

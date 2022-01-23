@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.memory_utils as memory_utils
@@ -118,7 +119,7 @@ class DataOrganizer:
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
-    # Clean up logs from a dead pid.
+        # Clean up logs from a dead pid.
         dead_pids = set(node_logs.keys()) - pids_on_node
         for dead_pid in dead_pids:
             if dead_pid in node_logs:
@@ -223,10 +224,20 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_actors(cls):
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in DataSource.actors.items()
-        }
+        result = {}
+        for index, (actor_id, actor) in enumerate(DataSource.actors.items()):
+            result[actor_id] = await cls._get_actor(actor)
+            # There can be thousands of actors including dead ones. Processing
+            # them all can take many seconds, which blocks all other requests
+            # to the dashboard. The ideal solution might be to implement
+            # pagination. For now, use a workaround to yield to the event loop
+            # periodically, so other request handlers have a chance to run and
+            # avoid long latencies.
+            if index % 1000 == 0 and index > 0:
+                # Canonical way to yield to the event loop:
+                # https://github.com/python/asyncio/issues/284
+                await asyncio.sleep(0)
+        return result
 
     @staticmethod
     async def _get_actor(actor):

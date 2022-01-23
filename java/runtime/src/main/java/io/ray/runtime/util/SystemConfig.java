@@ -23,5 +23,9 @@ public class SystemConfig {
     return val;
   }
 
+  public static boolean bootstrapWithGcs() {
+    return ((Boolean) SystemConfig.get("bootstrap_with_gcs")).booleanValue();
+  }
+
   private static native String nativeGetSystemConfig(String key);
 }

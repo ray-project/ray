@@ -11,7 +11,7 @@ which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
 
 
 .. https://docs.google.com/drawings/d/1OewMLAu6KZNon7zpDfZnTh9qiT6m-3M9wnkqWkQQMRc/edit
-.. figure:: ../../images/rllib/rollout_worker_class_overview.svg
+.. figure:: ../images/rollout_worker_class_overview.svg
     :width: 600
     :align: left
 

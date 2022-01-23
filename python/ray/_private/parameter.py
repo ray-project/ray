@@ -12,10 +12,6 @@ class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
-        external_addresses (str): The address of external Redis server to
-            connect to, in format of "ip1:port1,ip2:port2,...".  If this
-            address is provided, then ray won't start Redis instances in the
-            head node but use external Redis server(s) instead.
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
@@ -58,10 +54,12 @@ class RayParams:
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
             manner. However, the same ID should not be used for different jobs.
-        redirect_worker_output: True if the stdout and stderr of worker
-            processes should be redirected to files.
         redirect_output (bool): True if stdout and stderr for non-worker
             processes should be redirected to files and false otherwise.
+        external_addresses (str): The address of external Redis server to
+            connect to, in format of "ip1:port1,ip2:port2,...".  If this
+            address is provided, then ray won't start Redis instances in the
+            head node but use external Redis server(s) instead.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -122,8 +120,8 @@ class RayParams:
     """
 
     def __init__(self,
-                 external_addresses=None,
                  redis_address=None,
+                 gcs_address=None,
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
@@ -143,8 +141,8 @@ class RayParams:
                  ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
-                 redirect_worker_output=None,
                  redirect_output=None,
+                 external_addresses=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
                  redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
@@ -173,9 +171,8 @@ class RayParams:
                  tracing_startup_hook=None,
                  no_monitor=False,
                  env_vars=None):
-        self.object_ref_seed = object_ref_seed
-        self.external_addresses = external_addresses
         self.redis_address = redis_address
+        self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
@@ -194,8 +191,8 @@ class RayParams:
         self.worker_port_list = worker_port_list
         self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
-        self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
+        self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
         self.redis_password = redis_password
@@ -218,6 +215,7 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
+        self.object_ref_seed = object_ref_seed
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self.ray_debugger_external = ray_debugger_external
@@ -378,12 +376,6 @@ class RayParams:
             assert "GPU" not in self.resources, (
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
-
-        if self.redirect_worker_output is not None:
-            raise DeprecationWarning(
-                "The redirect_worker_output argument is deprecated. To "
-                "control logging to the driver, use the 'log_to_driver' "
-                "argument to 'ray.init()'")
 
         if self.redirect_output is not None:
             raise DeprecationWarning(

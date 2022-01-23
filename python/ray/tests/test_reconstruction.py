@@ -441,7 +441,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
             ray.get(a.dependent_task.remote(obj))
             return True
         except ray.exceptions.RayActorError as e:
-            return e.has_creation_task_error()
+            return e.actor_init_failed
         except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
             return True
 
@@ -892,14 +892,7 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     if reconstruction_enabled:
-        # NOTE(swang): This is supposed to work because nested doesn't actually
-        # return any ObjectRefs. However, currently the ray.put in `nested`
-        # fails because the object already exists with a different owner.
-        # See https://github.com/ray-project/ray/issues/20713.
-        try:
-            ray.get(ref, timeout=60)
-        except ray.exceptions.RayTaskError as e:
-            assert isinstance(e.cause, ray.exceptions.ObjectFetchTimedOutError)
+        ray.get(ref, timeout=60)
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(ref, timeout=60)

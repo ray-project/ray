@@ -165,7 +165,7 @@ def test_exponential_wait(shutdown_only):
     @ray.remote
     def f(i, start):
         delta = time.time() - start
-        print("Launch", i, time.time() - start)
+        print("Launch", i, delta)
         ray.get(b.join.remote())
         return delta
 

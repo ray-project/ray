@@ -214,7 +214,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
-            (x.dtype == np.object or str(x.dtype).startswith("<U")):
+            (x.dtype == object or str(x.dtype).startswith("<U")):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
@@ -307,11 +307,15 @@ def check_compute_single_action(trainer,
         ValueError: If anything unexpected happens.
     """
     # Have to import this here to avoid circular dependency.
-    from ray.rllib.policy.sample_batch import SampleBatch
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
     # Some Trainers may not abide to the standard API.
+    pid = DEFAULT_POLICY_ID
     try:
-        pol = trainer.get_policy()
+        # Multi-agent: Pick any policy (or DEFAULT_POLICY if it's the only
+        # one).
+        pid = next(iter(trainer.workers.local_worker().policy_map))
+        pol = trainer.get_policy(pid)
     except AttributeError:
         pol = trainer.policy
     # Get the policy's model.
@@ -324,6 +328,7 @@ def check_compute_single_action(trainer,
         call_kwargs = {}
         if what is trainer:
             call_kwargs["full_fetch"] = full_fetch
+            call_kwargs["policy_id"] = pid
 
         obs = obs_space.sample()
         if isinstance(obs_space, Box):
@@ -397,6 +402,11 @@ def check_compute_single_action(trainer,
             for si, so in zip(state_in, state_out):
                 check(list(si.shape), so.shape)
 
+        if unsquash is None:
+            unsquash = what.config["normalize_actions"]
+        if clip is None:
+            clip = what.config["clip_actions"]
+
         # Test whether unsquash/clipping works on the Trainer's
         # compute_single_action method: Both flags should force the action
         # to be within the space's bounds.
@@ -429,10 +439,10 @@ def check_compute_single_action(trainer,
                 worker_set = getattr(trainer, "_workers", None)
             assert worker_set
             if isinstance(worker_set, list):
-                obs_space = trainer.get_policy().observation_space
+                obs_space = trainer.get_policy(pid).observation_space
             else:
                 obs_space = worker_set.local_worker().for_policy(
-                    lambda p: p.observation_space)
+                    lambda p: p.observation_space, policy_id=pid)
             obs_space = getattr(obs_space, "original_space", obs_space)
         else:
             obs_space = pol.observation_space
@@ -443,8 +453,9 @@ def check_compute_single_action(trainer,
                 for full_fetch in ([False, True]
                                    if what is trainer else [False]):
                     timestep = random.randint(0, 100000)
-                    for unsquash in [True, False]:
-                        for clip in ([False] if unsquash else [True, False]):
+                    for unsquash in [True, False, None]:
+                        for clip in ([False]
+                                     if unsquash else [True, False, None]):
                             _test(what, method_to_test, obs_space, full_fetch,
                                   explore, timestep, unsquash, clip)
 
@@ -488,7 +499,7 @@ def check_train_results(train_results):
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
         LEARNER_STATS_KEY
-    from ray.rllib.utils.multi_agent import check_multi_agent
+    from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 
     # Assert that some keys are where we would expect them.
     for key in [
@@ -526,8 +537,8 @@ def check_train_results(train_results):
     info = train_results["info"]
     assert LEARNER_INFO in info, \
         f"'learner' not in train_results['infos'] ({info})!"
-    assert "num_steps_trained" in info,\
-        f"'num_steps_trained' not in train_results['infos'] ({info})!"
+    assert "num_steps_trained" in info or "num_env_steps_trained" in info, \
+        f"'num_(env_)?steps_trained' not in train_results['infos'] ({info})!"
 
     learner_info = info[LEARNER_INFO]
 
@@ -596,6 +607,13 @@ def run_learning_tests_from_yaml(
 
     start_time = time.monotonic()
 
+    def should_check_eval(experiment):
+        # If we have evaluation workers, use their rewards.
+        # This is useful for offline learning tests, where
+        # we evaluate against an actual environment.
+        return experiment["config"].get("evaluation_interval",
+                                        None) is not None
+
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
@@ -626,11 +644,13 @@ def run_learning_tests_from_yaml(
                 # create its trainer and run a first iteration.
                 e["stop"]["time_total_s"] = 0
             else:
+                check_eval = should_check_eval(e)
+                episode_reward_key = ("episode_reward_mean" if not check_eval
+                                      else "evaluation/episode_reward_mean")
                 # We also stop early, once we reach the desired reward.
-                min_reward = e.get("pass_criteria",
-                                   {}).get("episode_reward_mean")
+                min_reward = e.get("pass_criteria", {}).get(episode_reward_key)
                 if min_reward is not None:
-                    e["stop"]["episode_reward_mean"] = min_reward
+                    e["stop"][episode_reward_key] = min_reward
 
             # Generate `checks` dict for all experiments
             # (tf, tf2 and/or torch).
@@ -712,11 +732,7 @@ def run_learning_tests_from_yaml(
                     trials_for_experiment.append(t)
             print(f" ... Trials: {trials_for_experiment}.")
 
-            # If we have evaluation workers, use their rewards.
-            # This is useful for offline learning tests, where
-            # we evaluate against an actual environment.
-            check_eval = experiments[experiment]["config"].get(
-                "evaluation_interval", None) is not None
+            check_eval = should_check_eval(experiments[experiment])
 
             # Error: Increase failure count and repeat.
             if any(t.status == "ERROR" for t in trials_for_experiment):

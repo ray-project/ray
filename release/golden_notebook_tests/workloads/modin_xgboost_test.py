@@ -5,7 +5,7 @@ import json
 from util import import_and_execute_test_script, wait_for_cluster_client
 
 NOTEBOOK_PATH_RELATIVE_TO_RAY_REPO = (
-    "doc/examples/modin_xgboost/modin_xgboost.py")
+    "doc/source/ray-core/_examples/modin_xgboost/modin_xgboost.py")
 
 
 def main():

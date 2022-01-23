@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Tests from the doc/examples directory.
+# Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
@@ -8,8 +8,8 @@
 py_test(
     name = "dask_xgboost",
     size = "medium",
-    main = "examples/dask_xgboost/dask_xgboost.py",
-    srcs = ["examples/dask_xgboost/dask_xgboost.py"],
+    main = "source/ray-core/_examples/dask_xgboost/dask_xgboost.py",
+    srcs = ["source/ray-core/_examples/dask_xgboost/dask_xgboost.py"],
     tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
@@ -20,8 +20,8 @@ py_test(
 py_test(
     name = "modin_xgboost",
     size = "medium",
-    main = "examples/modin_xgboost/modin_xgboost.py",
-    srcs = ["examples/modin_xgboost/modin_xgboost.py"],
+    main = "source/ray-core/_examples/modin_xgboost/modin_xgboost.py",
+    srcs = ["source/ray-core/_examples/modin_xgboost/modin_xgboost.py"],
     tags = ["exclusive", "team:ml", "py37"],
     args = ["--smoke-test", "--address ''", "--num-actors 4",
             "--cpus-per-actor 1", "--num-actors-inference 4",
@@ -38,7 +38,7 @@ py_test(
 py_test(
     name = "datasets_train",
     size = "medium",
-    srcs = ["examples/datasets_train/datasets_train.py"],
+    srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
     tags = ["exclusive", "team:ml", "py37", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
@@ -46,62 +46,62 @@ py_test(
 py_test(
     name = "plot_hyperparameter",
     size = "small",
-    srcs = ["examples/plot_hyperparameter.py"],
+    srcs = ["source/ray-core/_examples/plot_hyperparameter.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "medium",
-    srcs = ["examples/plot_parameter_server.py"],
+    srcs = ["source/ray-core/_examples/plot_parameter_server.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "large",
-    srcs = ["examples/plot_pong_example.py"],
+    srcs = ["source/ray-core/_examples/plot_pong_example.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "progress_bar",
     size = "small",
-    srcs = ["examples/progress_bar.py"],
+    srcs = ["source/ray-core/_examples/progress_bar.py"],
     tags = ["exclusive", "team:ml"]
 )
 
 
-# Directory: examples/doc_code
+# Directory: source/ray-core/_examples/doc_code
 py_test(
     name = "doc_code_tf_example",
     size = "small",
-    main = "examples/doc_code/tf_example.py",
-    srcs = ["examples/doc_code/tf_example.py"],
+    main = "source/ray-core/_examples/doc_code/tf_example.py",
+    srcs = ["source/ray-core/_examples/doc_code/tf_example.py"],
     tags = ["exclusive", "tf", "team:ml"]
 )
 
 py_test(
     name = "doc_code_torch_example",
     size = "small",
-    main = "examples/doc_code/torch_example.py",
-    srcs = ["examples/doc_code/torch_example.py"],
+    main = "source/ray-core/_examples/doc_code/torch_example.py",
+    srcs = ["source/ray-core/_examples/doc_code/torch_example.py"],
     tags = ["exclusive", "pytorch", "team:ml"]
 )
 
 py_test(
     name = "doc_code_metrics_example",
     size = "small",
-    main = "examples/doc_code/metrics_example.py",
-    srcs = ["examples/doc_code/metrics_example.py"],
+    main = "source/ray-core/_examples/doc_code/metrics_example.py",
+    srcs = ["source/ray-core/_examples/doc_code/metrics_example.py"],
     tags = ["exclusive", "team:serve"]
 )
 
 py_test(
     name = "doc_code_runtime_env_example",
     size = "small",
-    main = "examples/doc_code/runtime_env_example.py",
-    srcs = ["examples/doc_code/runtime_env_example.py"],
+    main = "source/ray-core/_examples/doc_code/runtime_env_example.py",
+    srcs = ["source/ray-core/_examples/doc_code/runtime_env_example.py"],
     tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 

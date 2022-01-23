@@ -83,6 +83,8 @@ class Trainable:
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+                This is **per trial** directory,
+                which is different from **per checkpoint** directory.
             sync_function_tpl (str): Sync function template to use. Defaults
               to `cls._sync_function` (which defaults to `None`).
         """
@@ -147,6 +149,8 @@ class Trainable:
                 self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):
+        """Converts a `local_path` to be based off of
+        `self.remote_checkpoint_dir`."""
         rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
@@ -381,7 +385,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None):
+    def save(self, checkpoint_dir=None) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -394,7 +398,10 @@ class Trainable:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
         Returns:
-            str: Checkpoint path or prefix that may be passed to restore().
+            str: path that points to xxx.pkl file.
+
+        Note the return path should match up with what is expected of
+        `restore()`.
         """
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             checkpoint_dir or self.logdir, index=self.iteration)
@@ -406,15 +413,15 @@ class Trainable:
             trainable_state=trainable_state)
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud()
+        self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
 
-    def _maybe_save_to_cloud(self):
+    def _maybe_save_to_cloud(self, checkpoint_dir):
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_up(self.logdir,
-                                        self.remote_checkpoint_dir)
+            self.storage_client.sync_up(checkpoint_dir,
+                                        self._storage_path(checkpoint_dir))
             self.storage_client.wait()
 
     def save_to_object(self):
@@ -437,13 +444,29 @@ class Trainable:
 
         These checkpoints are returned from calls to save().
 
-        Subclasses should override ``_restore()`` instead to restore state.
+        Subclasses should override ``load_checkpoint()`` instead to
+        restore state.
         This method restores additional metadata saved with the checkpoint.
+
+        `checkpoint_path` should match with the return from ``save()``.
+
+        `checkpoint_path` can be
+        `~/ray_results/exp/MyTrainable_abc/
+        checkpoint_00000/checkpoint`. Or,
+        `~/ray_results/exp/MyTrainable_abc/checkpoint_00000`.
+
+        `self.logdir` should generally be corresponding to `checkpoint_path`,
+        for example, `~/ray_results/exp/MyTrainable_abc`.
+
+        `self.remote_checkpoint_dir` in this case, is something like,
+        `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
         """
-        # Maybe sync from cloud
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_down(self.remote_checkpoint_dir,
-                                          self.logdir)
+            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+                self.logdir, checkpoint_path)
+            self.storage_client.sync_down(
+                os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
+                os.path.join(self.logdir, rel_checkpoint_dir))
             self.storage_client.wait()
 
         # Ensure TrialCheckpoints are converted
@@ -624,6 +647,8 @@ class Trainable:
         """Create logger from logger creator.
 
         Sets _logdir and _result_logger.
+
+        `_logdir` is the **per trial** directory for the Trainable.
         """
         if logger_creator:
             self._result_logger = logger_creator(config)

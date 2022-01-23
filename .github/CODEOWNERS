@@ -13,7 +13,8 @@
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo @architkulkarni @kombuchafox
 
 # Metrics
-# /src/ray/stats/metric_defs.h @ray-project/ray-core
+/src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
+/src/ray/stats/metric_defs.cc @ericl @scv119 @rkooo567
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
@@ -53,7 +54,7 @@
 /doc/source/workflows/ @ericl @iycheng
 
 # RLlib.
-#/python/ray/rllib/ @ray-project/rllib
+/rllib/ @sven1977 @gjoliver @avnishn
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng

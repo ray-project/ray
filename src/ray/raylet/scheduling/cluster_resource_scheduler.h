@@ -61,11 +61,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
 
-  /// Add a new node or overwrite the resources of an existing node.
-  ///
-  /// \param node_id: Node ID.
-  /// \param node_resources: Up to date total and available resources of the node.
-  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
   void AddOrUpdateNode(
       const std::string &node_id,
       const absl::flat_hash_map<std::string, double> &resource_map_total,
@@ -81,23 +76,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
-  /// \param ID of the node to be removed.
-  bool RemoveNode(int64_t node_id);
+  /// \param node_id_string ID of the node to be removed.
   bool RemoveNode(const std::string &node_id_string) override;
-
-  /// Check whether a resource request can be scheduled given a node.
-  ///
-  ///  \param resource_request: Resource request to be scheduled.
-  ///  \param node_id: ID of the node.
-  ///  \param resources: Node's resources. (Note: Technically, this is
-  ///     redundant, as we can get the node's resources from nodes_
-  ///     using node_id. However, typically both node_id and resources
-  ///     are available when we call this function, and this way we avoid
-  ///     a map find call which could be expensive.)
-  ///
-  ///  \return: Whether the request can be scheduled.
-  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
-                     const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -132,10 +112,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
       int64_t *violations, bool *is_infeasible);
-
-  /// Return resources associated to the given node_id in ret_resources.
-  /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get local node resources.
   const NodeResources &GetLocalNodeResources() const;
@@ -180,61 +156,10 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                       const std::string &resource_name) override;
 
   /// Return local resources.
-  NodeResourceInstances GetLocalResources() { return local_resources_; };
+  NodeResourceInstances GetLocalResources() const { return local_resources_; };
 
   /// Return local resources in human-readable string form.
   std::string GetLocalResourceViewString() const override;
-
-  /// Create instances for each resource associated with the local node, given
-  /// the node's resources.
-  ///
-  /// \param local_resources: Total resources of the node.
-  void InitLocalResources(const NodeResources &local_resources);
-
-  /// Initialize the instances of a given resource given the resource's total capacity.
-  /// If unit_instances is true we split the resources in unit-size instances. For
-  /// example, if total = 10, then we create 10 instances, each with caoacity 1.
-  /// Otherwise, we create a single instance of capacity equal to the resource's capacity.
-  ///
-  /// \param total: Total resource capacity.
-  /// \param unit_instances: If true, we split the resource in unit-size instances.
-  /// If false, we create a single instance of capacity "total".
-  /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(FixedPoint total, bool unit_instances,
-                             ResourceInstanceCapacities *instance_list);
-
-  /// Allocate enough capacity across the instances of a resource to satisfy "demand".
-  /// If resource has multiple unit-capacity instances, we consider two cases.
-  ///
-  /// 1) If the constraint is hard, allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional demand using the
-  /// instance with the smallest available capacity that can satisfy the fractional
-  /// demand. For example, assume a resource conisting of 4 instances, with available
-  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
-  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
-  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .3).
-  /// Thus, if the constraint is hard, we will allocate a bunch of full instances and
-  /// at most a fractional instance.
-  ///
-  /// 2) If the constraint is soft, we can allocate multiple fractional resources,
-  /// and even overallocate the resource. For example, in the previous case, if we
-  /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
-  /// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
-  /// all instances, and return success (true), despite the fact that the total
-  /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
-  /// than the demand, 3.5. In this case, the remaining available resource is
-  /// (0., 0., 0., 0.)
-  ///
-  /// \param demand: The resource amount to be allocated.
-  /// \param available: List of available capacities of the instances of the resource.
-  /// \param allocation: List of instance capacities allocated to satisfy the demand.
-  /// This is a return parameter.
-  ///
-  /// \return true, if allocation successful. In this case, the sum of the elements in
-  /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
-                                 std::vector<FixedPoint> *allocation);
 
   /// Allocate local resources to satisfy a given request (resource_request).
   ///
@@ -253,29 +178,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param task_allocation: Task's resources to be freed.
   void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
-
-  /// Increase the available capacities of the instances of a given resource.
-  ///
-  /// \param available A list of available capacities for resource's instances.
-  /// \param resource_instances List of the resource instances being updated.
-  ///
-  /// \return Overflow capacities of "resource_instances" after adding instance
-  /// capacities in "available", i.e.,
-  /// min(available + resource_instances.available, resource_instances.total)
-  std::vector<FixedPoint> AddAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
-
-  /// Decrease the available capacities of the instances of a given resource.
-  ///
-  /// \param free A list of capacities for resource's instances to be freed.
-  /// \param resource_instances List of the resource instances being updated.
-  /// \param allow_going_negative Allow the values to go negative (disable underflow).
-  /// \return Underflow of "resource_instances" after subtracting instance
-  /// capacities in "available", i.e.,.
-  /// max(available - reasource_instances.available, 0)
-  std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
-      bool allow_going_negative = false);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -399,7 +301,26 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
 
  private:
+  /// Create instances for each resource associated with the local node, given
+  /// the node's resources.
+  ///
+  /// \param local_resources: Total resources of the node.
+  void InitLocalResources(const NodeResources &local_resources);
+
+  /// Initialize the instances of a given resource given the resource's total capacity.
+  /// If unit_instances is true we split the resources in unit-size instances. For
+  /// example, if total = 10, then we create 10 instances, each with caoacity 1.
+  /// Otherwise, we create a single instance of capacity equal to the resource's capacity.
+  ///
+  /// \param total: Total resource capacity.
+  /// \param unit_instances: If true, we split the resource in unit-size instances.
+  /// If false, we create a single instance of capacity "total".
+  /// \param instance_list: The list of capacities this resource instances.
+  void InitResourceInstances(FixedPoint total, bool unit_instances,
+                             ResourceInstanceCapacities *instance_list);
+
   bool NodeAlive(int64_t node_id) const;
+
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
 
@@ -413,6 +334,59 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// and false otherwise.
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
+
+  /// Add a new node or overwrite the resources of an existing node.
+  ///
+  /// \param node_id: Node ID.
+  /// \param node_resources: Up to date total and available resources of the node.
+  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
+
+  /// Remove node from the cluster data structure. This happens
+  /// when a node fails or it is removed from the cluster.
+  ///
+  /// \param node_id ID of the node to be removed.
+  bool RemoveNode(int64_t node_id);
+
+  /// Check whether a resource request can be scheduled given a node.
+  ///
+  ///  \param resource_request: Resource request to be scheduled.
+  ///  \param node_id: ID of the node.
+  ///  \param resources: Node's resources. (Note: Technically, this is
+  ///     redundant, as we can get the node's resources from nodes_
+  ///     using node_id. However, typically both node_id and resources
+  ///     are available when we call this function, and this way we avoid
+  ///     a map find call which could be expensive.)
+  ///
+  ///  \return: Whether the request can be scheduled.
+  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
+                     const NodeResources &resources) const;
+
+  /// Return resources associated to the given node_id in ret_resources.
+  /// If node_id not found, return false; otherwise return true.
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
+
+  /// Increase the available capacities of the instances of a given resource.
+  ///
+  /// \param available A list of available capacities for resource's instances.
+  /// \param resource_instances List of the resource instances being updated.
+  ///
+  /// \return Overflow capacities of "resource_instances" after adding instance
+  /// capacities in "available", i.e.,
+  /// min(available + resource_instances.available, resource_instances.total)
+  std::vector<FixedPoint> AddAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+
+  /// Decrease the available capacities of the instances of a given resource.
+  ///
+  /// \param free A list of capacities for resource's instances to be freed.
+  /// \param resource_instances List of the resource instances being updated.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
+  /// \return Underflow of "resource_instances" after subtracting instance
+  /// capacities in "available", i.e.,.
+  /// max(available - reasource_instances.available, 0)
+  std::vector<FixedPoint> SubtractAvailableResourceInstances(
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      bool allow_going_negative = false);
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
@@ -443,8 +417,19 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+
+  friend class ClusterResourceSchedulerTest;
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest,
+              UpdateLocalAvailableResourcesFromResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ResourceUsageReportTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
 };
 
 }  // end namespace ray
