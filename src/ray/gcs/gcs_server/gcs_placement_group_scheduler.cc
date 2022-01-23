@@ -339,13 +339,20 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const PGSchedulingFailureCallback &schedule_failure_handler,
     const PGSchedulingSuccessfulCallback &schedule_success_handler) {
-  const std::unordered_map<NodeID,
-                           std::vector<std::shared_ptr<const BundleSpecification>>>
-      &prepared_bundle_locations =
-          lease_status_tracker->GetGroupedPreparedBundleLocations();
+  const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
+      lease_status_tracker->GetPreparedBundleLocations();
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      bundle_locations_per_node;
+  for (const auto &bundle_location : *prepared_bundle_locations) {
+    const auto &node_id = bundle_location.second.first;
+    if (bundle_locations_per_node.find(node_id) == bundle_locations_per_node.end()) {
+      bundle_locations_per_node[node_id] = {};
+    }
+    bundle_locations_per_node[node_id].push_back(bundle_location.second.second);
+  }
   lease_status_tracker->MarkCommitPhaseStarted();
 
-  for (const auto &node_to_bundles : prepared_bundle_locations) {
+  for (const auto &node_to_bundles : bundle_locations_per_node) {
     const auto &node_id = node_to_bundles.first;
     const auto &node = gcs_node_manager_.GetAliveNode(node_id);
     const auto &bundles_per_node = node_to_bundles.second;
@@ -765,11 +772,6 @@ void LeaseStatusTracker::MarkPrepareRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (status.ok()) {
     preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
-    if (grouped_preparing_bundle_locations_.find(node_id) ==
-        grouped_preparing_bundle_locations_.end()) {
-      grouped_preparing_bundle_locations_[node_id] = {};
-    }
-    grouped_preparing_bundle_locations_[node_id].push_back(bundle);
   }
   prepare_request_returned_count_ += 1;
 }
@@ -816,11 +818,6 @@ const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup(
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLocations()
     const {
   return preparing_bundle_locations_;
-}
-
-const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
-    &LeaseStatusTracker::GetGroupedPreparedBundleLocations() const {
-  return grouped_preparing_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations>

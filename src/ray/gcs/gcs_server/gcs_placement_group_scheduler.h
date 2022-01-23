@@ -266,13 +266,6 @@ class LeaseStatusTracker {
   /// \return Location of bundles that succeed to prepare resources on a node.
   const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
 
-  /// This method returns bundle locations that grouped by node id.
-  ///
-  /// \return Location of bundles that succeed to prepare resources on a node.
-  const std::unordered_map<NodeID,
-                           std::vector<std::shared_ptr<const BundleSpecification>>>
-      &GetGroupedPreparedBundleLocations() const;
-
   /// This method returns bundle locations that failed to commit resources.
   ///
   /// \return Location of bundles that failed to commit resources on a node.
