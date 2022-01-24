@@ -8,6 +8,7 @@ from aioredis.pubsub import Receiver
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
     GcsAioResourceUsageSubscriber
 import ray._private.services
@@ -21,7 +22,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -55,7 +56,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         profiling_info = (json.loads(reply.profiling_stats)
                           if reply.profiling_stats else reply.std_out)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
@@ -68,12 +69,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return dashboard_utils.rest_response(
+                return dashboard_optional_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return dashboard_utils.rest_response(
+                return dashboard_optional_utils.rest_response(
                     success=False,
                     message="Invalid config, could not load YAML.")
 
@@ -94,7 +95,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
@@ -121,7 +122,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         formatted_status = json.loads(formatted_status_string.decode()
                                       ) if formatted_status_string else {}
         error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Got cluster status.",
             autoscaling_status=legacy_status.decode()

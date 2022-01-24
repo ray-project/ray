@@ -3,7 +3,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the wheels and jars
@@ -41,7 +40,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the debug wheels
@@ -61,7 +59,6 @@
 #     [
 #         "RAY_CI_LINUX_WHEELS_AFFECTED",
 #         "RAY_CI_JAVA_AFFECTED",
-#         "RAY_CI_STREAMING_JAVA_AFFECTED",
 #     ]
 #   commands:
 #     # Build the asan wheels
@@ -151,19 +148,22 @@
   commands:
     - ./java/test.sh
 
-- label: ":java: Streaming"
-  conditions:
-    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED", "RAY_CI_PYTHON_AFFECTED"]
+- label: ":java: :redis: Java"
+  conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      //streaming:all
-    - bash streaming/src/test/run_streaming_queue_test.sh
+    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./java/test.sh
 
-- label: ":cpp: Worker"
+- label: ":cpp: Ray CPP Worker"
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
+
+- label: ":redis: Ray CPP Worker"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RAY_bootstrap_with_gcs=1 RAY_gcs_grpc_based_pubsub=1 RAY_gcs_storage=memory ./ci/travis/ci.sh test_cpp
 
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -213,6 +213,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./dashboard/tests/run_ui_tests.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
@@ -321,6 +322,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./dashboard/tests/run_ui_tests.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_env=RAY_gcs_grpc_based_pubsub=1

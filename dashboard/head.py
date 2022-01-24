@@ -21,6 +21,7 @@ from ray._private.gcs_utils import GcsClient, use_gcs_for_bootstrap
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray import ray_constants
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, \
     GcsAioErrorSubscriber, GcsAioLogSubscriber
@@ -35,7 +36,7 @@ from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.optional_deps import aiohttp, hdrs
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
 GRPC_CHANNEL_OPTIONS = (
@@ -180,7 +181,7 @@ class DashboardHead:
             logger.info("Loading %s: %s",
                         dashboard_utils.DashboardHeadModule.__name__, cls)
             c = cls(self)
-            dashboard_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
         return modules

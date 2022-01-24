@@ -1,33 +1,24 @@
 import abc
 import asyncio
-import collections
 import datetime
 import functools
 import importlib
-import inspect
 import json
 import logging
-import os
 import pkgutil
 import socket
-import time
-import traceback
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
-from typing import Any
+
+import aioredis  # noqa: F401
+import aiosignal  # noqa: F401
+
 from google.protobuf.json_format import MessageToDict
+from frozenlist import FrozenList  # noqa: F401
 
-import ray.dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
 from ray._private.utils import binary_to_hex
-
-# All third-party dependencies that are not included in the minimal Ray
-# installation must be included in this file. This allows us to determine if
-# the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import (aiohttp, aiosignal, aioredis, hdrs,
-                                         FrozenList, PathLike, RouteDef)
 
 try:
     create_task = asyncio.create_task
@@ -41,7 +32,6 @@ class DashboardAgentModule(abc.ABC):
     def __init__(self, dashboard_agent):
         """
         Initialize current module when DashboardAgent loading modules.
-
         :param dashboard_agent: The DashboardAgent instance.
         """
         self._dashboard_agent = dashboard_agent
@@ -51,7 +41,6 @@ class DashboardAgentModule(abc.ABC):
         """
         Run the module in an asyncio loop. An agent module can provide
         servicers to the server.
-
         :param server: Asyncio GRPC server.
         """
 
@@ -60,7 +49,6 @@ class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
         """
         Initialize current module when DashboardHead loading modules.
-
         :param dashboard_head: The DashboardHead instance.
         """
         self._dashboard_head = dashboard_head
@@ -70,120 +58,8 @@ class DashboardHeadModule(abc.ABC):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-
         :param server: Asyncio GRPC server.
         """
-
-
-class ClassMethodRouteTable:
-    """A helper class to bind http route to class method."""
-
-    _bind_map = collections.defaultdict(dict)
-    _routes = aiohttp.web.RouteTableDef()
-
-    class _BindInfo:
-        def __init__(self, filename, lineno, instance):
-            self.filename = filename
-            self.lineno = lineno
-            self.instance = instance
-
-    @classmethod
-    def routes(cls):
-        return cls._routes
-
-    @classmethod
-    def bound_routes(cls):
-        bound_items = []
-        for r in cls._routes._items:
-            if isinstance(r, RouteDef):
-                route_method = getattr(r.handler, "__route_method__")
-                route_path = getattr(r.handler, "__route_path__")
-                instance = cls._bind_map[route_method][route_path].instance
-                if instance is not None:
-                    bound_items.append(r)
-            else:
-                bound_items.append(r)
-        routes = aiohttp.web.RouteTableDef()
-        routes._items = bound_items
-        return routes
-
-    @classmethod
-    def _register_route(cls, method, path, **kwargs):
-        def _wrapper(handler):
-            if path in cls._bind_map[method]:
-                bind_info = cls._bind_map[method][path]
-                raise Exception(f"Duplicated route path: {path}, "
-                                f"previous one registered at "
-                                f"{bind_info.filename}:{bind_info.lineno}")
-
-            bind_info = cls._BindInfo(handler.__code__.co_filename,
-                                      handler.__code__.co_firstlineno, None)
-
-            @functools.wraps(handler)
-            async def _handler_route(*args) -> aiohttp.web.Response:
-                try:
-                    # Make the route handler as a bound method.
-                    # The args may be:
-                    #   * (Request, )
-                    #   * (self, Request)
-                    req = args[-1]
-                    return await handler(bind_info.instance, req)
-                except Exception:
-                    logger.exception("Handle %s %s failed.", method, path)
-                    return rest_response(
-                        success=False, message=traceback.format_exc())
-
-            cls._bind_map[method][path] = bind_info
-            _handler_route.__route_method__ = method
-            _handler_route.__route_path__ = path
-            return cls._routes.route(method, path, **kwargs)(_handler_route)
-
-        return _wrapper
-
-    @classmethod
-    def head(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_HEAD, path, **kwargs)
-
-    @classmethod
-    def get(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_GET, path, **kwargs)
-
-    @classmethod
-    def post(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_POST, path, **kwargs)
-
-    @classmethod
-    def put(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_PUT, path, **kwargs)
-
-    @classmethod
-    def patch(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_PATCH, path, **kwargs)
-
-    @classmethod
-    def delete(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_DELETE, path, **kwargs)
-
-    @classmethod
-    def view(cls, path, **kwargs):
-        return cls._register_route(hdrs.METH_ANY, path, **kwargs)
-
-    @classmethod
-    def static(cls, prefix: str, path: PathLike, **kwargs: Any) -> None:
-        cls._routes.static(prefix, path, **kwargs)
-
-    @classmethod
-    def bind(cls, instance):
-        def predicate(o):
-            if inspect.ismethod(o):
-                return hasattr(o, "__route_method__") and hasattr(
-                    o, "__route_path__")
-            return False
-
-        handler_routes = inspect.getmembers(instance, predicate)
-        for _, h in handler_routes:
-            cls._bind_map[h.__func__.__route_method__][
-                h.__func__.__route_path__].instance = instance
 
 
 def dashboard_module(enable):
@@ -197,6 +73,9 @@ def dashboard_module(enable):
 
 
 def get_all_modules(module_type):
+    """
+    Get all importable modules that are subclass of a given module type.
+    """
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
 
@@ -229,25 +108,6 @@ class CustomEncoder(json.JSONEncoder):
             return obj.mutable()
         # Let the base class default method raise the TypeError
         return json.JSONEncoder.default(self, obj)
-
-
-def rest_response(success, message, convert_google_style=True,
-                  **kwargs) -> aiohttp.web.Response:
-    # In the dev context we allow a dev server running on a
-    # different port to consume the API, meaning we need to allow
-    # cross-origin access
-    if os.environ.get("RAY_DASHBOARD_DEV") == "1":
-        headers = {"Access-Control-Allow-Origin": "*"}
-    else:
-        headers = {}
-    return aiohttp.web.json_response(
-        {
-            "result": success,
-            "msg": message,
-            "data": to_google_style(kwargs) if convert_google_style else kwargs
-        },
-        dumps=functools.partial(json.dumps, cls=CustomEncoder),
-        headers=headers)
 
 
 def to_camel_case(snake_str):
@@ -305,86 +165,6 @@ def message_to_dict(message, decode_keys=None, **kwargs):
             MessageToDict(message, use_integers_for_enums=False, **kwargs))
     else:
         return MessageToDict(message, use_integers_for_enums=False, **kwargs)
-
-
-# The cache value type used by aiohttp_cache.
-_AiohttpCacheValue = namedtuple("AiohttpCacheValue",
-                                ["data", "expiration", "task"])
-# The methods with no request body used by aiohttp_cache.
-_AIOHTTP_CACHE_NOBODY_METHODS = {hdrs.METH_GET, hdrs.METH_DELETE}
-
-
-def aiohttp_cache(
-        ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
-        maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
-        enable=not env_bool(
-            dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False)):
-    assert maxsize > 0
-    cache = collections.OrderedDict()
-
-    def _wrapper(handler):
-        if enable:
-
-            @functools.wraps(handler)
-            async def _cache_handler(*args) -> aiohttp.web.Response:
-                # Make the route handler as a bound method.
-                # The args may be:
-                #   * (Request, )
-                #   * (self, Request)
-                req = args[-1]
-                # Make key.
-                if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
-                    key = req.path_qs
-                else:
-                    key = (req.path_qs, await req.read())
-                # Query cache.
-                value = cache.get(key)
-                if value is not None:
-                    cache.move_to_end(key)
-                    if (not value.task.done()
-                            or value.expiration >= time.time()):
-                        # Update task not done or the data is not expired.
-                        return aiohttp.web.Response(**value.data)
-
-                def _update_cache(task):
-                    try:
-                        response = task.result()
-                    except Exception:
-                        response = rest_response(
-                            success=False, message=traceback.format_exc())
-                    data = {
-                        "status": response.status,
-                        "headers": dict(response.headers),
-                        "body": response.body,
-                    }
-                    cache[key] = _AiohttpCacheValue(data,
-                                                    time.time() + ttl_seconds,
-                                                    task)
-                    cache.move_to_end(key)
-                    if len(cache) > maxsize:
-                        cache.popitem(last=False)
-                    return response
-
-                task = create_task(handler(*args))
-                task.add_done_callback(_update_cache)
-                if value is None:
-                    return await task
-                else:
-                    return aiohttp.web.Response(**value.data)
-
-            suffix = f"[cache ttl={ttl_seconds}, max_size={maxsize}]"
-            _cache_handler.__name__ += suffix
-            _cache_handler.__qualname__ += suffix
-            return _cache_handler
-        else:
-            return handler
-
-    if inspect.iscoroutinefunction(ttl_seconds):
-        target_func = ttl_seconds
-        ttl_seconds = dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS
-        return _wrapper(target_func)
-    else:
-        return _wrapper
 
 
 class SignalManager:
@@ -607,7 +387,6 @@ class ImmutableDict(Immutable, Mapping):
 
 class Dict(ImmutableDict, MutableMapping):
     """A simple descriptor for dict type to notify data changes.
-
     :note: Only the first level data report change.
     """
 
@@ -654,20 +433,6 @@ for immutable_type in Immutable.__subclasses__():
     _json_compatible_types.add(immutable_type)
 
 
-async def get_aioredis_client(redis_address, redis_password,
-                              retry_interval_seconds, retry_times):
-    for x in range(retry_times):
-        try:
-            return await aioredis.create_redis_pool(
-                address=redis_address, password=redis_password)
-        except (socket.gaierror, ConnectionError) as ex:
-            logger.error("Connect to Redis failed: %s, retry...", ex)
-            await asyncio.sleep(retry_interval_seconds)
-    # Raise exception from create_redis_pool
-    return await aioredis.create_redis_pool(
-        address=redis_address, password=redis_password)
-
-
 def async_loop_forever(interval_seconds, cancellable=False):
     def _wrapper(coro):
         @functools.wraps(coro)
@@ -690,3 +455,17 @@ def async_loop_forever(interval_seconds, cancellable=False):
         return _looper
 
     return _wrapper
+
+
+async def get_aioredis_client(redis_address, redis_password,
+                              retry_interval_seconds, retry_times):
+    for x in range(retry_times):
+        try:
+            return await aioredis.create_redis_pool(
+                address=redis_address, password=redis_password)
+        except (socket.gaierror, ConnectionError) as ex:
+            logger.error("Connect to Redis failed: %s, retry...", ex)
+            await asyncio.sleep(retry_interval_seconds)
+    # Raise exception from create_redis_pool
+    return await aioredis.create_redis_pool(
+        address=redis_address, password=redis_password)

@@ -286,6 +286,7 @@ GLOBAL_CONFIG = {
 
 REPORT_S = 30
 RETRY_MULTIPLIER = 2
+VALID_TEAMS = ["ml", "core", "serve"]
 
 
 class ExitCode(enum.Enum):
@@ -683,20 +684,17 @@ def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
     return alert
 
 
-def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
-                  results: Dict[Any, Any], artifacts: Dict[Any, Any],
-                  category: str):
+def report_result(*, test_suite: str, test_name: str, status: str,
+                  last_logs: str, results: Dict[Any, Any],
+                  artifacts: Dict[Any, Any], category: str, team: str):
+    #   session_url: str, commit_url: str,
+    #   runtime: float, stable: bool, frequency: str, return_code: int):
+    """Report the test result to database."""
     now = datetime.datetime.utcnow()
     rds_data_client = boto3.client("rds-data", region_name="us-west-2")
 
     schema = GLOBAL_CONFIG["RELEASE_AWS_DB_TABLE"]
 
-    sql = (
-        f"INSERT INTO {schema} "
-        f"(created_on, test_suite, test_name, status, last_logs, "
-        f"results, artifacts, category) "
-        f"VALUES (:created_on, :test_suite, :test_name, :status, :last_logs, "
-        f":results, :artifacts, :category)")
     parameters = [{
         "name": "created_on",
         "typeHint": "TIMESTAMP",
@@ -740,7 +738,20 @@ def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
         "value": {
             "stringValue": category
         }
+    }, {
+        "name": "team",
+        "value": {
+            "stringValue": team
+        }
     }]
+    columns = [param["name"] for param in parameters]
+    values = [f":{param['name']}" for param in parameters]
+    column_str = ", ".join(columns).strip(", ")
+    value_str = ", ".join(values).strip(", ")
+
+    sql = (f"INSERT INTO {schema} " f"({column_str}) " f"VALUES ({value_str})")
+
+    logger.info(f"Query: {sql}")
 
     # Default boto3 call timeout is 45 seconds.
     retry_delay_s = 64
@@ -1120,7 +1131,15 @@ def create_and_wait_for_session(
         session_operation = session_operation_response.result
         completed = session_operation.completed
 
-        _check_stop(stop_event, "session")
+        try:
+            _check_stop(stop_event, "session")
+        except SessionTimeoutError as e:
+            # Always queue session termination.
+            # We can't do this later as we won't return anything here
+            # and the session ID will not be set in the control loop
+            _cleanup_session(sdk=sdk, session_id=session_id)
+            raise e
+
         now = time.time()
         if now > next_report:
             logger.info(f"... still waiting for session {session_name} "
@@ -2169,6 +2188,18 @@ def run_test(test_config_file: str,
     driver_setup_script = test_config.get("driver_setup", None)
     if driver_setup_script:
         run_bash_script(local_dir, driver_setup_script)
+    logger.info(test_config)
+    team = test_config.get("team", "unspecified").strip(" ").lower()
+    # When running local test, this validates the team name.
+    # If the team name is not specified, they will be recorded as "unspecified"
+    if not report and team not in VALID_TEAMS:
+        logger.warning(
+            f"Incorrect team name {team} has given."
+            "Please specify team under the name field in the test config. "
+            "For example, within nightly_tests.yaml,\n"
+            "\tname: test_xxx\n"
+            f"\tteam: {'|'.join(VALID_TEAMS)}\n"
+            "\tcluster:...")
 
     result = run_test_config(
         local_dir,
@@ -2218,7 +2249,7 @@ def run_test(test_config_file: str,
             results=result.get("results", {}),
             artifacts=result.get("artifacts", {}),
             category=category,
-        )
+            team=team)
 
         if not has_errored(result):
             # Check if result are met if test succeeded
@@ -2246,7 +2277,7 @@ def run_test(test_config_file: str,
             except Exception as e:
                 # On database error the test should still pass
                 # Todo: flag somewhere else?
-                logger.error(f"Error persisting results to database: {e}")
+                logger.exception(f"Error persisting results to database: {e}")
         else:
             logger.info(f"Usually I would now report the following results:\n"
                         f"{report_kwargs}")
@@ -2281,7 +2312,7 @@ if __name__ == "__main__":
         "--report",
         action="store_true",
         default=False,
-        help="Do not report any results or upload to S3")
+        help="Whether to report results and upload to S3")
     parser.add_argument(
         "--kick-off-only",
         action="store_true",

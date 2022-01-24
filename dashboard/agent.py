@@ -19,6 +19,7 @@ import ray
 import ray.experimental.internal_kv as internal_kv
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
@@ -43,7 +44,7 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
 
@@ -117,7 +118,7 @@ class DashboardAgent(object):
             logger.info("Loading %s: %s",
                         dashboard_utils.DashboardAgentModule.__name__, cls)
             c = cls(self)
-            dashboard_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
         logger.info("Loaded %d modules.", len(modules))
         return modules
