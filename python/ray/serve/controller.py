@@ -71,6 +71,7 @@ class ServeController:
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
+        self.checkpoint_path = checkpoint_path
         kv_store_namespace = (
             f"{self.controller_name}-{self.controller_namespace}")
         self.kv_store = make_kv_store(
@@ -132,6 +133,9 @@ class ServeController:
         """
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
+
+    def get_checkpoint_path(self) -> str:
+        return self.checkpoint_path
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""

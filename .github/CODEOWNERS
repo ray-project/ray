@@ -40,6 +40,11 @@
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
+# Runtime Env
+# TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
+/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @architkulkarni
+/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @architkulkarni
+
 # ==== Libraries and frameworks ====
 
 # Ray tune.

@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 import random
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
@@ -17,6 +18,10 @@ def make_multiagent(env_name_or_creator):
 
 class BasicMultiAgent(MultiAgentEnv):
     """Env of N independent agents, each of which exits after 25 steps."""
+
+    metadata = {
+        "render.modes": ["rgb_array"],
+    }
 
     def __init__(self, num):
         super().__init__()
@@ -39,6 +44,12 @@ class BasicMultiAgent(MultiAgentEnv):
                 self.dones.add(i)
         done["__all__"] = len(self.dones) == len(self.agents)
         return obs, rew, done, info
+
+    def render(self, mode="rgb_array"):
+        # Just generate a random image here for demonstration purposes.
+        # Also see `gym/envs/classic_control/cartpole.py` for
+        # an example on how to use a Viewer object.
+        return np.random.randint(0, 256, size=(200, 300, 3), dtype=np.uint8)
 
 
 class EarlyDoneMultiAgent(MultiAgentEnv):

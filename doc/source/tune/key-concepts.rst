@@ -289,4 +289,4 @@ Now that you have a working understanding of Tune, check out:
 Further Questions or Issues?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

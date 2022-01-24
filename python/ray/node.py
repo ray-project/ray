@@ -366,11 +366,11 @@ class Node:
             try:
                 return get_gcs_address_from_redis(redis_cli)
             except Exception as e:
-                logger.debug("Fetch gcs address from redis failed {e}")
+                logger.debug(f"Fetch gcs address from redis failed {e}")
                 error = e
                 time.sleep(1)
         assert error is not None
-        logger.error("Fetch gcs address from redis failed {error}")
+        logger.error(f"Fetch gcs address from redis failed {error}")
 
     def _init_temp(self):
         # Create a dictionary to store temp file index.
