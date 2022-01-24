@@ -150,7 +150,7 @@ void NewPlacementGroupResourceManager::CommitBundles(
   absl::flat_hash_map<std::string, double> commited_resources;
   for (const auto &bundle_spec : bundle_specs) {
     CommitBundle(*bundle_spec);
-    const auto &resources = bundle_spec.GetFormattedResources();
+    const auto &resources = bundle_spec->GetFormattedResources();
     for (const auto &[resource, val] : resources) {
       commited_resources.emplace(resource, val);
     }
