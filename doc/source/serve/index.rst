@@ -212,7 +212,7 @@ If you plan on running on multiple machines, Ray Serve will serve you well!
 What's next?
 ============
 
-Check out the :ref:`end_to_end_model_deployment_tutorial` and :doc:`core-apis`, look at the :ref:`serve-faq`,
+Check out the :ref:`end_to_end_tutorial` and :doc:`core-apis`, look at the :ref:`serve-faq`,
 or head over to the :doc:`tutorials/index` to get started building your Ray Serve applications.
 
 For more, see the following blog posts about Ray Serve:

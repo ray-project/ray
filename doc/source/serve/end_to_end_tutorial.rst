@@ -1,4 +1,4 @@
-.. _end_to_end_model_deployment_tutorial:
+.. _end_to_end_tutorial:
 
 ===================
 End-to-End Tutorial
