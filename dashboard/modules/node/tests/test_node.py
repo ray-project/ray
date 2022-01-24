@@ -168,11 +168,11 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
         summary = latest_memory_table["summary"]
         # 1 ref per handle and per object the actor has a ref to
         assert summary["totalActorHandles"] == len(actors) * 2
-        # 1 ref for my_obj
-        assert summary["totalLocalRefCount"] == 1
+        # 1 ref for my_obj. 2 refs for self.obj_ref for each actor.
+        assert summary["totalLocalRefCount"] == 3
 
-    wait_until_succeeded_without_exception(
-        check_mem_table, (AssertionError, ), timeout_ms=1000)
+    assert wait_until_succeeded_without_exception(
+        check_mem_table, (AssertionError, ), timeout_ms=10000)
 
 
 def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
@@ -487,59 +487,6 @@ def test_logs_max_count(enable_test_module, disable_aiohttp_cache,
 
     assert wait_until_succeeded_without_exception(
         check_logs, (AssertionError, ), timeout_ms=10000)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "include_dashboard": True
-    }], indirect=True)
-def test_errors(enable_test_module, disable_aiohttp_cache,
-                ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    assert (wait_until_server_available(cluster.webui_url) is True)
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-    node_ip = nodes[0]["NodeManagerAddress"]
-
-    @ray.remote
-    class ErrorActor():
-        def go(self):
-            raise ValueError("This is an error")
-
-        def get_pid(self):
-            return os.getpid()
-
-    ea = ErrorActor.remote()
-    ea_pid = ea.get_pid.remote()
-    ea.go.remote()
-
-    def check_errs():
-        node_errs_response = requests.get(
-            f"{webui_url}/node_logs", params={"ip": node_ip})
-        node_errs_response.raise_for_status()
-        node_errs = node_errs_response.json()
-        assert node_errs["result"]
-        assert "errors" in node_errs["data"]
-        assert type(node_errs["data"]["errors"]) is dict
-        assert ea_pid in node_errs["data"]["errors"]
-        assert len(node_errs["data"]["errors"][ea_pid]) == 1
-
-        actor_err_response = requests.get(
-            f"{webui_url}/node_logs",
-            params={
-                "ip": node_ip,
-                "pid": str(ea_pid)
-            })
-        actor_err_response.raise_for_status()
-        actor_errs = actor_err_response.json()
-        assert actor_errs["result"]
-        assert type(actor_errs["data"]["errors"]) is dict
-        assert len(actor_errs["data"]["errors"][ea_pid]) == 4
-
-    wait_until_succeeded_without_exception(
-        check_errs, (AssertionError, ), timeout_ms=1000)
 
 
 if __name__ == "__main__":
