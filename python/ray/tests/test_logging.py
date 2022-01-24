@@ -333,8 +333,19 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
     # Make sure that the expected startup log records for each of the
     # components appears in the stderr stream.
     # stderr = capfd.readouterr().err
-    for s in log_components.values():
-        assert s in stderr, stderr
+    for component, canonical_record in log_components.items():
+        if not canonical_record:
+            # Process not run or doesn't generate logs; skip.
+            continue
+        assert canonical_record in stderr, stderr
+        if component == ray_constants.PROCESS_TYPE_REDIS_SERVER:
+            # Redis doesn't expose hooks for custom log formats, so we aren't able to
+            # inject the Redis server component name into the log records.
+            continue
+        # NOTE: We do a prefix match instead of including the enclosing right
+        # parentheses since some components, like the core driver and worker, add a
+        # unique ID suffix.
+        assert f"({component}" in stderr, stderr
 
 
 def test_segfault_stack_trace(ray_start_cluster, capsys):

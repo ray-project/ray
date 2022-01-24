@@ -179,6 +179,13 @@ LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
+# Logging format when logging stderr. This should be formatted with the
+# component before setting the formatter, e.g. via
+#   format = LOGGER_FORMAT_STDERR.format(component="dashboard")
+#   handler.setFormatter(logging.Formatter(format))
+LOGGER_FORMAT_STDERR = (
+    "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
+)
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
