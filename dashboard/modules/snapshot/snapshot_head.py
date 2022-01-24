@@ -11,6 +11,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.dashboard.modules.job.common import (
     JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY)
@@ -18,7 +19,7 @@ from ray.dashboard.modules.job.common import (
 import json
 import aiohttp.web
 
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -39,7 +40,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         force_kill = req.query.get("force_kill", False) in ("true", "True")
         no_restart = req.query.get("no_restart", False) in ("true", "True")
         if not actor_id:
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=False, message="actor_id is required.")
 
         request = gcs_service_pb2.KillActorViaGcsRequest()
@@ -52,7 +53,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                    f"Requested actor with id {actor_id} to terminate. " +
                    "It will exit once running tasks complete")
 
-        return dashboard_utils.rest_response(success=True, message=message)
+        return dashboard_optional_utils.rest_response(
+            success=True, message=message)
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
@@ -67,7 +69,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             "ray_version": ray.__version__,
             "ray_commit": ray.__commit__
         }
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
 
     def _get_job_status(self,

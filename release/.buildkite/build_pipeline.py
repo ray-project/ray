@@ -132,6 +132,7 @@ CORE_DAILY_TESTS = {
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
         "many_nodes_actor_test",
