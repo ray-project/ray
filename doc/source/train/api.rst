@@ -86,6 +86,32 @@ MLflowLoggerCallback
 
 .. autoclass:: ray.train.callbacks.MLflowLoggerCallback
 
+ResultsPreprocessors
+~~~~~~~~~~~~~~~~~~~~
+
+.. _train-api-results-preprocessor:
+
+ResultsPreprocessor
++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ResultsPreprocessor
+    :members:
+
+SequentialResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.SequentialResultsPreprocessor
+
+IndexedResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.IndexedResultsPreprocessor
+
+ExcludedKeysResultsPreprocessor
++++++++++++++++++++++++++++++++
+
+.. autoclass:: ray.train.callbacks.results_preprocessors.ExcludedKeysResultsPreprocessor
+
 Checkpointing
 -------------
 

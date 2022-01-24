@@ -12,7 +12,8 @@ except ImportError:
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioActorSubscriber
 import ray._private.gcs_utils as gcs_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.utils import rest_response
+import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.modules.actor import actor_consts
 from ray.dashboard.modules.actor.actor_utils import \
     actor_classname_from_task_spec
@@ -24,7 +25,7 @@ from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 def actor_table_data_to_dict(message):
@@ -144,9 +145,11 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             while True:
                 try:
                     actor_id, actor_table_data = await subscriber.poll()
-                    # Convert to lower case hex ID.
-                    actor_id = actor_id.hex()
-                    process_actor_data_from_pubsub(actor_id, actor_table_data)
+                    if actor_id is not None:
+                        # Convert to lower case hex ID.
+                        actor_id = actor_id.hex()
+                        process_actor_data_from_pubsub(actor_id,
+                                                       actor_table_data)
                 except Exception:
                     logger.exception("Error processing actor info from GCS.")
 
@@ -186,9 +189,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             actor_groups=actor_groups)
 
     @routes.get("/logical/actors")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="All actors fetched.",
             actors=DataSource.actors)
