@@ -136,11 +136,12 @@ pub fn load_libraries_from_paths(paths: &Vec<&str>) {
 fn load_function_ptrs_from_library(lib: &Library) {
     let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
     for fn_name in GLOBAL_FUNCTION_NAMES_SET.lock().unwrap().iter() {
+        let fn_str = fn_name.to_str().unwrap();
         let ret = unsafe {
-                lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
+                lib.get::<InvokerFunction>(fn_str.as_bytes()).ok()
         };
         if let Some(symbol) = ret {
-            ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), symbol);
+            ray_info!("Loaded function {} as {:?}", fn_str, symbol);
             let static_symbol = unsafe {
                 std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
             };
@@ -186,22 +187,22 @@ pub extern "C" fn rust_worker_execute(
             CString::from_raw(*(ray_function_info.data as *mut *mut std::os::raw::c_char))
         }
     );
+    let fn_str = fn_name.to_str().unwrap();
     // Check if we get a cache hit
     let libs = LIBRARIES.lock().unwrap();
     let mut fn_map = GLOBAL_FUNCTION_MAP.lock().unwrap();
 
     let mut ret_ref = fn_map.get(fn_name.deref());
-    // Check if we can get fn from available libraries
 
     // TODO(jon-chuang): figure out if you can narrow search
     // by mapping library name to function crate name...
     if let None = ret_ref {
         for lib in libs.iter() {
             let ret = unsafe {
-                    lib.get::<InvokerFunction>(fn_name.to_str().unwrap().as_bytes()).ok()
+                    lib.get::<InvokerFunction>(fn_str.as_bytes()).ok()
             };
             if let Some(symbol) = ret {
-                ray_info!("Loaded function {} as {:?}", fn_name.to_str().unwrap(), symbol);
+                ray_info!("Loaded function {} as {:?}", fn_str, symbol);
                 let static_symbol = unsafe {
                     std::mem::transmute::<Symbol<_, >, Symbol<'static, InvokerFunction>>(symbol)
                 };
@@ -210,12 +211,12 @@ pub extern "C" fn rust_worker_execute(
             }
         }
     } else {
-        ray_info!("Using cached library symbol for {}: {:?}", fn_name.to_str().unwrap(), ret_ref);
+        ray_info!("Using cached library symbol for {}: {:?}", fn_str, ret_ref);
     }
-    let func = ret_ref.expect(&format!("Could not find symbol for fn of name {}", fn_name.to_str().unwrap()));
-    ray_info!("Executing: {}", fn_name.to_str().unwrap());
+    let func = ret_ref.expect(&format!("Could not find symbol for fn of name {}", fn_str));
+    ray_info!("Executing: {}", fn_str);
     let ret = func(args_buffer);
-    ray_info!("Executed: {}", fn_name.to_str().unwrap());
+    ray_info!("Executed: {}", fn_str);
 
     let ret_owned = std::mem::ManuallyDrop::new(ret.destroy_into_vec());
 

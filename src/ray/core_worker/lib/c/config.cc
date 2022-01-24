@@ -37,8 +37,8 @@ static bool absl_flags_usage_set_ = false;
 
 void InitOptions(Config* config,
                 ray::core::CoreWorkerOptions* options,
-                std::string code_search_path,
-                std::string head_args,
+                const std::string code_search_path,
+                const std::string head_args,
                 int argc, char **argv) {
   // if (!code_search_path.empty()) {
   //   code_search_path = config->code_search_path;

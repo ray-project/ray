@@ -1,6 +1,7 @@
 use crate::*;
 use paste::paste;
 
+// Not necessary, now auto-registered...
 // ray::register!(add_two_vecs);
 // ray::register!(add_three_vecs);
 //
@@ -50,7 +51,7 @@ macro_rules! impl_ray_function {
                     )*
                     ObjectRef::new(
                         // TODO: make RayFunction generic
-                        ray_rs_sys::internal::submit(self.actor_id, self.ffi_lookup_name.clone(), &task_args)
+                        ray_rs_sys::internal::submit(self.actor_id.as_ref(), self.ffi_lookup_name.clone(), &task_args)
                     )
                 }
 
@@ -200,10 +201,10 @@ pub fn get<R: serde::de::DeserializeOwned>(id: &ObjectRef<R>) -> R {
     rmp_serde::from_read_ref::<_, R>(buf).unwrap()
 }
 
-#[macro_export]
-macro_rules! remote_actor {
-
-}
+// #[macro_export]
+// macro_rules! remote_actor {
+//
+// }
 
 // pub fn put<I: serde::Serialize, B: std::borrow::Borrow<I>>(input: B) -> UniquePtr<ray_api_ffi::ObjectID> {
 //     let result = rmp_serde::to_vec(input.borrow()).unwrap();

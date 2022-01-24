@@ -27,7 +27,7 @@ static ray::core::CoreWorkerOptions stored_worker_options;
 static Config stored_config;
 }
 
-int c_worker_RegisterExecutionCallback(c_worker_ExecuteCallback callback) {
+int c_worker_RegisterExecutionCallback(const c_worker_ExecuteCallback callback) {
     c_worker_execute = callback;
     return 1;
 }
@@ -79,7 +79,7 @@ RAY_EXPORT void c_worker_Log(const char *msg) {
 }
 
 RAY_EXPORT void c_worker_InitConfig(int workerMode, int language, int num_workers,
-                                    char *code_search_path, char *head_args,
+                                    const char *code_search_path, const char *head_args,
                                     int argc, char** argv) {
   stored_worker_options.worker_type = static_cast<ray::core::WorkerType>(workerMode);
   stored_worker_options.language = static_cast<ray::Language>(language);
@@ -311,8 +311,8 @@ RAY_EXPORT void c_worker_Run() {
 // }
 
 // TODO: maybe make this
-RAY_EXPORT int c_worker_CreateActor(char *type_name, char **result) {
-  std::vector<std::string> function_descriptor_list = {type_name};
+RAY_EXPORT int c_worker_CreateActor(const char *create_fn_name, char **result) {
+  std::vector<std::string> function_descriptor_list = {create_fn_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::RUST,
                                                  function_descriptor_list);
@@ -351,7 +351,7 @@ RAY_EXPORT int c_worker_CreateActor(char *type_name, char **result) {
       /*extension_data*/ "", &actor_id);
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to create actor:" << status.message()
-                   << " for:" << type_name;
+                   << " for:" << create_fn_name;
     return 0;
   }
   // For buffer overflow safety, the ActorID proto def needs to be consistent
@@ -389,8 +389,8 @@ inline std::shared_ptr<ray::RayObject> DataValueToRayObjectOwned(const DataValue
 //
 // TODO: return protobuf/.. ReturnObject instead? And generally, protobuf types...?
 RAY_EXPORT int c_worker_SubmitTask(int task_type, /*optional*/ const char *actor_id,
-                                   const char *method_name, bool *input_is_ref,
-                                   const DataValue* const input_values[], char **input_refs,
+                                   const char *method_name, const bool *input_is_ref,
+                                   const DataValue* const input_values[], const char **input_refs,
                                    int num_input_value,
                                    int num_returns, char **object_ids) {
   std::vector<std::string> function_descriptor_list = { method_name };
@@ -508,9 +508,9 @@ RAY_EXPORT int c_worker_Get(const char* const object_ids[], int object_ids_size,
   return 0;
 }
 
-RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, DataValue **objects, int objects_size) {
+RAY_EXPORT int c_worker_Put(char **object_ids, int timeout, const DataValue **objects, int objects_size) {
   ObjectID object_id;
-  DataValue* data = objects[0];
+  const DataValue* data = objects[0];
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       // This cast is safe as we are copying the data...
       (uint8_t *)(data->data->p), data->data->size, true);

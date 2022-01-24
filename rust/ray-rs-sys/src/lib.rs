@@ -161,7 +161,7 @@ pub mod util {
 pub mod internal {
     use super::*;
     // One can use Vec<&'a[u8]> in the function signature instead since SubmitTask is synchronous?
-    pub fn submit<'a>(maybe_actor_id: Option<ActorID>, fn_name: CString, args: &[&[u8]]) -> ObjectID {
+    pub fn submit<'a>(maybe_actor_id: Option<&ActorID>, fn_name: CString, args: &[&[u8]]) -> ObjectID {
         unsafe {
             // Create data
             let mut meta_vec = vec![0u8];
@@ -193,7 +193,7 @@ pub mod internal {
                 fn_name.as_ptr(),
                 is_refs.as_mut_ptr(),
                 data.as_ptr(),
-                std::ptr::null_mut::<*mut c_char>(),
+                std::ptr::null_mut::<*const c_char>(),
                 data.len() as i32,
                 1,
                 obj_ids.as_mut_ptr()
@@ -235,30 +235,36 @@ pub mod internal {
         let mut data = args
             .iter()
             .map(|data_vec| {
-                c_worker_AllocateDataValue(
-                    // Why is this a void pointer, not a void/char ptr?
-                    (*data_vec).as_ptr(),
-                    data_vec.len() as u64,
-                    std::ptr::null(),
-                    0u64,
-                )
+                unsafe {
+                    c_worker_AllocateDataValue(
+                        // Why is this a void pointer, not a void/char ptr?
+                        (*data_vec).as_ptr(),
+                        data_vec.len() as u64,
+                        std::ptr::null(),
+                        0u64,
+                    )
+                }
             })
             .collect::<Vec<*const DataValue>>();
 
         let mut actor_ids = vec![std::ptr::null_mut()];
         let mut is_refs = vec![false; args.len()];
 
-        c_worker_CreateActor(
-            fn_name.as_ptr(),
-            // is_refs.as_mut_ptr(),
-            // data.as_ptr(),
-            // std::ptr::null_mut::<*mut c_char>(),
-            // data.len() as i32,
-            actor_ids.as_mut_ptr()
-        );
+        unsafe {
+            c_worker_CreateActor(
+                fn_name.as_ptr(),
+                // is_refs.as_mut_ptr(),
+                // data.as_ptr(),
+                // std::ptr::null_mut::<*mut c_char>(),
+                // data.len() as i32,
+                actor_ids.as_mut_ptr()
+            );
+        }
 
         for &dv in data.iter() {
-            c_worker_DeallocateDataValue(dv);
+            unsafe {
+                c_worker_DeallocateDataValue(dv);
+            }
         }
 
         let id = ActorID::new(actor_ids[0]);
@@ -350,8 +356,8 @@ pub mod test {
             obj_ids.push(std::ptr::null_mut() as *mut c_char);
 
             c_worker_Put(
-                obj_ids.as_mut_ptr() as *mut *mut c_char,
-                -1, data.as_mut_ptr() as *mut *mut DataValue, data.len() as i32,
+                obj_ids.as_mut_ptr(),
+                -1, data.as_mut_ptr(), data.len() as i32,
             );
 
             let id = ObjectID::new(obj_ids[0]);
