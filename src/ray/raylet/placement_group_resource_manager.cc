@@ -143,16 +143,20 @@ void NewPlacementGroupResourceManager::CommitBundle(
                                                              {resource.second});
     }
   }
-  cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
-  update_resources_(
-      cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
 }
 
 void NewPlacementGroupResourceManager::CommitBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
+  absl::flat_hash_map<std::string, double> commited_resources;
   for (const auto &bundle_spec : bundle_specs) {
     CommitBundle(*bundle_spec);
+    const auto &resources = bundle_spec.GetFormattedResources();
+    for (const auto &[resource, val] : resources) {
+      commited_resources.emplace(resource, val);
+    }
   }
+  update_resources_(cluster_resource_scheduler_->GetResourceTotals(
+      /*resource_name_filter*/ commited_resources));
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(
