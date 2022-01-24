@@ -652,8 +652,7 @@ def get_log_sources(subscriber,
                     matcher=None):
     """Get the source of all log messages"""
     msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
-    print(msgs)
-    return set(msg["pid"] for msg in msgs)
+    return {msg["pid"] for msg in msgs}
 
 
 def get_log_batch(subscriber,
