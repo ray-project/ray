@@ -11,7 +11,7 @@ from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray._private.utils import get_directory_size
+from ray._private.utils import get_directory_size_bytes
 from ray._private.test_utils import (wait_for_condition, chdir,
                                      check_local_files_gced)
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
@@ -451,7 +451,7 @@ class TestGC:
             for node in cluster.list_all_nodes():
                 local_dir = os.path.join(node.get_runtime_env_dir_path(),
                                          "working_dir_files")
-                assert 3 < get_directory_size(local_dir) / (1024**2) < 5
+                assert 3 < get_directory_size_bytes(local_dir) / (1024**2) < 5
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

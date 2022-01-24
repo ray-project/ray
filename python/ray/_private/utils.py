@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any
+from typing import Optional, Sequence, Tuple, Any, Union
 import uuid
 import grpc
 import warnings
@@ -1158,14 +1158,14 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
-def get_directory_size(path="."):
-    """Get the total size of a directory, including subdirectories."""
-    total_size = 0
+def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
+    """Get the total size of a directory in bytes, including subdirectories."""
+    total_size_bytes = 0
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            # skip if it is symbolic link
+            # skip if it is a symbolic link
             if not os.path.islink(fp):
-                total_size += os.path.getsize(fp)
+                total_size_bytes += os.path.getsize(fp)
 
-    return total_size
+    return total_size_bytes
