@@ -74,7 +74,7 @@ message PythonRuntimeEnv {
   /// - A zip file in an external storage: it will be unpacked and added to the
   /// PYTHONPATH.
   ///   - Example: `http://example.com/my_module.zip`.
-  repeated string dependent_modules = 1;
+  repeated string py_modules = 1;
   /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
   oneof python_runtime_env {
     /// Only set when PipRuntimeEnv is used.
