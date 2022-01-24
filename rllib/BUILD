@@ -775,6 +775,14 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
+# SlateQTrainer
+py_test(
+    name = "test_slateq",
+    tags = ["team:ml", "trainers_dir"],
+    size = "small",
+    srcs = ["agents/dqn/tests/test_slateq.py"]
+)
+
 # TD3Trainer
 py_test(
     name = "test_td3",
