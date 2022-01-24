@@ -182,9 +182,9 @@ pub mod internal {
             let mut is_refs = vec![false; args.len()];
 
             let (actor_id_ptr, task_type) = if let Some(id) = maybe_actor_id {
-                (id.as_ptr(), proto::TaskType::NORMAL_TASK)
+                (id.as_ptr(), proto::TaskType::ACTOR_TASK)
             } else {
-                (std::ptr::null(), proto::TaskType::ACTOR_TASK)
+                (std::ptr::null(), proto::TaskType::NORMAL_TASK)
             };
 
             c_worker_SubmitTask(

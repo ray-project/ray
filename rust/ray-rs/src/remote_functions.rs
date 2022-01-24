@@ -16,7 +16,6 @@ macro_rules! impl_ray_function {
                 raw_fn: fn($($argty),*) -> R,
                 wrapped_fn: InvokerFunction,
                 ffi_lookup_name: CString,
-                actor_id: Option<ActorID>,
             }
 
             // Have this be $argpBorrow: Borrow<argp> instead
@@ -26,9 +25,8 @@ macro_rules! impl_ray_function {
                     raw_fn: fn($($argty),*) -> R,
                     wrapped_fn: InvokerFunction,
                     ffi_lookup_name: CString,
-                    actor_id: Option<ActorID>,
                 ) -> Self {
-                    Self { raw_fn, wrapped_fn, ffi_lookup_name, actor_id }
+                    Self { raw_fn, wrapped_fn, ffi_lookup_name }
                 }
 
                 pub fn name<'a>(&'a self) -> &'a str {
@@ -44,14 +42,22 @@ macro_rules! impl_ray_function {
                     $($arg: [<$argp Borrow>]),*
                 ) -> ObjectRef<R>
                 {
+                    self.remote_with_actor(None, $($arg,)*)
+                }
+
+                pub fn remote_with_actor<$([<$argp Borrow>]: std::borrow::Borrow<$argp>),*>(
+                    &self,
+                    maybe_actor_id: Option<&ActorID>,
+                    $($arg: [<$argp Borrow>]),*
+                ) -> ObjectRef<R>
+                {
                     let mut task_args = Vec::new();
                     $(
                         let result = rmp_serde::to_vec($arg.borrow()).unwrap();
                         task_args.push(result.as_slice());
                     )*
                     ObjectRef::new(
-                        // TODO: make RayFunction generic
-                        ray_rs_sys::internal::submit(self.actor_id.as_ref(), self.ffi_lookup_name.clone(), &task_args)
+                        ray_rs_sys::internal::submit(maybe_actor_id, self.ffi_lookup_name.clone(), &task_args)
                     )
                 }
 
@@ -149,8 +155,7 @@ macro_rules! remote_internal {
                 RustBuffer::from_vec(result)
             }
 
-            #[allow(non_upper_case_globals)]
-            {
+            // #[allow(non_upper_case_globals)]
                 lazy_static! {
                     pub static ref $name: [<RayFunction $lit_n>]<$($argty,)* $ret>
                         = [<RayFunction $lit_n>]::new(
@@ -163,10 +168,8 @@ macro_rules! remote_internal {
                                 // Else, one could also reasonably mangle for Ray namespace using a random string...
                                 stringify!([<ray_rust_ffi_ $name>])
                             ).unwrap(),
-                            /*actor_id=*/ None,
                         );
                 }
-            }
 
 
             // Run this function before main
