@@ -29,7 +29,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 2. Fork and clone the project to your machine. Connect your repository to the upstream (main project) ray repository.
 
-.. note:: If you are using SSH for your github development (which is a good practice), you need to use `git clone git@github.com:[your username]/ray.git` as the first line below.
+.. note:: If you are using SSH for your github development (which is a good practice), you need to use ``git clone git@github.com:[your username]/ray.git`` as the first line below.
 
 .. code-block:: shell
 
