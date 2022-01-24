@@ -4,6 +4,7 @@ import os
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.utils import add_mixins
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
@@ -84,6 +85,9 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         print(f"Setting the path for recording to {path_}")
         wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
             else wrappers.Monitor
+        if isinstance(env, MultiAgentEnv):
+            wrapper_cls = add_mixins(
+                wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
             path_,
