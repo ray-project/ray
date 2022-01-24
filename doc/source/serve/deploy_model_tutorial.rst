@@ -383,10 +383,10 @@ and Python web servers, be sure to check out :doc:`tutorials/index`.
 
 .. rubric:: Footnotes
 
-.. #f1 The article text comes from the New York Times article "Astronauts
+.. [#f1] The article text comes from the New York Times article "Astronauts
    Land on Plain; Collect Rocks, Plant Flag" archived
    `here <https://archive.nytimes.com/www.nytimes.com/library/national/science/nasa/072169sci-nasa.html>`_.
 
-.. #f2 `Starlette <https://www.starlette.io/>`_ is a web server framework
+.. [#f2] `Starlette <https://www.starlette.io/>`_ is a web server framework
    used by Ray Serve. Its `Request <https://www.starlette.io/requests/>`_ class
    provides a nice interface for incoming HTTP requests.
