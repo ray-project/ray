@@ -827,6 +827,12 @@ def stop(force):
             corpus = (proc_cmd
                       if filter_by_cmd else subprocess.list2cmdline(proc_args))
             if keyword in corpus:
+                # This is a way to avoid killing redis server that's not started by Ray.
+                # We are using a simple hacky solution here since
+                # Redis server will anyway removed soon from the ray repository.
+                if (keyword == "redis-server"
+                        and "core/src/ray/thirdparty/redis/src/redis-server" not in corpus): # noqa
+                    continue
                 found.append(candidate)
 
         for proc, proc_cmd, proc_args in found:
