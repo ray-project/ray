@@ -831,7 +831,8 @@ def stop(force):
                 # We are using a simple hacky solution here since
                 # Redis server will anyway removed soon from the ray repository.
                 if (keyword == "redis-server"
-                        and "core/src/ray/thirdparty/redis/src/redis-server" not in corpus): # noqa
+                        and "core/src/ray/thirdparty/redis/src/redis-server"
+                        not in corpus):
                     continue
                 found.append(candidate)
 
