@@ -155,6 +155,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void DeleteResource(const std::string &node_name,
                       const std::string &resource_name) override;
 
+  /// Check whether the specific resource exists or not in local node.
+  ///
+  /// \param resource_name: the specific resource name.
+  ///
+  /// \return true, if exist. otherwise, false.
+  bool ResourcesExist(const std::string &resource_name);
+
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const { return local_resources_; };
 

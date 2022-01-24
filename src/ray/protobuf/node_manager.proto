@@ -51,6 +51,18 @@ message RequestWorkerLeaseRequest {
 }
 
 message RequestWorkerLeaseReply {
+  enum SchedulingFailureType {
+    // Scheduling is failed on this node.
+    SCHEDULING_FAILED = 0;
+    // Scheduling is cancelled because task/actor's placement is removed.
+    SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 1;
+    // Scheduling is cancelled because task/actor's runtime environment setup is failed
+    SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 2;
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
+    // ray.kill or ray.cancel
+    SCHEDULING_CANCELLED_INTENDED = 3;
+  }
+
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.
   Address worker_address = 1;
@@ -61,15 +73,14 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
-  // Whether creating the runtime environment for this lease request failed.
-  // If this is true, the corresponding task should be failed by the client.
-  bool runtime_env_setup_failed = 5;
   // PID of the worker process.
   uint32 worker_pid = 6;
   // Whether the request was rejected because of insufficient resources.
   bool rejected = 7;
   // The (normal task) resources data to be carried by the Reply.
   ResourcesData resources_data = 8;
+  // Scheduling failure type.
+  SchedulingFailureType failure_type = 9;
 }
 
 message PrepareBundleResourcesRequest {
