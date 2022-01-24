@@ -12,8 +12,7 @@ Defining Concurrency Groups
 
 You can define concurrency groups for asyncio actors using the ``concurrency_groups`` decorator argument:
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     This defines two concurrency groups, "io" with max_concurrency=2 and
     "compute" with max_concurrency=4.  The methods ``f1`` and ``f2`` are
@@ -63,8 +62,7 @@ Default Concurrency Group
 By default, methods are placed in a default concurrency group which has a concurrency limit of 1000.
 The concurrency of the default group can be changed by setting the ``max_concurrency`` actor option.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     The following AsyncIOActor has 2 concurrency groups: "io" and "default".
     The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
@@ -86,8 +84,7 @@ Setting the Concurrency Group at Runtime
 
 You can also dispatch actor methods into a specific concurrency group at runtime using the ``.options`` method:
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     The following snippet demonstrates setting the concurrency group of the
     ``f2`` method dynamically at runtime.
