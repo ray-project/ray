@@ -388,9 +388,9 @@ class TestGC:
         @ray.remote
         class A:
             def test_import(self):
-                import test_module
+             RAY_RUNTIME_ENV_SKIP_LOCAL_GC
                 test_module.one()
-
+RAY_RUNTIME_ENV_SKIP_LOCAL_GC
         a = A.options(name="test", lifetime="detached").remote()
         ray.get(a.test_import.remote())
 
