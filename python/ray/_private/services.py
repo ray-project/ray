@@ -1309,12 +1309,8 @@ def start_dashboard(require_dashboard,
                     raise e
 
         # Make sure the process can start.
-        if not ray._private.utils.check_dashboard_dependencies_installed():
-            if require_dashboard:
-                logger.exception("dashboard dependency error")
-                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
-            else:
-                return None, None
+        minimal = (
+            not ray._private.utils.check_dashboard_dependencies_installed())
 
         # Start the dashboard process.
         dashboard_dir = "dashboard"
@@ -1327,7 +1323,7 @@ def start_dashboard(require_dashboard,
             f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}"
+            f"--gcs-address={gcs_address}",
         ]
 
         if redirect_logging:
@@ -1345,6 +1341,9 @@ def start_dashboard(require_dashboard,
             # Inherit stdout/stderr streams.
             stdout_file = None
             stderr_file = None
+        if minimal:
+            command.append("--minimal")
+
         if redis_password is not None:
             command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
@@ -1407,9 +1406,11 @@ def start_dashboard(require_dashboard,
             else:
                 raise Exception(err_msg)
 
-        logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
-                    colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-                    colorama.Fore.RESET, colorama.Style.NORMAL)
+        if not minimal:
+            logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
+                        colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                        dashboard_url, colorama.Fore.RESET,
+                        colorama.Style.NORMAL)
 
         return dashboard_url, process_info
     except Exception as e:
@@ -1417,6 +1418,7 @@ def start_dashboard(require_dashboard,
             raise e from e
         else:
             logger.error(f"Failed to start the dashboard: {e}")
+            logger.exception(e)
             return None, None
 
 
