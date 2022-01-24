@@ -78,7 +78,7 @@ Take a look at any of the below tutorials to get started with Tune.
 .. customgalleryitem::
     :tooltip: Use Comet with Ray Tune.
     :figure: /images/comet_logo_full.png
-    :description: :doc:`Log and analyze your Tune trial runs Comet's Experiment Management Tools <tune-comet>`
+    :description: :doc:`Log and analyze your Tune trial runs with Comet's Experiment Management Tools <tune-comet>`
 
 
 .. raw:: html
