@@ -520,7 +520,8 @@ def test_immutable_types():
         immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
+    json_str = json.dumps(
+        immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
     assert type(deserialized_immutable_dict) == dict
     assert type(deserialized_immutable_dict["list"]) == list

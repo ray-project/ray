@@ -19,7 +19,7 @@ from ray.dashboard.modules.job.common import (
 import json
 import aiohttp.web
 
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):

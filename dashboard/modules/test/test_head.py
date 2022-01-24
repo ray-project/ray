@@ -11,7 +11,7 @@ from ray.dashboard.datacenter import DataSource
 from ray.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 @dashboard_utils.dashboard_module(

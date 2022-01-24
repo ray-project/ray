@@ -166,7 +166,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 success=False, message=f"Unknown view {view}")
 
     @routes.get("/nodes/{node_id}")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)

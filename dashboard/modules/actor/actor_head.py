@@ -191,7 +191,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="All actors fetched.",
             actors=DataSource.actors)
