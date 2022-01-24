@@ -1102,8 +1102,10 @@ def get_and_run_node_killer(node_kill_interval_s,
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
 
 
 def check_local_files_gced(cluster):
