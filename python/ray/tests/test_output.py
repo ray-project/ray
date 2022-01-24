@@ -12,7 +12,6 @@ from ray._private.test_utils import (run_string_as_driver_nonblocking,
                                      run_string_as_driver)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_autoscaler_infeasible():
     script = """
 import ray
