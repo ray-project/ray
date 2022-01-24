@@ -2574,6 +2574,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/recommender_system_with_recsim_and_slateq",
+    main = "examples/recommender_system_with_recsim_and_slateq.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
+    args = ["--as-test", ""],
+)
+
+py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",
     main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["team:ml", "examples", "examples_R"],
