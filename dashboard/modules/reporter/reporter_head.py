@@ -169,5 +169,5 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                                      "from reporter agent.")
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

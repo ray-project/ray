@@ -255,5 +255,5 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             self, server)
 
     @staticmethod
-    def is_optional():
-        return False
+    def is_minimal_module():
+        return True

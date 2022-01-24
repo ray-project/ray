@@ -19,8 +19,8 @@ class TestAgent(dashboard_utils.DashboardAgentModule):
         super().__init__(dashboard_agent)
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False
 
     @routes.get("/test/http_get_from_agent")
     async def get_url(self, req) -> aiohttp.web.Response:

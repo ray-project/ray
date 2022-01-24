@@ -91,5 +91,5 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         await self.report_events()
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

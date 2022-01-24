@@ -344,5 +344,5 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                              self._update_error_info())
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

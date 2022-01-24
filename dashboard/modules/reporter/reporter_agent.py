@@ -591,5 +591,5 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         await self._perform_iteration(publish)
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

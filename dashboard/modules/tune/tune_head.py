@@ -232,5 +232,5 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         await self.collect()
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

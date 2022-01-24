@@ -232,5 +232,5 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         await asyncio.gather(self._update_actors())
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

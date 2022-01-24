@@ -31,8 +31,8 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             self._notified_agents[ip] = ports
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False
 
     @routes.get("/test/route_get")
     async def route_get(self, req) -> aiohttp.web.Response:

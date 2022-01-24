@@ -46,11 +46,11 @@ class DashboardAgentModule(abc.ABC):
 
     @staticmethod
     @abc.abstractclassmethod
-    def is_optional():
+    def is_minimal_module():
         """
-        Return True if the module is optional, meaning it requires additonal
-        dependencies that are not installed with the minimal ray
-        (e.g., `pip install ray` vs `pip install ray[default]`).
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additonal
+        dependencies.
         """
 
 
@@ -72,11 +72,11 @@ class DashboardHeadModule(abc.ABC):
 
     @staticmethod
     @abc.abstractclassmethod
-    def is_optional():
+    def is_minimal_module():
         """
-        Return True if the module is optional, meaning it requires additonal
-        dependencies that are not installed with the minimal ray
-        (e.g., `pip install ray` vs `pip install ray[default]`).
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additonal
+        dependencies.
         """
 
 
@@ -100,12 +100,9 @@ def get_all_modules(module_type):
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.dashboard.modules.__path__,
             ray.dashboard.modules.__name__ + "."):
-        try:
-            importlib.import_module(name)
-        except ModuleNotFoundError:
-            pass
+        importlib.import_module(name)
 
-    should_load_minimal_modules = (
+    should_only_load_minimal_modules = (
         not ray._private.utils.check_dashboard_dependencies_installed())
     imported_modules = []
     # module_type.__subclasses__() should contain modules that
@@ -113,7 +110,7 @@ def get_all_modules(module_type):
     for m in module_type.__subclasses__():
         if not getattr(m, "__ray_dashboard_module_enable__", True):
             continue
-        if should_load_minimal_modules and m.is_optional():
+        if should_only_load_minimal_modules and not m.is_minimal_module():
             continue
         imported_modules.append(m)
     logger.info(f"Available modules: {imported_modules}")

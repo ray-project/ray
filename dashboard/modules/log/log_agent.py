@@ -18,5 +18,5 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
         pass
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

@@ -214,5 +214,5 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 self._dashboard_head.aiogrpc_gcs_channel)
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

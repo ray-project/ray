@@ -96,5 +96,5 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         pass
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

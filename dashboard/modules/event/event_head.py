@@ -87,5 +87,5 @@ class EventHead(dashboard_utils.DashboardHeadModule,
             source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES)
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

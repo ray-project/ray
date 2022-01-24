@@ -241,5 +241,5 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._job_manager = JobManager()
 
     @staticmethod
-    def is_optional():
-        return True
+    def is_minimal_module():
+        return False

@@ -117,7 +117,6 @@ class DashboardAgent(object):
         modules = []
         agent_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardAgentModule)
-        logger.info(agent_cls_list)
         for cls in agent_cls_list:
             logger.info("Loading %s: %s",
                         dashboard_utils.DashboardAgentModule.__name__, cls)
