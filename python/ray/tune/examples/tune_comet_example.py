@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 """Examples logging Tune runs to comet.ml"""
+import comet_ml
+
 import argparse
 import numpy as np
+from unittest.mock import MagicMock
 
 from ray import tune
 from ray.tune.integration.comet import CometLoggerCallback
@@ -20,10 +23,9 @@ def tune_function(api_key=None, project_name=None):
         metric="loss",
         mode="min",
         callbacks=[
-            CometLoggerCallback(
-                api_key=api_key,
-                project_name=project_name,
-                tags=["comet_example"])
+            CometLoggerCallback(api_key=api_key,
+                                project_name=project_name,
+                                tags=["comet_example"])
         ],
         config={
             "mean": tune.grid_search([1, 2, 3]),
@@ -48,13 +50,20 @@ if __name__ == "__main__":
         "not passed in, experiment will be "
         "logger under 'Uncategorized "
         "Experiments'",
+        default="comet-ray-example",
     )
     parser.add_argument(
-        "--smoke-test",
+        "--mock-api",
         action="store_true",
         help="Finish fast and use mock "
         "API access.",
     )
     args, _ = parser.parse_known_args()
+
+    # Add mock api for testing
+    if args.mock_api:
+        CometLoggerCallback._logger_process_cls = MagicMock
+        comet_ml = MagicMock()
+        args.api_key = "abc"
 
     tune_function(args.api_key, args.project_name)
