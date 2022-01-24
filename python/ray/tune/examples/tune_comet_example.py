@@ -23,9 +23,10 @@ def tune_function(api_key=None, project_name=None):
         metric="loss",
         mode="min",
         callbacks=[
-            CometLoggerCallback(api_key=api_key,
-                                project_name=project_name,
-                                tags=["comet_example"])
+            CometLoggerCallback(
+                api_key=api_key,
+                project_name=project_name,
+                tags=["comet_example"])
         ],
         config={
             "mean": tune.grid_search([1, 2, 3]),
