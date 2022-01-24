@@ -1,9 +1,10 @@
 .. _ray-oss-list:
 
-Community Integrations
-======================
+Ecosystem
+=========
 
-This page lists libraries that have integrations with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
+This page lists libraries that have integrations with Ray for distributed execution.
+If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
 Ray also comes packaged with several libraries solving problems in the machine learning space:
 

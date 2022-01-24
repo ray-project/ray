@@ -106,3 +106,13 @@ img.horizontal-scroll {
     width: 150px;
     float: right;
 }
+
+.termynal-comment {
+    color: #4a968f;
+    font-style: italic;
+    display: block;
+}
+
+.termy [data-termynal] {
+    white-space: pre-wrap;
+}
