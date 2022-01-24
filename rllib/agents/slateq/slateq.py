@@ -23,7 +23,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -68,7 +68,7 @@ DEFAULT_CONFIG = with_common_config({
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 100000,  # Timesteps over which to anneal epsilon.
     },
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {
@@ -78,6 +78,8 @@ DEFAULT_CONFIG = with_common_config({
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
+    # Update the target network every `target_network_update_freq` steps.
+    "target_network_update_freq": 5000,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -85,7 +87,7 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
-        "capacity": 50000,
+        "capacity": 100000,
     },
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
@@ -100,9 +102,9 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Optimization ===
     # Learning rate for adam optimizer for the user choice model
-    "lr_choice_model": 1e-2,
+    "lr_choice_model": 1e-3,
     # Learning rate for adam optimizer for the q model
-    "lr_q_model": 1e-2,
+    "lr_q_model": 1e-3,
     # Adam epsilon hyper parameter
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
@@ -131,8 +133,6 @@ DEFAULT_CONFIG = with_common_config({
     # Learning method used by the slateq policy. Choose from: RANDOM,
     # MYOP (myopic), SARSA, QL (Q-Learning),
     "slateq_strategy": "QL",
-    # user/doc embedding size for the recsim environment
-    #"recsim_embedding_size": 20,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -204,7 +204,9 @@ class SlateQTrainer(Trainer):
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
         replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
-            .for_each(TrainOneStep(workers))
+            .for_each(TrainOneStep(workers)) \
+            .for_each(UpdateTargetNetwork(
+                workers, config["target_network_update_freq"]))
 
         if config["slateq_strategy"] != "RANDOM":
             # Alternate deterministically between (1) and (2). Only return the

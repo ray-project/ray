@@ -13,7 +13,8 @@ from ray.rllib.agents import slateq
 from ray.rllib.agents import dqn
 from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
 from ray.rllib.examples.env.recsim_recommender_system_envs import \
-    InterestEvolutionRecSimEnv, InterestExplorationRecSimEnv, LongTermSatisfactionRecSimEnv
+    InterestEvolutionRecSimEnv, InterestExplorationRecSimEnv, \
+    LongTermSatisfactionRecSimEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
 
@@ -22,8 +23,18 @@ parser.add_argument(
     "--run",
     type=str,
     default="SlateQ",
+    choices=["SlateQ", "DQN"],
     help=("Select agent policy. Choose from: DQN and SlateQ. "
           "Default value: SlateQ."),
+)
+parser.add_argument(
+    "--env",
+    type=str,
+    default="interest-evolution",
+    choices=[
+        "interest-evolution", "interest-exploration", "long-term-satisfaction"
+    ],
+    help=("Select the RecSim env to use."),
 )
 parser.add_argument(
     "--slateq-strategy",
@@ -53,16 +64,14 @@ parser.add_argument(
     type=int,
     default=2,
     help="The size of the slate to recommend (from out of "
-    "`--env-num-candidates` sampled docs) each timestep."
-)
+    "`--env-num-candidates` sampled docs) each timestep.")
 parser.add_argument(
     "--env-dont-resample-documents",
     action="store_true",
     help="Whether to NOT resample `--env-num-candidates` docs "
     "each timestep. If set, the env will only sample `--env-num-candidates`"
     " once at the beginning and the agent always has to pick "
-    "`--env-slate-size` docs from this sample."
-)
+    "`--env-slate-size` docs from this sample.")
 parser.add_argument("--env-seed", type=int, default=0)
 parser.add_argument("--num-gpus", type=float, default=0)
 parser.add_argument("--num-workers", type=int, default=0)
@@ -81,9 +90,6 @@ def main():
     args = parser.parse_args()
     ray.init(local_mode=args.local_mode)
 
-    if args.run not in ["DQN", "SlateQ"]:
-        raise ValueError(args.run)
-
     env_config = {
         "num_candidates": args.env_num_candidates,
         "resample_documents": not args.env_dont_resample_documents,
@@ -93,7 +99,10 @@ def main():
     }
 
     config = {
-        "env": InterestEvolutionRecSimEnv,
+        "env": (InterestEvolutionRecSimEnv if args.env == "interest-evolution"
+                else InterestExplorationRecSimEnv
+                if args.env == "interest-exploration" else
+                LongTermSatisfactionRecSimEnv),
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
@@ -101,8 +110,9 @@ def main():
         "lr_q_model": 0.003,
         "rollout_fragment_length": 4,
         "exploration_config": {
-            "epsilon_timesteps": 50000,
+            "epsilon_timesteps": 500000,
         },
+        "target_network_update_freq": 5000,
     }
 
     if args.use_tune:
@@ -114,25 +124,17 @@ def main():
 
         time_signature = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
         name = f"SlateQ/{args.run}-seed{args.env_seed}-{time_signature}"
-        if args.run == "DQN":
-            results = tune.run(
-                "DQN",
-                stop=stop,
-                name=name,
-                config=config,
-                num_samples=args.tune_num_samples,
-                verbose=2)
-        else:
+        if args.run == "SlateQ":
             config.update({
                 "slateq_strategy": args.slateq_strategy,
             })
-            results = tune.run(
-                "SlateQ",
-                stop=stop,
-                name=name,
-                config=config,
-                num_samples=args.tune_num_samples,
-                verbose=2)
+        results = tune.run(
+            args.run,
+            stop=stop,
+            name=name,
+            config=config,
+            num_samples=args.tune_num_samples,
+            verbose=2)
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)

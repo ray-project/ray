@@ -1,0 +1,211 @@
+from typing import Dict, List, Sequence, Tuple
+
+import gym
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
+
+torch, nn = try_import_torch()
+F = None
+if nn:
+    F = nn.functional
+
+
+class QValueModel(nn.Module):
+    """The Q-value model for SlateQ"""
+
+    def __init__(self, embedding_size: int, q_hiddens: Sequence[int]):
+        super().__init__()
+
+        # construct hidden layers
+        layers = []
+        ins = embedding_size
+        for n in q_hiddens:
+            layers.append(nn.Linear(ins, n))
+            layers.append(nn.LeakyReLU())
+            ins = n
+        layers.append(nn.Linear(ins, 1))
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, user: TensorType, doc: TensorType) -> TensorType:
+        """Evaluate the user-doc Q model
+
+        Args:
+            user (TensorType): User embedding of shape (batch_size,
+                embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
+                embedding_size).
+
+        Returns:
+            score (TensorType): q_values of shape (batch_size, num_docs + 1).
+        """
+        batch_size, num_docs, embedding_size = doc.shape
+        doc_flat = doc.view((batch_size * num_docs, embedding_size))
+        # No user features.
+        if user.shape[-1] == 0:
+            x = doc_flat
+        else:
+            user_repeated = user.repeat(num_docs, 1)
+            x = torch.cat([user_repeated, doc_flat], dim=1)
+        x = self.layers(x)
+        # Similar to Google's SlateQ implementation in RecSim, we force the
+        # Q-values to zeros if there are no clicks.
+        x_no_click = torch.zeros((batch_size, 1), device=x.device)
+        return torch.cat([x.view((batch_size, num_docs)), x_no_click], dim=1)
+
+
+class UserChoiceModel(nn.Module):
+    r"""The user choice model for SlateQ
+
+    This class implements a multinomial logit model for predicting user clicks.
+
+    Under this model, the click probability of a document is proportional to:
+
+    .. math::
+        \exp(\text{beta} * \text{doc_user_affinity} + \text{score_no_click})
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.beta = nn.Parameter(torch.tensor(0., dtype=torch.float))
+        self.score_no_click = nn.Parameter(torch.tensor(0., dtype=torch.float))
+
+    def forward(self, user: TensorType, doc: TensorType) -> TensorType:
+        """Evaluate the user choice model
+
+        This function outputs user click scores for candidate documents. The
+        exponentials of these scores are proportional user click probabilities.
+        Here we return the scores unnormalized because because only some of the
+        documents will be selected and shown to the user.
+
+        Args:
+            user (TensorType): User embeddings of shape (batch_size,
+                embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size, num_docs,
+                embedding_size).
+
+        Returns:
+            score (TensorType): logits of shape (batch_size, num_docs + 1),
+                where the last dimension represents no_click.
+        """
+        batch_size = user.shape[0]
+        s = torch.einsum("be,bde->bd", user, doc)
+        s = s * self.beta
+        s = torch.cat([s, self.score_no_click.expand((batch_size, 1))], dim=1)
+        return s
+
+
+class SlateQModel(TorchModelV2, nn.Module):
+    """The SlateQ model class
+
+    It includes both the user choice model and the Q-value model.
+    """
+
+    def __init__(
+            self,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            model_config: ModelConfigDict,
+            name: str,
+            *,
+            user_embedding_size: int,
+            doc_embedding_size: int,
+            q_hiddens: Sequence[int],
+    ):
+        nn.Module.__init__(self)
+        TorchModelV2.__init__(
+            self,
+            obs_space,
+            action_space,
+            # This required parameter (num_outputs) seems redundant: it has no
+            # real imact, and can be set arbitrarily. TODO: fix this.
+            num_outputs=0,
+            model_config=model_config,
+            name=name)
+        self.choice_model = UserChoiceModel()
+        self.q_model = QValueModel(user_embedding_size + doc_embedding_size,
+                                   q_hiddens)
+        self.slate_size = len(action_space.nvec)
+
+    def choose_slate(self, user: TensorType,
+                     doc: TensorType) -> Tuple[TensorType, TensorType]:
+        """Build a slate by selecting from candidate documents
+
+        Args:
+            user (TensorType): User embeddings of shape (batch_size,
+                embedding_size).
+            doc (TensorType): Doc embeddings of shape (batch_size,
+                num_docs, embedding_size).
+
+        Returns:
+            slate_selected (TensorType): Indices of documents selected for
+                the slate, with shape (batch_size, slate_size).
+            best_slate_q_value (TensorType): The Q-value of the selected slate,
+                with shape (batch_size).
+        """
+        # Step 1: compute item scores (proportional to click probabilities)
+        # raw_scores.shape=[batch_size, num_docs+1]
+        raw_scores = self.choice_model(user, doc)
+        # max_raw_scores.shape=[batch_size, 1]
+        max_raw_scores, _ = torch.max(raw_scores, dim=1, keepdim=True)
+        # deduct scores by max_scores to avoid value explosion
+        scores = torch.exp(raw_scores - max_raw_scores)
+        scores_doc = scores[:, :-1]  # shape=[batch_size, num_docs]
+        scores_no_click = scores[:, [-1]]  # shape=[batch_size, 1]
+
+        # Step 2: calculate the item-wise Q values
+        # q_values.shape=[batch_size, num_docs+1]
+        q_values = self.q_model(user, doc)
+        q_values_doc = q_values[:, :-1]  # shape=[batch_size, num_docs]
+        q_values_no_click = q_values[:, [-1]]  # shape=[batch_size, 1]
+
+        # Step 3: construct all possible slates
+        _, num_docs, _ = doc.shape
+        indices = torch.arange(num_docs, dtype=torch.long, device=doc.device)
+        # slates.shape = [num_slates, slate_size]
+        slates = torch.combinations(indices, r=self.slate_size)
+        num_slates, _ = slates.shape
+
+        # Step 4: calculate slate Q values
+        batch_size, _ = q_values_doc.shape
+        # slate_decomp_q_values.shape: [batch_size, num_slates, slate_size]
+        slate_decomp_q_values = torch.gather(
+            # input.shape: [batch_size, num_slates, num_docs]
+            input=q_values_doc.unsqueeze(1).expand(-1, num_slates, -1),
+            dim=2,
+            # index.shape: [batch_size, num_slates, slate_size]
+            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+        # slate_scores.shape: [batch_size, num_slates, slate_size]
+        slate_scores = torch.gather(
+            # input.shape: [batch_size, num_slates, num_docs]
+            input=scores_doc.unsqueeze(1).expand(-1, num_slates, -1),
+            dim=2,
+            # index.shape: [batch_size, num_slates, slate_size]
+            index=slates.unsqueeze(0).expand(batch_size, -1, -1))
+        # slate_q_values.shape: [batch_size, num_slates]
+        slate_q_values = ((slate_decomp_q_values * slate_scores).sum(dim=2) +
+                          (q_values_no_click * scores_no_click)) / (
+                              slate_scores.sum(dim=2) + scores_no_click)
+
+        # Step 5: find the slate that maximizes q value
+        best_slate_q_value, max_idx = torch.max(slate_q_values, dim=1)
+        # slates_selected.shape: [batch_size, slate_size]
+        slates_selected = slates[max_idx]
+        return slates_selected, best_slate_q_value
+
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> Tuple[TensorType, List[TensorType]]:
+        # user.shape: [batch_size, embedding_size]
+        user = input_dict[SampleBatch.OBS]["user"]
+        # doc.shape: [batch_size, num_docs, embedding_size]
+        doc = torch.cat([
+            val.unsqueeze(1)
+            for val in input_dict[SampleBatch.OBS]["doc"].values()
+        ], 1)
+
+        slates_selected, _ = self.choose_slate(user, doc)
+
+        state_out = []
+        return slates_selected, state_out
