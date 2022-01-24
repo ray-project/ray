@@ -367,6 +367,13 @@ def set_enable_auto_connect(enable_auto_connect: str = "0"):
         del os.environ["RAY_ENABLE_AUTO_CONNECT"]
 
 
+@pytest.fixture
+def enable_mac_large_object_store():
+    os.environ["RAY_ENABLE_MAC_LARGE_OBJECT_STORE"] = "1"
+    yield
+    del os.environ["RAY_ENABLE_MAC_LARGE_OBJECT_STORE"]
+
+
 @pytest.fixture()
 def two_node_cluster():
     system_config = {

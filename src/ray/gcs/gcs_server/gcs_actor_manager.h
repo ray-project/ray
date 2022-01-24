@@ -317,12 +317,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
-  /// failure. If false is given, the actor will be rescheduled. Otherwise, all
-  /// the interest party (driver that has actor handles) will notify
-  /// that the actor is dead.
-  void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                               bool runtime_env_setup_failed = false);
+  /// \param failure_type Scheduling failure type.
+  void OnActorSchedulingFailed(
+      std::shared_ptr<GcsActor> actor,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.

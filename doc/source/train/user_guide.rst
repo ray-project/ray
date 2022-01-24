@@ -115,14 +115,22 @@ training.
 
             ...
 
-        -   data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+        -   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
 
-        +   data_loader = DataLoader(my_dataset)
+        +   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
         +   data_loader = train.torch.prepare_data_loader(data_loader)
 
             for X, y in data_loader:
         -       X = X.to_device(device)
         -       y = y.to_device(device)
+
+    .. tip::
+       Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+       The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+
+       .. code-block::
+
+            global_batch_size = worker_batch_size * train.world_size()
 
   .. group-tab:: TensorFlow
 
@@ -159,7 +167,7 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * num_workers
+        +batch_size = worker_batch_size * train.world_size()
 
   .. group-tab:: Horovod
 
@@ -414,7 +422,7 @@ You may want to plug in your training code with your favorite experiment managem
 Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
 (the values passed into ``train.report(...)``).
 
-Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainingCallback`` interface.
 
 .. _train-builtin-callbacks:
 
@@ -495,7 +503,6 @@ A simple example for creating a callback that will print out results:
     # [{'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0008401870727539062, '_training_iteration': 2}, {'epoch': 1, '_timestamp': 1630471763, '_time_this_iter_s': 0.0007486343383789062, '_training_iteration': 2}]
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
-
 
 ..
     Advanced Customization

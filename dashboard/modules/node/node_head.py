@@ -12,6 +12,7 @@ from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
                                                     LOG_PRUNE_THREASHOLD)
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.memory_utils import GroupByType, SortingType
@@ -22,7 +23,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 def gcs_node_info_to_dict(message):
@@ -135,18 +136,18 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/nodes")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
         view = req.query.get("view")
         if view == "summary":
             all_node_summary = await DataOrganizer.get_all_node_summary()
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Node summary fetched.",
                 summary=all_node_summary)
         elif view == "details":
             all_node_details = await DataOrganizer.get_all_node_details()
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True,
                 message="All node details fetched",
                 clients=all_node_details,
@@ -156,20 +157,20 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             for node in DataSource.nodes.values():
                 if node["state"] == "ALIVE":
                     alive_hostnames.add(node["nodeManagerHostname"])
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=True,
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames))
         else:
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=False, message=f"Unknown view {view}")
 
     @routes.get("/nodes/{node_id}")
-    @dashboard_utils.aiohttp_cache
+    @dashboard_optional_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Node details fetched.", detail=node_info)
 
     @routes.get("/memory/memory_table")
@@ -183,7 +184,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             kwargs["sort_by"] = SortingType(sort_by)
 
         memory_table = await DataOrganizer.get_memory_table(**kwargs)
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message="Fetched memory table",
             memory_table=memory_table.as_dict())
@@ -196,10 +197,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         elif should_fetch == "false":
             self._collect_memory_info = False
         else:
-            return dashboard_utils.rest_response(
+            return dashboard_optional_utils.rest_response(
                 success=False,
                 message=f"Unknown argument to set_fetch {should_fetch}")
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True,
             message=f"Successfully set fetching to {should_fetch}")
 
@@ -210,7 +211,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
         if pid:
             node_logs = {str(pid): node_logs.get(pid, [])}
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Fetched logs.", logs=node_logs)
 
     @routes.get("/node_errors")
@@ -220,7 +221,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
         if pid:
             node_errors = {str(pid): node_errors.get(pid, [])}
-        return dashboard_utils.rest_response(
+        return dashboard_optional_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
@@ -257,7 +258,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 logs_for_ip[pid] = logs_for_pid
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-            logger.info(f"Received a log for {ip} and {pid}")
+            logger.debug(f"Received a log for {ip} and {pid}")
 
         if self._dashboard_head.gcs_log_subscriber:
             while True:
