@@ -44,15 +44,6 @@ class DashboardAgentModule(abc.ABC):
         :param server: Asyncio GRPC server.
         """
 
-    @staticmethod
-    @abc.abstractclassmethod
-    def is_optional():
-        """
-        Return True if the module is optional, meaning it requires additonal
-        dependencies that are not installed with the minimal ray
-        (e.g., `pip install ray` vs `pip install ray[default]`).
-        """
-
 
 class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
@@ -68,15 +59,6 @@ class DashboardHeadModule(abc.ABC):
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
         :param server: Asyncio GRPC server.
-        """
-
-    @staticmethod
-    @abc.abstractclassmethod
-    def is_optional():
-        """
-        Return True if the module is optional, meaning it requires additonal
-        dependencies that are not installed with the minimal ray
-        (e.g., `pip install ray` vs `pip install ray[default]`).
         """
 
 
@@ -100,24 +82,11 @@ def get_all_modules(module_type):
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.dashboard.modules.__path__,
             ray.dashboard.modules.__name__ + "."):
-        try:
-            importlib.import_module(name)
-        except ModuleNotFoundError:
-            pass
-
-    should_load_minimal_modules = (
-        not ray._private.utils.check_dashboard_dependencies_installed())
-    imported_modules = []
-    # module_type.__subclasses__() should contain modules that
-    # we could successfully import.
-    for m in module_type.__subclasses__():
-        if not getattr(m, "__ray_dashboard_module_enable__", True):
-            continue
-        if should_load_minimal_modules and m.is_optional():
-            continue
-        imported_modules.append(m)
-    logger.info(f"Available modules: {imported_modules}")
-    return imported_modules
+        importlib.import_module(name)
+    return [
+        m for m in module_type.__subclasses__()
+        if getattr(m, "__ray_dashboard_module_enable__", True)
+    ]
 
 
 def to_posix_time(dt):
