@@ -2,8 +2,10 @@ import argparse
 import logging
 import os
 
+from ray._private.ray_logging import setup_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.core.generated.common_pb2 import Language
+from ray.ray_constants import LOGGER_LEVEL, LOGGER_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ parser.add_argument(
     "--language", type=str, help="the language type of the worker")
 
 if __name__ == "__main__":
+    setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
     args, remaining_args = parser.parse_known_args()
     # NOTE(chenk008): we still need it to start worker in container.
     remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
