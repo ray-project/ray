@@ -1318,10 +1318,16 @@ def start_dashboard(require_dashboard,
                                           "dashboard.py")
 
         command = [
-            sys.executable, "-u", dashboard_filepath, f"--host={host}",
-            f"--port={port}", f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+            sys.executable,
+            "-u",
+            dashboard_filepath,
+            f"--host={host}",
+            f"--port={port}",
+            f"--port-retries={port_retries}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--log-dir={logdir}",
+            f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
         ]
