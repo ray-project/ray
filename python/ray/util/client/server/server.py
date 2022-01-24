@@ -423,6 +423,59 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         serialized = dumps_from_server(items, client_id, self)
         return ray_client_pb2.GetResponse(valid=True, data=serialized)
 
+    def GetObjectChunked(self, request: ray_client_pb2.GetRequest, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata.get("client_id")
+        if client_id is None:
+            yield ray_client_pb2.GetResponse(
+                valid=False,
+                error=cloudpickle.dumps(
+                    ValueError(
+                        "client_id is not specified in request metadata")))
+        else:
+            yield from self._get_object_chunked(request, client_id)
+
+    def _get_object_chunked(self, request: ray_client_pb2.GetRequest,
+                            client_id: str):
+        objectrefs = []
+        for rid in request.ids:
+            ref = self.object_refs[client_id].get(rid, None)
+            if ref:
+                objectrefs.append(ref)
+            else:
+                yield ray_client_pb2.GetResponse(
+                    valid=False,
+                    error=cloudpickle.dumps(
+                        ValueError(
+                            f"ClientObjectRef {rid} is not found for client "
+                            f"{client_id}")))
+                return
+        try:
+            logger.debug("get: %s" % objectrefs)
+            with disable_client_hook():
+                items = ray.get(objectrefs, timeout=request.timeout)
+        except Exception as e:
+            yield ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
+            return
+        serialized = dumps_from_server(items, client_id, self)
+        magick = 64 * 2**20  # 64MiB
+        total_size = len(serialized)
+        # Floor divide to get number of full chunks
+        total_chunks = total_size // magick
+        if serialized % magick != 0:
+            # +1 if there are any partial chunks
+            total_chunks += 1
+        for chunk_id in range(total_chunks):
+            start = chunk_id * magick
+            end = min(total_size, (chunk_id + 1) * magick)
+            yield ray_client_pb2.GetResponse(
+                valid=True,
+                data=serialized[start:end],
+                chunk_id=chunk_id,
+                total_chunks=total_chunks,
+                total_size=total_size)
+
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject
