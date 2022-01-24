@@ -113,6 +113,11 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
     }
 
     if (testHanged) {
+      if (result != null) {
+        printSection("TEST CASE HANGED: " + result.getName());
+      } else {
+        printSection("TEST CASE HANGED");
+      }
       printSection("TEST CASE HANGED");
       printSection("STACK TRACE OF TEST THREAD");
       for (StackTraceElement element : testMainThread.getStackTrace()) {
