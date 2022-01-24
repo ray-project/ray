@@ -282,16 +282,18 @@ def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
     assert isinstance(err, ValueError)
 
 
-@workflow.step
-def exponential_fail(k, n):
-    if n > 0:
-        if n < 3:
-            raise Exception("Failed intentionally")
-        return exponential_fail.options(name=f"step_{n}").step(k * 2, n - 1)
-    return k
-
-
 def test_dynamic_output(workflow_start_regular_shared):
+    @workflow.step
+    def exponential_fail(k, n):
+        if n > 0:
+            if n < 3:
+                raise Exception("Failed intentionally")
+            return exponential_fail.options(name=f"step_{n}").step(
+                k * 2, n - 1)
+        return k
+
+    # When workflow fails, the dynamic output should points to the
+    # latest successful step.
     try:
         exponential_fail.options(name="step_0").step(
             3, 10).run(workflow_id="dynamic_output")

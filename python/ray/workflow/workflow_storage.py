@@ -164,8 +164,13 @@ class WorkflowStorage:
                 # tasks.append(
                 #     self._put(self._key_step_exception(step_id), exception))
 
+        # Finish checkpointing.
         asyncio_run(asyncio.gather(*tasks))
-        if dynamic_output_id:
+
+        # NOTE: if we update the dynamic output before
+        # finishing checkpointing, then during recovery, the dynamic could
+        # would point to a checkpoint that does not exist.
+        if dynamic_output_id is not None:
             asyncio_run(
                 self._update_dynamic_output(outer_most_step_id,
                                             dynamic_output_id))
