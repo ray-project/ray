@@ -7,7 +7,6 @@ import ray.experimental.internal_kv as internal_kv
 import ray.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
-import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever, create_task
 from ray.dashboard.modules.event import event_consts
