@@ -388,9 +388,9 @@ class TestGC:
         @ray.remote
         class A:
             def test_import(self):
-             RAY_RUNTIME_ENV_SKIP_LOCAL_GC
+                import test_module
                 test_module.one()
-RAY_RUNTIME_ENV_SKIP_LOCAL_GC
+
         a = A.options(name="test", lifetime="detached").remote()
         ray.get(a.test_import.remote())
 
@@ -511,9 +511,9 @@ def test_default_large_cache(start_cluster, option: str, source: str):
 @pytest.fixture(scope="class")
 def skip_local_gc():
     with mock.patch.dict(os.environ, {
-            "RAY_runtime_env_skip_local_gc": "1",
+            "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
     }):
-        print("RAY_runtime_env_skip_local_gc enabled.")
+        print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
         yield
 
 
