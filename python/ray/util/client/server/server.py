@@ -463,7 +463,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         total_size = len(serialized)
         # Floor divide to get number of full chunks
         total_chunks = total_size // magick
-        if serialized % magick != 0:
+        if total_size % magick != 0:
             # +1 if there are any partial chunks
             total_chunks += 1
         for chunk_id in range(total_chunks):

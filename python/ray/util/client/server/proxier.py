@@ -519,6 +519,10 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
     def GetObject(self, request, context=None):
         return self._call_inner_function(request, context, "GetObject")
 
+    def GetObjectChunked(self, request, context=None):
+        yield from self._call_inner_function(request, context,
+                                             "GetObjectChunked")
+
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
         return self._call_inner_function(request, context, "PutObject")

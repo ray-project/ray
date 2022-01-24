@@ -140,7 +140,7 @@ message GetResponse {
   // Total number of chunks
   int32 total_chunks = 5;
   // Total size in bytes of the data being retrieved
-  int32 total_size = 6;
+  uint64 total_size = 6;
 }
 
 // Waits for data to be ready on the server, with a timeout.

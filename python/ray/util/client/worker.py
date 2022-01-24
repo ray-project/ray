@@ -374,17 +374,23 @@ class Worker:
         req = ray_client_pb2.GetRequest(
             ids=[r.id for r in ref], timeout=timeout)
         try:
-            resp = self._call_stub("GetObject", req, metadata=self.metadata)
+            resp = self._call_stub(
+                "GetObjectChunked", req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
-        if not resp.valid:
-            try:
-                err = cloudpickle.loads(resp.error)
-            except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(resp.error))
-                raise
-            raise err
-        return loads_from_server(resp.data)
+        data = bytearray()
+        for chunk in resp:
+            print(chunk.chunk_id)
+            if not chunk.valid:
+                try:
+                    err = cloudpickle.loads(chunk.error)
+                except (pickle.UnpicklingError, TypeError):
+                    logger.exception("Failed to deserialize {}".format(
+                        chunk.error))
+                    raise
+                raise err
+            data.extend(chunk.data)
+        return loads_from_server(data)
 
     def put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
