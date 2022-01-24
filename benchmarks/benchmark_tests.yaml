@@ -1,8 +1,5 @@
 - name: single_node
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: single_node.yaml
@@ -13,10 +10,7 @@
     script: python single_node/test_single_node.py
 
 - name: object_store
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: object_store.yaml
@@ -27,10 +21,7 @@
     script: python object_store/test_object_store.py
 
 - name: many_actors
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -41,10 +32,7 @@
     script: python distributed/test_many_actors.py
 
 - name: many_actors_smoke_test
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -55,10 +43,7 @@
     script: SMOKE_TEST=1 python distributed/test_many_actors.py
 
 - name: many_tasks
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -69,10 +54,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=10000
 
 - name: many_tasks_smoke_test
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -83,10 +65,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=100
 
 - name: many_pgs
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -97,10 +76,7 @@
     script: python distributed/test_many_pgs.py
 
 - name: many_pgs_smoke_test
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed_smoke_test.yaml
@@ -112,10 +88,7 @@
 
 # NOTE: No smoke test since this shares a script with the many_tasks_smoke_test
 - name: many_nodes
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Alex Wu"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: many_nodes.yaml
@@ -126,10 +99,7 @@
     script: python distributed/test_many_tasks.py --num-tasks=1000
 
 - name: many_tasks_redis_ha
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -146,10 +116,7 @@
   stable: false
 
 - name: many_actors_redis_ha
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -166,10 +133,7 @@
   stable: false
 
 - name: many_nodes_redis_ha
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: many_nodes.yaml
@@ -186,10 +150,7 @@
   stable: false
 
 - name: many_pgs_redis_ha
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@Yi Cheng"
-
+  team: core
   cluster:
     app_config: app_config.yaml
     compute_template: distributed.yaml
@@ -203,4 +164,52 @@
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
+  stable: false
+
+- name: scheduling_test_many_0s_tasks_single_node
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
+  stable: false
+
+- name: scheduling_test_many_0s_tasks_many_nodes
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
+  stable: false
+
+- name: scheduling_test_many_5s_tasks_single_node
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=5 --total-num-actors=1 --num-actors-per-nodes=1
+  stable: false
+
+- name: scheduling_test_many_5s_tasks_many_nodes
+  team: core
+  cluster:
+    app_config: app_config.yaml
+    compute_template: scheduling.yaml
+
+  run:
+    timeout: 3600
+    prepare: python distributed/wait_cluster.py --num-nodes=32
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=5 --total-num-actors=32 --num-actors-per-nodes=1
   stable: false

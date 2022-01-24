@@ -117,6 +117,8 @@ SERVE_NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "autoscaling_single_deployment",
+        "autoscaling_multi_deployment",
         "serve_micro_benchmark",
         "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
@@ -125,6 +127,7 @@ SERVE_NIGHTLY_TESTS = {
 
 CORE_DAILY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "k8s_dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
@@ -145,6 +148,10 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        "scheduling_test_many_5s_tasks_single_node",
+        "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 
@@ -198,7 +205,6 @@ NIGHTLY_TESTS = {
         SmokeTest("network_overhead"),
         "result_throughput_cluster",
         "result_throughput_single_node",
-        "xgboost_sweep",
     ],
     "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
         "train_small",
@@ -252,6 +258,7 @@ WEEKLY_TESTS = {
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",
         "long_running_large_checkpoints",
+        "xgboost_sweep",
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         "learning_tests",

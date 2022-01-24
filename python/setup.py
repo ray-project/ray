@@ -378,7 +378,7 @@ def replace_symlinks_with_junctions():
 
     # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
-        r"ray\new_dashboard": "../../dashboard",
+        r"ray\dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
     }
     root_dir = os.path.dirname(__file__)
@@ -416,7 +416,7 @@ def replace_symlinks_with_junctions():
                 os.path.join(os.path.dirname(path), target))
             logger.info("Setting {} -> {}".format(link, target))
             subprocess.check_call(
-                f"MKLINK /J '{os.path.basename(link)}' '{target}'",
+                f'MKLINK /J "{os.path.basename(link)}" "{target}"',
                 shell=True,
                 cwd=os.path.dirname(path))
 

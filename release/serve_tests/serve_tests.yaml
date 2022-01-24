@@ -1,4 +1,5 @@
 - name: single_deployment_1k_noop_replica
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl_8_cpu.yaml
@@ -12,6 +13,7 @@
     timeout: 600
 
 - name: multi_deployment_1k_noop_replica
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl_8_cpu.yaml
@@ -24,7 +26,34 @@
   smoke_test:
     timeout: 600
 
+- name: autoscaling_single_deployment
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/autoscaling_single_deployment.py
+
+  smoke_test:
+    timeout: 600
+
+- name: autoscaling_multi_deployment
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/autoscaling_multi_deployment.py
+
+  smoke_test:
+    timeout: 600
+
 - name: serve_micro_benchmark
+  team: serve
   cluster:
     app_config: app_config.yaml
     # 16 CPUS
@@ -54,6 +83,7 @@
     timeout: 600
 
 - name: serve_cluster_fault_tolerance
+  team: serve
   cluster:
     app_config: app_config.yaml
     # 16 CPUS

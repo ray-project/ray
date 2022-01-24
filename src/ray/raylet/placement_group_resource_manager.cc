@@ -148,6 +148,13 @@ void NewPlacementGroupResourceManager::CommitBundle(
       cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
 }
 
+void NewPlacementGroupResourceManager::CommitBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
+  for (const auto &bundle_spec : bundle_specs) {
+    CommitBundle(*bundle_spec);
+  }
+}
+
 void NewPlacementGroupResourceManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());

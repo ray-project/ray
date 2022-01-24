@@ -15,8 +15,7 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
-        AggregateOnTs
+    from ray.data.grouped_dataset import GroupedDataset
 
 import collections
 import itertools
@@ -26,7 +25,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
-    BlockPartition, BlockPartitionMetadata, BlockExecStats
+    BlockPartition, BlockPartitionMetadata, BlockExecStats, KeyFn, \
+    _validate_key_fn
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
@@ -858,8 +858,8 @@ class Dataset(Generic[T]):
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
             dataset_stats)
 
-    def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
-        """Group the dataset by the key function or column name (Experimental).
+    def groupby(self, key: KeyFn) -> "GroupedDataset[T]":
+        """Group the dataset by the key function or column name.
 
         This is a lazy operation.
 
@@ -874,12 +874,19 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A key function or Arrow column name.
+            key: A key function or Arrow column name. If this is None, the
+                grouping is global.
 
         Returns:
             A lazy GroupedDataset that can be aggregated later.
         """
         from ray.data.grouped_dataset import GroupedDataset
+
+        # Always allow None since groupby interprets that as grouping all
+        # records into a single global group.
+        if key is not None:
+            _validate_key_fn(self, key)
+
         return GroupedDataset(self, key)
 
     def aggregate(self, *aggs: AggregateFn) -> U:
@@ -910,123 +917,7 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def _check_and_normalize_agg_on(self,
-                                    on: Optional["AggregateOnTs"],
-                                    skip_cols: Optional[List[str]] = None
-                                    ) -> Optional["AggregateOnTs"]:
-        """Checks whether the provided aggregation `on` arg is valid for this
-        type of dataset, and normalizes the value based on the Dataset type and
-        any provided columns to skip.
-        """
-        if (on is not None
-                and (not isinstance(on, (str, Callable, list)) or
-                     (isinstance(on, list)
-                      and not (all(isinstance(on_, str) for on_ in on)
-                               or all(isinstance(on_, Callable)
-                                      for on_ in on))))):
-            from ray.data.grouped_dataset import AggregateOnTs
-
-            raise TypeError(
-                f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
-
-        if isinstance(on, list) and len(on) == 0:
-            raise ValueError(
-                "When giving a list for `on`, it must be nonempty.")
-
-        try:
-            dataset_format = self._dataset_format()
-        except ValueError:
-            # Dataset is empty/cleared, let downstream ops handle this.
-            return on
-
-        if dataset_format == "arrow":
-            # This should be cached from the ._dataset_format() check, so we
-            # don't fetch and we assert that the schema is not None.
-            schema = self.schema(fetch_if_missing=False)
-            assert schema is not None
-            if len(schema.names) == 0:
-                # Empty dataset, don't validate `on` since we generically
-                # handle empty datasets downstream.
-                return on
-
-            if on is None:
-                # If a null `on` is given for a table Dataset, coerce it to
-                # all columns sans any that we want to skip.
-                if skip_cols is None:
-                    skip_cols = []
-                elif not isinstance(skip_cols, list):
-                    skip_cols = [skip_cols]
-                on = [col for col in schema.names if col not in skip_cols]
-            # Check that column names refer to valid columns.
-            elif isinstance(on, str) and on not in schema.names:
-                raise ValueError(
-                    f"on={on} is not a valid column name: {schema.names}")
-            elif isinstance(on, list) and isinstance(on[0], str):
-                for on_ in on:
-                    if on_ not in schema.names:
-                        raise ValueError(
-                            f"on={on_} is not a valid column name: "
-                            f"{schema.names}")
-        else:
-            if isinstance(on, str) or (isinstance(on, list)
-                                       and isinstance(on[0], str)):
-                raise ValueError(
-                    "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
-                    "instead of a simple Dataset.")
-        return on
-
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-        try:
-            import pyarrow as pa
-        except ModuleNotFoundError:
-            return "simple"
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine the format"
-                    " of the dataset")
-            if isinstance(schema, pa.Schema):
-                return "arrow"
-            return "simple"
-
-    def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
-                      *args, **kwargs):
-        """Helper for aggregating on a particular subset of the dataset.
-
-        This validates the `on` argument, and converts a list of column names
-        or lambdas to a multi-aggregation. A null `on` results in a
-        multi-aggregation on all columns for an Arrow Dataset, and a single
-        aggregation on the entire row for a simple Dataset.
-        """
-        aggs = self._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=None, **kwargs)
-        return self.aggregate(*aggs)
-
-    def _build_multicolumn_aggs(self,
-                                agg_cls: type,
-                                on: Optional["AggregateOnTs"],
-                                *args,
-                                skip_cols: Optional[List[str]] = None,
-                                **kwargs):
-        """Build set of aggregations for applying a single aggregation to
-        multiple columns.
-        """
-        on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
-        if not isinstance(on, list):
-            on = [on]
-        return [agg_cls(on_, *args, **kwargs) for on_ in on]
-
-    def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1081,7 +972,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def min(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1136,7 +1027,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def max(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1191,7 +1082,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
+    def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
 
         This is a blocking operation.
@@ -1246,7 +1137,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
+    def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
 
         This is a blocking operation.
@@ -1311,11 +1202,9 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]] = None,
+    def sort(self, key: KeyFn = None,
              descending: bool = False) -> "Dataset[T]":
         """Sort the dataset by the specified key column or key function.
-        (experimental support)
 
         This is a blocking operation.
 
@@ -1328,9 +1217,6 @@ class Dataset(Generic[T]):
 
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
-
-            >>> # Sort by multiple columns (not yet supported).
-            >>> ds.sort([("field1", "ascending"), ("field2", "descending")])
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1348,6 +1234,13 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
+        if isinstance(key, list):
+            if not key:
+                raise ValueError("`key` must be a list of non-zero length")
+            for subkey in key:
+                _validate_key_fn(self, subkey)
+        else:
+            _validate_key_fn(self, key)
         stats_builder = self._stats.child_builder("sort")
         blocks, stage_info = sort_impl(self._blocks, key, descending)
         return Dataset(blocks, self._epoch,
@@ -2563,6 +2456,70 @@ Dict[str, List[str]]]): The names of the columns
         left, right = self._blocks.divide(block_idx)
         return Dataset(left, self._epoch, self._stats), Dataset(
             right, self._epoch, self._stats)
+
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
+
+        try:
+            import pyarrow as pa
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+        except ModuleNotFoundError:
+            pass
+        return "simple"
+
+    def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
+                      *args, **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        aggs = self._build_multicolumn_aggs(agg_cls, on, *args, **kwargs)
+        return self.aggregate(*aggs)
+
+    def _build_multicolumn_aggs(self,
+                                agg_cls: type,
+                                on: Union[KeyFn, List[KeyFn]],
+                                skip_cols: Optional[List[str]] = None,
+                                *args,
+                                **kwargs):
+        """Build set of aggregations for applying a single aggregation to
+        multiple columns.
+        """
+
+        # Expand None into an aggregation for each column.
+        if on is None:
+            try:
+                dataset_format = self._dataset_format()
+            except ValueError:
+                dataset_format = None
+            if dataset_format in ["arrow", "pandas"]:
+                # This should be cached from the ._dataset_format() check, so we
+                # don't fetch and we assert that the schema is not None.
+                schema = self.schema(fetch_if_missing=False)
+                if not skip_cols:
+                    skip_cols = []
+                if len(schema.names) > 0:
+                    on = [col for col in schema.names if col not in skip_cols]
+
+        if not isinstance(on, list):
+            on = [on]
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
     def __repr__(self) -> str:
         schema = self.schema()

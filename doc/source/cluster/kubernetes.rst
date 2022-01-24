@@ -282,7 +282,7 @@ Next steps
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst
 
 .. _`Kubernetes`: https://kubernetes.io/
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
