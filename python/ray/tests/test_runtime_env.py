@@ -300,7 +300,7 @@ def test_runtime_env_log_msg(local_env_var_enabled, enable_dev_mode,
     def f():
         pass
 
-    good_env = {"conda": {"dependencies": ["requests"]}}
+    good_env = {"pip": ["requests"]}
     ray.get(f.options(runtime_env=good_env).remote())
     sources = get_log_sources(p, 1)
     if local_env_var_enabled:
