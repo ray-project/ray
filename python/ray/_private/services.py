@@ -1908,7 +1908,7 @@ def determine_plasma_store_config(object_store_memory,
     if sys.platform == "darwin" \
             and object_store_memory > \
             ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT \
-            and os.environ.get("RAY_OBJECT_STORE_ALLOW_MAC_LARGE_SIZE") != "1":
+            and os.environ.get("RAY_ENABLE_MAC_LARGE_OBJECT_STORE") != "1":
         raise ValueError(
             "The configured object store size ({:.4}GiB) exceeds "
             "the optimal size on Mac ({:.4}GiB). "
@@ -1918,7 +1918,7 @@ def determine_plasma_store_config(object_store_memory,
             "To reduce the object store capacity, specify"
             "`object_store_memory` when calling ray.init() or ray start."
             "To ignore this warning, "
-            "set RAY_OBJECT_STORE_ALLOW_MAC_LARGE_SIZE=1.".format(
+            "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
                 object_store_memory / 2**30,
                 ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
                 ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30))
