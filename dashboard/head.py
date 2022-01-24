@@ -122,7 +122,6 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         if not use_gcs_for_bootstrap():
             ip, port = redis_address.split(":")
@@ -141,10 +140,15 @@ class DashboardHead:
 
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_head import (HttpServerDashboardHead)
-        http_server = HttpServerDashboardHead(self.http_host, self.http_port,
-                                              self.http_port_retries)
+        http_server = HttpServerDashboardHead(
+            self.ip, self.http_host, self.http_port, self.http_port_retries)
         await http_server.run(modules)
         return http_server
+
+    @property
+    def http_session(self):
+        assert self.http_server, "Accessing unsupported API in a minimal ray."
+        return self.http_server.http_session
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
