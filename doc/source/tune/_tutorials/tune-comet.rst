@@ -3,7 +3,7 @@
 Using Comet with Tune
 ================================
 
-`Comet <https://www.comet.ml/site/>`_ (Comet) is a tool to manage and optimize the
+`Comet <https://www.comet.ml/site/>`_ is a tool to manage and optimize the
 entire ML lifecycle, from experiment tracking, model optimization and dataset
 versioning to model production monitoring.
 
