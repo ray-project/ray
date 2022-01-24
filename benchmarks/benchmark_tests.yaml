@@ -112,6 +112,7 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
+    RAY_bootstrap_with_gcs: "1"
 
 - name: many_actors_redis_ha
   team: core
@@ -127,6 +128,7 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
+    RAY_bootstrap_with_gcs: "1"
 
 - name: many_nodes_redis_ha
   team: core
@@ -142,6 +144,7 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
+    RAY_bootstrap_with_gcs: "1"
 
 - name: many_pgs_redis_ha
   team: core
@@ -157,6 +160,7 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
+    RAY_bootstrap_with_gcs: "1"
 
 - name: scheduling_test_many_0s_tasks_single_node
   team: core
