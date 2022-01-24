@@ -37,8 +37,8 @@ LOG_NAME_UPDATE_INTERVAL_S = float(
 # log monitor start giving backpressure to lower cpu usages.
 RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
     os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000))
-RAY_RUNTIME_ENV_LOCAL_DEV_MODE = int(
-    os.getenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", 1))
+RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED = int(
+    os.getenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", 1))
 
 
 class LogFileInfo:
@@ -167,7 +167,7 @@ class LogMonitor:
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
         # runtime_env setup process is logged here
         runtime_env_setup_paths = []
-        if RAY_RUNTIME_ENV_LOCAL_DEV_MODE:
+        if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
             runtime_env_setup_paths = glob.glob(
                 f"{self.logs_dir}/runtime_env*.log")
         total_files = 0

@@ -283,9 +283,9 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
 @pytest.fixture
 def enable_dev_mode(local_env_var_enabled):
     enabled = "1" if local_env_var_enabled else "0"
-    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = enabled
+    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
+    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
 
 
 @pytest.mark.skipif(
