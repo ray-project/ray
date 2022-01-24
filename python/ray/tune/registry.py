@@ -154,7 +154,7 @@ class _Registry:
     def contains(self, category, key):
         if _internal_kv_initialized():
             value = _internal_kv_get(_make_key(self._prefix, category, key))
-            return value is not None
+            return value is not None and value != b''
         else:
             return (category, key) in self._to_flush
 
