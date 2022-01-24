@@ -159,7 +159,3 @@ Check out:
 
  * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
-
-.. _tune-faq:
-
-.. include:: _faq.inc

@@ -32,7 +32,6 @@ class DashboardAgentModule(abc.ABC):
     def __init__(self, dashboard_agent):
         """
         Initialize current module when DashboardAgent loading modules.
-
         :param dashboard_agent: The DashboardAgent instance.
         """
         self._dashboard_agent = dashboard_agent
@@ -42,7 +41,6 @@ class DashboardAgentModule(abc.ABC):
         """
         Run the module in an asyncio loop. An agent module can provide
         servicers to the server.
-
         :param server: Asyncio GRPC server.
         """
 
@@ -60,7 +58,6 @@ class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
         """
         Initialize current module when DashboardHead loading modules.
-
         :param dashboard_head: The DashboardHead instance.
         """
         self._dashboard_head = dashboard_head
@@ -70,7 +67,6 @@ class DashboardHeadModule(abc.ABC):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-
         :param server: Asyncio GRPC server.
         """
 
@@ -422,7 +418,6 @@ class ImmutableDict(Immutable, Mapping):
 
 class Dict(ImmutableDict, MutableMapping):
     """A simple descriptor for dict type to notify data changes.
-
     :note: Only the first level data report change.
     """
 

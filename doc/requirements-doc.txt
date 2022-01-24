@@ -1,3 +1,6 @@
+# Production requirements. This is what readthedocs.org picks up
+
+# Python / ML libraries
 click
 colorama
 colorful
@@ -14,28 +17,38 @@ pickle5
 pillow
 pyarrow
 pydantic
-pygments
 pyyaml
-recommonmark
+scikit-optimize
 redis
-sphinx==3.0.4
-sphinx-click
-sphinx-copybutton
-sphinxemoji
-sphinx-gallery
-sphinx-jsonschema
-sphinx-tabs
-sphinx-version-warning
-sphinx-book-theme==0.0.42
-sphinxcontrib.yt
 starlette
 tabulate
 uvicorn==0.16.0
 werkzeug
+
+# Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
-git+https://github.com/ray-project/ray_lightning#ray_lightning
-scikit-optimize
+git+https://github.com/ray-project/ray_lightning@cacd374370e858adc0c00c76fe2e657e38790e0a#ray_lightning
+
+# Syntax highlighting
+Pygments==2.11.2
+
+# Sphinx
+sphinx==4.3.2
+sphinx-click==3.0.2
+sphinx-copybutton==0.4.0
+sphinxemoji==0.2.0
+sphinx-gallery==0.10.0
+sphinx-jsonschema==1.17.2
+# spinx-panels==0.6.0
+sphinx-tabs==3.2.0
+sphinx-version-warning==1.1.2
+sphinx-book-theme==0.1.7
+sphinx-external-toc==0.2.3
+sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
-myst-parser
+
+# MyST
+myst-parser==0.15.2
+myst-nb==0.13.1

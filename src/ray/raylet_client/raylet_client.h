@@ -119,14 +119,13 @@ class ResourceReserveInterface {
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply>
           &callback) = 0;
 
-  /// Request a raylet to commit resources of a given bundle for atomic placement group
-  /// creation. This is used for the first phase of atomic placement group creation. The
+  /// Request a raylet to commit resources of given bundles for atomic placement group
+  /// creation. This is used for the second phase of atomic placement group creation. The
   /// callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be
-  /// allocated for the worker.
+  /// \param bundle_specs Bundles to be scheduled at this raylet.
   /// \return ray::Status
   virtual void CommitBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
@@ -406,7 +405,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements CommitBundleResourcesInterface.
   void CommitBundleResources(
-      const BundleSpecification &bundle_spec,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 

@@ -29,6 +29,8 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+enable_gpu_usage_check = True
+
 # Are we in a K8s pod?
 IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
@@ -202,7 +204,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_gpu_usage():
-        if gpustat is None:
+        global enable_gpu_usage_check
+        if gpustat is None or not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
         gpus = []
@@ -210,6 +213,17 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gpus = gpustat.new_query().gpus
         except Exception as e:
             logger.debug(f"gpustat failed to retrieve GPU information: {e}")
+
+            # gpustat calls pynvml.nvmlInit()
+            # On machines without GPUs, this can run subprocesses that spew to
+            # stderr. Then with log_to_driver=True, we get log spew from every
+            # single raylet. To avoid this, disable the GPU usage check on
+            # certain errors.
+            # https://github.com/ray-project/ray/issues/14305
+            # https://github.com/ray-project/ray/pull/21686
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
