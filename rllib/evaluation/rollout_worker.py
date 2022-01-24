@@ -47,7 +47,7 @@ from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvCreator, \
     EnvType, ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, T
+    PolicyState, SampleBatchType, T
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -1084,6 +1084,7 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[Space] = None,
             action_space: Optional[Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1097,8 +1098,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             config: The config overrides for the policy to add.
-            policy_config: The base config of the Trainer object owning this
-                RolloutWorker.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
@@ -1109,9 +1110,13 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Returns:
             The newly added policy.
+
+        Raises:
+            KeyError: If the given `policy_id` already exists in this worker's
+                PolicyMap.
         """
         if policy_id in self.policy_map:
-            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
+            raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
         policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
@@ -1127,6 +1132,9 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_config,
             seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
+        # Set the state of the newly created policy.
+        if policy_state:
+            new_policy.set_state(policy_state)
 
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape)
