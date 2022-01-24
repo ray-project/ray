@@ -383,9 +383,13 @@ def setup(app):
     app.connect("html-page-context", update_context)
     # Custom CSS
     app.add_css_file("css/custom.css", priority=800)
-    app.add_css_file("https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css")
+    app.add_css_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
+    )
     # Custom JS
-    app.add_js_file("https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js", defer="defer")
+    app.add_js_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
+        defer="defer")
     app.add_js_file("docsearch.sbt.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
