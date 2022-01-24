@@ -643,6 +643,7 @@ std::vector<ObjectID> ReferenceCounter::ResetObjectsOnRemovedNode(
       lost_objects.push_back(object_id);
       ReleasePlasmaObject(it);
     }
+    RemoveObjectLocationInternal(it, raylet_id);
   }
   return lost_objects;
 }
@@ -1131,9 +1132,14 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                       "object is already evicted.";
     return false;
   }
+  RemoveObjectLocationInternal(it, node_id);
+  return true;
+}
+
+void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
+                                                    const NodeID &node_id) {
   it->second.locations.erase(node_id);
   PushToLocationSubscribers(it);
-  return true;
 }
 
 void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,

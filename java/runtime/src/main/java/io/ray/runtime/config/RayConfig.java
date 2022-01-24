@@ -9,6 +9,7 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
+import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
@@ -38,7 +39,7 @@ public class RayConfig {
   public String sessionDir;
   public String logDir;
 
-  private String redisAddress;
+  private String bootstrapAddress;
   public final String redisPassword;
 
   // RPC socket name of object store.
@@ -50,6 +51,8 @@ public class RayConfig {
   public int nodeManagerPort;
 
   public int startupToken;
+
+  public final ActorLifetime defaultActorLifetime;
 
   public static class LoggerConf {
     public final String loggerName;
@@ -79,7 +82,7 @@ public class RayConfig {
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(
-          redisAddress != null, "Redis address must be set in worker mode.");
+          bootstrapAddress != null, "Bootstrap address must be set in worker mode.");
     }
   }
 
@@ -139,6 +142,9 @@ public class RayConfig {
       namespace = null;
     }
 
+    defaultActorLifetime = config.getEnum(ActorLifetime.class, "ray.job.default-actor-lifetime");
+    Preconditions.checkState(defaultActorLifetime != null);
+
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
 
@@ -162,13 +168,13 @@ public class RayConfig {
       rayletSocketName = config.getString("ray.raylet.socket-name");
     }
 
-    // Redis configurations.
-    String redisAddress = config.getString("ray.address");
-    if (StringUtils.isNotBlank(redisAddress)) {
-      setRedisAddress(redisAddress);
+    // Bootstrap configurations.
+    String bootstrapAddress = config.getString("ray.address");
+    if (StringUtils.isNotBlank(bootstrapAddress)) {
+      setBootstrapAddress(bootstrapAddress);
     } else {
       // We need to start gcs using `RunManager` for local cluster
-      this.redisAddress = null;
+      this.bootstrapAddress = null;
     }
 
     redisPassword = config.getString("ray.redis.password");
@@ -215,15 +221,14 @@ public class RayConfig {
     validate();
   }
 
-  public void setRedisAddress(String redisAddress) {
-    Preconditions.checkNotNull(redisAddress);
-    Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
-
-    this.redisAddress = redisAddress;
+  public void setBootstrapAddress(String bootstrapAddress) {
+    Preconditions.checkNotNull(bootstrapAddress);
+    Preconditions.checkState(this.bootstrapAddress == null, "Bootstrap address was already set");
+    this.bootstrapAddress = bootstrapAddress;
   }
 
-  public String getRedisAddress() {
-    return redisAddress;
+  public String getBootstrapAddress() {
+    return this.bootstrapAddress;
   }
 
   public void setJobId(JobId jobId) {
@@ -260,7 +265,7 @@ public class RayConfig {
     dynamic.put("ray.raylet.socket-name", rayletSocketName);
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
-    dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.address", bootstrapAddress);
     dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());

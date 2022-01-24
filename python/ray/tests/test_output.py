@@ -170,7 +170,6 @@ ray.get(foo.remote())
     assert "RuntimeError: The remote function failed to import" in err_str
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_stdout():
     script = """
 import ray
@@ -190,9 +189,11 @@ ray.get(foo.remote("abc", "def"))
     out_str = proc.stdout.read().decode("ascii")
     err_str = proc.stderr.read().decode("ascii")
 
-    assert out_str.endswith("abc\n"), out_str
+    out_str = "".join(out_str.splitlines())
+    assert out_str.endswith("abc"), out_str
     assert "(foo pid=" in out_str, out_str
-    assert err_str.split("\n")[-2].endswith("def")
+    err_str_sec_last = "".join(err_str.split("\n")[-2].splitlines())
+    assert err_str_sec_last.endswith("def")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

@@ -43,7 +43,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(main_service_),
+      pubsub_periodical_runner_(pubsub_io_service_),
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
@@ -218,6 +218,7 @@ void GcsServer::Stop() {
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
+    pubsub_handler_->Stop();
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -454,11 +455,11 @@ void GcsServer::InitKVManager() {
   rpc_server_.RegisterService(*kv_service_);
 }
 
-// TODO: Investigating optimal threading for PubSub, e.g. separate io_context.
 void GcsServer::InitPubSubHandler() {
-  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(gcs_publisher_);
-  pubsub_service_ =
-      std::make_unique<rpc::InternalPubSubGrpcService>(main_service_, *pubsub_handler_);
+  pubsub_handler_ =
+      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_);
+  pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
+                                                                     *pubsub_handler_);
   // Register service.
   rpc_server_.RegisterService(*pubsub_service_);
 }

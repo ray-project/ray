@@ -1565,7 +1565,7 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            redis_address,
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1721,7 +1721,7 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        redis_address,
+        bootstrap_address,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1732,7 +1732,7 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): Bootstrap address of ray cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1745,8 +1745,8 @@ def build_java_worker_command(
         The command string for starting Java worker.
     """
     pairs = []
-    if redis_address is not None:
-        pairs.append(("ray.address", redis_address))
+    if bootstrap_address is not None:
+        pairs.append(("ray.address", bootstrap_address))
     pairs.append(("ray.raylet.node-manager-port",
                   "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
@@ -1904,6 +1904,24 @@ def determine_plasma_store_config(object_store_memory,
                          "bytes, but the minimum allowed is {} bytes.".format(
                              object_store_memory,
                              ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+
+    if sys.platform == "darwin" \
+            and object_store_memory > \
+            ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT \
+            and os.environ.get("RAY_ENABLE_MAC_LARGE_OBJECT_STORE") != "1":
+        raise ValueError(
+            "The configured object store size ({:.4}GiB) exceeds "
+            "the optimal size on Mac ({:.4}GiB). "
+            "This will harm performance! There is a known issue where "
+            "Ray's performance degrades with object store size greater"
+            " than {:.4}GB on a Mac."
+            "To reduce the object store capacity, specify"
+            "`object_store_memory` when calling ray.init() or ray start."
+            "To ignore this warning, "
+            "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
+                object_store_memory / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30))
 
     # Print the object store memory using two decimal places.
     logger.debug(

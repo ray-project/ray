@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import warnings
+import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -703,13 +704,13 @@ class ExperimentAnalysis:
                 try:
                     self.trials += load_trials_from_experiment_checkpoint(
                         experiment_state, stub=True)
-                except Exception as e:
+                except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
                         f"This means your experiment checkpoint is likely "
                         f"faulty or incomplete, and you won't have access "
                         f"to all analysis methods. "
-                        f"Observed error: {e}")
+                        f"Observed error:\n{traceback.format_exc()}")
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -759,6 +760,23 @@ class ExperimentAnalysis:
                     format(path))
 
         return rows
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Ensure that trials are marked as stubs when pickling,
+        so that they can be loaded later without the trainable
+        being registered.
+        """
+        state = self.__dict__.copy()
+
+        def make_stub_if_needed(trial: Trial) -> Trial:
+            if trial.stub:
+                return trial
+            trial_copy = Trial(trial.trainable_name, stub=True)
+            trial_copy.__setstate__(trial.__getstate__())
+            return trial_copy
+
+        state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
+        return state
 
 
 @Deprecated

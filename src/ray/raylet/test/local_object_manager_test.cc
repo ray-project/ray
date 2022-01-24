@@ -221,7 +221,7 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
 
   void PopSpillWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
-    callback(io_worker);
+    pop_callbacks.push_back(callback);
   }
 
   void PopRestoreWorker(
@@ -244,6 +244,17 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
     return true;
   }
 
+  bool FlushPopSpillWorkerCallbacks() {
+    if (pop_callbacks.size() == 0) {
+      return false;
+    }
+    const auto callback = pop_callbacks.front();
+    callback(io_worker);
+    pop_callbacks.pop_front();
+    return true;
+  }
+
+  std::list<std::function<void(std::shared_ptr<WorkerInterface>)>> pop_callbacks;
   std::list<std::function<void(std::shared_ptr<WorkerInterface>)>> restoration_callbacks;
   std::shared_ptr<MockIOWorkerClient> io_worker_client =
       std::make_shared<MockIOWorkerClient>();
@@ -309,7 +320,8 @@ class LocalObjectManagerTest : public ::testing::Test {
     ASSERT_TRUE(manager.spilled_objects_url_.empty());
     ASSERT_TRUE(manager.objects_pending_spill_.empty());
     ASSERT_TRUE(manager.url_ref_count_.empty());
-    ASSERT_TRUE(manager.objects_waiting_for_free_.empty());
+    ASSERT_TRUE(manager.local_objects_.empty());
+    ASSERT_TRUE(manager.spilled_object_pending_delete_.empty());
   }
 
   void TearDown() { unevictable_objects_.clear(); }
@@ -384,6 +396,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -443,6 +456,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ASSERT_TRUE(status.ok());
     num_times_fired++;
   });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_EQ(num_times_fired, 0);
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -488,10 +502,12 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
     ASSERT_TRUE(status.ok());
     num_times_fired++;
   });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   // Spill the same objects again. The callback should only be fired once
   // total.
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(!status.ok()); });
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_EQ(num_times_fired, 0);
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -536,6 +552,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
@@ -563,6 +580,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
   // This is important to cover min_spilling_size_== 0.
   ASSERT_TRUE(manager.SpillObjectsOfSize(0));
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
@@ -577,6 +595,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
 
   // Since there's no more object to spill, this should fail.
   ASSERT_FALSE(manager.SpillObjectsOfSize(0));
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
@@ -603,6 +622,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
@@ -656,6 +676,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   // Now object is evictable. Spill should succeed.
   unevictable_objects_.erase(object_id);
   ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
@@ -680,9 +701,11 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   // This will spill until 2 workers are occupied.
   manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
   // Spilling is still going on, meaning we can make the pace. So it should return true.
   manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
   // No object ids are spilled yet.
   for (const auto &id : object_ids) {
@@ -706,9 +729,11 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
   // availlable).
   manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_TRUE(manager.IsSpillingInProgress());
   manager.SpillObjectUptoMaxThroughput();
   ASSERT_TRUE(manager.IsSpillingInProgress());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   // Spilling is done for all objects.
   for (size_t i = 1; i < object_ids.size(); i++) {
@@ -727,6 +752,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
 
   // We cannot spill anymore as there is no more pinned object.
   manager.SpillObjectUptoMaxThroughput();
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
   ASSERT_FALSE(manager.IsSpillingInProgress());
 }
 
@@ -750,6 +776,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
     ASSERT_FALSE(status.ok());
     num_times_fired++;
   });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   // Return an error from the IO worker during spill.
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
@@ -764,6 +791,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
     ASSERT_TRUE(status.ok());
     num_times_fired++;
   });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::string url = BuildURL("url");
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
@@ -791,6 +819,7 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   std::vector<std::string> urls;
@@ -862,6 +891,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   }
   manager.SpillObjects(object_ids_to_spill,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
@@ -910,6 +940,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   }
   manager.SpillObjects(object_ids_to_spill,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::vector<std::string> urls;
   // Note every object has the same url. It means all objects are fused.
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
@@ -976,8 +1007,10 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   }
   manager.SpillObjects(spill_set_1,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   manager.SpillObjects(spill_set_2,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   std::vector<std::string> urls_spill_set_1;
   std::vector<std::string> urls_spill_set_2;
@@ -1046,6 +1079,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   // All the entries are spilled.
   manager.SpillObjects(object_ids_to_spill,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
@@ -1096,6 +1130,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   }
   manager.SpillObjects(object_ids_to_spill,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
     // Simulate the situation where there's a single file that contains multiple objects.
@@ -1188,6 +1223,68 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePin) {
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 
+  AssertNoLeaks();
+}
+
+TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+  }
+
+  std::vector<std::unique_ptr<RayObject>> objects;
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    auto object = std::make_unique<RayObject>(nullptr, meta_buffer,
+                                              std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+
+  bool spilled = false;
+  manager.SpillObjects(object_ids, [&](const Status &status) {
+    RAY_CHECK(status.ok());
+    spilled = true;
+  });
+  ASSERT_FALSE(spilled);
+
+  // Free on messages from the original owner.
+  auto owner_id1 = WorkerID::FromBinary(owner_address.worker_id());
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(freed.empty());
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
+  }
+  std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
+  ASSERT_EQ(freed, expected);
+
+  // Duplicate pin message from same owner.
+  objects.clear();
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    auto object = std::make_unique<RayObject>(nullptr, meta_buffer,
+                                              std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+
+  manager.SpillObjects(object_ids,
+                       [&](const Status &status) { RAY_CHECK(!status.ok()); });
+
+  // Should only spill the objects once.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({}));
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  manager.FlushFreeObjects();
   AssertNoLeaks();
 }
 

@@ -35,6 +35,12 @@ from libcpp.memory cimport (
     make_unique,
     unique_ptr,
 )
+from ray.includes.optional cimport (
+    optional,
+    nullopt,
+    make_optional,
+)
+
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
@@ -798,7 +804,7 @@ cdef CRayStatus task_execution_handler(
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
-                   e.has_creation_task_error():
+                   e.actor_init_failed:
                     traceback_str = str(e)
                     logger.error("Exception raised "
                                  f"in creation task: {traceback_str}")
@@ -1536,7 +1542,7 @@ cdef class CoreWorker:
                      resources,
                      placement_resources,
                      int32_t max_concurrency,
-                     c_bool is_detached,
+                     is_detached,
                      c_string name,
                      c_string ray_namespace,
                      c_bool is_asyncio,
@@ -1556,6 +1562,7 @@ cdef class CoreWorker:
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] put_arg_ids
+            optional[c_bool] is_detached_optional = nullopt
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1570,13 +1577,17 @@ cdef class CoreWorker:
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
+            if is_detached is not None:
+                is_detached_optional = make_optional[c_bool](
+                    True if is_detached else False)
+
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name,
+                        dynamic_worker_options, is_detached_optional, name,
                         ray_namespace,
                         is_asyncio,
                         c_scheduling_strategy,

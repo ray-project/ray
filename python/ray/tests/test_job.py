@@ -183,22 +183,32 @@ import ray
 from time import sleep
 
 ray.init(address="{}")
+open("{}", "w+").close()
 
 print("My job id: ", str(ray.get_runtime_context().job_id))
 
 {}
 ray.shutdown()
     """
+    tmpfile1 = tempfile.NamedTemporaryFile("w+", suffix=".tmp", prefix="_")
+    tmpfile2 = tempfile.NamedTemporaryFile("w+", suffix=".tmp", prefix="_")
+    tmpfiles = [tmpfile1.name, tmpfile2.name]
+    tmpfile1.close()
+    tmpfile2.close()
+    for tmpfile in tmpfiles:
+        if os.path.exists(tmpfile):
+            os.unlink(tmpfile)
 
     non_hanging = driver_template.format(ray_start_regular["address"],
-                                         "sleep(1)")
+                                         tmpfiles[0], "sleep(1)")
     hanging_driver = driver_template.format(ray_start_regular["address"],
-                                            "sleep(60)")
+                                            tmpfiles[1], "sleep(60)")
 
     out = run_string_as_driver(non_hanging)
     p = run_string_as_driver_nonblocking(hanging_driver)
     # The nonblocking process needs time to connect.
-    time.sleep(1)
+    while not os.path.exists(tmpfiles[1]):
+        time.sleep(1)
 
     jobs = list(ray.state.jobs())
     jobs.sort(key=lambda x: x["JobID"])
