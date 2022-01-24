@@ -9,6 +9,7 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
+import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
@@ -50,6 +51,8 @@ public class RayConfig {
   public int nodeManagerPort;
 
   public int startupToken;
+
+  public final ActorLifetime defaultActorLifetime;
 
   public static class LoggerConf {
     public final String loggerName;
@@ -138,6 +141,9 @@ public class RayConfig {
       /// We shouldn't set it for worker.
       namespace = null;
     }
+
+    defaultActorLifetime = config.getEnum(ActorLifetime.class, "ray.job.default-actor-lifetime");
+    Preconditions.checkState(defaultActorLifetime != null);
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");

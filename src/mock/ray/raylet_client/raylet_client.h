@@ -67,7 +67,7 @@ class MockResourceReserveInterface : public ResourceReserveInterface {
       (override));
   MOCK_METHOD(
       void, CommitBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(
@@ -151,7 +151,7 @@ class MockRayletClientInterface : public RayletClientInterface {
       (override));
   MOCK_METHOD(
       void, CommitBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(
