@@ -186,13 +186,15 @@ def exec_cmd_stream_to_logger(cmd: List[str],
         universal_newlines=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT)
-    exit_code = None
     last_n_lines = []
     with child.stdout:
         for line in iter(child.stdout.readline, b""):
             exit_code = child.poll()
             if exit_code is not None:
                 break
+            line = line.strip()
+            if not line:
+                continue
             last_n_lines.append(line.strip())
             last_n_lines = last_n_lines[-n_lines:]
             logger.info(line.strip())
