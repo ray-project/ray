@@ -2587,7 +2587,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--as-test", ""],
+    args = ["--stop-iters=3"],
 )
 
 py_test(
