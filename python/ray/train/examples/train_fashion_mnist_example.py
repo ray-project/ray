@@ -43,7 +43,8 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
+    model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
         pred = model(X)
@@ -60,7 +61,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -82,9 +83,11 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
+    worker_batch_size = batch_size // train.world_size()
+
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=batch_size)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=worker_batch_size)
 
     train_dataloader = train.torch.prepare_data_loader(train_dataloader)
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
@@ -141,18 +144,9 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        default=False,
-        help="Finish quickly for testing.")
 
     args, _ = parser.parse_known_args()
 
     import ray
-
-    if args.smoke_test:
-        ray.init(num_cpus=2)
-    else:
-        ray.init(address=args.address)
+    ray.init(address=args.address)
     train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)

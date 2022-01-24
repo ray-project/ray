@@ -1,0 +1,29 @@
+# cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+# aioa_aws_242090849690_us_west_2_0000
+cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
+region: us-west-2
+
+max_workers: 0
+
+head_node_type:
+    name: head_node
+    # 16 cpus, x86, 64G mem, 10Gb NIC, $0.484/hr on demand
+    instance_type: m5.4xlarge
+
+worker_node_types:
+    - name: worker_node
+      # 16 cpus, x86, 64G mem, 10Gb NIC, $0.484/hr on demand
+      instance_type: m5.4xlarge
+      min_workers: 0
+      # 1k max replicas
+      max_workers: 0
+      use_spot: false
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: anyscale-user
+          Value: '{{env["ANYSCALE_USER"]}}'
+        - Key: anyscale-expiration
+          Value: '{{env["EXPIRATION_1D"]}}'

@@ -44,6 +44,12 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
 REQUIRE_SHM_SIZE_THRESHOLD = 10**10
+# Mac with 16GB memory has degraded performance when the object store size is
+# greater than 2GB.
+# (see https://github.com/ray-project/ray/issues/20388 for details)
+# The workaround here is to limit capacity to 2GB for Mac by default,
+# and raise error if the capacity is overwritten by user.
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2**30
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -157,7 +163,8 @@ RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Number of attempts to ping the Redis server. See
-# `services.py:wait_for_redis_to_start`.
+# `services.py::wait_for_redis_to_start()` and
+# `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
 
 LOGGER_FORMAT = (

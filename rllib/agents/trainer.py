@@ -11,9 +11,11 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, DefaultDict, Dict, List, Optional, Set, Tuple, \
+    Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -35,7 +37,7 @@ from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep, \
     train_one_step, multi_gpu_train_one_step
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
@@ -49,7 +51,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
     NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.multi_agent import check_multi_agent
+from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
     PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
@@ -723,8 +725,18 @@ class Trainer(Trainable):
         self._episodes_to_be_collected = []
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
-        self.evaluation_workers = None
-        self.evaluation_metrics = {}
+        self.evaluation_workers: Optional[WorkerSet] = None
+        # Initialize common evaluation_metrics to nan, before they become
+        # available. We want to make sure the metrics are always present
+        # (although their values may be nan), so that Tune does not complain
+        # when we use these as stopping criteria.
+        self.evaluation_metrics = {
+            "evaluation": {
+                "episode_reward_max": np.nan,
+                "episode_reward_min": np.nan,
+                "episode_reward_mean": np.nan,
+            }
+        }
 
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
@@ -798,12 +810,19 @@ class Trainer(Trainable):
         self.local_replay_buffer = (
             self._create_local_replay_buffer_if_necessary(self.config))
 
+        # Create a dict, mapping ActorHandles to sets of open remote
+        # requests (object refs). This way, we keep track, of which actors
+        # inside this Trainer (e.g. a remote RolloutWorker) have
+        # already been sent how many (e.g. `sample()`) requests.
+        self.remote_requests_in_flight: \
+            DefaultDict[ActorHandle, Set[ray.ObjectRef]] = defaultdict(set)
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
         # via the soon-to-be deprecated `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        self.workers = None
+        self.workers: Optional[WorkerSet] = None
         self.train_exec_impl = None
 
         # Old design: Override `Trainer._init` (or use `build_trainer()`, which
@@ -845,13 +864,10 @@ class Trainer(Trainable):
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
 
-            # TODO: Now that workers have been created, update our policy
-            #  specs in the config[multiagent] dict with the correct spaces.
-            #  However, this leads to a problem with the evaluation
-            #  workers' observation one-hot preprocessor in
-            #  `examples/documentation/rllib_in_6sec.py` script.
-            # self.config["multiagent"]["policies"] = \
-            #     self.workers.local_worker().policy_map.policy_specs
+            # Now that workers have been created, update our policy
+            # specs in the config[multiagent] dict with the correct spaces.
+            self.config["multiagent"]["policies"] = \
+                self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -912,7 +928,7 @@ class Trainer(Trainable):
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers = self._make_workers(
+            self.evaluation_workers: WorkerSet = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
@@ -1429,6 +1445,13 @@ class Trainer(Trainable):
                 error=False)
             unsquash_action = unsquash_actions
 
+        # `unsquash_action` is None: Use value of config['normalize_actions'].
+        if unsquash_action is None:
+            unsquash_action = self.config["normalize_actions"]
+        # `clip_action` is None: Use value of config['clip_actions'].
+        elif clip_action is None:
+            clip_action = self.config["clip_actions"]
+
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
         err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
@@ -1560,6 +1583,13 @@ class Trainer(Trainable):
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
                 error=False)
             unsquash_actions = normalize_actions
+
+        # `unsquash_actions` is None: Use value of config['normalize_actions'].
+        if unsquash_actions is None:
+            unsquash_actions = self.config["normalize_actions"]
+        # `clip_actions` is None: Use value of config['clip_actions'].
+        elif clip_actions is None:
+            clip_actions = self.config["clip_actions"]
 
         # Preprocess obs and states.
         state_defined = state is not None
@@ -1848,8 +1878,9 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers"):
-            self.workers.stop()
+        workers = getattr(self, "workers", None)
+        if workers:
+            workers.stop()
         # Stop all optimizers.
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
@@ -2130,34 +2161,9 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
-        # Loop through all policy definitions in multi-agent policies.
+        # Validate "multiagent" sub-dict and convert policy 4-tuples to
+        # PolicySpec objects.
         policies, is_multi_agent = check_multi_agent(config)
-
-        for pid, policy_spec in policies.copy().items():
-            # Policy IDs must be strings.
-            if not isinstance(pid, str):
-                raise ValueError("Policy keys must be strs, got {}".format(
-                    type(pid)))
-
-            # Convert to PolicySpec if plain list/tuple.
-            if not isinstance(policy_spec, PolicySpec):
-                # Values must be lists/tuples of len 4.
-                if not isinstance(policy_spec, (list, tuple)) or \
-                        len(policy_spec) != 4:
-                    raise ValueError(
-                        "Policy specs must be tuples/lists of "
-                        "(cls or None, obs_space, action_space, config), "
-                        f"got {policy_spec}")
-                policies[pid] = PolicySpec(*policy_spec)
-
-            # Config is None -> Set to {}.
-            if policies[pid].config is None:
-                policies[pid] = policies[pid]._replace(config={})
-            # Config not a dict.
-            elif not isinstance(policies[pid].config, dict):
-                raise ValueError(
-                    f"Multiagent policy config for {pid} must be a dict, "
-                    f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
@@ -2549,14 +2555,16 @@ class Trainer(Trainable):
             # Get capacity out of replay_buffer_config.
             capacity = replay_buffer_config["capacity"]
 
+        # Configure prio. replay parameters.
         if config.get("prioritized_replay"):
             prio_args = {
                 "prioritized_replay_alpha": config["prioritized_replay_alpha"],
                 "prioritized_replay_beta": config["prioritized_replay_beta"],
                 "prioritized_replay_eps": config["prioritized_replay_eps"],
             }
+        # Switch off prioritization (alpha=0.0).
         else:
-            prio_args = {}
+            prio_args = {"prioritized_replay_alpha": 0.0}
 
         return MultiAgentReplayBuffer(
             num_shards=1,

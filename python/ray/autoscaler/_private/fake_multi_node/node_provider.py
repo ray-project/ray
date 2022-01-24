@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from threading import RLock
 import time
 from types import ModuleType
@@ -56,9 +57,9 @@ DOCKER_HEAD_CMD = (
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chmod 600 ~/ray_bootstrap_key.pem && "
-    "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
-    "((sudo apt update && sudo apt install -y openssh-server && "
-    "sudo service ssh start) || true) && "
+    "sudo chown ray:users "
+    "~/.ssh ~/.ssh/authorized_keys ~/ray_bootstrap_key.pem && "
+    "{ensure_ssh} && "
     "sleep 1 && "
     "RAY_FAKE_CLUSTER=1 ray start --head "
     "--autoscaling-config=~/ray_bootstrap_config.yaml "
@@ -76,8 +77,7 @@ DOCKER_WORKER_CMD = (
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
-    "((sudo apt update && sudo apt install -y openssh-server && "
-    "sudo service ssh start) || true) && "
+    "{ensure_ssh} && "
     "sleep 1 && "
     f"ray start --address={FAKE_HEAD_NODE_ID}:6379 "
     "--object-manager-port=8076 "
@@ -130,7 +130,13 @@ def create_node_spec(head: bool,
 
     resources = resources or {}
 
+    ensure_ssh = ("((sudo apt update && sudo apt install -y openssh-server && "
+                  "sudo service ssh start) || true)") if not bool(
+                      int(os.environ.get("RAY_HAS_SSH", "0")
+                          or "0")) else "sudo service ssh start"
+
     cmd_kwargs = dict(
+        ensure_ssh=ensure_ssh,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=json.dumps(resources, indent=None),
@@ -147,7 +153,12 @@ def create_node_spec(head: bool,
         else:
             local_ray_dir = fake_cluster_dev_dir
         os.environ["FAKE_CLUSTER_DEV"] = local_ray_dir
-        docker_ray_dir = "/home/ray/anaconda3/lib/python3.7/site-packages/ray"
+
+        mj = sys.version_info.major
+        mi = sys.version_info.minor
+
+        docker_ray_dir = (f"/home/ray/anaconda3/lib"
+                          f"/python{mj}.{mi}/site-packages/ray")
         node_spec["volumes"] += [
             f"{local_ray_dir}/autoscaler:{docker_ray_dir}/autoscaler:ro",
         ]
@@ -191,6 +202,7 @@ def create_node_spec(head: bool,
 
     # Pass these environment variables (to the head node)
     # These variables are propagated by the `docker compose` command.
+    env_vars.setdefault("RAY_HAS_SSH", os.environ.get("RAY_HAS_SSH", ""))
     env_vars.setdefault("RAY_TEMPDIR", os.environ.get("RAY_TEMPDIR", ""))
     env_vars.setdefault("RAY_HOSTDIR", os.environ.get("RAY_HOSTDIR", ""))
 
@@ -412,6 +424,8 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
     def _create_node_spec_with_resources(self, head: bool, node_id: str,
                                          resources: Dict[str, Any]):
+        resources = resources.copy()
+
         # Create shared directory
         node_dir = os.path.join(self._volume_dir, "nodes", node_id)
         os.makedirs(node_dir, mode=0o755, exist_ok=True)
