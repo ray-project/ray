@@ -153,7 +153,6 @@ def test_get_list(ray_start_regular_shared):
         assert get_count == 1
 
 
-
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -174,7 +173,6 @@ def test_real_ray_fallback(ray_start_regular_shared):
         assert len(nodes) == 1, nodes
 
 
-
 def test_nested_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -187,7 +185,6 @@ def test_nested_function(ray_start_regular_shared):
             return ray.get(f.remote())
 
         assert ray.get(g.remote()) == "OK"
-
 
 
 def test_put_get(ray_start_regular_shared):
@@ -208,7 +205,6 @@ def test_put_get(ray_start_regular_shared):
         assert ray.get(list_put) == [1, 2, 3]
 
 
-
 def test_put_failure_get(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -225,7 +221,6 @@ def test_put_failure_get(ray_start_regular_shared):
 
         # Ensure Ray Client is still connected
         assert ray.get(ray.put(100)) == 100
-
 
 
 def test_wait(ray_start_regular_shared):
@@ -254,7 +249,6 @@ def test_wait(ray_start_regular_shared):
             ray.wait(ClientObjectRef("blabla"))
         with pytest.raises(TypeError):
             ray.wait(["blabla"])
-
 
 
 def test_remote_functions(ray_start_regular_shared):
@@ -315,7 +309,6 @@ def test_remote_functions(ray_start_regular_shared):
         assert len(res[0]) == 1 and res[1] == []
 
 
-
 def test_function_calling_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -330,7 +323,6 @@ def test_function_calling_function(ray_start_regular_shared):
 
         print(f, type(f))
         assert ray.get(f.remote()) == "OK"
-
 
 
 def test_basic_actor(ray_start_regular_shared):
@@ -363,7 +355,6 @@ def test_basic_actor(ray_start_regular_shared):
         r1, r2 = actor.say_hi.remote("ray")
         assert ray.get(r1) == "Hi ray"
         assert ray.get(r2) == 3
-
 
 
 def test_pass_handles(ray_start_regular_shared):
@@ -429,7 +420,6 @@ def test_pass_handles(ray_start_regular_shared):
                                                 4)) == local_fact(4)
 
 
-
 def test_basic_log_stream(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         log_msgs = []
@@ -450,7 +440,6 @@ def test_basic_log_stream(ray_start_regular_shared):
             (msg.find("get") >= 0 for msg in logs_with_id)), logs_with_id
         assert any(
             (msg.find("put") >= 0 for msg in logs_with_id)), logs_with_id
-
 
 
 def test_stdout_log_stream(ray_start_regular_shared):
@@ -477,13 +466,11 @@ def test_stdout_log_stream(ray_start_regular_shared):
         assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
-
 def test_serializing_exceptions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         with pytest.raises(
                 ValueError, match="Failed to look up actor with name 'abc'"):
             ray.get_actor("abc")
-
 
 
 def test_invalid_task(ray_start_regular_shared):
@@ -499,7 +486,6 @@ def test_invalid_task(ray_start_regular_shared):
         # Exception during scheduling will be raised on ray.get()
         with pytest.raises(Exception):
             ray.get(ref)
-
 
 
 def test_create_remote_before_start(ray_start_regular_shared):
@@ -524,7 +510,6 @@ def test_create_remote_before_start(ray_start_regular_shared):
         assert ray.get(f.remote(3)) == 23
         a = Returner.remote()
         assert ray.get(a.doit.remote()) == "foo"
-
 
 
 def test_basic_named_actor(ray_start_regular_shared):
@@ -591,7 +576,6 @@ def test_error_serialization(ray_start_regular_shared):
             ray.get(g.remote())
 
 
-
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         assert ray._internal_kv_initialized()
@@ -653,7 +637,6 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     time.sleep(3)
 
 
-
 @patch.dict(os.environ, {"RAY_ENABLE_AUTO_CONNECT": "0"})
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
@@ -712,7 +695,6 @@ def test_object_ref_cleanup():
         assert "Error in sys.excepthook:" not in result
         assert "AttributeError: 'NoneType' object has no " not in result
         assert "Exception ignored in" not in result
-
 
 
 @pytest.mark.parametrize(
