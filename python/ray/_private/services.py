@@ -1565,7 +1565,7 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            redis_address,
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1721,7 +1721,7 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        redis_address,
+        bootstrap_address,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1732,7 +1732,7 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): Bootstrap address of ray cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1745,8 +1745,8 @@ def build_java_worker_command(
         The command string for starting Java worker.
     """
     pairs = []
-    if redis_address is not None:
-        pairs.append(("ray.address", redis_address))
+    if bootstrap_address is not None:
+        pairs.append(("ray.address", bootstrap_address))
     pairs.append(("ray.raylet.node-manager-port",
                   "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 

@@ -444,6 +444,10 @@ class Trial:
 
     @property
     def remote_checkpoint_dir(self):
+        """This is the **per trial** remote checkpoint dir.
+
+        This is different from **per experiment** remote checkpoint dir.
+        """
         assert self.logdir, "Trial {}: logdir not initialized.".format(self)
         if not self.remote_checkpoint_dir_prefix:
             return None

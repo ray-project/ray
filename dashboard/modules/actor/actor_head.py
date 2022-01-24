@@ -144,9 +144,11 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             while True:
                 try:
                     actor_id, actor_table_data = await subscriber.poll()
-                    # Convert to lower case hex ID.
-                    actor_id = actor_id.hex()
-                    process_actor_data_from_pubsub(actor_id, actor_table_data)
+                    if actor_id is not None:
+                        # Convert to lower case hex ID.
+                        actor_id = actor_id.hex()
+                        process_actor_data_from_pubsub(actor_id,
+                                                       actor_table_data)
                 except Exception:
                     logger.exception("Error processing actor info from GCS.")
 
