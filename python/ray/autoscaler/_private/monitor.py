@@ -362,7 +362,9 @@ class Monitor:
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(
-                        ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                        ray_constants.DEBUG_AUTOSCALING_STATUS,
+                        as_json,
+                        overwrite=True)
             except Exception:
                 logger.exception(
                     "Monitor: Execution exception. Trying again...")
@@ -432,7 +434,8 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
+            _internal_kv_put(
+                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         if not use_gcs_for_bootstrap():
             redis_client = ray._private.services.create_redis_client(
                 self.redis_address, password=self.redis_password)
