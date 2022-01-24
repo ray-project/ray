@@ -114,7 +114,7 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
     if (testHanged) {
       if (result != null) {
-        printSection("TEST CASE HANGED: " + result.getName());
+        printSection("TEST CASE HANGED: " + getFullTestName(result));
       } else {
         printSection("TEST CASE HANGED");
       }
