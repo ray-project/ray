@@ -477,8 +477,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert "clusterStatus" in response.json()["data"]
         assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
-    wait_until_succeeded_without_exception(get_cluster_status,
-                                           (requests.RequestException, ))
+    assert wait_until_succeeded_without_exception(
+        get_cluster_status, (requests.RequestException, ))
 
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
