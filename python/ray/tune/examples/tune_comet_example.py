@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 """Examples logging Tune runs to comet.ml"""
-import comet_ml
-
 import argparse
 import numpy as np
 from unittest.mock import MagicMock
@@ -64,7 +62,6 @@ if __name__ == "__main__":
     # Add mock api for testing
     if args.mock_api:
         CometLoggerCallback._logger_process_cls = MagicMock
-        comet_ml = MagicMock()
         args.api_key = "abc"
 
     tune_function(args.api_key, args.project_name)
