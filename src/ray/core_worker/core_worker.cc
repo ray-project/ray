@@ -1509,8 +1509,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name) {
   // Build common task spec.
   std::vector<std::string> runtime_env_uris;
-  auto override_runtime_env = "{}";
-  // OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
+  auto override_runtime_env =
+      OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
