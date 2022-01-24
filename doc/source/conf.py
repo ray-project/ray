@@ -75,6 +75,21 @@ extensions = [
 external_toc_exclude_missing = False
 external_toc_path = '_toc.yml'
 
+myst_enable_extensions = [
+    # "dollarmath",
+    # "amsmath",
+    # "deflist",
+    # "fieldlist",
+    "html_admonition",
+    "html_image",
+    # "colon_fence",
+    # "smartquotes",
+    # "replacements",
+    # "linkify",
+    # "strikethrough",
+    # "substitution",
+    # "tasklist",
+]
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
