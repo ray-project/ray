@@ -187,9 +187,7 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
-    ],
-    # Full long running tests (1 day runtime)
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
+        # Full long running tests (1 day runtime)
         "actor_deaths",
         "apex",
         "impala",
