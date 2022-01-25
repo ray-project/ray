@@ -86,14 +86,10 @@ class LearnerThread(threading.Thread):
             for pid, results in multi_agent_results.items():
                 learner_info_builder.add_learn_on_batch_results(results, pid)
             self.learner_info = learner_info_builder.finalize()
-            learner_stats = {
-                pid: info[LEARNER_STATS_KEY]
-                for pid, info in self.learner_info.items()
-            }
             self.weights_updated = True
 
         self.num_steps += 1
-        self.outqueue.put((batch.count, learner_stats))
+        self.outqueue.put((batch.count, self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
     def add_learner_metrics(self, result: Dict) -> Dict:
