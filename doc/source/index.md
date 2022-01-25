@@ -60,7 +60,7 @@ and [fast, durable application flows](workflows/concepts.rst).
 ```
 
 ---
-**Deploy large-scale workloads with <img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
+**Deploy large-scale workloads with <img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Cluster**
 ^^^
 With Ray Cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/quickstart) or 
 [on premise](cluster/cloud.html#cluster-private-setup). The [Ray auto-scaler](cluster/sdk)
