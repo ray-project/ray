@@ -187,6 +187,19 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+        # Full long running tests (1 day runtime)
+        "actor_deaths",
+        "apex",
+        "impala",
+        "many_actor_tasks",
+        "many_drivers",
+        "many_ppo",
+        "many_tasks",
+        "many_tasks_serialized_ids",
+        "node_failures",
+        "pbt",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
@@ -240,21 +253,6 @@ WEEKLY_TESTS = {
     "~/ray/release/long_running_distributed_tests"
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
-    ],
-    # Full long running tests (1 day runtime)
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",

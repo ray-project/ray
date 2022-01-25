@@ -216,17 +216,17 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   // Trigger reply to RequestWorkerLease.
-  bool GrantWorkerLease(const std::string &address, int port,
-                        const NodeID &retry_at_raylet_id, bool cancel = false,
-                        std::string worker_id = std::string(), bool reject = false,
-                        bool runtime_env_setup_failed = false) {
+  bool GrantWorkerLease(
+      const std::string &address, int port, const NodeID &retry_at_raylet_id,
+      bool cancel = false, std::string worker_id = std::string(), bool reject = false,
+      const rpc::RequestWorkerLeaseReply::SchedulingFailureType &failure_type =
+          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
     rpc::RequestWorkerLeaseReply reply;
     if (cancel) {
       reply.set_canceled(true);
+      reply.set_failure_type(failure_type);
     } else if (reject) {
       reply.set_rejected(true);
-    } else if (runtime_env_setup_failed) {
-      reply.set_runtime_env_setup_failed(true);
     } else if (!retry_at_raylet_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
@@ -688,15 +688,19 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Fail task1 which will fail all the tasks
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
-                                              /*runtime_env_setup_failed=*/true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, NodeID::Nil(), true, "", false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Fail task2
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
-                                              /*runtime_env_setup_failed=*/true));
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, NodeID::Nil(), true, "", false,
+      /*failure_type=*/
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);

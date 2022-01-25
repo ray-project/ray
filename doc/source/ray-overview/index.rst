@@ -13,11 +13,10 @@ To use Ray in Python, first install Ray with: ``pip install ray``.
 To use Ray in Java, first add the `ray-api <https://mvnrepository.com/artifact/io.ray/ray-api>`__ and `ray-runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`__ dependencies in your project.
 Then we can use Ray to parallelize your program.
 
-Parallelizing Python/Java Functions with Ray Tasks
-==================================================
+Parallelizing Functions with Ray Tasks
+======================================
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     First, import ray and ``init`` the Ray service.
     Then decorate your function with ``@ray.remote`` to declare that you want to run this function
@@ -36,7 +35,7 @@ Parallelizing Python/Java Functions with Ray Tasks
         futures = [f.remote(i) for i in range(4)]
         print(ray.get(futures)) # [0, 1, 4, 9]
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     First, use ``Ray.init`` to initialize Ray runtime.
     Then you can use ``Ray.task(...).remote()`` to convert any Java static method into a Ray task. The task will run asynchronously in a remote worker process. The ``remote`` method will return an ``ObjectRef``, and you can then fetch the actual result with ``get``.
@@ -71,82 +70,87 @@ Parallelizing Python/Java Functions with Ray Tasks
     In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
     must maintain the state of your application. You can do that with Ray Actors.
 
-Parallelizing Python/Java Classes with Ray Actors
-=================================================
+
+Parallelizing Classes with Ray Actors
+=====================================
 
 Ray provides actors to allow you to parallelize an instance of a class in Python/Java.
 When you instantiate a class that is a Ray actor, Ray will start a remote instance
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    import ray
-    ray.init() # Only call this once.
+    .. code-block:: python
 
-    @ray.remote
-    class Counter(object):
-        def __init__(self):
-            self.n = 0
+        import ray
+        ray.init() # Only call this once.
 
-        def increment(self):
-            self.n += 1
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.n = 0
 
-        def read(self):
-            return self.n
+            def increment(self):
+                self.n += 1
 
-    counters = [Counter.remote() for i in range(4)]
-    [c.increment.remote() for c in counters]
-    futures = [c.read.remote() for c in counters]
-    print(ray.get(futures)) # [1, 1, 1, 1]
+            def read(self):
+                return self.n
 
-  .. code-tab:: java
+        counters = [Counter.remote() for i in range(4)]
+        [c.increment.remote() for c in counters]
+        futures = [c.read.remote() for c in counters]
+        print(ray.get(futures)) # [1, 1, 1, 1]
 
-    import io.ray.api.ActorHandle;
-    import io.ray.api.ObjectRef;
-    import io.ray.api.Ray;
-    import java.util.ArrayList;
-    import java.util.List;
-    import java.util.stream.Collectors;
+.. tabbed:: Java
 
-    public class RayDemo {
+    .. code-block:: java
 
-      public static class Counter {
+        import io.ray.api.ActorHandle;
+        import io.ray.api.ObjectRef;
+        import io.ray.api.Ray;
+        import java.util.ArrayList;
+        import java.util.List;
+        import java.util.stream.Collectors;
 
-        private int value = 0;
+        public class RayDemo {
 
-        public void increment() {
-          this.value += 1;
+          public static class Counter {
+
+            private int value = 0;
+
+            public void increment() {
+              this.value += 1;
+            }
+
+            public int read() {
+              return this.value;
+            }
+          }
+
+          public static void main(String[] args) {
+            // Intialize Ray runtime.
+            Ray.init();
+            List<ActorHandle<Counter>> counters = new ArrayList<>();
+            // Create 4 actors from the `Counter` class.
+            // They will run in remote worker processes.
+            for (int i = 0; i < 4; i++) {
+              counters.add(Ray.actor(Counter::new).remote());
+            }
+
+            // Invoke the `increment` method on each actor.
+            // This will send an actor task to each remote actor.
+            for (ActorHandle<Counter> counter : counters) {
+              counter.task(Counter::increment).remote();
+            }
+            // Invoke the `read` method on each actor, and print the results.
+            List<ObjectRef<Integer>> objectRefList = counters.stream()
+                .map(counter -> counter.task(Counter::read).remote())
+                .collect(Collectors.toList());
+            System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
+          }
         }
 
-        public int read() {
-          return this.value;
-        }
-      }
-
-      public static void main(String[] args) {
-        // Intialize Ray runtime.
-        Ray.init();
-        List<ActorHandle<Counter>> counters = new ArrayList<>();
-        // Create 4 actors from the `Counter` class.
-        // They will run in remote worker processes.
-        for (int i = 0; i < 4; i++) {
-          counters.add(Ray.actor(Counter::new).remote());
-        }
-
-        // Invoke the `increment` method on each actor.
-        // This will send an actor task to each remote actor.
-        for (ActorHandle<Counter> counter : counters) {
-          counter.task(Counter::increment).remote();
-        }
-        // Invoke the `read` method on each actor, and print the results.
-        List<ObjectRef<Integer>> objectRefList = counters.stream()
-            .map(counter -> counter.task(Counter::read).remote())
-            .collect(Collectors.toList());
-        System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
-      }
-    }
 
 An Overview of the Ray Libraries
 ================================
@@ -217,6 +221,8 @@ Visit the :ref:`Walkthrough <core-walkthrough>` page a more comprehensive overvi
 
 Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 
-``ray submit [CLUSTER.YAML] example.py --start``
+.. code-block:: bash
+
+    ray submit [CLUSTER.YAML] example.py --start
 
 Read more about :ref:`launching clusters <cluster-index>`.

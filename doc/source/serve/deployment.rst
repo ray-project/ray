@@ -1,3 +1,5 @@
+.. _serve-deploy-tutorial:
+
 ===================
 Deploying Ray Serve
 ===================
@@ -9,7 +11,7 @@ This section should help you:
 
 .. contents:: Deploying Ray Serve
 
-.. _serve-deploy-tutorial:
+.. _ray-serve-instance-lifetime:
 
 Lifetime of a Ray Serve Instance
 ================================

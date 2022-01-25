@@ -990,11 +990,11 @@ TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars) {
 TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
-  parent->mutable_py_modules()->Add("s3://456");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://456");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.py_modules().size(), 1);
-  ASSERT_EQ(result.py_modules()[0], "s3://456");
+  ASSERT_EQ(result.python_runtime_env().dependent_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().dependent_modules()[0], "s3://456");
   ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
   ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://456");
 }
@@ -1002,15 +1002,15 @@ TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
 TEST(TestOverrideRuntimeEnv, TestOverridePyModules) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
-  child.mutable_py_modules()->Add("s3://123");
+  child.mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://123");
   child.mutable_uris()->mutable_py_modules_uris()->Add("s3://123");
-  parent->mutable_py_modules()->Add("s3://456");
-  parent->mutable_py_modules()->Add("s3://789");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://456");
+  parent->mutable_python_runtime_env()->mutable_dependent_modules()->Add("s3://789");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
   parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://789");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
-  ASSERT_EQ(result.py_modules().size(), 1);
-  ASSERT_EQ(result.py_modules()[0], "s3://123");
+  ASSERT_EQ(result.python_runtime_env().dependent_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().dependent_modules()[0], "s3://123");
   ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
   ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://123");
 }
@@ -1038,28 +1038,33 @@ TEST(TestOverrideRuntimeEnv, TestCondaInherit) {
   child.mutable_uris()->set_working_dir_uri("gcs://abc");
   parent->mutable_uris()->set_working_dir_uri("gcs://def");
   parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_conda_runtime_env()->set_conda_env_name("my-env-name");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
   ASSERT_EQ(result.uris().working_dir_uri(), "gcs://abc");
   ASSERT_EQ(result.uris().conda_uri(), "conda://456");
-  ASSERT_TRUE(result.has_conda_runtime_env());
-  ASSERT_TRUE(result.conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.conda_runtime_env().conda_env_name(), "my-env-name");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name");
 }
 
 TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
   rpc::RuntimeEnv child;
   auto parent = std::make_shared<rpc::RuntimeEnv>();
   child.mutable_uris()->set_conda_uri("conda://123");
-  child.mutable_conda_runtime_env()->set_conda_env_name("my-env-name-123");
+  child.mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-123");
   parent->mutable_uris()->set_conda_uri("conda://456");
-  parent->mutable_conda_runtime_env()->set_conda_env_name("my-env-name-456");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-456");
   parent->mutable_uris()->set_working_dir_uri("gcs://def");
   auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
   ASSERT_EQ(result.uris().conda_uri(), "conda://123");
-  ASSERT_TRUE(result.has_conda_runtime_env());
-  ASSERT_TRUE(result.conda_runtime_env().has_conda_env_name());
-  ASSERT_EQ(result.conda_runtime_env().conda_env_name(), "my-env-name-123");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name-123");
   ASSERT_EQ(result.uris().working_dir_uri(), "gcs://def");
 }
 
