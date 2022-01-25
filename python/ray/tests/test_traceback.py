@@ -365,14 +365,16 @@ def test_serialization_error_message(shutdown_only):
     """
     with pytest.raises(TypeError) as excinfo:
         capture_lock.remote()
-    assert (clean_noqa(expected_capture_output_task) == str(excinfo.value).replace(test_prefix, ""))
+    assert (clean_noqa(expected_capture_output_task) == str(
+        excinfo.value).replace(test_prefix, ""))
     """
     Test the case where an unserializable object is captured by actors.
     """
     with pytest.raises(TypeError) as excinfo:
         b = B.remote()
         print(b)
-    assert (clean_noqa(expected_capture_output_actor) == str(excinfo.value).replace(test_prefix, ""))
+    assert (clean_noqa(expected_capture_output_actor) == str(
+        excinfo.value).replace(test_prefix, ""))
 
 
 if __name__ == "__main__":
