@@ -21,16 +21,6 @@ TensorStructType = Union[TensorType, dict, tuple]
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
 
-# Represents a generic tensor type.
-# This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Any
-
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-TensorStructType = Union[TensorType, dict, tuple]
-
-# A shape of a tensor.
-TensorShape = Union[Tuple[int], List[int]]
-
 # Represents a fully filled out config of a Trainer class.
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,

@@ -150,7 +150,6 @@ class SimpleReplayBuffer:
             self.last_added_batches.append(sample_batch)
 
     def replay(self) -> SampleBatchType:
-        self.last_added_batches = []
         return random.choice(self.replay_batches)
 
     def __len__(self):
