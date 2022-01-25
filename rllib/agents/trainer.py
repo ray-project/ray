@@ -996,10 +996,6 @@ class Trainer(Trainable):
                     step_attempt_results=step_attempt_results,
                 )
 
-        # Call custom callback, so that the user has a chance
-        # to utilize (and mutate) the results.
-        self.callbacks.on_train_result(trainer=self, result=result)
-
         return result
 
     @ExperimentalAPI
@@ -1863,6 +1859,14 @@ class Trainer(Trainable):
     def load_checkpoint(self, checkpoint_path: str) -> None:
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
+
+    @override(Trainable)
+    def log_result(self, result: ResultDict) -> None:
+        # Log after the callback is invoked, so that the user has a chance
+        # to mutate the result.
+        self.callbacks.on_train_result(trainer=self, result=result)
+        # Then log according to Trainable's logging logic.
+        Trainable.log_result(self, result)
 
     @override(Trainable)
     def cleanup(self) -> None:
