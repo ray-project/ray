@@ -264,7 +264,7 @@ class JsonIOTest(unittest.TestCase):
             self.test_dir, {
                 "output": "dataset",
                 "output_config": {
-                    "type": "json",
+                    "format": "json",
                     "path": self.test_dir,
                     "max_num_samples_per_file": 2,
                 },
