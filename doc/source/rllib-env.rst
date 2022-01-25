@@ -121,8 +121,8 @@ Multi-Agent and Hierarchical
 
 In a multi-agent environment, there are more than one "agent" acting simultaneously, in a turn-based fashion, or in a combination of these two.
 
-For example, in a traffic simulation, there may be multiple "car"- and "traffic light" agents in the environment, acting simultaneously.
-Whereas in a board game, you may have two or more agents acting in a turn-base fashion.
+For example, in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment,
+acting simultaneously. Whereas in a board game, you may have two or more agents acting in a turn-base fashion.
 
 The mental model for multi-agent in RLlib is as follows:
 (1) Your environment (a sub-class of :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns dictionaries mapping agent IDs (e.g. strings; the env can chose these arbitrarily) to individual agents' observations, rewards, and done-flags.
@@ -234,11 +234,13 @@ If all the agents will be using the same algorithm class to train, then you can 
                     config={"gamma": 0.85},  # use main config plus <- this override here
                     ),  # alternatively, simply do: `PolicySpec(config={"gamma": 0.85})`
 
-                # Deprecated way: Specify class, obs-/action-spaces, config-overrides
-                # for each policy as a tuple. If class is None -> Uses Trainer's
-                # default policy class.
+                # Deprecated way: Tuple specifying class, obs-/action-spaces,
+                # config-overrides for each policy as a tuple.
+                # If class is None -> Uses Trainer's default policy class.
                 "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
 
+                # New way: Use PolicySpec() with keywords: `policy_class`,
+                # `observation_space`, `action_space`, `config`.
                 "traffic_light": PolicySpec(
                     observation_space=tl_obs_space,  # special obs space for lights?
                     action_space=tl_act_space,  # special action space for lights?

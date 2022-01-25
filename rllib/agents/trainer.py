@@ -503,12 +503,15 @@ COMMON_CONFIG: TrainerConfigDict = {
         "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Specifies those policies that should be updated.
+        # Determines those policies that should be updated.
         # Options are:
-        # - None for all policies.
-        # - An iterable of PolicyIDs to be updated.
-        # - A callable taking a PolicyID and a SampleBatch or MultiAgentBatch
-        #   and returning a bool (trainable or not?).
+        # - None, for all policies.
+        # - An iterable of PolicyIDs that should be updated.
+        # - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
+        #   and returning a bool (indicating whether the given policy is trainable
+        #   or not, given the particular batch). This allows you to have a policy
+        #   trained only on certain data (e.g. when playing against a certain
+        #   opponent).
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.

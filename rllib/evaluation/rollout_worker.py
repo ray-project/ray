@@ -1146,7 +1146,8 @@ class RolloutWorker(ParallelIteratorWorker):
             self.observation_filter, new_policy.observation_space.shape)
 
         self.set_policy_mapping_fn(policy_mapping_fn)
-        self.set_is_policy_to_train(policies_to_train)
+        if policies_to_train is not None:
+            self.set_is_policy_to_train(policies_to_train)
 
         return new_policy
 
@@ -1180,7 +1181,8 @@ class RolloutWorker(ParallelIteratorWorker):
         del self.policy_map[policy_id]
         del self.preprocessors[policy_id]
         self.set_policy_mapping_fn(policy_mapping_fn)
-        self.set_is_policy_to_train(policies_to_train)
+        if policies_to_train is not None:
+            self.set_is_policy_to_train(policies_to_train)
 
     @DeveloperAPI
     def set_policy_mapping_fn(
@@ -1200,31 +1202,31 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError("`policy_mapping_fn` must be a callable!")
 
     @DeveloperAPI
-    def set_is_policy_to_train(
-            self,
-            is_policy_to_train: Optional[Union[Container[PolicyID], Callable[
-                [PolicyID, SampleBatchType], bool]]] = None) -> None:
+    def set_is_policy_to_train(self, is_policy_to_train: Union[Container[
+            PolicyID], Callable[[PolicyID, SampleBatchType], bool]]) -> None:
         """Sets `self.policies_to_train` to a new set or callable.
 
         Args:
-            is_policy_to_train: An optional container of policy IDs to be
+            is_policy_to_train: A container of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the
                 callable returns False) will not be updated.
         """
-        if is_policy_to_train is not None:
-            # If container given, construct a simple default callable returning True
-            # if the PolicyID is found in the list/set of IDs.
-            if not callable(is_policy_to_train):
-                assert isinstance(is_policy_to_train, Container)
-                pols = set(is_policy_to_train)
+        # If container given, construct a simple default callable returning True
+        # if the PolicyID is found in the list/set of IDs.
+        if not callable(is_policy_to_train):
+            assert isinstance(is_policy_to_train, Container), \
+                "ERROR: `is_policy_to_train`must be a container or a " \
+                "callable taking PolicyID and SampleBatch and returning " \
+                "True|False (trainable or not?)."
+            pols = set(is_policy_to_train)
 
-                def is_policy_to_train(pid, batch=None):
-                    return pid in pols
+            def is_policy_to_train(pid, batch=None):
+                return pid in pols
 
-            self.is_policy_to_train = is_policy_to_train
+        self.is_policy_to_train = is_policy_to_train
 
     @DeveloperAPI
     def for_policy(self,
