@@ -1,14 +1,15 @@
 import gym
-from typing import Any, Dict, List, Tuple, Union, TypeVar, \
-    TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, \
+    TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ray.rllib.utils import try_import_tf, try_import_torch
-    _, tf, _ = try_import_tf()
-    torch, _ = try_import_torch()
+    from ray.rllib.env.env_context import EnvContext
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
+    from ray.rllib.utils import try_import_tf, try_import_torch
+    _, tf, _ = try_import_tf()
+    torch, _ = try_import_torch()
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
@@ -30,10 +31,6 @@ TrainerConfigDict = dict
 # the default trainer config to be used.
 PartialTrainerConfigDict = dict
 
-# Represents the env_config sub-dict of the trainer config that is passed to
-# the env constructor.
-EnvConfigDict = dict
-
 # Represents the model config sub-dict of the trainer config that is passed to
 # the model catalog.
 ModelConfigDict = dict
@@ -42,9 +39,23 @@ ModelConfigDict = dict
 # need a config dict with a "type" key, a class path (str), or a type directly.
 FromConfigSpec = Union[Dict[str, Any], type, str]
 
+# Represents the env_config sub-dict of the trainer config that is passed to
+# the env constructor.
+EnvConfigDict = dict
+
+# Represents an environment id. These could be:
+# - An int index for a sub-env within a vectorized env.
+# - An external env ID (str), which changes(!) each episode.
+EnvID = Union[int, str]
+
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
 # VectorEnv, gym.Env, or ActorHandle.
 EnvType = Any
+
+# A callable, taking a EnvContext object
+# (config dict + properties: `worker_index`, `vector_index`, `num_workers`,
+# and `remote`) and returning an env object (or None if no env is used).
+EnvCreator = Callable[["EnvContext"], Optional[EnvType]]
 
 # Represents a generic identifier for an agent (e.g., "agent1").
 AgentID = Any
@@ -58,11 +69,6 @@ MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
 PolicyState = Dict[str, TensorStructType]
-
-# Represents an environment id. These could be:
-# - An int index for a sub-env within a vectorized env.
-# - An external env ID (str), which changes(!) each episode.
-EnvID = Union[int, str]
 
 # Represents an episode id.
 EpisodeID = int

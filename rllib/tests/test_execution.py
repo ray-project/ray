@@ -104,7 +104,7 @@ def test_metrics(ray_start_regular_shared):
     a = from_range(10, repeat=True).gather_sync()
     b = StandardMetricsReporting(
         a, workers, {
-            "min_iter_time_s": 2.5,
+            "min_time_s_per_reporting": 2.5,
             "timesteps_per_iteration": 0,
             "metrics_num_episodes_for_smoothing": 10,
             "metrics_episode_collection_timeout_s": 10,

@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 def get_mean_action(alg, obs):
     out = []
     for _ in range(2000):
-        out.append(float(alg.compute_action(obs)))
+        out.append(float(alg.compute_single_action(obs)))
     return np.mean(out)
 
 
@@ -24,7 +24,7 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_iter_time_s": 1,
+        "min_time_s_per_reporting": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
@@ -75,7 +75,7 @@ def ckpt_restore_test(alg_name,
     if replay_buffer:
         config["store_buffer_in_checkpoints"] = True
 
-    frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
+    frameworks = (["tf2"] if tfe else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in ([False, True] if object_store else [False]):
             print("use_object_store={}".format(use_object_store))

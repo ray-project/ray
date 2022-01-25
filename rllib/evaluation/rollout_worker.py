@@ -44,8 +44,8 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
-    ModelConfigDict, ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvCreator, \
+    EnvType, ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
     PolicyState, SampleBatchType, T
 from ray.util.debug import log_once, disable_log_once_globally, \
@@ -181,7 +181,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def __init__(
             self,
             *,
-            env_creator: Callable[[EnvContext], EnvType],
+            env_creator: EnvCreator,
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
             policy_spec: Optional[Union[type, Dict[PolicyID,
@@ -421,7 +421,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
-        self.env_creator: Callable[[EnvContext], EnvType] = env_creator
+        self.env_creator: EnvCreator = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
