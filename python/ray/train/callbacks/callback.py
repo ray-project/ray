@@ -1,13 +1,17 @@
 import abc
 from typing import List, Dict
 
-from ray.train.callbacks.results_preprocessors import ResultsPreprocessor
+from ray.train.callbacks.results_preprocessors import ResultsPreprocessor, \
+    ExcludedKeysResultsPreprocessor, SequentialResultsPreprocessor
+from ray.train.constants import PROFILER_KEY
 
 
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
     results_preprocessor: ResultsPreprocessor = None
+    RESERVED_KEYS = {}
+    ALL_RESERVED_KEYS = {PROFILER_KEY}
 
     def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
@@ -34,9 +38,21 @@ class TrainingCallback(abc.ABC):
                 the training function from each worker.
             **info: kwargs dict for forward compatibility.
         """
-        if self.results_preprocessor:
-            results = self.results_preprocessor.preprocess(results)
+        results = self._preprocess_results(results)
         self.handle_result(results, **info)
+
+    def _preprocess_results(self, results: List[Dict]) -> List[Dict]:
+        results_to_exclude = self.ALL_RESERVED_KEYS.difference(
+            self.RESERVED_KEYS)
+        system_preprocessor = ExcludedKeysResultsPreprocessor(
+            results_to_exclude)
+        if self.results_preprocessor:
+            self.results_preprocessor = SequentialResultsPreprocessor(
+                [system_preprocessor, self.results_preprocessor])
+        else:
+            self.results_preprocessor = system_preprocessor
+        results = self.results_preprocessor.preprocess(results)
+        return results
 
     def handle_result(self, results: List[Dict], **info):
         """Called every time train.report() is called after preprocessing.
