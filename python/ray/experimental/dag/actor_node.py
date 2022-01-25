@@ -50,13 +50,10 @@ class ActorMethodNode(DAGNode):
     def __init__(self, actor: ActorNode,
                  prev_call: Optional["ActorMethodNode"], method_name: str,
                  method_args, method_kwargs):
-        # The actor creation task dependency is encoded as the first argument,
-        # which ensures it is executed prior to this node.
-        self._actor: ActorNode = actor
-        # Ordering dependency is encoded as the second argument, which ensures
-        # it is executed prior to this node.
-        self._prev_call: Optional[ActorMethodNode] = prev_call
         self._method_name: str = method_name
+        # The actor creation task dependency is encoded as the first argument,
+        # and the ordering dependency as the second, which ensures they are
+        # executed prior to this node.
         DAGNode.__init__(self, (actor, prev_call) + method_args, method_kwargs)
 
     def _copy(self, new_args, new_kwargs):
@@ -71,5 +68,6 @@ class ActorMethodNode(DAGNode):
     def __str__(self):
         return ("ActorMethodNode(actor={}, prev_call={}, method={}, "
                 "args={}, kwargs={})").format(
-                    self._actor, self._prev_call, self._method_name,
-                    self._bound_args[2:], self._bound_kwargs)
+                    self._bound_args[0], self._bound_args[1],
+                    self._method_name, self._bound_args[2:],
+                    self._bound_kwargs)
