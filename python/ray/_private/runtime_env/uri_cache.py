@@ -31,12 +31,16 @@ class URICache:
             self,
             delete_fn: Callable[[str, logging.Logger], int] = lambda x, y: 0,
             max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
+            debug_mode: bool = False
     ):
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Dict[str, int] = dict()
         self._unused_uris: Dict[str, int] = dict()
         self._delete_fn = delete_fn
         self.max_total_size_bytes = max_total_size_bytes
+
+        # Used in `self._check_valid()`` for testing.
+        self._debug_mode = debug_mode
 
     def mark_unused(self, uri: str, logger: logging.Logger = default_logger):
         """Mark a URI as unused and okay to be deleted."""
@@ -68,14 +72,12 @@ class URICache:
             logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:
-            if size_bytes != self._unused_uris[uri]:
-                logger.warning(f"Added URI {uri} with size {size_bytes}, which"
+            assert size_bytes == self._unused_uris[uri], (f"Added URI {uri} with size {size_bytes}, which"
                                " doesn't match the existing size "
                                f"{self._unused_uris[uri]}.")
             del self._unused_uris[uri]
         if uri in self._used_uris:
-            if size_bytes != self._used_uris[uri]:
-                logger.warning(f"Added URI {uri} with size {size_bytes}, which"
+            assert size_bytes == self._used_uris[uri], (f"Added URI {uri} with size {size_bytes}, which"
                                " doesn't match the existing size "
                                f"{self._used_uris[uri]}.")
         self._used_uris[uri] = size_bytes
@@ -96,7 +98,9 @@ class URICache:
             self._delete_fn(arbitrary_unused_uri, logger)
 
     def _check_valid(self):
-        assert self._used_uris.keys() & self._unused_uris.keys() == set()
+        """(Debug mode only) Check "used" and "unused" sets are disjoint."""
+        if self._debug_mode:
+            assert self._used_uris.keys() & self._unused_uris.keys() == set()
 
     def __contains__(self, uri):
         return uri in self._used_uris or uri in self._unused_uris
