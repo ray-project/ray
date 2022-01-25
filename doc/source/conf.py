@@ -406,7 +406,7 @@ def setup(app):
     app.add_js_file(
         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
         defer="defer")
-    app.add_js_file("docsearch.js", defer="defer")
+    app.add_js_file("js/docsearch.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
     # Custom docstring processor
