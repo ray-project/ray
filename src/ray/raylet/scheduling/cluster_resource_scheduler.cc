@@ -815,6 +815,7 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
     local_view->custom_resources[resource_name].available = available;
     local_view->custom_resources[resource_name].total = total;
   }
+  RAY_LOG(INFO) << "UpdateLocalAvailableResourcesFromResourceInstances " << local_view->DebugString(StringIdMap());
 }
 
 void ClusterResourceScheduler::FreeTaskResourceInstances(
@@ -836,6 +837,7 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
     std::vector<double> &cpu_instances) {
+  RAY_LOG(INFO) << "AddCPUResourceInstances";
   std::vector<FixedPoint> cpu_instances_fp =
       VectorDoubleToVectorFixedPoint(cpu_instances);
 
@@ -853,6 +855,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
 
 std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
     std::vector<double> &cpu_instances, bool allow_going_negative) {
+  RAY_LOG(INFO) << "SubtractCPUResourceInstances";
   std::vector<FixedPoint> cpu_instances_fp =
       VectorDoubleToVectorFixedPoint(cpu_instances);
 
@@ -906,6 +909,7 @@ std::vector<double> ClusterResourceScheduler::SubtractGPUResourceInstances(
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
+  RAY_LOG(INFO) << "AllocateLocalTaskResources";
   if (AllocateTaskResourceInstances(resource_request, task_allocation)) {
     UpdateLocalAvailableResourcesFromResourceInstances();
     return true;
@@ -949,6 +953,7 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 
 void ClusterResourceScheduler::ReleaseWorkerResources(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
+  RAY_LOG(INFO) << "ReleaseWorkerResources";
   if (task_allocation == nullptr || task_allocation->IsEmpty()) {
     return;
   }
