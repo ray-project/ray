@@ -136,7 +136,7 @@ appo-pongnoframeskip-v4:
 #        observation_filter: NoFilter
 #        report_length: 3
 
- bc-halfcheetahbulletenv-v0:
+bc-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: BC
     pass_criteria:
@@ -159,6 +159,7 @@ appo-pongnoframeskip-v4:
         evaluation_interval: 3
         evaluation_config:
             input: sampler
+        always_attach_evaluation_results: True
 
 cql-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
@@ -361,7 +362,7 @@ impala-breakoutnoframeskip-v4:
         ]
         num_gpus: 1
 
- marwil-halfcheetahbulletenv-v0:
+marwil-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: MARWIL
     pass_criteria:
@@ -386,6 +387,7 @@ impala-breakoutnoframeskip-v4:
         evaluation_interval: 1
         evaluation_config:
             input: sampler
+        always_attach_evaluation_results: True
 
 ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4

@@ -34,7 +34,7 @@ def train_one_step(trainer, train_batch) -> Dict:
     workers = trainer.workers
     local_worker = workers.local_worker()
     policies = local_worker.policies_to_train
-    num_sgd_iter = config.get("sgd_num_iter", 1)
+    num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
     learn_timer = trainer._timers[LEARN_ON_BATCH_TIMER]

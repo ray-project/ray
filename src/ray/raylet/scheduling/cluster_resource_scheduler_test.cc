@@ -106,39 +106,6 @@ void initNodeResources(NodeResources &node, vector<FixedPoint> &pred_capacities,
   }
 }
 
-void initCluster(ClusterResourceScheduler &resource_scheduler, int n) {
-  vector<FixedPoint> pred_capacities;
-  vector<int64_t> cust_ids;
-  vector<FixedPoint> cust_capacities;
-  int i, k;
-
-  for (i = 0; i < n; i++) {
-    NodeResources node_resources;
-
-    for (k = 0; k < PredefinedResources_MAX; k++) {
-      if (rand() % 3 == 0) {
-        pred_capacities.push_back(0);
-      } else {
-        pred_capacities.push_back(rand() % 10);
-      }
-    }
-
-    int m = min(rand() % PredefinedResources_MAX, n);
-
-    int start = rand() % n;
-    for (k = 0; k < m; k++) {
-      cust_ids.push_back((start + k) % n);
-      cust_capacities.push_back(rand() % 10);
-    }
-
-    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
-
-    resource_scheduler.AddOrUpdateNode(i, node_resources);
-
-    node_resources.custom_resources.clear();
-  }
-}
-
 bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
   if (nr1.predefined_resources.size() != nr2.predefined_resources.size()) {
     cout << nr1.predefined_resources.size() << " " << nr2.predefined_resources.size()
@@ -189,6 +156,39 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
   }
 
   void Shutdown() {}
+
+  void initCluster(ClusterResourceScheduler &resource_scheduler, int n) {
+    vector<FixedPoint> pred_capacities;
+    vector<int64_t> cust_ids;
+    vector<FixedPoint> cust_capacities;
+    int i, k;
+
+    for (i = 0; i < n; i++) {
+      NodeResources node_resources;
+
+      for (k = 0; k < PredefinedResources_MAX; k++) {
+        if (rand() % 3 == 0) {
+          pred_capacities.push_back(0);
+        } else {
+          pred_capacities.push_back(rand() % 10);
+        }
+      }
+
+      int m = min(rand() % PredefinedResources_MAX, n);
+
+      int start = rand() % n;
+      for (k = 0; k < m; k++) {
+        cust_ids.push_back((start + k) % n);
+        cust_capacities.push_back(rand() % 10);
+      }
+
+      initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+
+      resource_scheduler.AddOrUpdateNode(i, node_resources);
+
+      node_resources.custom_resources.clear();
+    }
+  }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   rpc::GcsNodeInfo node_info;
 };

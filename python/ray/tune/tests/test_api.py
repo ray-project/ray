@@ -1,6 +1,7 @@
 import pickle
 from collections import Counter
 import copy
+from functools import partial
 import gym
 import numpy as np
 import os
@@ -12,32 +13,32 @@ import unittest
 from unittest.mock import patch
 
 import ray
-from ray.rllib import _register_all
-
 from ray import tune
-from ray.tune import (Trainable, TuneError, Stopper, run)
-from ray.tune.function_runner import wrap_function
-from ray.tune import register_env, register_trainable, run_experiments
+from ray.rllib import _register_all
+from ray.tune import (register_env, register_trainable, run, run_experiments,
+                      Trainable, TuneError, Stopper)
 from ray.tune.callback import Callback
-from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
-                                 AsyncHyperBandScheduler)
-from ray.tune.stopper import (MaximumIterationStopper, TrialPlateauStopper,
-                              ExperimentPlateauStopper)
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.sync_client import CommandBasedClient
-from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.experiment import Experiment
+from ray.tune.function_runner import wrap_function
+from ray.tune.logger import Logger
+from ray.tune.ray_trial_executor import noop_logger_creator
+from ray.tune.resources import Resources
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
                              TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
                              TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
-from ray.tune.logger import Logger
-from ray.tune.experiment import Experiment
-from ray.tune.resources import Resources
+from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
+                                 AsyncHyperBandScheduler)
+from ray.tune.stopper import (MaximumIterationStopper, TrialPlateauStopper,
+                              ExperimentPlateauStopper)
 from ray.tune.suggest import BasicVariantGenerator, grid_search
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
+from ray.tune.sync_client import CommandBasedClient
+from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
 from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
@@ -971,7 +972,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
         mock_get_client = "ray.tune.trainable.get_cloud_sync_client"
         with patch(mock_get_client) as mock_get_cloud_sync_client:
             mock_get_cloud_sync_client.return_value = sync_client
-            test_trainable = trainable(remote_checkpoint_dir=MOCK_REMOTE_DIR)
+            log_creator = partial(
+                noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+            remote_checkpoint_dir = os.path.join(MOCK_REMOTE_DIR, "exp/trial")
+            test_trainable = trainable(
+                logger_creator=log_creator,
+                remote_checkpoint_dir=remote_checkpoint_dir)
             result = test_trainable.train()
             self.assertEqual(result["metric"], 1)
             checkpoint_path = test_trainable.save()
@@ -982,6 +988,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             result = test_trainable.train()
             self.assertEqual(result["metric"], 4)
 
+            shutil.rmtree("~/tmp/ray_results/exp/")
             if not function:
                 test_trainable.state["hi"] = 2
                 test_trainable.restore(checkpoint_path)
@@ -990,7 +997,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 # Cannot re-use function trainable, create new
                 tune.session.shutdown()
                 test_trainable = trainable(
-                    remote_checkpoint_dir=MOCK_REMOTE_DIR)
+                    logger_creator=log_creator,
+                    remote_checkpoint_dir=remote_checkpoint_dir)
                 test_trainable.restore(checkpoint_path)
 
             result = test_trainable.train()
