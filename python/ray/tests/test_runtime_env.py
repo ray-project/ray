@@ -7,7 +7,8 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition, get_error_message
+from ray._private.test_utils import (wait_for_condition, get_error_message,
+                                     get_log_sources)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -277,6 +278,35 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     a = A.options(runtime_env=runtime_env).remote()
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
+
+
+@pytest.fixture
+def enable_dev_mode(local_env_var_enabled):
+    enabled = "1" if local_env_var_enabled else "0"
+    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
+    yield
+    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="conda in runtime_env unsupported on Windows.")
+@pytest.mark.parametrize("local_env_var_enabled", [False, True])
+def test_runtime_env_log_msg(local_env_var_enabled, enable_dev_mode,
+                             ray_start_cluster_head, log_pubsub):
+    p = log_pubsub
+
+    @ray.remote
+    def f():
+        pass
+
+    good_env = {"pip": ["requests"]}
+    ray.get(f.options(runtime_env=good_env).remote())
+    sources = get_log_sources(p, 5)
+    if local_env_var_enabled:
+        assert "runtime_env" in sources
+    else:
+        assert "runtime_env" not in sources
 
 
 if __name__ == "__main__":
