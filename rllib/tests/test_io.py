@@ -14,7 +14,7 @@ from ray.tune.registry import register_env, register_input, \
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader, InputReader, \
-    ShuffledInput, DatasetReader, DatasetWriter
+    ShuffledInput, DatasetWriter
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator

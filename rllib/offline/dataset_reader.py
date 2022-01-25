@@ -1,7 +1,6 @@
 import logging
 
 import ray.data
-from ray import data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
