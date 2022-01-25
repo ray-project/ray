@@ -30,7 +30,7 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 # Simulate a cluster on one machine.
 
-cluster = Cluster(bootstrap_address="127.0.0.1:6379")
+cluster = Cluster(bootstrap_address=os.environ.get("CLUSTER_ADDRESS"))
 for i in range(num_nodes):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,

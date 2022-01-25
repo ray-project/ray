@@ -14,6 +14,9 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
 - name: apex
   team: ml
   cluster:
@@ -29,6 +32,9 @@
   smoke_test:
     run:
       timeout: 3600
+
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
 
 
 - name: impala
@@ -46,6 +52,9 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
 - name: many_actor_tasks
   team: core
   cluster:
@@ -61,6 +70,9 @@
   smoke_test:
     run:
       timeout: 3600
+
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
 
 
 - name: many_drivers
@@ -79,6 +91,9 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
 
 - name: many_ppo
   team: ml
@@ -96,6 +111,10 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
+
 - name: many_tasks
   team: core
   cluster:
@@ -112,6 +131,10 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
+
 - name: many_tasks_serialized_ids
   team: core
   cluster:
@@ -127,6 +150,9 @@
   smoke_test:
     run:
       timeout: 3600
+
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
 
 
 - name: node_failures
@@ -145,6 +171,10 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
+
 - name: pbt
   team: ml
   cluster:
@@ -160,6 +190,10 @@
   smoke_test:
     run:
       timeout: 3600
+
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
 
 - name: serve
   team: serve
@@ -177,6 +211,10 @@
     run:
       timeout: 3600
 
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"
+
+
 - name: serve_failure
   team: serve
   cluster:
@@ -192,3 +230,6 @@
   smoke_test:
     run:
       timeout: 3600
+
+  app_env_vars:
+    CLUSTER_ADDRESS: "127.0.0.1:6379"

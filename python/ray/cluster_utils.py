@@ -125,6 +125,13 @@ class Cluster:
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
+        self.gcs_address = None
+        if bootstrap_address is not None:
+            if use_gcs_for_bootstrap():
+                self.gcs_address = bootstrap_address
+            else:
+                self.redis_address = bootstrap_address
+        # Just for indicating whether the bootstrap address is specified.
         self._bootstrap_address = bootstrap_address
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
@@ -138,12 +145,6 @@ class Cluster:
             self.add_node(**head_node_args)
             if connect:
                 self.connect()
-
-    @property
-    def gcs_address(self):
-        if self.head_node is None:
-            return None
-        return self.head_node.gcs_address
 
     @property
     def address(self):
@@ -190,8 +191,6 @@ class Cluster:
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
-        self.redis_password = node_args.get(
-            "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
         with disable_client_hook():
             if self.head_node is None and self._bootstrap_address is None:
                 node = ray.node.Node(
@@ -199,23 +198,7 @@ class Cluster:
                     head=True,
                     shutdown_at_exit=self._shutdown_at_exit,
                     spawn_reaper=self._shutdown_at_exit)
-                self.head_node = node
-                self.redis_address = self.head_node.redis_address
-                self.webui_url = self.head_node.webui_url
-                # Init global state accessor when creating head node.
-                if use_gcs_for_bootstrap():
-                    gcs_options = GcsClientOptions.from_gcs_address(
-                        node.gcs_address)
-                else:
-                    gcs_options = GcsClientOptions.from_redis_address(
-                        self.redis_address, self.redis_password)
-                self.global_state._initialize_global_state(gcs_options)
             else:
-                if self._bootstrap_address is not None:
-                    if use_gcs_for_bootstrap():
-                        self.gcs_address = self._bootstrap_address
-                    else:
-                        self.redis_address = self._bootstrap_address
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
@@ -228,10 +211,24 @@ class Cluster:
                     head=False,
                     shutdown_at_exit=self._shutdown_at_exit,
                     spawn_reaper=self._shutdown_at_exit)
-                if self.head_node is None:
-                    self.head_node = node
+
+            if self.head_node is None:
+                self.head_node = node
+                self.redis_address = node.redis_address
+                self.redis_password = node_args.get(
+                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
+                self.gcs_address = node.gcs_address
+                self.webui_url = node.webui_url
+                # Init global state accessor when creating head node.
+                if use_gcs_for_bootstrap():
+                    gcs_options = GcsClientOptions.from_gcs_address(
+                        node.gcs_address)
                 else:
-                    self.worker_nodes.add(node)
+                    gcs_options = GcsClientOptions.from_redis_address(
+                        self.redis_address, self.redis_password)
+                self.global_state._initialize_global_state(gcs_options)
+            else:
+                self.worker_nodes.add(node)
 
             if wait:
                 # Wait for the node to appear in the client table. We do this
@@ -286,7 +283,7 @@ class Cluster:
                 the node appears in the client table.
         """
         ray._private.services.wait_for_node(
-            self.redis_address, node.gcs_address,
+            node.redis_address, node.gcs_address,
             node.plasma_store_socket_name, self.redis_password, timeout)
 
     def wait_for_nodes(self, timeout=30):

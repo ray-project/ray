@@ -176,8 +176,6 @@ class Node:
             session_name = self._internal_kv_get_with_retry(
                 "session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
-            # setup gcs client
-            self.get_gcs_client()
 
         # Initialize webui url
         if head:
