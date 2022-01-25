@@ -135,6 +135,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     uri = manager.get_uri(runtime_env)
                     if uri is not None:
                         if uri not in uri_cache:
+                            per_job_logger.debug(f"Cache miss for URI {uri}.")
                             size_bytes = manager.create(
                                 uri,
                                 runtime_env,
@@ -143,6 +144,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                             uri_cache.add(
                                 uri, size_bytes, logger=per_job_logger)
                         else:
+                            per_job_logger.debug(f"Cache hit for URI {uri}.")
                             uri_cache.mark_used(uri, logger=per_job_logger)
                     manager.modify_context(uri, runtime_env, context)
 
@@ -154,6 +156,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 if py_modules_uris is not None:
                     for uri in py_modules_uris:
                         if uri not in self._py_modules_uri_cache:
+                            per_job_logger.debug(f"Cache miss for URI {uri}.")
                             size_bytes = self._py_modules_manager.create(
                                 uri,
                                 runtime_env,
@@ -162,6 +165,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                             self._py_modules_uri_cache.add(
                                 uri, size_bytes, logger=per_job_logger)
                         else:
+                            per_job_logger.debug(f"Cache hit for URI {uri}.")
                             self._py_modules_uri_cache.mark_used(
                                 uri, logger=per_job_logger)
                 self._py_modules_manager.modify_context(
