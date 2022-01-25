@@ -38,7 +38,7 @@ For instance, with Ray Core you can easily parallelize your functions using
 +++
 ```{link-button} ray-core/walkthrough
 :type: ref
-:text: Get Started
+:text: Get Started with Ray Core
 :classes: btn-outline-info btn-block stretched-link
 ```
 ---
@@ -55,7 +55,7 @@ and [fast, durable application flows](workflows/concepts.rst).
 +++
 ```{link-button} ray-overview/index
 :type: ref
-:text: Get Started
+:text: Get Started with Ray ML
 :classes: btn-outline-info btn-block stretched-link
 ```
 
@@ -74,7 +74,7 @@ or [Slurm](cluster/slurm) clusters.
 
 ```{link-button} cluster/quickstart
 :type: ref
-:text: Get Started
+:text: Get Started with Ray Clusters
 :classes: btn-outline-info btn-block stretched-link
 ```
 ````
@@ -108,20 +108,20 @@ Discuss all things Ray with us in our community Slack channel or use our
 💡 [Open an issue](https://github.com/ray-project/ray/issues/new/choose): 
 Help us improve Ray by submitting feature requests, bug-reports, or simply ask for help and get support via GitHub issues.
 
-👩‍💻 [Create a pull request](ttps://github.com/ray-project/ray/pulls): 
+👩‍💻 [Create a pull request](https://github.com/ray-project/ray/pulls): 
 Found a typo in the documentation? Want to add a new feature? Submit a pull request to help us improve Ray.
 
-🐦 [Follow us on Twitter](https://twitter.com/raydistributed):
-Follow us on Twitter to stay up to date with the latest news and updates on Ray.
+🐦 [Follow us on Twitter](https://twitter.com/raydistributed): 
+Stay up to date with the latest news and updates on Ray.
 
 ⭐ [Star and follow us on GitHub](https://github.com/ray-project/ray): 
 Support Ray by following its development on GitHub and give us a boost by starring the project.
 
-🤝🏿 [Join our Meetup Group](https://www.meetup.com/Bay-Area-Ray-Meetup/)
+🤝🏿 [Join our Meetup Group](https://www.meetup.com/Bay-Area-Ray-Meetup/): 
 Join one of our community events to learn more about Ray and get a chance to meet the team behind Ray.
 
 🙌 [Discuss on Stack Overflow](https://stackoverflow.com/questions/tagged/ray): 
-Use the `[ray]` tag on `StackOverflow`_ to ask and answer questions about Ray usage
+Use the `[ray]` tag on Stack Overflow to ask and answer questions about Ray usage.
 ```
 
 If you're interested in contributing to Ray, check out our [contributing guide](ray-contribute/getting-involved)
