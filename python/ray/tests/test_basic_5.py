@@ -7,7 +7,6 @@ import time
 import pytest
 
 import ray.cluster_utils
-from pathlib import Path
 from ray._private.test_utils import (wait_for_pid_to_exit, client_test_enabled,
                                      run_string_as_driver)
 
@@ -133,8 +132,8 @@ def test_run_on_all_workers(ray_start_regular):
                 self.jobs.append(job_id)
             return self.jobs
 
-    a = Actor.options(name="recorder", namespace="n").remote()
-    driver_script = f"""
+    a = Actor.options(name="recorder", namespace="n").remote()  # noqa: F841
+    driver_script = """
 import ray
 from pathlib import Path
 
