@@ -117,7 +117,7 @@ class WorkingDirManager:
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
         # compatible with users providing their own PYTHONPATH in env_vars.
-        python_path = local_dir
+        python_path = str(local_dir)
         if "PYTHONPATH" in context.env_vars:
             python_path += os.pathsep + context.env_vars["PYTHONPATH"]
         context.env_vars["PYTHONPATH"] = python_path
