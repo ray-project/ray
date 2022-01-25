@@ -244,7 +244,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
 def test_windows_validation_error(monkeypatch, capsys, ray_start_regular):
     monkeypatch.setattr(sys, "platform", "win32")
     runtime_env = {"env_vars": {"a": "b"}}
-    
+
     @ray.remote
     def f():
         pass
@@ -252,7 +252,7 @@ def test_windows_validation_error(monkeypatch, capsys, ray_start_regular):
     ray.get(f.options(runtime_env=runtime_env).remote())
     captured = capsys.readouterr()
 
-    assert "`runtime_env` support on Windows is experimental" in captured.err 
+    assert "`runtime_env` support on Windows is experimental" in captured.err
 
 
 @pytest.fixture

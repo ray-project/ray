@@ -321,7 +321,7 @@ class ParsedRuntimeEnv(dict):
 
         if sys.platform == "win32":
             logger.warning("`runtime_env` support on Windows is experimental. "
-                            "Please report any issues to "
+                           "Please report any issues to "
                            "https://github.com/ray-project/ray/issues.")
 
         # Blindly trust that the runtime_env has already been validated.
