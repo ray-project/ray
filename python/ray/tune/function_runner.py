@@ -411,7 +411,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None):
+    def save(self, checkpoint_path=None) -> str:
         if checkpoint_path:
             raise ValueError(
                 "Checkpoint path should not be used with function API.")
@@ -449,7 +449,7 @@ class FunctionRunner(Trainable):
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
 
-        self._maybe_save_to_cloud()
+        self._maybe_save_to_cloud(parent_dir)
 
         return checkpoint_path
 

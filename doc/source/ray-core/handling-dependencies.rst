@@ -79,7 +79,7 @@ Runtime environments let you transition your Ray application from running on you
       open("my_datafile.txt").read()
       return requests.get("https://www.ray.io")
 
-.. literalinclude:: _examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
    :language: python
    :start-after: __runtime_env_conda_def_start__
    :end-before: __runtime_env_conda_def_end__
@@ -99,7 +99,7 @@ Specifying a Runtime Environment Per-Job
 
 You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client<ray-client>`:
 
-.. literalinclude:: _examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
    :language: python
    :start-after: __ray_init_start__
    :end-before: __ray_init_end__
@@ -130,7 +130,7 @@ Specifying a Runtime Environment Per-Task or Per-Actor
 
 You can specify different runtime environments per-actor or per-task using ``.options()`` or the ``@ray.remote()`` decorator:
 
-.. literalinclude:: _examples/doc_code/runtime_env_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/runtime_env_example.py
    :language: python
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__
@@ -323,11 +323,11 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
-  The `run_options` list spec is here: https://docs.docker.com/engine/reference/run/.
+  The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
 
   - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
 
-  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`.
+  Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 
 - ``eager_install`` (bool): Indicates whether to install the runtime environment on the cluster at ``ray.init()`` time, before the workers are leased. This flag is set to ``True`` by default.
   If set to ``False``, the runtime environment will be only installed when the first task is invoked or when the first actor is created.

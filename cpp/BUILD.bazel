@@ -149,7 +149,7 @@ cc_test(
         "src/ray/test/cluster/*.h",
     ]),
     args = [
-        "--ray_code_search_path=$(location plus.so):$(location counter.so)",
+        "--ray_code_search_path=$(location plus.so):$(location counter.so):cpp/src/ray/test/cluster",
         "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
@@ -157,6 +157,7 @@ cc_test(
         "counter.so",
         "plus.so",
         "ray_cpp_pkg",
+        "src/ray/test/cluster/test_cross_language_invocation.py",
     ],
     linkstatic = True,
     tags = ["team:serverless"],

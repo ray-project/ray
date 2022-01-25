@@ -117,6 +117,8 @@ SERVE_NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+        "autoscaling_single_deployment",
+        "autoscaling_multi_deployment",
         "serve_micro_benchmark",
         "serve_micro_benchmark_k8s",
         "serve_cluster_fault_tolerance",
@@ -130,6 +132,7 @@ CORE_DAILY_TESTS = {
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
         "many_nodes_actor_test",
@@ -146,6 +149,10 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        "scheduling_test_many_5s_tasks_single_node",
+        "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 
@@ -180,6 +187,19 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+        # Full long running tests (1 day runtime)
+        "actor_deaths",
+        "apex",
+        "impala",
+        "many_actor_tasks",
+        "many_drivers",
+        "many_ppo",
+        "many_tasks",
+        "many_tasks_serialized_ids",
+        "node_failures",
+        "pbt",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
@@ -233,21 +253,6 @@ WEEKLY_TESTS = {
     "~/ray/release/long_running_distributed_tests"
     "/long_running_distributed.yaml": [
         "pytorch_pbt_failure",
-    ],
-    # Full long running tests (1 day runtime)
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        "actor_deaths",
-        "apex",
-        "impala",
-        "many_actor_tasks",
-        "many_drivers",
-        "many_ppo",
-        "many_tasks",
-        "many_tasks_serialized_ids",
-        "node_failures",
-        "pbt",
-        "serve",
-        "serve_failure",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",

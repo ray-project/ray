@@ -5,18 +5,11 @@ Repository for documentation of the Ray project, hosted at [docs.ray.io](https:/
 ## Installation
 
 To build the documentation, make sure you have `ray` installed first.
-For building the documentation locally, allowing for faster builds, install the _development_ dependencies:
+For building the documentation locally install the following dependencies:
 
 ```bash
-pip install -r requirements-dev.txt  # development dependencies for faster builds
+pip install -r requirements-doc.txt
 ```
-
-If you want to reproduce the production environment and its build, install the _production_ dependencies instead:
-
-
-```bash
-pip install -r requirements-doc.txt  # readthedocs.org dependencies
-````
 
 ## Building the documentation
 
@@ -26,30 +19,22 @@ To compile the documentation and open it locally, run the following command from
 make html && open _build/html/index.html
 ```
 
-To build the documentation more strictly, by treating warnings as errors, run the following command
-(the `-W` flag is required for this to work):
-
-```bash
-sphinx-build -W -b html -d _build/doctrees source _build/html
-```
-
 ## Building just one sub-project
 
-Often your changes in documentation just concern one sub-project, such as Tune or Train. 
+Often your changes in documentation just concern one sub-project, such as Tune or Train.
 To build just this one sub-project, and ignore the rest (leading to build warnings due to broken references etc.), run the following command:
 
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
 ```
-where `<project>` is the name of the sub-project and can be any of "cluster", "contribute",
-"ray-core", "ray-data", "ray-design-patterns", "ray-more-libs",
-"ray-observability", "ray-overview", "ray-rllib",  "ray-serve", "ray-train",
-"ray-tune", or "ray-workflows".
+where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/`
+directory either called `tune`, `rllib`, `train`, `cluster`, `serve`, `raysgd`, `data` or the ones starting
+with `ray-`, e.g. `ray-observability`.
 
 ## Announcements and includes
 
 To add new announcements and other messaging to the top or bottom of a documentation page,
-check the `_includes` folder first to see if the message you want is already there (like "get help" 
+check the `_includes` folder first to see if the message you want is already there (like "get help"
 or "we're hiring" etc.)
 If not, add the template you want and include it accordingly, i.e. with
 

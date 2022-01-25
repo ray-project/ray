@@ -6,10 +6,10 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = _build
-AUTOGALLERYDIR= source/ray-core/examples \
-                source/ray-tune/tutorials \
-                source/ray-tune/generated_guides \
-                source/ray-data/examples
+AUTOGALLERYDIR= source/ray-core/examples\
+                source/tune/tutorials\
+                source/tune/generated_guides\
+                source/data/examples
 
 # User-friendly check for sphinx-build
 ifeq ($(shell which $(SPHINXBUILD) >/dev/null 2>&1; echo $$?), 1)
@@ -57,7 +57,7 @@ clean:
 	rm -rf site/_site site/Gemfile.lock site/.sass-cache
 
 html:
-	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -W -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 
@@ -176,7 +176,6 @@ linkcheck:
 	@echo "Link check complete; look for any errors in the above output " \
 	      "or in $(BUILDDIR)/linkcheck/output.txt."
 
-# Currently most (>98%) of doctests fail.
 doctest:
 	$(SPHINXBUILD) -b doctest $(ALLSPHINXOPTS) $(BUILDDIR)/doctest
 	@echo "Testing of doctests in the sources finished, look at the " \

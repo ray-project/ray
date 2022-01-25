@@ -166,6 +166,15 @@ class ResourceSpec(
             object_store_memory = int(
                 avail_memory *
                 ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+
+            # Set the object_store_memory size to 2GB on Mac
+            # to avoid degraded performance.
+            # (https://github.com/ray-project/ray/issues/20388)
+            if sys.platform == "darwin":
+                object_store_memory = min(
+                    object_store_memory,
+                    ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT)
+
             max_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.

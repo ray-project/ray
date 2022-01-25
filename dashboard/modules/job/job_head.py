@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 import ray
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
@@ -30,7 +31,7 @@ from ray.dashboard.modules.job.job_manager import JobManager
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
 

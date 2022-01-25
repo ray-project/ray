@@ -27,11 +27,12 @@ from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.modules
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 def make_gcs_client(address_info):
@@ -267,7 +268,7 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_utils.ClassMethodRouteTable.routes()
+    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
     assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
     assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
     assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
@@ -278,18 +279,21 @@ def test_class_method_route_table(enable_test_module):
     assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
 
     # Test bind()
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert len(bound_routes) == 0
-    dashboard_utils.ClassMethodRouteTable.bind(
+    dashboard_optional_utils.ClassMethodRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls))
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
     assert all(
         not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
 
     # Static def should be in bound routes.
     routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes(
+    )
     assert any(
         _has_static(r, "/path", "/test/route_static") for r in bound_routes)
 
@@ -473,8 +477,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert "clusterStatus" in response.json()["data"]
         assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
-    wait_until_succeeded_without_exception(get_cluster_status,
-                                           (requests.RequestException, ))
+    assert wait_until_succeeded_without_exception(
+        get_cluster_status, (requests.RequestException, ))
 
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -516,13 +520,14 @@ def test_immutable_types():
         immutable_dict["list"])[0]) == dashboard_utils.ImmutableDict
 
     # Test json dumps / loads
-    json_str = json.dumps(immutable_dict, cls=dashboard_utils.CustomEncoder)
+    json_str = json.dumps(
+        immutable_dict, cls=dashboard_optional_utils.CustomEncoder)
     deserialized_immutable_dict = json.loads(json_str)
     assert type(deserialized_immutable_dict) == dict
     assert type(deserialized_immutable_dict["list"]) == list
     assert immutable_dict.mutable() == deserialized_immutable_dict
-    dashboard_utils.rest_response(True, "OK", data=immutable_dict)
-    dashboard_utils.rest_response(True, "OK", **immutable_dict)
+    dashboard_optional_utils.rest_response(True, "OK", data=immutable_dict)
+    dashboard_optional_utils.rest_response(True, "OK", **immutable_dict)
 
     # Test copy
     copy_of_immutable = copy.copy(immutable_dict)
