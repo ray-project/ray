@@ -96,42 +96,8 @@ parts:
         title: Getting Started
       - file: ray-core/using-ray
         title: "User Guide"
-        sections:
-          - file: ray-core/starting-ray
-          - file: ray-core/actors
-          - file: ray-core/namespaces
-          - file: ray-core/handling-dependencies
-          - file: ray-core/async_api
-          - file: ray-core/concurrency_group_api
-          - file: ray-core/using-ray-with-gpus
-          - file: ray-core/serialization
-          - file: ray-core/memory-management
-          - file: ray-core/placement-group
-          - file: ray-core/troubleshooting
-          - file: ray-core/fault-tolerance
-          - file: ray-core/advanced
-          - file: ray-core/cross-language
-          - file: ray-core/using-ray-with-tensorflow
-          - file: ray-core/using-ray-with-pytorch
-          - file: ray-core/using-ray-with-jupyter
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
-        sections:
-          - file: ray-core/examples/tips-for-first-time
-          - file: ray-core/examples/testing-tips
-          - file: ray-core/examples/progress_bar
-          - file: ray-core/examples/plot_streaming
-          - file: ray-core/examples/placement-group
-          - file: ray-core/examples/plot_parameter_server
-          - file: ray-core/examples/plot_hyperparameter
-          - file: ray-core/examples/plot_lbfgs
-          - file: ray-core/examples/plot_example-lm
-          - file: ray-core/examples/plot_newsreader
-          - file: ray-core/examples/dask_xgboost/dask_xgboost
-          - file: ray-core/examples/modin_xgboost/modin_xgboost
-          - file: ray-core/examples/plot_pong_example
-          - file: ray-core/examples/plot_example-a3c
-          - file: ray-core/examples/using-ray-with-pytorch-lightning
 
   - caption: Deploying Ray Clusters
     chapters:
