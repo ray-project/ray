@@ -474,6 +474,22 @@ class RuntimeEnvSetupError(RayError):
         return "The runtime_env failed to be set up."
 
 
+class TaskPlacementGroupRemoved(RayError):
+    """Raised when the corresponding placement group was removed."""
+
+    def __str__(self):
+        return ("The placement group corresponding to this task "
+                "has been removed.")
+
+
+class ActorPlacementGroupRemoved(RayError):
+    """Raised when the corresponding placement group was removed."""
+
+    def __str__(self):
+        return ("The placement group corresponding to this Actor "
+                "has been removed.")
+
+
 class PendingCallsLimitExceeded(RayError):
     """Raised when the pending actor calls exceeds `max_pending_calls` option.
 
@@ -500,6 +516,8 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
+    TaskPlacementGroupRemoved,
+    ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
 ]
