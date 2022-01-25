@@ -58,5 +58,15 @@ struct has_value_type_t<T, std::void_t<typename T::value_type>> : std::true_type
 template <typename T>
 auto constexpr has_value_type_v = has_value_type_t<T>::value;
 
+template <class, class = void>
+struct is_python_t : std::false_type {};
+
+template <class T>
+struct is_python_t<T, std::void_t<decltype(std::declval<T>().is_python())>>
+    : std::true_type {};
+
+template <typename T>
+auto constexpr is_python_v = is_python_t<T>::value;
+
 }  // namespace internal
 }  // namespace ray

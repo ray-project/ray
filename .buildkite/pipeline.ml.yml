@@ -229,6 +229,28 @@
       --test_tag_filters=tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-example,-py37,-soft_imports,-gpu_only,-rllib
       python/ray/tune/...
 
+
+- label: ":octopus: Tune multinode tests"
+  conditions: [ "RAY_CI_TUNE_AFFECTED" ]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - mkdir -p ~/.docker/cli-plugins/ && curl -SL https://github.com/docker/compose/releases/download/v2.0.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && chmod +x ~/.docker/cli-plugins/docker-compose
+    - pip install -U docker aws_requests_auth boto3
+    - python ./ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
+    - python ./ci/travis/build-multinode-image.py rayproject/ray:nightly-py37-cpu rayproject/ray:multinode-py37
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=multinode,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
+      python/ray/tune/...
+      --test_env=RAY_HAS_SSH="1"
+      --test_env=RAY_DOCKER_IMAGE="rayproject/ray:multinode-py37"
+      --test_env=RAY_TEMPDIR="/ray-mount"
+      --test_env=RAY_HOSTDIR="/ray"
+      --test_env=RAY_TESTHOST="dind-daemon"
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
@@ -317,6 +339,13 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/workflow/... python/ray/data/...
+
+- label: ":slot_machine: ML Utils tests"
+  conditions: ["RAY_CI_ML_UTILS_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/ml_utils/...
 
 - label: ":book: Doc tests and examples"
   conditions:

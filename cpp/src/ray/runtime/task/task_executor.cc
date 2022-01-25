@@ -27,9 +27,9 @@ namespace ray {
 
 namespace internal {
 /// Execute remote functions by networking stream.
-msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
-                                      const ArgsBufferList &args_buffer,
-                                      msgpack::sbuffer *actor_ptr) {
+msgpack::sbuffer TaskExecutionHandler(
+    const std::string &func_name, const ArgsBufferList &args_buffer,
+    msgpack::sbuffer *actor_ptr, const std::vector<std::string> &args_object_id = {}) {
   if (func_name.empty()) {
     throw std::invalid_argument("Task function name is empty");
   }
@@ -42,14 +42,14 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
         result = PackError("unknown actor task: " + func_name);
         break;
       }
-      result = (*func_ptr)(actor_ptr, args_buffer);
+      result = (*func_ptr)(actor_ptr, args_buffer, args_object_id);
     } else {
       auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
       if (func_ptr == nullptr) {
         result = PackError("unknown function: " + func_name);
         break;
       }
-      result = (*func_ptr)(args_buffer);
+      result = (*func_ptr)(args_buffer, args_object_id);
     }
   } while (0);
 
@@ -64,6 +64,10 @@ std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
 GetRemoteFunctions() {
   return init_func_manager.GetRemoteFunctions();
 }
+
+void InitRayRuntime(std::shared_ptr<RayRuntime> runtime) {
+  RayRuntimeHolder::Instance().Init(runtime);
+}
 }  // namespace internal
 
 namespace internal {
@@ -72,13 +76,9 @@ using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
-TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
-    : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
-
 // TODO(SongGuyang): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
-  abstract_ray_tuntime_.GetWorkerContext();
   return std::make_unique<ObjectID>();
 };
 
@@ -86,7 +86,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &func_name, const ArgsBufferList &args_buffer,
-    msgpack::sbuffer *actor_ptr) {
+    msgpack::sbuffer *actor_ptr, const std::vector<std::string> &args_object_id) {
   try {
     EntryFuntion entry_function;
     if (actor_ptr == nullptr) {
@@ -96,7 +96,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
           FunctionHelper::GetInstance().GetExecutableMemberFunctions(func_name);
     }
     RAY_LOG(DEBUG) << "Get executable function " << func_name << " ok.";
-    auto result = entry_function(func_name, args_buffer, actor_ptr);
+    auto result = entry_function(func_name, args_buffer, actor_ptr, args_object_id);
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
@@ -143,32 +143,33 @@ Status TaskExecutor::ExecuteTask(
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   ArgsBufferList ray_args_buffer;
+  std::vector<std::string> args_object_id{};
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &ref = arg_refs.at(i);
     bool is_ref_arg = (ref.object_id() != ray::ObjectID::Nil().Binary());
-
-    msgpack::sbuffer sbuf;
-
     if (is_ref_arg) {
       AbstractRayRuntime::GetInstance()->RegisterOwnershipInfoAndResolveFutureInternal(
           ref.object_id(), "", ref.owner_address());
-      sbuf.write(ref.object_id().data(), ref.object_id().size());
-    } else {
-      auto &arg = args_buffer.at(i);
-      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+      args_object_id.push_back(ref.object_id());
     }
+
+    msgpack::sbuffer sbuf;
+    auto &arg = args_buffer.at(i);
+    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
 
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
-    std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
+    std::tie(status, data) =
+        GetExecuteResult(func_name, ray_args_buffer, nullptr, args_object_id);
     current_actor_ = data;
   } else if (task_type == ray::TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
-    std::tie(status, data) =
-        GetExecuteResult(func_name, ray_args_buffer, current_actor_.get());
+    std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer,
+                                              current_actor_.get(), args_object_id);
   } else {  // NORMAL_TASK
-    std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
+    std::tie(status, data) =
+        GetExecuteResult(func_name, ray_args_buffer, nullptr, args_object_id);
   }
 
   std::shared_ptr<ray::LocalMemoryBuffer> meta_buffer = nullptr;
@@ -224,17 +225,18 @@ void TaskExecutor::Invoke(
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
   ArgsBufferList args_buffer;
+  std::vector<std::string> args_object_id{};
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
-      const auto &id = task_spec.ArgId(i).Binary();
-      msgpack::sbuffer sbuf;
-      sbuf.write(id.data(), id.size());
-      args_buffer.push_back(std::move(sbuf));
-    } else {
-      msgpack::sbuffer sbuf;
-      sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));
-      args_buffer.push_back(std::move(sbuf));
+      auto &ref = task_spec.ArgRef(i);
+      AbstractRayRuntime::GetInstance()->RegisterOwnershipInfoAndResolveFutureInternal(
+          ref.object_id(), "", ref.owner_address());
+      args_object_id.push_back(ref.object_id());
     }
+
+    msgpack::sbuffer sbuf;
+    sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));
+    args_buffer.push_back(std::move(sbuf));
   }
 
   auto function_descriptor = task_spec.FunctionDescriptor();
@@ -244,12 +246,12 @@ void TaskExecutor::Invoke(
   try {
     if (actor) {
       auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
-                                         actor.get());
+                                         actor.get(), args_object_id);
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
     } else {
-      auto result =
-          TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer, nullptr);
+      auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
+                                         nullptr, args_object_id);
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       if (task_spec.IsActorCreationTask()) {
         std::unique_ptr<ActorContext> actorContext(new ActorContext());

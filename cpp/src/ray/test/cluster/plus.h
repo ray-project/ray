@@ -24,3 +24,4 @@ void ThrowTask();
 std::string GetVal(ray::ObjectRef<std::string> obj);
 int Add(ray::ObjectRef<int> obj1, ray::ObjectRef<int> obj2);
 int GetList(std::vector<ray::ObjectRef<int>> list);
+std::array<int, 100000> ReturnLargeArray(std::array<int, 100000> x);

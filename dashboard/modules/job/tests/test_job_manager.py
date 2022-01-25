@@ -357,9 +357,8 @@ class TestAsyncAPI:
             assert job_manager.stop_job(job_id) is True
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
-
             # Assert re-stopping a stopped job also returns False
-            assert job_manager.stop_job(job_id) is False
+            wait_for_condition(lambda: job_manager.stop_job(job_id) is False)
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 
@@ -557,6 +556,24 @@ class TestTailLogs:
 
             wait_for_condition(
                 check_job_stopped, job_manager=job_manager, job_id=job_id)
+
+
+def test_logs_streaming(job_manager):
+    """Test that logs are streamed during the job, not just at the end."""
+
+    stream_logs_script = """
+import time
+print('STREAMED')
+while True:
+    time.sleep(1)
+"""
+
+    stream_logs_cmd = f"python -c \"{stream_logs_script}\""
+
+    job_id = job_manager.submit_job(entrypoint=stream_logs_cmd)
+    wait_for_condition(lambda: "STREAMED" in job_manager.get_job_logs(job_id))
+
+    job_manager.stop_job(job_id)
 
 
 if __name__ == "__main__":

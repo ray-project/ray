@@ -1,8 +1,9 @@
 import click
 import logging
-import os
-import subprocess
 import operator
+import os
+import shutil
+import subprocess
 from datetime import datetime
 
 import pandas as pd
@@ -30,11 +31,7 @@ DEFAULT_PROJECT_INFO_KEYS = (
     "last_updated",
 )
 
-try:
-    TERM_HEIGHT, TERM_WIDTH = subprocess.check_output(["stty", "size"]).split()
-    TERM_HEIGHT, TERM_WIDTH = int(TERM_HEIGHT), int(TERM_WIDTH)
-except subprocess.CalledProcessError:
-    TERM_HEIGHT, TERM_WIDTH = 100, 100
+TERM_WIDTH, TERM_HEIGHT = shutil.get_terminal_size(fallback=(100, 100))
 
 OPERATORS = {
     "<": operator.lt,

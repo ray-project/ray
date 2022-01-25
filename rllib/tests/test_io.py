@@ -42,7 +42,7 @@ class AgentIOTest(unittest.TestCase):
         shutil.rmtree(self.test_dir)
         ray.shutdown()
 
-    def writeOutputs(self, output, fw):
+    def write_outputs(self, output, fw):
         agent = PGTrainer(
             env="CartPole-v0",
             config={
@@ -53,23 +53,23 @@ class AgentIOTest(unittest.TestCase):
         agent.train()
         return agent
 
-    def testAgentOutputOk(self):
+    def test_agent_output_ok(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
             reader = JsonReader(self.test_dir + fw + "/*.json")
             reader.next()
 
-    def testAgentOutputLogdir(self):
+    def test_agent_output_logdir(self):
         """Test special value 'logdir' as Agent's output."""
         for fw in framework_iterator():
-            agent = self.writeOutputs("logdir", fw)
+            agent = self.write_outputs("logdir", fw)
             self.assertEqual(
                 len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
-    def testAgentInputDir(self):
+    def test_agent_input_dir(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
@@ -81,16 +81,16 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
-    def testSplitByEpisode(self):
+    def test_split_by_episode(self):
         splits = SAMPLES.split_by_episode()
         self.assertEqual(len(splits), 3)
         self.assertEqual(splits[0].count, 2)
         self.assertEqual(splits[1].count, 1)
         self.assertEqual(splits[2].count, 1)
 
-    def testAgentInputPostprocessingEnabled(self):
+    def test_agent_input_postprocessing_enabled(self):
         for fw in framework_iterator(frameworks=("tf", "torch")):
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
 
             # Rewrite the files to drop advantages and value_targets for
             # testing
@@ -100,7 +100,7 @@ class AgentIOTest(unittest.TestCase):
                     for line in f.readlines():
                         data = json.loads(line)
                         # Data won't contain rewards as these are not included
-                        # in the writeOutputs run (not needed in the
+                        # in the write_outputs run (not needed in the
                         # SampleBatch). Flip out "rewards" for "advantages"
                         # just for testing.
                         data["rewards"] = data["advantages"]
@@ -125,9 +125,9 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
-    def testAgentInputEvalSim(self):
+    def test_agent_input_eval_sim(self):
         for fw in framework_iterator():
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
@@ -142,9 +142,9 @@ class AgentIOTest(unittest.TestCase):
                 time.sleep(0.1)
             assert False, "did not see any simulation results"
 
-    def testAgentInputList(self):
+    def test_agent_input_list(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
@@ -157,9 +157,9 @@ class AgentIOTest(unittest.TestCase):
             self.assertEqual(result["timesteps_total"], 250)  # read from input
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
-    def testAgentInputDict(self):
+    def test_agent_input_dict(self):
         for fw in framework_iterator():
-            self.writeOutputs(self.test_dir, fw)
+            self.write_outputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={
@@ -174,7 +174,7 @@ class AgentIOTest(unittest.TestCase):
             result = agent.train()
             self.assertTrue(not np.isnan(result["episode_reward_mean"]))
 
-    def testMultiAgent(self):
+    def test_multi_agent(self):
         register_env("multi_agent_cartpole",
                      lambda _: MultiAgentCartPole({"num_agents": 10}))
 
@@ -234,7 +234,7 @@ class AgentIOTest(unittest.TestCase):
         ]
         for input_procedure in test_input_procedure:
             for fw in framework_iterator(frameworks=("torch", "tf")):
-                self.writeOutputs(self.test_dir, fw)
+                self.write_outputs(self.test_dir, fw)
                 agent = PGTrainer(
                     env="CartPole-v0",
                     config={

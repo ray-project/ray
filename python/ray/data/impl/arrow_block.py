@@ -10,13 +10,15 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    BlockExecStats, KeyFn
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder, SortKeyT, GroupKeyT
+    TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pandas
+    from ray.data.impl.sort import SortKeyT
 
 T = TypeVar("T")
 
@@ -141,11 +143,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _empty_table() -> "pyarrow.Table":
         return ArrowBlockBuilder._empty_table()
 
-    def _sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
+    def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
         return self._table.select([k[0] for k in key]).take(indices)
 
-    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+    def sort_and_partition(self, boundaries: List[T], key: "SortKeyT",
                            descending: bool) -> List["Block[T]"]:
         if len(key) > 1:
             raise NotImplementedError(
@@ -198,8 +200,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
-    def combine(self, key: GroupKeyT,
-                aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -268,8 +269,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List[Block[T]], key: SortKeyT,
+            blocks: List[Block[T]], key: "SortKeyT",
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
@@ -278,11 +280,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[ArrowRow]], key: GroupKeyT,
+            blocks: List[Block[ArrowRow]], key: KeyFn,
             aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -301,6 +303,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             If key is None then the k column is omitted.
         """
 
+        stats = BlockExecStats.builder()
         key_fn = (lambda r: r[r._row.schema.names[0]]
                   ) if key is not None else (lambda r: 0)
 
@@ -365,7 +368,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(
-            None, exec_stats=BlockExecStats.TODO)
+            None, exec_stats=stats.build())
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":

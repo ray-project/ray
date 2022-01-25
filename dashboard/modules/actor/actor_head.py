@@ -135,24 +135,25 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             job_actors[actor_id] = actor_table_data
             DataSource.job_actors[job_id] = job_actors
 
-        aioredis_client = self._dashboard_head.aioredis_client
-
         # Receive actors from channel.
         if gcs_pubsub_enabled():
-            gcs_addr = await aioredis_client.get("GcsServerAddress")
-            subscriber = GcsAioActorSubscriber(address=gcs_addr.decode())
+            gcs_addr = await self._dashboard_head.get_gcs_address()
+            subscriber = GcsAioActorSubscriber(address=gcs_addr)
             await subscriber.subscribe()
 
             while True:
                 try:
                     actor_id, actor_table_data = await subscriber.poll()
-                    # Convert to lower case hex ID.
-                    actor_id = actor_id.hex()
-                    process_actor_data_from_pubsub(actor_id, actor_table_data)
+                    if actor_id is not None:
+                        # Convert to lower case hex ID.
+                        actor_id = actor_id.hex()
+                        process_actor_data_from_pubsub(actor_id,
+                                                       actor_table_data)
                 except Exception:
                     logger.exception("Error processing actor info from GCS.")
 
         else:
+            aioredis_client = self._dashboard_head.aioredis_client
             receiver = Receiver()
             key = "{}:*".format(actor_consts.ACTOR_CHANNEL)
             pattern = receiver.pattern(key)

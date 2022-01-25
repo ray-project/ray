@@ -666,9 +666,40 @@ std::vector<FixedPoint> ClusterResourceScheduler::SubtractAvailableResourceInsta
   return underflow;
 }
 
-bool ClusterResourceScheduler::AllocateResourceInstances(
-    FixedPoint demand, std::vector<FixedPoint> &available,
-    std::vector<FixedPoint> *allocation) {
+namespace {
+/// Allocate enough capacity across the instances of a resource to satisfy "demand".
+/// If resource has multiple unit-capacity instances, we consider two cases.
+///
+/// 1) If the constraint is hard, allocate full unit-capacity instances until
+/// demand becomes fractional, and then satisfy the fractional demand using the
+/// instance with the smallest available capacity that can satisfy the fractional
+/// demand. For example, assume a resource conisting of 4 instances, with available
+/// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
+/// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
+/// with the smalest available capacity that can satisfy the remaining demand of 0.2).
+/// As a result remaining available capacities will be (0., 1., .7, .3).
+/// Thus, if the constraint is hard, we will allocate a bunch of full instances and
+/// at most a fractional instance.
+///
+/// 2) If the constraint is soft, we can allocate multiple fractional resources,
+/// and even overallocate the resource. For example, in the previous case, if we
+/// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
+/// 0.3 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
+/// all instances, and return success (true), despite the fact that the total
+/// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
+/// than the demand, 3.5. In this case, the remaining available resource is
+/// (0., 0., 0., 0.)
+///
+/// \param demand: The resource amount to be allocated.
+/// \param available: List of available capacities of the instances of the resource.
+/// \param allocation: List of instance capacities allocated to satisfy the demand.
+/// This is a return parameter.
+///
+/// \return true, if allocation successful. In this case, the sum of the elements in
+/// "allocation" is equal to "demand".
+
+bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
+                               std::vector<FixedPoint> *allocation) {
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
 
@@ -736,6 +767,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
   return true;
 }
+}  // namespace
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,

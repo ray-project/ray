@@ -35,7 +35,9 @@ from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.services import canonicalize_bootstrap_address
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import use_gcs_for_bootstrap, GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -716,43 +718,38 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-def create_ray_handler(redis_address, redis_password):
+def create_ray_handler(address, redis_password):
     def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
-        if redis_address:
+        if address:
             if redis_password:
                 ray.init(
-                    address=redis_address,
+                    address=address,
                     _redis_password=redis_password,
                     job_config=job_config,
                     **ray_init_kwargs)
             else:
                 ray.init(
-                    address=redis_address,
-                    job_config=job_config,
-                    **ray_init_kwargs)
+                    address=address, job_config=job_config, **ray_init_kwargs)
         else:
             ray.init(job_config=job_config, **ray_init_kwargs)
 
     return ray_connect_handler
 
 
-def try_create_redis_client(redis_address: Optional[str],
-                            redis_password: Optional[str]) -> Optional[Any]:
+def try_create_gcs_client(address: Optional[str], redis_password: Optional[str]
+                          ) -> Optional[GcsClient]:
     """
-    Try to create a redis client based on the the command line args or by
+    Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    if redis_address is None:
-        possible = ray._private.services.find_redis_address()
-        if len(possible) != 1:
-            return None
-        redis_address = possible.pop()
-
-    if redis_password is None:
-        redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-
-    return ray._private.services.create_redis_client(redis_address,
-                                                     redis_password)
+    address = canonicalize_bootstrap_address(address)
+    if use_gcs_for_bootstrap():
+        return GcsClient(address=address)
+    else:
+        if redis_password is None:
+            redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+        return GcsClient.connect_to_gcs_by_redis_address(
+            address, redis_password)
 
 
 def main():
@@ -768,7 +765,7 @@ def main():
         choices=["proxy", "legacy", "specific-server"],
         default="proxy")
     parser.add_argument(
-        "--redis-address",
+        "--address",
         required=False,
         type=str,
         help="Address to use to connect to Ray")
@@ -792,20 +789,14 @@ def main():
     args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
-    # This redis client is used for health checking. We can't use `internal_kv`
-    # because it requires `ray.init` to be called, which only connect handlers
-    # should do.
-    redis_client = None
-
-    ray_connect_handler = create_ray_handler(args.redis_address,
-                                             args.redis_password)
+    ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
-            args.redis_address,
+            args.address,
             redis_password=args.redis_password,
             runtime_env_agent_port=args.metrics_agent_port)
     else:
@@ -819,12 +810,9 @@ def main():
             }
 
             try:
-                if not redis_client:
-                    redis_client = try_create_redis_client(
-                        args.redis_address, args.redis_password)
                 if not ray.experimental.internal_kv._internal_kv_initialized():
-                    gcs_client = (ray._private.gcs_utils.GcsClient.
-                                  create_from_redis(redis_client))
+                    gcs_client = try_create_gcs_client(args.address,
+                                                       args.redis_password)
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
@@ -833,7 +821,7 @@ def main():
                     namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
-                             f"on {args.redis_address}")
+                             f"on {args.address}")
                 logger.exception(e)
 
             time.sleep(1)
