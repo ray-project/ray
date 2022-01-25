@@ -390,7 +390,8 @@ class Worker:
 
             function_to_run_id = hashlib.shake_128(pickled_function).digest(
                 ray_constants.ID_SIZE)
-            key = b"FunctionsToRun:" + self.current_job_id.hex().encode() + b":" + function_to_run_id
+            key = b"FunctionsToRun:" + self.current_job_id.hex().encode(
+            ) + b":" + function_to_run_id
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
@@ -400,12 +401,12 @@ class Worker:
 
             # Run the function on all workers.
             if self.gcs_client.internal_kv_put(
-                key,
-                pickle.dumps({
-                    "job_id": self.current_job_id.binary(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function,
-                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE) != 0:
+                    key,
+                    pickle.dumps({
+                        "job_id": self.current_job_id.binary(),
+                        "function_id": function_to_run_id,
+                        "function": pickled_function,
+                    }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE) != 0:
                 self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
