@@ -49,8 +49,7 @@ class DatasetWriter(OutputWriter):
         self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
-            if "max_num_samples_per_file" in output_config
-            else 100000)
+            if "max_num_samples_per_file" in output_config else 100000)
         self.compress_columns = compress_columns
 
         self.samples = []

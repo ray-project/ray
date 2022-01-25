@@ -45,9 +45,8 @@ class JsonWriter(OutputWriter):
             max_file_size: max size of single files before rolling over.
             compress_columns: list of sample batch columns to compress.
         """
-        logger.info(
-            "You are using JSONWriter. It is recommended to use " +
-            "DatasetWriter instead.")
+        logger.info("You are using JSONWriter. It is recommended to use " +
+                    "DatasetWriter instead.")
 
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size

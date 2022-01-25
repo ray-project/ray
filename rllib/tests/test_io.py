@@ -260,16 +260,15 @@ class JsonIOTest(unittest.TestCase):
         ray.shutdown()
 
     def test_write_dataset(self):
-        ioctx = IOContext(self.test_dir,
-                          {
-                              "output": "dataset",
-                              "output_config": {
-                                  "type": "json",
-                                  "path": self.test_dir,
-                                  "max_num_samples_per_file": 2,
-                              },
-                           },
-                           0, None)
+        ioctx = IOContext(
+            self.test_dir, {
+                "output": "dataset",
+                "output_config": {
+                    "type": "json",
+                    "path": self.test_dir,
+                    "max_num_samples_per_file": 2,
+                },
+            }, 0, None)
         writer = DatasetWriter(ioctx, compress_columns=["obs"])
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         writer.write(SAMPLES)

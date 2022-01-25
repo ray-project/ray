@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
-def _adjust_obs_actions_for_policy(json_data: dict,
-                                   policy: Policy) -> dict:
+def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
     """Handle nested action/observation spaces for policies.
 
     Translates nested lists/dicts from the json into proper
@@ -122,9 +121,8 @@ class JsonReader(InputReader):
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
             ioctx: Current IO context object or None.
         """
-        logger.info(
-            "You are using JSONReader. It is recommended to use " +
-            "DatasetReader instead for better sharding support.")
+        logger.info("You are using JSONReader. It is recommended to use " +
+                    "DatasetReader instead for better sharding support.")
 
         self.ioctx = ioctx or IOContext()
         self.default_policy = self.policy_map = None

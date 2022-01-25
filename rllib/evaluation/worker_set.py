@@ -416,8 +416,8 @@ class WorkerSet:
             "Must specify input_config dict if using Dataset input.")
 
         input_config = config["input_config"]
-        if (not input_config.get("format", None) or
-            not input_config.get("path", None)):
+        if (not input_config.get("format", None)
+                or not input_config.get("path", None)):
             raise ValueError(
                 "Must specify format and path via input_config key"
                 " when using Ray dataset input.")
@@ -482,8 +482,9 @@ class WorkerSet:
         elif config["input"] == "dataset":
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
-            input_creator = (lambda ioctx: DatasetReader(
-                ioctx, self._ds_shards[worker_index]))
+            input_creator = (
+                lambda ioctx: DatasetReader(ioctx, self._ds_shards[worker_index])
+            )
         elif isinstance(config["input"], dict):
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
