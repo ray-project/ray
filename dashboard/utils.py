@@ -18,7 +18,8 @@ import aiosignal  # noqa: F401
 from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401
 
-from ray._private.utils import binary_to_hex
+from ray._private.utils import (binary_to_hex,
+                                check_dashboard_dependencies_installed)
 
 try:
     create_task = asyncio.create_task
@@ -96,14 +97,25 @@ def get_all_modules(module_type):
     """
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
+    should_only_load_minimal_modules = (
+        not check_dashboard_dependencies_installed())
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.dashboard.modules.__path__,
             ray.dashboard.modules.__name__ + "."):
-        importlib.import_module(name)
+        try:
+            importlib.import_module(name)
+        except ModuleNotFoundError as e:
+            logger.info(f"Module {name} cannot be loaded because "
+                        "we cannot import all dependencies. Download "
+                        "`pip install ray[default]` for the full "
+                        f"dashboard functionality. Error: {e}")
+            if not should_only_load_minimal_modules:
+                logger.info(
+                    "Although `pip install ray[default] is downloaded, "
+                    "module couldn't be imported`")
+                raise e
 
-    should_only_load_minimal_modules = (
-        not ray._private.utils.check_dashboard_dependencies_installed())
     imported_modules = []
     # module_type.__subclasses__() should contain modules that
     # we could successfully import.
