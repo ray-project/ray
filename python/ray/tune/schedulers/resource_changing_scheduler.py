@@ -1,10 +1,11 @@
 import logging
-from typing import Dict, Any, Optional, Set, Union, Callable
+from typing import Dict, Any, Optional, Set, Tuple, Union, Callable
 
 import pickle
 import warnings
 import math
 
+from ray.util import PublicAPI
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -14,13 +15,71 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
-class _DistributeResources:
-    """Generic functionality for resource allocation functions"""
+@PublicAPI(stability="beta")
+class DistributeResources:
+    """Factory of generic resource allocation functions.
 
-    def __init__(self, add_bundles: bool = False):
-        """If add_bundles is True, create new bundles from free resources.
-        Otherwise, spread them among base_trial_resource bundles."""
+    Args:
+        add_bundles (bool): If True, create new bundles from free resources.
+            Otherwise, spread them among base_trial_resource bundles.
+        increase_by (Optional[Dict[str, float]]): A dictionary of resource-value
+            pairs
+    """
+
+    def __init__(
+            self,
+            add_bundles: bool = False,
+            increase_by: Optional[Dict[str, float]] = None,
+            increase_by_times: int = -1,
+            reserve_resources: Optional[Dict[str, float]] = None,
+    ):
         self.add_bundles = add_bundles
+        self.increase_by = increase_by or {}
+        self.increase_by_times = increase_by_times
+        self.reserve_resources = reserve_resources or {}
+
+    def _get_upper_limits(
+            self,
+            min_cpu: int,
+            min_gpu: int,
+            total_available_cpus: int,
+            total_available_gpus: int,
+            min_cpu_bundle: int,
+            min_gpu_bundle: int,
+            trial: Trial,
+            trial_runner: "trial_runner.TrialRunner",
+    ) -> Tuple[int, int]:
+        num_running_trials = len(trial_runner.get_live_trials())
+        if min_cpu == 0:
+            upper_cpu_limit = 0
+        else:
+            upper_cpu_limit = math.ceil(
+                total_available_cpus / num_running_trials)
+            # Round to nearest bundle minimum
+            # eg. 8 CPUs between 3 trials with min 2 CPUs per bundle
+            #   -> 4, 2, 2
+            if self.add_bundles:
+                upper_cpu_limit = math.ceil(
+                    upper_cpu_limit / min_cpu_bundle) * min_cpu_bundle
+            upper_cpu_limit = max(min_cpu, upper_cpu_limit)
+
+        if min_gpu == 0:
+            upper_gpu_limit = 0
+        else:
+            upper_gpu_limit = math.ceil(
+                total_available_gpus / num_running_trials)
+            # Ensure we don't go below per-bundle minimum
+            if self.add_bundles:
+                upper_gpu_limit = math.ceil(
+                    upper_gpu_limit / min_gpu_bundle) * min_gpu_bundle
+            upper_gpu_limit = max(min_gpu, upper_gpu_limit)
+        return upper_cpu_limit, upper_gpu_limit
+
+    def _get_used_cpus_and_gpus(self, t: Trial):
+        """Function to check how many CPUs and GPUs a trial is using
+        currently"""
+        return (t.placement_group_factory.required_resources.get("CPU", 0),
+                t.placement_group_factory.required_resources.get("GPU", 0))
 
     def __call__(self, trial_runner: "trial_runner.TrialRunner", trial: Trial,
                  result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
@@ -51,49 +110,26 @@ class _DistributeResources:
 
         # Get the number of CPUs and GPUs avaialble in total (not just free)
         total_available_cpus = (
-            trial_runner.trial_executor._avail_resources.cpu)
+            trial_runner.trial_executor._avail_resources.cpu -
+            self.reserve_resources.get("CPU", 0))
         total_available_gpus = (
-            trial_runner.trial_executor._avail_resources.gpu)
+            trial_runner.trial_executor._avail_resources.gpu -
+            self.reserve_resources.get("GPU", 0))
 
         # Set upper limits for resources based on number of live trials
         # to ensure that the trial cannot get more resources that it's
         # possible to run
-        num_running_trials = len(trial_runner.get_live_trials())
-        if min_cpu == 0:
-            upper_cpu_limit = 0
-        else:
-            upper_cpu_limit = math.ceil(
-                total_available_cpus / num_running_trials)
-            # Round to nearest bundle minimum
-            # eg. 8 CPUs between 3 trials with min 2 CPUs per bundle
-            #   -> 4, 2, 2
-            if self.add_bundles:
-                upper_cpu_limit = math.ceil(
-                    upper_cpu_limit / min_cpu_bundle) * min_cpu_bundle
-            upper_cpu_limit = max(min_cpu, upper_cpu_limit)
-
-        if min_gpu == 0:
-            upper_gpu_limit = 0
-        else:
-            upper_gpu_limit = math.ceil(
-                total_available_gpus / num_running_trials)
-            # Ensure we don't go below per-bundle minimum
-            if self.add_bundles:
-                upper_gpu_limit = math.ceil(
-                    upper_gpu_limit / min_cpu_bundle) * min_gpu_bundle
-            upper_gpu_limit = max(min_gpu, upper_gpu_limit)
-
-        # Function to check how many CPUs and GPUs a trial is using currently
-        def get_used_cpus_and_gpus(t: Trial):
-            return (t.placement_group_factory.required_resources.get("CPU", 0),
-                    t.placement_group_factory.required_resources.get("GPU", 0))
+        upper_cpu_limit, upper_gpu_limit = self._get_upper_limits(
+            min_cpu, min_gpu, total_available_cpus, total_available_gpus,
+            min_cpu_bundle, min_gpu_bundle, trial, trial_runner)
 
         # Check how many CPUs and GPUs are currently being used by this trial
-        trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+        trial_used_cpus, trial_used_gpus = self._get_used_cpus_and_gpus(trial)
 
         # Check how many CPUs and GPUs are currently being used by live trials
         used_cpus_and_gpus = [
-            get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
+            self._get_used_cpus_and_gpus(t)
+            for t in trial_runner.get_live_trials()
         ]
         used_cpus, used_gpus = zip(*used_cpus_and_gpus)
         used_cpus = sum(used_cpus)
@@ -103,6 +139,29 @@ class _DistributeResources:
         free_cpus = total_available_cpus - used_cpus
         free_gpus = total_available_gpus - used_gpus
 
+        print(f"{trial.trial_id} free_cpus {free_cpus}")
+
+        if self.increase_by:
+            required_cpus = self.increase_by.get("CPU", 0)
+            required_gpus = self.increase_by.get("GPU", 0)
+            if required_cpus and required_gpus:
+                multiplier = min(free_cpus // required_cpus,
+                                 free_gpus // required_gpus)
+            elif required_gpus:
+                multiplier = free_gpus // required_gpus
+            else:
+                multiplier = free_cpus // required_cpus
+            if self.increase_by_times > 0:
+                multiplier = min(multiplier, self.increase_by_times)
+            multiplier = max(multiplier, 0)
+            free_cpus = multiplier * required_cpus
+            free_gpus = multiplier * required_gpus
+
+            print(
+                f"{trial.trial_id} after increase by free_cpus {free_cpus} multiplier {multiplier} required_cpus {required_cpus} required_gpus {required_gpus}"
+            )
+
+        print(f"upper_cpu_limit {upper_cpu_limit}")
         # Add free CPUs and GPUs enforcing upper and lower limits
         new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus,
                                            min_cpu))
@@ -115,9 +174,9 @@ class _DistributeResources:
         if self.add_bundles:
             if min_cpu_bundle and min_gpu_bundle:
                 multiplier = min(new_cpu // min_cpu_bundle,
-                                 new_gpu // min_cpu_bundle)
+                                 new_gpu // min_gpu_bundle)
             elif min_gpu_bundle:
-                multiplier = new_gpu // min_cpu_bundle
+                multiplier = new_gpu // min_gpu_bundle
             else:
                 multiplier = new_cpu // min_cpu_bundle
             new_bundles = [{
@@ -162,8 +221,8 @@ def evenly_distribute_cpus_gpus(trial_runner: "trial_runner.TrialRunner",
             the function.
     """
 
-    return _DistributeResources(add_bundles=False)(trial_runner, trial, result,
-                                                   scheduler)
+    return DistributeResources(add_bundles=False)(trial_runner, trial, result,
+                                                  scheduler)
 
 
 def evenly_distribute_cpus_gpus_distributed(
@@ -198,8 +257,8 @@ def evenly_distribute_cpus_gpus_distributed(
             the function.
     """
 
-    return _DistributeResources(add_bundles=True)(trial_runner, trial, result,
-                                                  scheduler)
+    return DistributeResources(add_bundles=True)(trial_runner, trial, result,
+                                                 scheduler)
 
 
 class ResourceChangingScheduler(TrialScheduler):
