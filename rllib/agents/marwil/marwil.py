@@ -67,8 +67,8 @@ DEFAULT_CONFIG = with_common_config({
     # Number of steps to read before learning starts.
     "learning_starts": 0,
 
-    # A coeff to encourage good std for exploration.
-    "logstd_coeff": 0.0,
+    # A coeff to encourage higher action distribution entropy for exploration.
+    "bc_logstd_coeff": 0.0,
 
     # === Parallelism ===
     "num_workers": 0,
