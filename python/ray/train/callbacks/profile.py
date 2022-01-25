@@ -19,9 +19,8 @@ DRIVER_TRACE_DIR_NAME = "pytorch_profiler"
 
 class TorchWorkerProfiler():
     def __init__(self, trace_dir: Optional[str] = None):
-        default_dir = Path(
+        trace_dir = trace_dir or Path(
             tempfile.gettempdir()).joinpath(WORKER_TRACE_DIR_NAME)
-        trace_dir = trace_dir or default_dir
         self.trace_dir = Path(trace_dir)
         self.trace_dir.mkdir(parents=True, exist_ok=True)
         # Accumulated traces.
