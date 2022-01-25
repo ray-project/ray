@@ -242,7 +242,6 @@ class WorkerPoolMock : public WorkerPool {
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
     if (set_process && !proc.IsNull()) {
       worker->SetProcess(proc);
-      worker->SetShimProcess(proc);
     }
     return worker;
   }
@@ -1620,31 +1619,6 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   popped_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec_1);
   // Check that we got the pushed worker.
   ASSERT_EQ(popped_worker, worker);
-  worker_pool_->ClearProcesses();
-}
-
-TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
-  auto task_spec = ExampleTaskSpec();
-  auto worker = worker_pool_->PopWorkerSync(task_spec);
-  ASSERT_NE(worker, nullptr);
-  auto last_process = worker_pool_->LastStartedWorkerProcess();
-  pid_t shim_pid = last_process.GetId();
-  ASSERT_EQ(shim_pid, worker->GetShimProcess().GetId());
-
-  // test dedicated worker
-  std::vector<std::string> actor_jvm_options;
-  actor_jvm_options.insert(
-      actor_jvm_options.end(),
-      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
-  auto task_id = TaskID::ForDriverTask(JOB_ID);
-  auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
-  TaskSpecification java_task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, actor_jvm_options, task_id);
-  worker = worker_pool_->PopWorkerSync(java_task_spec);
-  ASSERT_NE(worker, nullptr);
-  last_process = worker_pool_->LastStartedWorkerProcess();
-  shim_pid = last_process.GetId();
-  ASSERT_EQ(shim_pid, worker->GetShimProcess().GetId());
   worker_pool_->ClearProcesses();
 }
 

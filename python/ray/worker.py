@@ -1348,7 +1348,6 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=0,
             startup_token=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1364,8 +1363,6 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
         runtime_env_hash (int): The hash of the runtime env for this worker.
-        worker_shim_pid (int): The PID of the process for setup worker
-            runtime env.
         startup_token (int): The startup token of the process assigned to
             it during startup as a command line argument.
         ray_debugger_host (bool): The host to bind a Ray debugger to on
@@ -1527,7 +1524,7 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid, startup_token)
+        startup_token)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

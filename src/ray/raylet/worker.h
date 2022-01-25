@@ -228,9 +228,6 @@ class Worker : public WorkerInterface {
   Process proc_;
   /// The worker's process's startup_token
   StartupToken startup_token_;
-  /// The worker's shim process. The shim process PID is the same with worker process PID,
-  /// except starting worker process in container.
-  Process shim_proc_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.
