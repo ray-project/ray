@@ -1,7 +1,7 @@
 .. _gentle-intro:
 
 ============================
-A Gentle Introduction to Ray
+Getting Started Guide
 ============================
 
 .. include:: basics.rst
