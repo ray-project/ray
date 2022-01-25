@@ -1,6 +1,8 @@
 import math
+from typing import Any, List, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.actors import create_colocated_actors
@@ -8,12 +10,23 @@ from ray.rllib.utils.typing import PolicyID
 
 
 class DistributedLearners:
+    """Container class for n learning @ray.remote-turned policies."""
     def __init__(self,
                  config,
-                 max_num_policies,
-                 replay_actor_class,
-                 replay_actor_args,
-                 num_learner_shards="auto"):
+                 max_num_policies: int,
+                 replay_actor_class: Type[ActorHandle],
+                 replay_actor_args: List[Any],
+                 num_learner_shards: Union[str, int] = "auto",
+                 ):
+        """Initializes a DistributedLearners instance.
+
+        Args:
+            config:
+            max_num_policies:
+            replay_actor_class:
+            replay_actor_args:
+            num_learner_shards:
+        """
         self.config = config
         self.num_gpus = self.config["num_gpus"]
         self.max_num_policies = max_num_policies
