@@ -6,7 +6,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/actor_deaths.py
     long_running: True
 
@@ -59,7 +59,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/many_actor_tasks.py
     long_running: True
 
@@ -79,7 +79,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/many_drivers.py
     long_running: True
 
@@ -116,7 +116,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/many_tasks.py
     long_running: True
 
@@ -136,7 +136,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/many_tasks_serialized_ids.py
     long_running: True
 
@@ -156,7 +156,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/node_failures.py
     long_running: True
 
@@ -176,7 +176,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/pbt.py
     long_running: True
 
@@ -196,7 +196,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/serve.py
     long_running: True
 
@@ -216,7 +216,7 @@
 
   run:
     timeout: 86400
-    prepare: while pkill -9 raylet; do sleep 1; done
+    prepare: $(while pkill -9 raylet; do sleep 1; done)
     script: python workloads/serve_failure.py
     long_running: True
 
