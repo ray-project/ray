@@ -938,23 +938,6 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
-.. warning::
-
-    If you are doing distributed training with TensorFlow, you will need to
-    disable TensorFlow's built-in autosharding as the data on each worker is
-    already sharded.
-
-    .. code-block:: python
-
-        def train_func():
-            ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf()
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset.with_options(options)
-
-
 **Simple Dataset Example**
 
 .. code-block:: python
