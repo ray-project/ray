@@ -19,7 +19,7 @@ from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env_if_needed, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.utils import (get_directory_size, get_wheel_filename,
+from ray._private.utils import (get_directory_size_bytes, get_wheel_filename,
                                 get_master_wheel_url, get_release_wheel_url,
                                 try_to_create_directory)
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -303,7 +303,7 @@ class CondaManager:
                 _inject_ray_to_conda_site(
                     conda_path=conda_env_name, logger=logger)
         logger.info(f"Finished creating conda environment at {conda_env_name}")
-        return get_directory_size(conda_env_name)
+        return get_directory_size_bytes(conda_env_name)
 
     def modify_context(self,
                        uri: str,

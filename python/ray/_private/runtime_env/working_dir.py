@@ -10,7 +10,7 @@ from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     get_uri_for_package, upload_package_to_gcs, parse_uri, Protocol,
     upload_package_if_needed)
-from ray._private.utils import get_directory_size, try_to_create_directory
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class WorkingDirManager:
         local_dir = download_and_unpack_package(
             uri, self._resources_dir, logger=logger)
         self._uris_to_local_dirs[uri] = local_dir
-        return get_directory_size(local_dir)
+        return get_directory_size_bytes(local_dir)
 
     def modify_context(self, uri: Optional[str], runtime_env_dict: Dict,
                        context: RuntimeEnvContext):

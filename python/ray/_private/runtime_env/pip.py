@@ -12,7 +12,7 @@ from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.utils import RuntimeEnv
-from ray._private.utils import get_directory_size, try_to_create_directory
+from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class PipManager:
                 ray_path = Path(target_dir) / "ray"
                 if ray_path.exists() and ray_path.is_dir():
                     shutil.rmtree(ray_path)
-        return get_directory_size(target_dir)
+        return get_directory_size_bytes(target_dir)
 
     def modify_context(self,
                        uri: str,

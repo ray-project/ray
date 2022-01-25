@@ -1106,19 +1106,19 @@ def chdir(d: str):
     os.chdir(old_dir)
 
 
-def test_get_directory_size():
+def test_get_directory_size_bytes():
     with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
-        assert ray._private.utils.get_directory_size(tmp_dir) == 0
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 0
         with open("test_file", "wb") as f:
             f.write(os.urandom(100))
-        assert ray._private.utils.get_directory_size(tmp_dir) == 100
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 100
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(50))
-        assert ray._private.utils.get_directory_size(tmp_dir) == 150
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 150
         os.mkdir("subdir")
         with open("subdir/subdir_file", "wb") as f:
             f.write(os.urandom(2))
-        assert ray._private.utils.get_directory_size(tmp_dir) == 152
+        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
 
 
 def check_local_files_gced(cluster):

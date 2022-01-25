@@ -9,7 +9,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
-from ray._private.utils import get_directory_size
+from ray._private.utils import get_directory_size_bytes
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import try_to_create_directory
 
@@ -116,7 +116,7 @@ class PyModulesManager:
         module_dir = download_and_unpack_package(
             uri, self._resources_dir, logger=logger)
         self._uris_to_module_dirs[uri] = module_dir
-        return get_directory_size(module_dir)
+        return get_directory_size_bytes(module_dir)
 
     def modify_context(self, uris: Optional[List[str]], runtime_env_dict: Dict,
                        context: RuntimeEnvContext):
