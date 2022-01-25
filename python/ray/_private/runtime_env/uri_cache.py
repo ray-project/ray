@@ -31,8 +31,7 @@ class URICache:
             self,
             delete_fn: Callable[[str, logging.Logger], int] = lambda x, y: 0,
             max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
-            debug_mode: bool = False
-    ):
+            debug_mode: bool = False):
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Dict[str, int] = dict()
         self._unused_uris: Dict[str, int] = dict()
@@ -72,14 +71,16 @@ class URICache:
             logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:
-            assert size_bytes == self._unused_uris[uri], (f"Added URI {uri} with size {size_bytes}, which"
-                               " doesn't match the existing size "
-                               f"{self._unused_uris[uri]}.")
+            assert size_bytes == self._unused_uris[uri], (
+                f"Added URI {uri} with size {size_bytes}, which"
+                " doesn't match the existing size "
+                f"{self._unused_uris[uri]}.")
             del self._unused_uris[uri]
         if uri in self._used_uris:
-            assert size_bytes == self._used_uris[uri], (f"Added URI {uri} with size {size_bytes}, which"
-                               " doesn't match the existing size "
-                               f"{self._used_uris[uri]}.")
+            assert size_bytes == self._used_uris[uri], (
+                f"Added URI {uri} with size {size_bytes}, which"
+                " doesn't match the existing size "
+                f"{self._used_uris[uri]}.")
         self._used_uris[uri] = size_bytes
         self._evict_if_needed(logger)
         self._check_valid()
