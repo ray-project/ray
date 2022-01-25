@@ -7,8 +7,8 @@ from ray.experimental.dag.dag_node import DAGNode
 
 @ray.remote
 class Counter:
-    def __init__(self):
-        self.i = 0
+    def __init__(self, init_value=0):
+        self.i = init_value
 
     def inc(self):
         self.i += 1
@@ -79,6 +79,37 @@ def test_basic_task_dag():
 
     assert ray.get(dag.execute()) == 28
     assert ray.get(ct.get.remote()) == 7
+
+
+def test_basic_actor_dag():
+    @ray.remote
+    class Actor:
+        def __init__(self, init_value):
+            self.i = init_value
+
+        def inc(self, x):
+            self.i += x
+
+        def get(self):
+            return self.i
+
+    @ray.remote
+    def combine(x, y):
+        return x + y
+
+    a1 = Actor._bind(10)
+    res = a1.get._bind()
+    print(res.tree_string())
+    assert ray.get(res.execute()) == 10
+
+    a2 = Actor._bind(10)
+    a1.inc._bind(2)
+    a1.inc._bind(4)
+    a2.inc._bind(6)
+    dag = combine._bind(a1.get._bind(), a2.get._bind())
+
+    print(dag.tree_string())
+    assert ray.get(dag.execute()) == 32
 
 
 def test_nested_args():

@@ -993,6 +993,10 @@ class ActorClass:
 
         return actor_handle
 
+    def _bind(self, *args, **kwargs):
+        from ray.experimental.dag.actor_node import ActorNode
+        return ActorNode(self.__ray_metadata__.modified_class, args, kwargs)
+
 
 class ActorHandle:
     """A handle to an actor.
