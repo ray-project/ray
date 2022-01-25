@@ -71,7 +71,7 @@ class PipManager:
         return os.path.join(self._resources_dir, hash)
 
     def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
-        """Return `"conda://<hash_dependencies>"` or None if no GC required."""
+        """Return the pip URI from the RuntimeEnv if it exists, else None."""
         pip_uri = runtime_env.pip_uri()
         if pip_uri != "":
             return pip_uri

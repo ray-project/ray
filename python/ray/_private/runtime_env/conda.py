@@ -251,7 +251,7 @@ class CondaManager:
         return os.path.join(self._resources_dir, hash)
 
     def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
-        """Return `"conda://<hash_dependencies>"` or None if no GC required."""
+        """Return the conda URI from the RuntimeEnv if it exists, else None."""
         conda_uri = runtime_env.conda_uri()
         if conda_uri != "":
             return conda_uri
