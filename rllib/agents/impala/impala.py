@@ -50,7 +50,7 @@ DEFAULT_CONFIG = with_common_config({
     #
     "rollout_fragment_length": 50,
     "train_batch_size": 500,
-    "min_iter_time_s": 10,
+    "min_time_s_per_reporting": 10,
     "num_workers": 2,
     # Number of GPUs the learner should use.
     "num_gpus": 1,

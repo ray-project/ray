@@ -81,7 +81,7 @@ class TestAPPO(unittest.TestCase):
         config["timesteps_per_iteration"] = 20
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         # Initial lr, doesn't really matter because of the schedule below.
         config["entropy_coeff"] = 0.01
         schedule = [
