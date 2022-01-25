@@ -64,13 +64,34 @@ def test_get_dataset_shard():
         local_rank=0,
         world_size=1,
         dataset_shard=dataset)
-    shard = get_dataset_shard()
-    assert shard == dataset
-    # test tf_autoshard_off is working appropriately
-    tf_dataset = shard.to_tf()
-    # tf.data.experimental.AutoShardPolicy.OFF is -1
-    # avoid importing tensorflow package
-    assert tf_dataset.options().experimental_distribute.auto_shard_policy == -1
+    assert get_dataset_shard() == dataset
+    shutdown_session()
+
+
+def test_get_dataset_shard_tf_autoshard_off():
+    import tensorflow as tf
+
+    def get_dataset(a, b, size):
+        items = [i / size for i in range(size)]
+        dataset = ray.data.from_items([{
+            "x": x,
+            "y": a * x + b
+        } for x in items])
+        return dataset
+
+    init_session(
+        training_func=lambda: 1,
+        world_rank=0,
+        local_rank=0,
+        world_size=1,
+        dataset_shard=get_dataset(5, 10, 100))
+
+    tf_dataset = get_dataset_shard().to_tf(
+        label_column="y",
+        output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                          tf.TensorSpec(shape=(None,), dtype=tf.float32)))
+
+    assert tf_dataset.options().experimental_distribute.auto_shard_policy == tf.data.experimental.AutoShardPolicy.OFF
     shutdown_session()
 
 
