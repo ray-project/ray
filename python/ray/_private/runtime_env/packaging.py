@@ -416,6 +416,13 @@ def upload_package_if_needed(
     return True
 
 
+def get_destination_dir_from_uri(uri: str, base_directory: str) -> str:
+    """Return the local directory to which this URI should be unpacked."""
+    pkg_file = Path(_get_local_path(base_directory, uri))
+    local_dir = pkg_file.with_suffix("")
+    return local_dir
+
+
 def download_and_unpack_package(
         pkg_uri: str,
         base_directory: str,
@@ -432,7 +439,7 @@ def download_and_unpack_package(
 
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
-        local_dir = pkg_file.with_suffix("")
+        local_dir = get_destination_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"

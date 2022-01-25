@@ -7,9 +7,9 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
-    download_and_unpack_package, delete_package, get_uri_for_directory,
-    get_uri_for_package, upload_package_to_gcs, parse_uri, Protocol,
-    upload_package_if_needed)
+    download_and_unpack_package, delete_package, get_destination_dir_from_uri,
+    get_uri_for_directory, get_uri_for_package, upload_package_to_gcs,
+    parse_uri, Protocol, upload_package_if_needed)
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -76,15 +76,11 @@ class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         try_to_create_directory(self._resources_dir)
-        # TODO(architkulkarni): This dict is not necessary, we should use the
-        # same URI parsing function used elsewhere to convert URIs to paths.
-        self._uris_to_local_dirs = dict()
         assert _internal_kv_initialized()
 
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-        del self._uris_to_local_dirs[uri]
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
@@ -104,7 +100,6 @@ class WorkingDirManager:
                logger: Optional[logging.Logger] = default_logger) -> int:
         local_dir = download_and_unpack_package(
             uri, self._resources_dir, logger=logger)
-        self._uris_to_local_dirs[uri] = local_dir
         return get_directory_size_bytes(local_dir)
 
     def modify_context(self, uri: Optional[str], runtime_env_dict: Dict,
@@ -112,9 +107,11 @@ class WorkingDirManager:
         if uri is None:
             return
 
-        local_dir = self._uris_to_local_dirs.get(uri)
-        if local_dir is None:
-            raise ValueError(f"Local directory not found for URI {uri}")
+        local_dir = get_destination_dir_from_uri(uri, self._resources_dir)
+        if not local_dir.exists():
+            raise ValueError(f"Local directory {local_dir} for URI {uri} does "
+                             "not exist. Something may have gone wrong while "
+                             "downloading or unpacking the working_dir.")
 
         context.command_prefix += [f"cd {local_dir}"]
 
