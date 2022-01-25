@@ -190,6 +190,8 @@ class Cluster:
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
+        self.redis_password = node_args.get(
+            "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
         with disable_client_hook():
             if self.head_node is None and self._bootstrap_address is None:
                 node = ray.node.Node(
@@ -230,9 +232,6 @@ class Cluster:
                     self.head_node = node
                 else:
                     self.worker_nodes.add(node)
-
-            self.redis_password = node_args.get(
-                "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
 
             if wait:
                 # Wait for the node to appear in the client table. We do this
