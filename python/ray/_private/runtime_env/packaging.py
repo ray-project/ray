@@ -416,7 +416,7 @@ def upload_package_if_needed(
     return True
 
 
-def get_destination_dir_from_uri(uri: str, base_directory: str) -> str:
+def get_destination_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory to which this URI should be unpacked."""
     pkg_file = Path(_get_local_path(base_directory, uri))
     local_dir = pkg_file.with_suffix("")
