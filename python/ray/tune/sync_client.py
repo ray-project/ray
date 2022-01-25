@@ -2,6 +2,7 @@ import distutils
 import distutils.spawn
 import inspect
 import logging
+import pathlib
 import subprocess
 import tempfile
 import types
@@ -262,6 +263,9 @@ class CommandBasedClient(SyncClient):
         return self._execute(self.sync_up_template, source, target, exclude)
 
     def sync_down(self, source, target, exclude: Optional[List] = None):
+        # Just in case some command line sync client expects that local
+        # directory exists.
+        pathlib.Path(target).mkdir(parents=True, exist_ok=True)
         return self._execute(self.sync_down_template, source, target, exclude)
 
     def delete(self, target):

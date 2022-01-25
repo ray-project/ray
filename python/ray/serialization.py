@@ -14,7 +14,8 @@ from ray.exceptions import (
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError, RaySystemError,
-    RuntimeEnvSetupError, LocalRayletDiedError)
+    RuntimeEnvSetupError, TaskPlacementGroupRemoved,
+    ActorPlacementGroupRemoved, LocalRayletDiedError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -276,6 +277,11 @@ class SerializationContext:
                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
+            elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
+                return TaskPlacementGroupRemoved()
+            elif error_type == ErrorType.Value(
+                    "ACTOR_PLACEMENT_GROUP_REMOVED"):
+                return ActorPlacementGroupRemoved()
             else:
                 return RaySystemError("Unrecognized error type " +
                                       str(error_type))

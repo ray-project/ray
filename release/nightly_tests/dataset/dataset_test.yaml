@@ -75,8 +75,6 @@
     prepare: python wait_cluster.py 21 2400
     script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu --large-dataset --debug
 
-  stable: false
-
 - name: datasets_ingest_400G
   team: core
   cluster:
