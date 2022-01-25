@@ -499,6 +499,11 @@ def redis_proc():
     subprocess.check_call(["rm", "-rf", "redis-6.2.6.tar.gz", "redis-6.2.6"])
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=("Feature not supported Windows because Redis "
+            "is not officially supported by Windows. "
+            "(There cannot be external Redis in Windows)"))
 def test_ray_stop_should_not_kill_external_redis(redis_proc):
     check_call_ray(["start", "--head"])
     subprocess.check_call(["ray", "stop"])
