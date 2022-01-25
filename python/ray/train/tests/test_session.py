@@ -64,9 +64,10 @@ def test_get_dataset_shard():
         local_rank=0,
         world_size=1,
         dataset_shard=dataset)
-    assert get_dataset_shard() == dataset
+    shard = get_dataset_shard()
+    assert shard == dataset
     # test tf_autoshard_off is working appropriately
-    tf_dataset = get_dataset_shard().to_tf()
+    tf_dataset = shard.to_tf()
     # tf.data.experimental.AutoShardPolicy.OFF is -1
     # avoid importing tensorflow package
     assert tf_dataset.options().experimental_distribute.auto_shard_policy == -1

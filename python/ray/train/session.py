@@ -314,12 +314,11 @@ def get_dataset_shard(dataset_name: Optional[str] = None,
 
         def new_to_tf(self, *args, **kwargs):
             import tensorflow as tf
-            tf_dataset = original_to_tf(self, *args, **kwargs)
+            tf_dataset = original_to_tf(*args, **kwargs)
             options = tf.data.Options()
             options.experimental_distribute.auto_shard_policy = \
                 tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset.with_options(options)
-            return tf_dataset
+            return tf_dataset.with_options(options)
 
         # overrides Dataset.to_tf()
         shard.to_tf = types.MethodType(new_to_tf, shard)
