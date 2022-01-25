@@ -341,6 +341,37 @@ class TestURICache:
         for i in range(1000):
             assert str(i) in cache
 
+    def test_delete_fn_called(self):
+        num_delete_fn_calls = 0
+        def delete_fn(*wargs, **kwargs):
+            nonlocal num_delete_fn_calls
+            num_delete_fn_calls += 1
+
+        cache = URICache(delete_fn, max_total_size_bytes=10)
+        cache.add("a", 8)
+        cache.add("b", 6)
+        cache.mark_unused("b")
+        # Total size is 14 > 10, so we need to delete "b".
+        assert num_delete_fn_calls == 1
+
+        cache.add("c", 4)
+        cache.mark_unused("c")
+        # Total size is 12 > 10, so we delete "c".
+        assert num_delete_fn_calls == 2
+
+        cache.mark_unused("a")
+        # Total size is 8 <= 10, so we shouldn't delete anything.
+        assert num_delete_fn_calls == 2
+
+        cache.add("d", 20)
+        # Total size is 28 > 10, so we delete "a".
+        assert num_delete_fn_calls == 3
+
+        cache.mark_unused("d")
+        # Total size is 20 > 10, so we delete "d".
+        assert num_delete_fn_calls == 4
+
+
 
 @pytest.fixture
 def enable_dev_mode(local_env_var_enabled):
