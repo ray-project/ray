@@ -1558,6 +1558,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
   const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  auto task_id = task.GetTaskSpecification().TaskId();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
 
@@ -1577,7 +1578,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
+  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply, task_id,
                                       send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
@@ -1602,6 +1603,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
+    RAY_LOG(INFO) << "Return lease " << task_id << " " << reply->rejected();
     send_reply_callback(status, success, failure);
   };
 
