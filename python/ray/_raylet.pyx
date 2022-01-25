@@ -1094,7 +1094,6 @@ cdef class CoreWorker:
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
-        options.worker_shim_pid = worker_shim_pid
         options.startup_token = startup_token
         CCoreWorkerProcess.Initialize(options)
 
