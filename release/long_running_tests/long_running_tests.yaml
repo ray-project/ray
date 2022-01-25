@@ -6,7 +6,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/actor_deaths.py
     long_running: True
 
@@ -16,6 +16,7 @@
 
   app_env_vars:
     CLUSTER_ADDRESS: "127.0.0.1:6379"
+
 
 - name: apex
   team: ml
@@ -33,9 +34,6 @@
     run:
       timeout: 3600
 
-  app_env_vars:
-    CLUSTER_ADDRESS: "127.0.0.1:6379"
-
 
 - name: impala
   team: ml
@@ -52,8 +50,6 @@
     run:
       timeout: 3600
 
-  app_env_vars:
-    CLUSTER_ADDRESS: "127.0.0.1:6379"
 
 - name: many_actor_tasks
   team: core
@@ -63,7 +59,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/many_actor_tasks.py
     long_running: True
 
@@ -83,7 +79,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/many_drivers.py
     long_running: True
 
@@ -111,9 +107,6 @@
     run:
       timeout: 3600
 
-  app_env_vars:
-    CLUSTER_ADDRESS: "127.0.0.1:6379"
-
 
 - name: many_tasks
   team: core
@@ -123,7 +116,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/many_tasks.py
     long_running: True
 
@@ -143,7 +136,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/many_tasks_serialized_ids.py
     long_running: True
 
@@ -163,7 +156,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/node_failures.py
     long_running: True
 
@@ -183,7 +176,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/pbt.py
     long_running: True
 
@@ -203,7 +196,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/serve.py
     long_running: True
 
@@ -223,7 +216,7 @@
 
   run:
     timeout: 86400
-    prepare: pkill -7 raylet
+    prepare: while pkill -9 raylet; do sleep 1; done
     script: python workloads/serve_failure.py
     long_running: True
 

@@ -1177,12 +1177,11 @@ def run_session_command(sdk: AnyscaleSDK,
     return scd_id, result
 
 
-def wait_for_session_command_to_complete(create_session_command_result,
+def wait_for_session_command_to_complete(result,
                                          sdk: AnyscaleSDK,
                                          scd_id: str,
                                          stop_event: multiprocessing.Event,
                                          state_str: str = "CMD_RUN"):
-    result = create_session_command_result
     completed = result.result.finished_at is not None
     start_wait = time.time()
     next_report = start_wait + REPORT_S
@@ -1218,6 +1217,13 @@ def wait_for_session_command_to_complete(create_session_command_result,
         elif state_str == "CMD_PREPARE":
             raise PrepareCommandRuntimeError(
                 f"Prepare command returned non-success status: {status_code}")
+    else:
+        if state_str == "CMD_RUN":
+            logger.info("... Command succeeded after "
+                        f"({int(now - start_wait)} seconds) ...")
+        elif state_str == "CMD_PREPARE":
+            logger.info("... Prepare command succeeded after "
+                        f"({int(now - start_wait)} seconds) ...")
 
     return status_code, runtime
 
