@@ -100,6 +100,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
+   tune-comet.rst
 
 Colab Exercises
 ---------------
