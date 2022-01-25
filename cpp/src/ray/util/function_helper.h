@@ -28,8 +28,9 @@ using namespace ::ray::internal;
 namespace ray {
 namespace internal {
 
-using EntryFuntion = std::function<msgpack::sbuffer(
-    const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>;
+using EntryFuntion =
+    std::function<msgpack::sbuffer(const std::string &, const ArgsBufferList &,
+                                   msgpack::sbuffer *, const std::vector<std::string> &)>;
 
 class FunctionHelper {
  public:

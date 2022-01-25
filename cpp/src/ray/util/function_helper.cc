@@ -53,8 +53,8 @@ void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
 
   try {
     auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>(
-        *lib, "TaskExecutionHandler");
+        const std::string &, const ArgsBufferList &, msgpack::sbuffer *,
+        const std::vector<std::string> &)>(*lib, "TaskExecutionHandler");
     auto function_names = LoadAllRemoteFunctions(lib_path.string(), *lib, entry_func);
     if (function_names.empty()) {
       RAY_LOG(WARNING) << "No remote functions in library " << lib_path
