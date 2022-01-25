@@ -112,6 +112,23 @@ def test_basic_actor_dag():
     assert ray.get(dag.execute()) == 32
 
 
+def test_pass_actor_handle():
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    @ray.remote
+    def caller(handle):
+        assert isinstance(handle, ray.actor.ActorHandle), handle
+        return ray.get(handle.ping.remote())
+
+    a1 = Actor._bind()
+    dag = caller._bind(a1)
+    print(dag)
+    assert ray.get(dag.execute()) == "hello"
+
+
 def test_nested_args():
     ct = Counter.remote()
 
