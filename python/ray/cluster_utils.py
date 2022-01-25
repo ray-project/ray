@@ -99,6 +99,7 @@ class Cluster:
                  initialize_head=False,
                  connect=False,
                  head_node_args=None,
+                 bootstrap_address=None,
                  shutdown_at_exit=True):
         """Initializes all services of a Ray cluster.
 
@@ -110,6 +111,9 @@ class Cluster:
                 passed in.
             head_node_args (dict): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.
+            bootstrap_address (str): Ray cluster address to connect to.
+                When specified, no new head node / GCS / dashboard processes
+                will be started.
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
@@ -121,6 +125,7 @@ class Cluster:
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
+        self._bootstrap_address = bootstrap_address
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
         self.global_state = ray.state.GlobalState()
@@ -186,7 +191,7 @@ class Cluster:
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
-            if self.head_node is None:
+            if self.head_node is None and self._bootstrap_address is None:
                 node = ray.node.Node(
                     ray_params,
                     head=True,
@@ -194,8 +199,6 @@ class Cluster:
                     spawn_reaper=self._shutdown_at_exit)
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
-                self.redis_password = node_args.get(
-                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
                 if use_gcs_for_bootstrap():
@@ -206,6 +209,11 @@ class Cluster:
                         self.redis_address, self.redis_password)
                 self.global_state._initialize_global_state(gcs_options)
             else:
+                if self._bootstrap_address is not None:
+                    if use_gcs_for_bootstrap():
+                        self.gcs_address = self._bootstrap_address
+                    else:
+                        self.redis_address = self._bootstrap_address
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
                 # We only need one log monitor per physical node.
@@ -218,7 +226,13 @@ class Cluster:
                     head=False,
                     shutdown_at_exit=self._shutdown_at_exit,
                     spawn_reaper=self._shutdown_at_exit)
-                self.worker_nodes.add(node)
+                if self.head_node is None:
+                    self.head_node = node
+                else:
+                    self.worker_nodes.add(node)
+
+            self.redis_password = node_args.get(
+                "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
 
             if wait:
                 # Wait for the node to appear in the client table. We do this

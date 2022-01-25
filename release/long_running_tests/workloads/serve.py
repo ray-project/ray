@@ -42,7 +42,7 @@ def update_progress(result):
         json.dump(result, f)
 
 
-cluster = Cluster()
+cluster = Cluster(bootstrap_address="127.0.0.1:6379")
 for i in range(NUM_NODES):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
