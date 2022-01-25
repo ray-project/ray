@@ -217,7 +217,8 @@ def read_datasource(datasource: Datasource[T],
             lambda i=i, task=task,
             resources=next(resource_iter): remote_read.options(
                 **ray_remote_args,
-                resources=resources).remote(i, task))
+                resources=resources,
+                name=f"jjyao-read-{i}").remote(i, task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)

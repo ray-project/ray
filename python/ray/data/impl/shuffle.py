@@ -59,6 +59,7 @@ def simple_shuffle(input_blocks: BlockList,
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
+            name=f"jjyao-map-{i}",
             resources=next(map_resource_iter)).remote(
                 block, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
@@ -89,6 +90,7 @@ def simple_shuffle(input_blocks: BlockList,
         shuffle_reduce.options(
             **reduce_ray_remote_args,
             num_returns=2,
+            name=f"jjyao-reduce-{j}",
             resources=next(reduce_resource_iter)).remote(
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
