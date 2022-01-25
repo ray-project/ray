@@ -343,6 +343,7 @@ class TestURICache:
 
     def test_delete_fn_called(self):
         num_delete_fn_calls = 0
+
         def delete_fn(*wargs, **kwargs):
             nonlocal num_delete_fn_calls
             num_delete_fn_calls += 1
@@ -370,7 +371,6 @@ class TestURICache:
         cache.mark_unused("d")
         # Total size is 20 > 10, so we delete "d".
         assert num_delete_fn_calls == 4
-
 
 
 @pytest.fixture
