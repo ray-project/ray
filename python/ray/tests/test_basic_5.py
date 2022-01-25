@@ -7,7 +7,12 @@ import time
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import wait_for_pid_to_exit, client_test_enabled
+from pathlib import Path
+from ray._private.test_utils import (
+    wait_for_pid_to_exit,
+    client_test_enabled,
+    run_string_as_driver
+)
 
 import ray
 
@@ -117,6 +122,39 @@ def test_internal_kv(ray_start_regular):
     with pytest.raises(RuntimeError):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
+
+def test_run_on_all_workers(ray_start_regular):
+    # This test is to ensure run_function_on_all_workers are executed
+    # on all workers.
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.jobs = []
+        def record(self, job_id = None):
+            if job_id is not None:
+                self.jobs.append(job_id)
+            return self.jobs
+    a = Actor.options(name="recorder", namespace="n").remote()
+    driver_script = f"""
+import ray
+from pathlib import Path
+
+def init_func(worker_info):
+    a = ray.get_actor("recorder", namespace="n")
+    a.record.remote(worker_info['worker'].worker_id)
+
+ray.worker.global_worker.run_function_on_all_workers(init_func)
+ray.init(address='auto')
+@ray.remote
+def ready():
+    a = ray.get_actor("recorder", namespace="n")
+    assert ray.worker.global_worker.worker_id in ray.get(a.record.remote())
+
+ray.get(ready.remote())
+"""
+    run_string_as_driver(driver_script)
+    run_string_as_driver(driver_script)
+    run_string_as_driver(driver_script)
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
