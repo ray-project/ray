@@ -11,7 +11,7 @@ from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    kill_process_by_name, Semaphore)
+    kill_process_by_name, Semaphore, check_call_subprocess)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -480,6 +480,29 @@ ray.get(main_wait.release.remote())
     assert driver1_out_split[1][-1] == "2", driver1_out_split
     assert driver2_out_split[0][-1] == "3", driver2_out_split
     assert driver2_out_split[1][-1] == "4", driver2_out_split
+
+
+@pytest.fixture
+def redis_proc():
+    """Download external redis and start the subprocess."""
+    wd = os.getcwd()
+    check_call_subprocess(
+        ["wget", "https://download.redis.io/releases/redis-6.2.6.tar.gz"])
+    check_call_subprocess(["tar", "xzf", "redis-6.2.6.tar.gz"])
+    os.chdir("redis-6.2.6")
+    check_call_subprocess(["make"])
+    proc = subprocess.Popen(["./src/redis-server", "--port", "7999"])
+    yield proc
+    subprocess.check_call(["ray", "stop"])
+    os.kill(proc.pid, 9)
+    os.chdir(wd)
+    subprocess.check_call(["rm", "-rf", "redis-6.2.6.tar.gz", "redis-6.2.6"])
+
+
+def test_ray_stop_should_not_kill_external_redis(redis_proc):
+    check_call_ray(["start", "--head"])
+    subprocess.check_call(["ray", "stop"])
+    assert redis_proc.poll() is None
 
 
 if __name__ == "__main__":

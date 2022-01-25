@@ -830,7 +830,9 @@ def stop(force):
                 # This is a way to avoid killing redis server that's not started by Ray.
                 # We are using a simple hacky solution here since
                 # Redis server will anyway removed soon from the ray repository.
-                if (keyword == "redis-server"
+                # This feature is only supported on MacOS/Linux temporarily until
+                # Redis is removed from Ray.
+                if (keyword == "redis-server" and sys.platform != "win32"
                         and "core/src/ray/thirdparty/redis/src/redis-server"
                         not in corpus):
                     continue
