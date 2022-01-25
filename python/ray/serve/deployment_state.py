@@ -1207,6 +1207,14 @@ class DeploymentState:
 
         return status == GoalStatus.SUCCESSFULLY_DELETED
 
+    def _stop_one_running_replica_for_testing(self):
+        running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
+        replica_to_stop = running_replicas.pop()
+        replica_to_stop.stop(graceful=False)
+        self._replicas.add(ReplicaState.STOPPING, replica_to_stop)
+        for replica in running_replicas:
+            self._replicas.add(ReplicaState.RUNNING, replica)
+
 
 class DeploymentStateManager:
     """Manages all state for deployments in the system.

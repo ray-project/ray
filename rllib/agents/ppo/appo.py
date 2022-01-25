@@ -54,7 +54,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         # == IMPALA optimizer params (see documentation in impala.py) ==
         "rollout_fragment_length": 50,
         "train_batch_size": 500,
-        "min_iter_time_s": 10,
+        "min_time_s_per_reporting": 10,
         "num_workers": 2,
         "num_gpus": 0,
         "num_multi_gpu_tower_stacks": 1,
@@ -132,5 +132,7 @@ class APPOTrainer(impala.ImpalaTrainer):
             from ray.rllib.agents.ppo.appo_torch_policy import \
                 AsyncPPOTorchPolicy
             return AsyncPPOTorchPolicy
-        else:
+        elif config["framework"] == "tf":
             return AsyncPPOTFPolicy
+        elif config["framework"] in ["tf2", "tfe"]:
+            return AsyncPPOTFPolicy.as_eager()

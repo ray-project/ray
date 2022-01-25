@@ -78,7 +78,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "timesteps_per_iteration": 25000,
         "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
         "worker_side_prioritization": True,
-        "min_iter_time_s": 30,
+        "min_time_s_per_reporting": 30,
         # If set, this will fix the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Otherwise, replay will proceed as fast as possible.

@@ -8,6 +8,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.options.ActorLifetime;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
@@ -66,13 +67,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public void start() {
     try {
-      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getRedisAddress() == null) {
+      if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getBootstrapAddress() == null) {
         // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
         // Ray processes even if `Ray.init()` failed.
         startRayHead = true;
         RunManager.startRayHead(rayConfig);
       }
-      Preconditions.checkNotNull(rayConfig.getRedisAddress());
+      Preconditions.checkNotNull(rayConfig.getBootstrapAddress());
 
       // In order to remove redis dependency in Java lang, we use a temp dir to load library
       // instead of getting session dir from redis.
@@ -126,6 +127,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
         jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
+        jobConfigBuilder.setDefaultActorLifetime(
+            rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
+                ? JobConfig.ActorLifetime.DETACHED
+                : JobConfig.ActorLifetime.NON_DETACHED);
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 
@@ -238,7 +243,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (gcsClient == null) {
       synchronized (this) {
         if (gcsClient == null) {
-          gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+          gcsClient = new GcsClient(rayConfig.getBootstrapAddress(), rayConfig.redisPassword);
         }
       }
     }

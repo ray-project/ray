@@ -3,11 +3,14 @@ import shutil
 import tempfile
 import random
 import os
+import pickle
 import pandas as pd
 from numpy import nan
 
 import ray
 from ray import tune
+from ray.tune import ExperimentAnalysis
+import ray.tune.registry
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
@@ -298,6 +301,71 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
         df = analysis.dataframe()
         var = df[df.loss == df.loss.min()]["config/var"].values[0]
         self.assertEqual(var, 1)
+
+
+class ExperimentAnalysisStubSuite(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.test_name = "analysis_exp"
+        self.num_samples = 2
+        self.metric = "episode_reward_mean"
+        self.test_path = os.path.join(self.test_dir, self.test_name)
+        self.run_test_exp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        ray.shutdown()
+
+    def run_test_exp(self):
+        def training_function(config, checkpoint_dir=None):
+            tune.report(episode_reward_mean=config["alpha"])
+
+        return tune.run(
+            training_function,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            stop={"training_iteration": 1},
+            num_samples=self.num_samples,
+            config={
+                "alpha": tune.sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+            })
+
+    def testPickling(self):
+        analysis = self.run_test_exp()
+        pickle_path = os.path.join(self.test_dir, "analysis.pickle")
+        with open(pickle_path, "wb") as f:
+            pickle.dump(analysis, f)
+
+        self.assertTrue(
+            analysis.get_best_trial(metric=self.metric, mode="max"))
+
+        ray.shutdown()
+        ray.tune.registry._global_registry = ray.tune.registry._Registry(
+            prefix="global")
+
+        with open(pickle_path, "rb") as f:
+            analysis = pickle.load(f)
+
+        self.assertTrue(
+            analysis.get_best_trial(metric=self.metric, mode="max"))
+
+    def testFromPath(self):
+        self.run_test_exp()
+        analysis = ExperimentAnalysis(self.test_path)
+
+        self.assertTrue(
+            analysis.get_best_trial(metric=self.metric, mode="max"))
+
+        ray.shutdown()
+        ray.tune.registry._global_registry = ray.tune.registry._Registry(
+            prefix="global")
+
+        analysis = ExperimentAnalysis(self.test_path)
+
+        # This will be None if validate_trainable during loading fails
+        self.assertTrue(
+            analysis.get_best_trial(metric=self.metric, mode="max"))
 
 
 if __name__ == "__main__":
