@@ -129,6 +129,42 @@ def test_pass_actor_handle():
     assert ray.get(dag.execute()) == "hello"
 
 
+def test_dynamic_pipeline():
+    @ray.remote
+    class Model:
+        def __init__(self, arg):
+            self.arg = arg
+
+        def forward(self, x):
+            return self.arg + str(x)
+
+    @ray.remote
+    class ModelSelection:
+        def is_even(self, x):
+            return x % 2 == 0
+
+    @ray.remote
+    def pipeline(x, m1, m2, selection):
+        sel = selection.is_even.remote(x)
+        if ray.get(sel):
+            result = m1.forward.remote(x)
+        else:
+            result = m2.forward.remote(x)
+        return ray.get(result)
+
+    m1 = Model._bind("Even: ")
+    m2 = Model._bind("Odd: ")
+    selection = ModelSelection._bind()
+
+    even_input = pipeline._bind(20, m1, m2, selection)
+    print(even_input)
+    assert ray.get(even_input.execute()) == "Even: 20"
+
+    odd_input = pipeline._bind(21, m1, m2, selection)
+    print(odd_input)
+    assert ray.get(odd_input.execute()) == "Odd: 21"
+
+
 def test_nested_args():
     ct = Counter.remote()
 
