@@ -1,4 +1,3 @@
-import inspect
 import ray
 
 import io
@@ -128,11 +127,6 @@ class DAGNode:
         """Execute this DAG using the Ray default executor."""
         return self.transform_up(lambda node: node._execute())
 
-    def tree_string(self) -> str:
-        """Return a string representation of the entire DAG."""
-        # TODO(ekl) format with indentation, etc.
-        return self.transform_up(str)
-
     def _execute(self) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this node, assuming args have been transformed already."""
         raise NotImplementedError
@@ -191,11 +185,11 @@ class DAGNode:
                 node_repr_lines = str(val).split("\n")
                 for index, node_repr_line in enumerate(node_repr_lines):
                     if index == 0:
-                        kwargs_lines.append(
-                            f"{indent}{key}:" + f"{indent}" + node_repr_line)
+                        kwargs_lines.append(f"{indent}{key}:" + f"{indent}" +
+                                            node_repr_line)
                     else:
-                        kwargs_lines.append(
-                            f"{indent}{indent}" + node_repr_line)
+                        kwargs_lines.append(f"{indent}{indent}" +
+                                            node_repr_line)
 
             elif isinstance(val, list):
                 for ele in val:
@@ -225,14 +219,13 @@ class DAGNode:
         indent = self._get_indentation()
         args_line = self._get_args_lines()
         kwargs_line = self._get_kwargs_lines()
+        node_type = f"{self.__class__.__name__}"
         # kwargs_children = self._bound_kwargs
-        return (
-           f"({self._node_type})(\n"
-           f"{indent}body={str(self._body)}\n"
-           f"{indent}args={args_line}\n"
-           f"{indent}kwargs={kwargs_line}\n"
-           f")"
-        )
+        return (f"({node_type})(\n"
+                f"{indent}body={str(self._body)}\n"
+                f"{indent}args={args_line}\n"
+                f"{indent}kwargs={kwargs_line}\n"
+                f")")
 
     def __reduce__(self):
         """We disallow serialization to prevent inadvertent closure-capture.

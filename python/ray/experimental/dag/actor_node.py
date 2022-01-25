@@ -60,7 +60,7 @@ class ActorMethodNode(DAGNode):
         DAGNode.__init__(self, (actor, prev_call) + method_args, method_kwargs)
 
     def _copy(self, new_args, new_kwargs):
-        return ActorMethodNode(self._actor, self._prev_call, self._method_name,
+        return ActorMethodNode(new_args[0], new_args[1], self._method_name,
                                new_args[2:], new_kwargs)
 
     def _execute(self):

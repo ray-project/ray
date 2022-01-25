@@ -99,7 +99,7 @@ def test_basic_actor_dag():
 
     a1 = Actor._bind(10)
     res = a1.get._bind()
-    print(res.tree_string())
+    print(res)
     assert ray.get(res.execute()) == 10
 
     a2 = Actor._bind(10)
@@ -108,7 +108,7 @@ def test_basic_actor_dag():
     a2.inc._bind(6)
     dag = combine._bind(a1.get._bind(), a2.get._bind())
 
-    print(dag.tree_string())
+    print(dag)
     assert ray.get(dag.execute()) == 32
 
 
