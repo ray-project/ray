@@ -13,10 +13,10 @@ class SessionManager(abc.ABC):
         self.project_id = project_id
         self.test_name = test_name
 
-        self.session_name = (
+        self.cluster_name = (
             f"{test_name}_1234"  # Todo
         )
-        self.session_id = None
+        self.cluster_id = None
 
         self.cluster_env = None
         self.cluster_env_name = None
@@ -41,10 +41,13 @@ class SessionManager(abc.ABC):
     def build_configs(self, timeout: float = 30.):
         raise NotImplementedError
 
+    def delete_configs(self):
+        raise NotImplementedError
+
     def start_session(self):
         raise NotImplementedError
 
-    def terminate_session(self):
+    def terminate_cluster(self):
         raise NotImplementedError
 
     def get_cluster_address(self) -> str:

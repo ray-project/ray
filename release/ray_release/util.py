@@ -73,7 +73,7 @@ def get_anyscale_sdk() -> AnyscaleSDK:
 
 def run_with_timeout(fn: Callable[[], None],
                      timeout: float,
-                     status_fn: Callable[[float], str],
+                     status_fn: Callable[[float], None],
                      error_fn: Callable[[], None],
                      status_interval: float = 30.):
     start_time = time.monotonic()

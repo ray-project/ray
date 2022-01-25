@@ -27,10 +27,10 @@ class MinimalSessionManager(SessionManager):
             paging_token = None
             while not self.cluster_env_id:
                 result = self.sdk.search_cluster_environments(
-                    project_id=self.project_id,
-                    count=50,
-                    name=dict(equals=self.cluster_env_name),
-                    paging_token=paging_token)
+                    dict(
+                        project_id=self.project_id,
+                        name=dict(equals=self.cluster_env_name),
+                        paging=dict(count=50, token=paging_token)))
                 paging_token = result.metadata.next_paging_token
 
                 for res in result.results:
@@ -155,8 +155,8 @@ class MinimalSessionManager(SessionManager):
                     dict(
                         project_id=self.project_id,
                         name=dict(equals=self.cluster_compute_name),
-                        include_anonymous=True),
-                    paging_token=paging_token)
+                        include_anonymous=True,
+                        paging=dict(token=paging_token)))
                 paging_token = result.metadata.next_paging_token
 
                 for res in result.results:
@@ -197,10 +197,21 @@ class MinimalSessionManager(SessionManager):
     def build_configs(self, timeout: float = 30.):
         self.create_cluster_compute()
         self.create_cluster_env()
-        self.build_cluster_env()
+        self.build_cluster_env(timeout=timeout)
+
+    def delete_configs(self):
+        if self.cluster_id:
+            self.sdk.delete_cluster(self.cluster_id)
+        if self.cluster_env_build_id:
+            self.sdk.delete_cluster_environment_build(
+                self.cluster_env_build_id)
+        if self.cluster_env_id:
+            self.sdk.delete_cluster_environment(self.cluster_env_id)
+        if self.cluster_compute_id:
+            self.sdk.delete_cluster_compute(self.cluster_compute_id)
 
     def start_session(self):
         pass
 
-    def terminate_session(self):
+    def terminate_cluster(self):
         pass

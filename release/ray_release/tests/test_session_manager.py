@@ -10,13 +10,13 @@ from freezegun import freeze_time
 from ray_release.exception import AppConfigBuildFailure
 from ray_release.session_manager.full import FullSessionManager
 from ray_release.session_manager.minimal import MinimalSessionManager
-from ray_release.tests.utils import (UNIT_TEST_PROJECT_ID, APIDict,
-                                     UnitTestError, fail_always, fail_once,
-                                     MockSDK)
+from ray_release.tests.utils import (UNIT_TEST_PROJECT_ID, UNIT_TEST_CLOUD_ID,
+                                     APIDict, UnitTestError, fail_always,
+                                     fail_once, MockSDK)
 from ray_release.util import get_anyscale_sdk
 
 TEST_CLUSTER_ENV = {
-    "base_image": "anyscale/ray:nightly-py37-cpu",
+    "base_image": "anyscale/ray:nightly-py37",
     "env_vars": {},
     "python": {
         "pip_packages": [],
@@ -25,7 +25,7 @@ TEST_CLUSTER_ENV = {
     "post_build_cmds": [f"echo {uuid4().hex[:8]}"]
 }
 TEST_CLUSTER_COMPUTE = {
-    "cloud_id": "empty",
+    "cloud_id": UNIT_TEST_CLOUD_ID,
     "region": "us-west-2",
     "max_workers": 0,
     "head_node_type": {
@@ -441,27 +441,28 @@ class FullSessionManagerTest(MinimalSessionManagerTest):
     def testSessionStart(self):
         pass  # Todo
 
-    @unittest.skipUnless(
-        os.environ.get("RELEASE_UNIT_TEST_NO_ANYSCALE", "0") == "1",
-        reason="RELEASE_UNIT_TEST_NO_ANYSCALE is set to 1")
-    def testSessionEndToEnd(self):
-        sdk = get_anyscale_sdk()
 
-        session_manager = self.cls(
+@unittest.skipUnless(
+    os.environ.get("RELEASE_UNIT_TEST_NO_ANYSCALE", "0") == "1",
+    reason="RELEASE_UNIT_TEST_NO_ANYSCALE is set to 1")
+class LiveSessionManagerTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.sdk = get_anyscale_sdk()
+
+        self.cluster_env = TEST_CLUSTER_ENV
+        self.cluster_compute = TEST_CLUSTER_COMPUTE
+
+        self.session_manager = FullSessionManager(
             project_id=UNIT_TEST_PROJECT_ID,
-            sdk=sdk,
+            sdk=self.sdk,
             test_name=f"unit_test__{self.__class__.__name__}__endToEnd")
 
-        error = None
-        try:
-            session_manager.set_cluster_env(self.cluster_env)
-            session_manager.set_cluster_compute(self.cluster_compute)
-            session_manager.build_cluster_env(timeout=1200)
-            session_manager.start_session(timeout=1200)
-        except Exception as e:
-            error = e
-        finally:
-            session_manager.terminate_session()
+    def tearDown(self) -> None:
+        self.session_manager.terminate_cluster()
+        self.session_manager.delete_configs()
 
-        if error:
-            raise error
+    def testSessionEndToEnd(self):
+        self.session_manager.set_cluster_env(self.cluster_env)
+        self.session_manager.set_cluster_compute(self.cluster_compute)
+        self.session_manager.build_configs(timeout=1200)
+        self.session_manager.start_session(timeout=1200)

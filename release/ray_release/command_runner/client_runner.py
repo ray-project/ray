@@ -3,6 +3,7 @@ import time
 import ray
 
 from ray_release.exception import NodesTimeoutError
+from ray_release.logger import logger
 from ray_release.util import run_with_timeout
 from release.ray_release.command_runner.command_runner import CommandRunner
 
@@ -20,9 +21,10 @@ class ClientRunner(CommandRunner):
             ray.shutdown()
 
         def _status_fn(time_elapsed: float):
-            return (f"Waiting for nodes to come up: "
-                    f"{len(ray.nodes())}/{num_nodes} "
-                    f"({time_elapsed} seconds, timeout: {timeout} seconds).")
+            logger.info(
+                f"Waiting for nodes to come up: "
+                f"{len(ray.nodes())}/{num_nodes} "
+                f"({time_elapsed} seconds, timeout: {timeout} seconds).")
 
         def _error_fn():
             raise NodesTimeoutError(
