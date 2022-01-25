@@ -91,8 +91,8 @@ def test_get_dataset_shard_tf_autoshard_off():
         output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
                           tf.TensorSpec(shape=(None, ), dtype=tf.float32)))
 
-    assert tf_dataset.options(
-    ).experimental_distribute.auto_shard_policy == tf.data.experimental.AutoShardPolicy.OFF
+    assert tf_dataset.options().experimental_distribute.auto_shard_policy ==\
+           tf.data.experimental.AutoShardPolicy.OFF
     shutdown_session()
 
 
