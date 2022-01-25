@@ -3,10 +3,9 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import gym
-import math
 import numpy as np
 import re
-from typing import Callable, Container, Dict, List, Optional, Type, Union
+from typing import Dict, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -23,9 +22,9 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
     LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
-    NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED, NUM_TARGET_UPDATES, \
+    NUM_ENV_STEPS_SAMPLED, NUM_TARGET_UPDATES, \
     SAMPLE_TIMER, SYNCH_WORKER_WEIGHTS_TIMER, TARGET_NET_UPDATE_TIMER
-from ray.rllib.utils.typing import AgentID, EpisodeID, PartialTrainerConfigDict,\
+from ray.rllib.utils.typing import PartialTrainerConfigDict,\
     PolicyID, PolicyState, TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
@@ -83,7 +82,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             },
             "policy_mapping_fn":
                 (lambda aid, ep, worker, **kw: "main_0" if
-                ep.episode_id % 2 == aid else "main_exploiter_0"),
+                 ep.episode_id % 2 == aid else "main_exploiter_0"),
             # At first, only train main_0 (until good enough to win against
             # random).
             "policies_to_train": ["main_0"],
@@ -250,7 +249,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         with self._timers[LEARN_ON_BATCH_TIMER]:
             pol_actors = []
             args = []
-            for i, (pid, pol_actor, repl_actor) in enumerate(self.distributed_learners):
+            for i, (pid, pol_actor,
+                    repl_actor) in enumerate(self.distributed_learners):
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
@@ -354,11 +354,11 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     print(f"initializing actual league ({new_pol_id} + "
                           "1st learning league-/main-exploiters).")
                 else:
-                    keep_training_p = self.config["keep_new_snapshot_training_prob"]
+                    keep_training_p = self.config[
+                        "keep_new_snapshot_training_prob"]
                     keep_training = False if is_main else np.random.choice(
-                        [True, False], p=[keep_training_p, 1.0 - keep_training_p])
-                    #mo = re.match("^.+_(\\d+)$", policy_id)
-                    #idx = int(mo.group(1))
+                        [True, False],
+                        p=[keep_training_p, 1.0 - keep_training_p])
                     if policy_id.startswith("league"):
                         new_pol_id = re.sub(
                             "_\\d+$", f"_{self.league_exploiters}", policy_id)
@@ -368,8 +368,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
                             "_\\d+$", f"_{self.main_exploiters}", policy_id)
                         self.main_exploiters += 1
                     else:
-                        new_pol_id = re.sub(
-                            "_\\d+$", f"_{self.main_policies}", policy_id)
+                        new_pol_id = re.sub("_\\d+$", f"_{self.main_policies}",
+                                            policy_id)
                         self.main_policies += 1
 
                     if keep_training:
@@ -377,7 +377,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     else:
                         non_trainable_policies.add(new_pol_id)
 
-                    print(f"adding new opponents to the mix ({new_pol_id}; trainable={keep_training}).")
+                    print(f"adding new opponents to the mix ({new_pol_id}; "
+                          f"trainable={keep_training}).")
 
                 num_main_policies = self.main_policies
                 num_main_exploiters = self.main_exploiters
@@ -399,33 +400,42 @@ class AlphaStarTrainer(appo.APPOTrainer):
                         if league_exploiter not in trainable_policies:
                             opponent = np.random.choice(
                                 list(trainable_policies))
-                            print(f"{league_exploiter} (frozen) vs {opponent} (training)")
+                            print(
+                                f"{league_exploiter} (frozen) vs {opponent} (training)"
+                            )
                         # League exploiter is trainable: Play against any other
                         # non-trainable policy.
                         else:
                             opponent = np.random.choice(
                                 list(non_trainable_policies))
-                            print(f"{league_exploiter} (training) vs {opponent} (frozen)")
+                            print(
+                                f"{league_exploiter} (training) vs {opponent} (frozen)"
+                            )
                         return league_exploiter if \
                             episode.episode_id % 2 == agent_id else opponent
 
                     # 2) Main exploiter vs main.
                     else:
                         main_exploiter = "main_exploiter_" + str(
-                            np.random.choice(
-                                list(range(num_main_exploiters))))
+                            np.random.choice(list(range(num_main_exploiters))))
                         # Main exploiter is frozen: Play against a trainable main
                         # policy.
                         if main_exploiter not in trainable_policies:
                             #TODO: Any main, not just idx=0
                             main = "main_0"
-                            print(f"{main_exploiter} (frozen) vs {main} (training)")
+                            print(
+                                f"{main_exploiter} (frozen) vs {main} (training)"
+                            )
                         # Main exploiter is trainable: Play against any main.
                         else:
-                            main = "main_{}".format(np.random.choice(
-                                list(range(num_main_policies))))
-                            training = "training" if main in trainable_policies else "frozen"
-                            print(f"{main_exploiter} (training) vs {main} ({training})")
+                            main = "main_{}".format(
+                                np.random.choice(
+                                    list(range(num_main_policies))))
+                            training = "training" if \
+                                main in trainable_policies else "frozen"
+                            print(
+                                f"{main_exploiter} (training) vs {main} ({training})"
+                            )
                         return main_exploiter if \
                             episode.episode_id % 2 == agent_id else main
 
@@ -479,7 +489,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         # Add the new policy to all our train- and eval RolloutWorkers
         # (including the local worker).
         new_policy = super().add_policy(
-            policy_id, policy_cls,
+            policy_id,
+            policy_cls,
             observation_space=observation_space,
             action_space=action_space,
             config=config,
@@ -491,7 +502,8 @@ class AlphaStarTrainer(appo.APPOTrainer):
         if policy_id in kwargs.get("policies_to_train", []):
             new_policy_actor = self.distributed_learners.add_policy(
                 policy_id,
-                PolicySpec(policy_cls, new_policy.observation_space, new_policy.action_space, self.config))
+                PolicySpec(policy_cls, new_policy.observation_space,
+                           new_policy.action_space, self.config))
             # Set state of new policy actor, if provided.
             if policy_state is not None:
                 ray.get(new_policy_actor.set_state.remote(policy_state))
@@ -511,12 +523,12 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # - Policy is not trainable.
             # - Data was generated by a main-exploiter playing against
             #   a league-exploiter.
-            replay_actor, _ = worker._distributed_learners.get_replay_and_policy_actors(pid)
+            replay_actor, _ = worker._distributed_learners.get_replay_and_policy_actors(
+                pid)
             if replay_actor is not None and (
-                not pid.startswith("main_exploiter_") or
-                next(iter(set(sample.policy_batches.keys()) - {pid})).startswith(
-                    "main_")
-            ):
+                    not pid.startswith("main_exploiter_")
+                    or next(iter(set(sample.policy_batches.keys()) -
+                                 {pid})).startswith("main_")):
                 ma_batch = MultiAgentBatch({pid: batch}, batch.count)
                 replay_actor.add_batch.remote(ma_batch)
         # Return counts (env-steps, agent-steps).
@@ -544,7 +556,10 @@ class AlphaStarTrainer(appo.APPOTrainer):
             policy._target_and_kl_stats[
                 NUM_AGENT_STEPS_TRAINED] += train_results[
                     NUM_AGENT_STEPS_TRAINED]
-            target_update_freq = policy.config["num_sgd_iter"] * policy.config["replay_buffer_capacity"] * policy.config["train_batch_size"]
+            target_update_freq = \
+                policy.config["num_sgd_iter"] * \
+                policy.config["replay_buffer_capacity"] * \
+                policy.config["train_batch_size"]
             cur_ts = policy._target_and_kl_stats[NUM_AGENT_STEPS_TRAINED]
             last_update = policy._target_and_kl_stats[LAST_TARGET_UPDATE_TS]
 

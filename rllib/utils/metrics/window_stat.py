@@ -5,6 +5,7 @@ class WindowStat:
     """
 
     """
+
     def __init__(self, name, n):
         # The window-size.
         self.window_size = n
@@ -45,7 +46,7 @@ class WindowStat:
             return np.ndarray([], dtype=np.float32)
         else:
             return np.nanpercentile(self.items[:self.count],
-                                          [0, 10, 50, 90, 100]).tolist()
+                                    [0, 10, 50, 90, 100]).tolist()
 
     def stats(self):
         return {

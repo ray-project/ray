@@ -187,24 +187,26 @@ java_binary(
     ],
 )
 
+# We'd better make resource files can be accessed from 3rd party library.
+# More detail please see https://github.com/ray-project/ray/pull/21641.
 java_proto_compile(
     name = "common_java_proto",
-    deps = ["@//src/ray/protobuf:common_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:common_proto"],
 )
 
 java_proto_compile(
     name = "runtime_env_common_java_proto",
-    deps = ["@//src/ray/protobuf:runtime_env_common_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:runtime_env_common_proto"],
 )
 
 java_proto_compile(
     name = "gcs_java_proto",
-    deps = ["@//src/ray/protobuf:gcs_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:gcs_proto"],
 )
 
 java_proto_compile(
     name = "serve_java_proto",
-    deps = ["@//src/ray/protobuf:serve_proto"],
+    deps = ["@com_github_ray_project_ray//src/ray/protobuf:serve_proto"],
 )
 
 filegroup(
@@ -310,8 +312,6 @@ java_binary(
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
         "//java:io_ray_ray_serve",
-        "//streaming/java:io_ray_ray_streaming-api",
-        "//streaming/java:io_ray_ray_streaming-runtime",
     ],
 )
 
@@ -333,7 +333,6 @@ genrule(
     srcs = [
         "//java:ray_dist_shaded.jar",
         "//java:gen_maven_deps",
-        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

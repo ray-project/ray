@@ -1,12 +1,12 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Set
 
 import gym
 from ray.rllib.utils.typing import EnvType
 
 if TYPE_CHECKING:
-    from ray.rllib.env import MultiAgentEnv
+    from ray.rllib.env import BaseEnv, MultiAgentEnv
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +34,10 @@ def check_env(env: EnvType) -> None:
         check_multiagent_environments(env)
     elif isinstance(env, gym.Env):
         check_gym_environments(env)
-    elif isinstance(env, VectorEnv) or isinstance(env, RemoteBaseEnv):
-        logger.warning("Env checking isn't implemented fro VectorEnvs or "
+    elif isinstance(env, BaseEnv):
+        check_base_env(env)
+    else:
+        logger.warning("Env checking isn't implemented for VectorEnvs or "
                        "RemoteBaseEnvs.")
 
 
@@ -167,22 +169,11 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not isinstance(env, MultiAgentEnv):
         raise ValueError("The passed env is not a MultiAgentEnv.")
 
-    def _check_if_obs_multi_agent_dict(obs, function_string):
-        if not isinstance(obs, dict):
-            raise ValueError(
-                f"The observation returned by {function_string} is not a "
-                f"dict. Instead, it is of type: {type(obs)}")
-        if not all(k in obs for k in env.get_agent_ids()):
-            raise ValueError(
-                f"The observation returned by {function_string} has dict keys "
-                f"that are not the names of the agents in the env. "
-                f"{env.get_agent_ids()}")
-
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
-    _check_if_obs_multi_agent_dict(reset_obs, "env.reset()")
-    _check_if_obs_multi_agent_dict(sampled_obs,
-                                   "env.observation_space_sample()")
+    _check_if_element_multi_agent_dict(env, reset_obs, "reset()")
+    _check_if_element_multi_agent_dict(env, sampled_obs,
+                                       "env.observation_space_sample()")
 
     try:
         env.observation_space_contains(reset_obs)
@@ -192,13 +183,76 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
 
     if not env.observation_space_contains(reset_obs):
         error = (
-            f"The observation collected from env.reset() was not  "
-            f"contained within your env's observation space. Its possible "
-            f"that there was a type mismatch (for example observations of "
-            f"np.float32 and a space of np.float64 observations), or that one "
-            f"of the sub-observations was out of bounds: \n\n reset_obs: "
-            f"{reset_obs}\n\n env.observation_space_sample():"
+            _not_contained_error("env.reset", "observation") +
+            f"\n\n reset_obs: {reset_obs}\n\n env.observation_space_sample():"
             f" {sampled_obs}\n\n ")
+        raise ValueError(error)
+
+    if not env.observation_space_contains(sampled_obs):
+        error = (
+            _not_contained_error("observation_space_sample", "observation") +
+            f"\n\n env.observation_space_sample():"
+            f" {sampled_obs}\n\n ")
+        raise ValueError(error)
+
+    sampled_action = env.action_space_sample()
+    _check_if_element_multi_agent_dict(env, sampled_action,
+                                       "action_space_sample")
+    try:
+        env.action_space_contains(sampled_action)
+    except Exception as e:
+        raise ValueError("Your action_space_contains function has some "
+                         "error ") from e
+
+    if not env.action_space_contains(sampled_action):
+        error = (_not_contained_error("action_space_sample", "action") +
+                 "\n\n sampled_action {sampled_action}\n\n")
+        raise ValueError(error)
+
+    next_obs, reward, done, info = env.step(sampled_action)
+    _check_if_element_multi_agent_dict(env, next_obs, "step(sampled_action)")
+    _check_reward(reward)
+    _check_done(done)
+    _check_info(info)
+    if not env.observation_space_contains(next_obs):
+        error = (
+            _not_contained_error("env.step(sampled_action)", "observation") +
+            ":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}")
+        raise ValueError(error)
+
+
+def check_base_env(env: "BaseEnv") -> None:
+    """Checking for common errors in RLlib BaseEnvs.
+
+    Args:
+        env: The env to be checked.
+
+    """
+    from ray.rllib.env import BaseEnv
+    if not isinstance(env, BaseEnv):
+        raise ValueError("The passed env is not a BaseEnv.")
+
+    reset_obs = env.try_reset()
+    sampled_obs = env.observation_space_sample()
+    _check_if_multi_env_dict(env, reset_obs, "try_reset")
+    _check_if_multi_env_dict(env, sampled_obs, "observation_space_sample()")
+
+    try:
+        env.observation_space_contains(reset_obs)
+    except Exception as e:
+        raise ValueError("Your observation_space_contains function has some "
+                         "error ") from e
+
+    if not env.observation_space_contains(reset_obs):
+        error = (_not_contained_error("try_reset", "observation") +
+                 f": \n\n reset_obs: {reset_obs}\n\n "
+                 f"env.observation_space_sample(): {sampled_obs}\n\n ")
+        raise ValueError(error)
+
+    if not env.observation_space_contains(sampled_obs):
+        error = (
+            _not_contained_error("observation_space_sample", "observation") +
+            f": \n\n sampled_obs: {sampled_obs}\n\n ")
         raise ValueError(error)
 
     sampled_action = env.action_space_sample()
@@ -207,44 +261,122 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     except Exception as e:
         raise ValueError("Your action_space_contains function has some "
                          "error ") from e
-
     if not env.action_space_contains(sampled_action):
+        error = (_not_contained_error("action_space_sample", "action") +
+                 f": \n\n sampled_action {sampled_action}\n\n")
+        raise ValueError(error)
+    _check_if_multi_env_dict(env, sampled_action, "action_space_sample()")
+
+    env.send_actions(sampled_action)
+
+    next_obs, reward, done, info, _ = env.poll()
+    _check_if_multi_env_dict(env, next_obs, "step, next_obs")
+    _check_if_multi_env_dict(env, reward, "step, reward")
+    _check_if_multi_env_dict(env, done, "step, done")
+    _check_if_multi_env_dict(env, info, "step, info")
+
+    if not env.observation_space_contains(next_obs):
         error = (
-            f"The action collected from action_space_sample() was not  "
-            f"contained within your env's action space. It's possible "
-            f"that there was a type mismatch between the sampled action and "
-            f"the action space (for example actions of np.float32 and a space"
-            f"of np.float64 actions), or that one of the sub-actions was out"
-            f"of bounds: \n\n reset_obs: {reset_obs}\n\n "
-            f"env.observation_space_sample():"
-            f" {sampled_obs}\n\n ")
+            _not_contained_error("poll", "observation") +
+            f": \n\n reset_obs: {reset_obs}\n\n env.step():{next_obs}\n\n")
         raise ValueError(error)
 
-    next_obs, reward, done, info = env.step(sampled_action)
-    _check_if_obs_multi_agent_dict(next_obs, "env.step(sampled_action)")
-    _check_reward(reward)
-    _check_done(done)
-    _check_info(info)
-    if not env.observation_space.contains(next_obs):
-        error = (
-            f"The observation collected from env.step(sampled_action) was "
-            f"not contained within your env's observation space. Its "
-            f"possible that there was a type mismatch, or that one of the "
-            f"sub-observations was out of bounds:\n\n next_obs: {next_obs}"
-            f"\n\n sampled_obs: {sampled_obs}")
+    _check_reward(reward, base_env=True)
+    _check_done(done, base_env=True)
+    _check_info(info, base_env=True)
+
+
+def _check_reward(reward, base_env=False):
+    if base_env:
+        for _, multi_agent_dict in reward.items():
+            for _, rew in multi_agent_dict.items():
+                assert isinstance(rew, (float, int)), \
+                    "Your step function must return a rewards that are" \
+                    f" integer or float. reward: {rew}"
+    else:
+        assert isinstance(reward, (float, int)), \
+            "Your step function must return a reward that is integer or float."
+
+
+def _check_done(done, base_env=False):
+    if base_env:
+        for _, multi_agent_dict in done.items():
+            for _, done_ in multi_agent_dict.items():
+                assert isinstance(done_, bool), \
+                    "Your step function must return a done that is boolean. " \
+                    f"element: {done_}"
+    else:
+        assert isinstance(
+            done, bool), "Your step function must return a done that is a " \
+                         "boolean."
+
+
+def _check_info(info, base_env=False):
+    if base_env:
+        for _, multi_agent_dict in info.items():
+            for _, inf in multi_agent_dict.items():
+                assert isinstance(inf, dict), \
+                    "Your step function must return a info that is a dict. " \
+                    f"element: {inf}"
+    else:
+        assert isinstance(
+            info,
+            dict), "Your step function must return a info that is a dict."
+
+
+def _not_contained_error(func_name, _type):
+    _error = \
+        (f"The {_type} collected from {func_name} was not contained within"
+         f" your env's {_type} space. Its possible that there was a type"
+         f"mismatch (for example {_type}s of np.float32 and a space of"
+         f"np.float64 {_type}s), or that one of the sub-{_type}s was"
+         f"out of bounds")
+    return _error
+
+
+def _check_if_multi_env_dict(env, element, function_string):
+    if not isinstance(element, dict):
+        raise ValueError(
+            f"The element returned by {function_string} is not a "
+            f"MultiEnvDict. Instead, it is of type: {type(element)}")
+    env_ids = env.get_sub_environments(as_dict=True).keys()
+    if not all(k in env_ids for k in element):
+        raise ValueError(f"The element returned by {function_string} "
+                         f"has dict keys that don't correspond to "
+                         f"environment ids for this env "
+                         f"{list(env_ids)}")
+    for _, multi_agent_dict in element.items():
+        _check_if_element_multi_agent_dict(
+            env, multi_agent_dict, function_string, base_env=True)
+
+
+def _check_if_element_multi_agent_dict(env,
+                                       element,
+                                       function_string,
+                                       base_env=False):
+    if not isinstance(element, dict):
+        if base_env:
+            error = (f"The element returned by {function_string} has values "
+                     f"that are not MultiAgentDicts. Instead, they are of "
+                     f"type: {type(element)}")
+        else:
+            error = (f"The element returned by {function_string} is not a "
+                     f"MultiAgentDict. Instead, it is of type: "
+                     f" {type(element)}")
         raise ValueError(error)
-
-
-def _check_reward(reward):
-    assert isinstance(reward, (float, int)), \
-        "Your step function must return a reward that is integer or float."
-
-
-def _check_done(done):
-    assert isinstance(
-        done, bool), "Your step function must return a done that is a boolean."
-
-
-def _check_info(info):
-    assert isinstance(
-        info, dict), "Your step function must return a info that is a dict."
+    agent_ids: Set = env.get_agent_ids()
+    agent_ids.add("__all__")
+    if not all(k in agent_ids for k in element):
+        if base_env:
+            error = (f"The element returned by {function_string} has agent_ids"
+                     f" that are not the names of the agents in the env."
+                     f"agent_ids in this\nMultiEnvDict:"
+                     f" {list(element.keys())}\nAgent_ids in this env:"
+                     f"{list(env.get_agent_ids())}")
+        else:
+            error = (f"The element returned by {function_string} has agent_ids"
+                     f" that are not the names of the agents in the env. "
+                     f"\nAgent_ids in this MultiAgentDict: "
+                     f"{list(element.keys())}\nAgent_ids in this env:"
+                     f"{list(env.get_agent_ids())}")
+        raise ValueError(error)

@@ -60,7 +60,8 @@ class TestAlphaStar(unittest.TestCase):
         config["vf_loss_coeff"] = 0.01
         config["entropy_coeff"] = 0.004
 
-        config["win_rate_threshold_for_new_snapshot"] = 0.6#TEST: 0.8 or 0.9 are good values
+        config[
+            "win_rate_threshold_for_new_snapshot"] = 0.6  #TEST: 0.8 or 0.9 are good values
         config["keep_new_snapshot_training_prob"] = 0.3
 
         #config["num_sgd_iter"] = 5#TEST
@@ -80,7 +81,8 @@ class TestAlphaStar(unittest.TestCase):
 
         num_iterations = 1000
 
-        for _ in framework_iterator(config, frameworks=("tf2", )):# "torch")):
+        for _ in framework_iterator(
+                config, frameworks=("tf2", )):  # "torch")):
             _config = config.copy()
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):

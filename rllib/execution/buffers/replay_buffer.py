@@ -77,9 +77,16 @@ class ReplayBuffer:
         # started to evict older samples).
         self._eviction_started = False
 
+        # Number of (single) timesteps that have been added to the buffer
+        # over its lifetime. Note that each added item (batch) may contain
+        # more than one timestep.
         self._num_timesteps_added = 0
         self._num_timesteps_added_wrap = 0
+
+        # Number of (single) timesteps that have been sampled from the buffer
+        # over its lifetime.
         self._num_timesteps_sampled = 0
+
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
@@ -97,10 +104,10 @@ class ReplayBuffer:
                 sampling steps. Only relevant if this ReplayBuffer is
                 a PrioritizedReplayBuffer.
         """
-        print(f"Adding item {item} to buffer.")
         assert item.count > 0, item
         warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
+        # Update our timesteps counts.
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
 
@@ -118,14 +125,10 @@ class ReplayBuffer:
         else:
             self._next_idx += 1
 
+        # Eviction of older samples has already started (buffer is "full").
         if self._eviction_started:
             self._evicted_hit_stats.push(self._hit_count[self._next_idx])
             self._hit_count[self._next_idx] = 0
-
-    def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
-        out = SampleBatch.concat_samples([self._storage[i] for i in idxes])
-        out.decompress_if_needed()
-        return out
 
     @DeveloperAPI
     def sample(self, num_items: int, beta: float = 0.0) -> SampleBatchType:
@@ -148,8 +151,10 @@ class ReplayBuffer:
             return None
 
         idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
-        self._num_timesteps_sampled += num_items
-        return self._encode_sample(idxes)
+        sample = self._encode_sample(idxes)
+        # Update our timesteps counters.
+        self._num_timesteps_sampled += len(sample)
+        return sample
 
     @DeveloperAPI
     def stats(self, debug: bool = False) -> dict:
@@ -202,6 +207,11 @@ class ReplayBuffer:
         self._eviction_started = state["eviction_started"]
         self._num_timesteps_sampled = state["sampled_count"]
         self._est_size_bytes = state["est_size_bytes"]
+
+    def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
+        out = SampleBatch.concat_samples([self._storage[i] for i in idxes])
+        out.decompress_if_needed()
+        return out
 
 
 @DeveloperAPI

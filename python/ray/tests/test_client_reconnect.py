@@ -3,7 +3,6 @@ import contextlib
 import os
 import threading
 import sys
-from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
 import grpc
 
 import time
@@ -12,11 +11,12 @@ import pytest
 from typing import Any, Callable, Optional
 from unittest.mock import patch
 
+import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-
+from ray.util.client.common import CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS
 import ray.util.client.server.server as ray_client_server
-import ray
+from ray._private.client_mode_hook import disable_client_hook
 
 # At a high level, these tests rely on an extra RPC server sitting
 # between the client and the real Ray server to inject errors, drop responses
@@ -266,9 +266,22 @@ def start_middleman_server(on_log_response=None,
     finally:
         ray._inside_client_test = False
         ray.util.disconnect()
-        server.stop(0)
         if middleman:
             middleman.stop(0)
+        # Delete server to allow the client server to be GC'ed, which shuts
+        # down Ray. Then wait for Ray to shut down in the local process.
+        # Otherwise, the Ray cluster may stay alive until the next call to
+        # start_middleman_server(), become the backing Ray cluster to the
+        # client server, and shut down in the middle of the test case after
+        # GC finally catches up, leading to test failures.
+        server.stop(0)
+        del server
+        start = time.monotonic()
+        with disable_client_hook():
+            while ray.is_initialized():
+                time.sleep(1)
+                if time.monotonic() - start > 30:
+                    raise RuntimeError("Failed to terminate Ray")
 
 
 def test_disconnect_during_get():
@@ -294,7 +307,6 @@ def test_disconnect_during_get():
         disconnect_thread.join()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_valid_actor_state():
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check
@@ -333,9 +345,6 @@ def test_valid_actor_state():
         assert ray.get(ref) == 100
 
 
-# TODO(ckw017): investigate why test is flaking on HA GCS
-# details: https://github.com/ray-project/ray/issues/20907
-@pytest.mark.skipif(True, reason="Flaky on Windows and HA GCS")
 def test_valid_actor_state_2():
     """
     Do a full disconnect (cancel channel) every 11 requests. Failure
@@ -374,7 +383,6 @@ def test_valid_actor_state_2():
         assert ray.get(ref) == 100
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_noisy_puts():
     """
     Randomly kills the data channel with 10% chance when receiving response

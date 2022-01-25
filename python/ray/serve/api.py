@@ -106,7 +106,9 @@ class Client:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(
             controller.get_http_config.remote())
-        self._root_url = ray.get(self._controller.get_root_url.remote())
+        self._root_url = ray.get(controller.get_root_url.remote())
+        self._checkpoint_path = ray.get(
+            controller.get_checkpoint_path.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -125,6 +127,14 @@ class Client:
     @property
     def root_url(self):
         return self._root_url
+
+    @property
+    def http_config(self):
+        return self._http_config
+
+    @property
+    def checkpoint_path(self):
+        return self._checkpoint_path
 
     def __del__(self):
         if not self._detached:
@@ -365,6 +375,35 @@ class Client:
         return handle
 
 
+def _check_http_and_checkpoint_options(
+        client: Client,
+        http_options: Union[dict, HTTPOptions],
+        checkpoint_path: str,
+) -> None:
+    if checkpoint_path and checkpoint_path != client.checkpoint_path:
+        logger.warning(
+            f"The new client checkpoint path '{checkpoint_path}' "
+            f"is different from the existing one '{client.checkpoint_path}'. "
+            "The new checkpoint path is ignored.")
+
+    if http_options:
+        client_http_options = client.http_config
+        new_http_options = http_options if isinstance(
+            http_options, HTTPOptions) else HTTPOptions.parse_obj(http_options)
+        different_fields = []
+        all_http_option_fields = new_http_options.__dict__
+        for field in all_http_option_fields:
+            if getattr(new_http_options, field) != getattr(
+                    client_http_options, field):
+                different_fields.append(field)
+
+        if len(different_fields):
+            logger.warning(
+                "The new client HTTP config differs from the existing one "
+                f"in the following fields: {different_fields}. "
+                "The new HTTP config is ignored.")
+
+
 @PublicAPI(stability="beta")
 def start(
         detached: bool = False,
@@ -425,6 +464,10 @@ def start(
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{controller_namespace}'.")
+
+        _check_http_and_checkpoint_options(client, http_options,
+                                           _checkpoint_path)
+
         return client
     except RayServeException:
         pass
