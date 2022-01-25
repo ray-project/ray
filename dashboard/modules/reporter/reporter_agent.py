@@ -22,7 +22,7 @@ import ray._private.utils
 from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
+from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 from ray.util.debug import log_once
 import psutil

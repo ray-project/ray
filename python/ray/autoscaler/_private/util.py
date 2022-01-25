@@ -21,13 +21,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = os.path.join(
-    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
 
-# Internal kv keys for storing debug status.
-DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
-DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
-DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)")
 PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
@@ -79,7 +73,9 @@ def validate_config(config: Dict[str, Any]) -> None:
     if not isinstance(config, dict):
         raise ValueError("Config {} is not a dictionary".format(config))
 
-    with open(RAY_SCHEMA_PATH) as f:
+    schema_path = os.path.join(
+        os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
+    with open(schema_path) as f:
         schema = json.load(f)
 
     try:

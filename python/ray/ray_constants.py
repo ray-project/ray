@@ -26,6 +26,14 @@ def env_bool(key, default):
     return default
 
 
+# Whether event logging to driver is enabled. Set to 0 to disable.
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
+
+# Internal kv keys for storing monitor debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
