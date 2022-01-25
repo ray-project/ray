@@ -65,6 +65,10 @@ def test_get_dataset_shard():
         world_size=1,
         dataset_shard=dataset)
     assert get_dataset_shard() == dataset
+    # test tf_autoshard_off is working appropriately
+    tf_dataset = get_dataset_shard().to_tf()
+    # tf.data.experimental.AutoShardPolicy.OFF is -1
+    assert tf_dataset.options().experimental_distribute.auto_shard_policy == -1
     shutdown_session()
 
 

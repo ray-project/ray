@@ -251,8 +251,8 @@ def shutdown_session():
 
 
 @PublicAPI(stability="beta")
-def get_dataset_shard(
-        dataset_name: Optional[str] = None) -> Optional[RayDataset]:
+def get_dataset_shard(dataset_name: Optional[str] = None,
+                      tf_autoshard_off: bool = True) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
@@ -282,7 +282,9 @@ def get_dataset_shard(
     Args:
         dataset_name (Optional[str]): If a Dictionary of Datasets was passed to
             ``Trainer``, then specifies which dataset shard to return.
-
+        tf_autoshard_off (bool): TensorFlow’s built-in autosharding is disabled
+            by default, since Ray Dataset is already sharded on each worker.
+            Set it to ``False`` otherwise.
 
     Returns:
         The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
@@ -301,7 +303,25 @@ def get_dataset_shard(
                 "but no ``dataset_name`` is passed into "
                 "``get_dataset_shard``. Please specify which "
                 "dataset shard to retrieve.")
-        return shard[dataset_name]
+        shard = shard[dataset_name]
+
+    if tf_autoshard_off:
+        # By default TensorFlow’s built-in autosharding is disabled
+        # since Ray Dataset is already sharded on each worker.
+        import types
+
+        original_to_tf = shard.to_tf
+
+        def new_to_tf(self, *args, **kwargs):
+            tf_dataset = original_to_tf(self, *args, **kwargs)
+            # tf.data.experimental.AutoShardPolicy.OFF is -1.
+            # https://www.tensorflow.org/api_docs/python/tf/data/experimental/AutoShardPolicy
+            tf_dataset.options().experimental_distribute.auto_shard_policy = -1
+            return tf_dataset
+
+        # overrides Dataset.to_tf()
+        shard.to_tf = types.MethodType(new_to_tf, shard)
+
     return shard
 
 
