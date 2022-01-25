@@ -8,11 +8,8 @@ import pytest
 
 import ray.cluster_utils
 from pathlib import Path
-from ray._private.test_utils import (
-    wait_for_pid_to_exit,
-    client_test_enabled,
-    run_string_as_driver
-)
+from ray._private.test_utils import (wait_for_pid_to_exit, client_test_enabled,
+                                     run_string_as_driver)
 
 import ray
 
@@ -130,10 +127,12 @@ def test_run_on_all_workers(ray_start_regular):
     class Actor:
         def __init__(self):
             self.jobs = []
-        def record(self, job_id = None):
+
+        def record(self, job_id=None):
             if job_id is not None:
                 self.jobs.append(job_id)
             return self.jobs
+
     a = Actor.options(name="recorder", namespace="n").remote()
     driver_script = f"""
 import ray
@@ -155,6 +154,7 @@ ray.get(ready.remote())
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
     run_string_as_driver(driver_script)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
