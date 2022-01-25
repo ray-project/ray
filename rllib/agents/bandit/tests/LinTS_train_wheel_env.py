@@ -5,7 +5,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ray.rllib.agents.bandits.lin_ts import BanditLinTSTrainer
+from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 

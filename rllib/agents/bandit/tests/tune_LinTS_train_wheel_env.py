@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 from ray import tune
-from ray.rllib.agents.bandits.lin_ts import BanditLinTSTrainer
+from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
 
 

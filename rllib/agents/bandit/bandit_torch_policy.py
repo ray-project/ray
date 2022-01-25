@@ -2,8 +2,7 @@ import logging
 import time
 
 from gym import spaces
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.bandits.bandit_torch_model import \
+from ray.rllib.agents.bandit.bandit_torch_model import \
     DiscreteLinearModelThompsonSampling, \
     DiscreteLinearModelUCB, DiscreteLinearModel, \
     ParametricLinearModelThompsonSampling, ParametricLinearModelUCB
@@ -17,21 +16,6 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_CONFIG = with_common_config({
-    # No remote workers by default.
-    "num_workers": 0,
-    "framework": "torch",  # Only PyTorch supported so far.
-
-    # Do online learning one step at a time.
-    "rollout_fragment_length": 1,
-    "train_batch_size": 1,
-
-    # Bandits cant afford to do one timestep per iteration as it is extremely
-    # slow because of metrics collection overhead. This setting means that the
-    # agent will be trained for 100 times in one iteration of Rllib
-    "timesteps_per_iteration": 100
-})
 
 
 class BanditPolicyOverrides:
@@ -109,7 +93,6 @@ def init_cum_regret(policy, *args):
 BanditTorchPolicy = build_policy_class(
     name="BanditTorchPolicy",
     framework="torch",
-    get_default_config=lambda: DEFAULT_CONFIG,
     loss_fn=None,
     after_init=init_cum_regret,
     make_model_and_action_dist=make_model_and_action_dist,

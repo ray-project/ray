@@ -225,11 +225,11 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def value_function(self):
-        assert self._cur_value is not None, "must call forward() first"
+        assert self._cur_value is not None, "Must call `forward()` first."
         return self._cur_value
 
     def current_obs(self):
-        assert self._cur_ctx is not None, "must call forward() first"
+        assert self._cur_ctx is not None, "Must call `forward()` first."
         return self._cur_ctx
 
 
