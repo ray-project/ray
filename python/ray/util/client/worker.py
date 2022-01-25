@@ -374,8 +374,7 @@ class Worker:
         req = ray_client_pb2.GetRequest(
             ids=[r.id for r in ref], timeout=timeout)
         try:
-            resp = self._call_stub(
-                "GetObjectChunked", req, metadata=self.metadata)
+            resp = self._call_stub("GetObject", req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e)
         data = bytearray()

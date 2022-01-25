@@ -25,6 +25,27 @@ ResponseCallable = Callable[[Union[ray_client_pb2.DataResponse, Exception]],
 ACKNOWLEDGE_BATCH_SIZE = 32
 
 
+class ChunkCollector:
+    def __init__(self, callback):
+        self.data = bytearray()
+        self.callback = callback
+        self.last_seen_chunk = -1
+
+    def __call__(self, response):
+        get_resp = response.get
+        if not get_resp.valid:
+            self.callback(response)
+            return True
+        chunk_data = get_resp.data
+        self.data.extend(chunk_data)
+        if get_resp.chunk_id == get_resp.total_chunks - 1:
+            self.callback(self.data)
+            return True
+        else:
+            # Not done yet
+            return False
+
+
 class DataClient:
     def __init__(self, client_worker: "Worker", client_id: str,
                  metadata: list):
@@ -125,9 +146,14 @@ class DataClient:
                 # calls ReleaseObject(). So self.asyncio_waiting_data
                 # is accessed without holding self.lock. Holding the
                 # lock shouldn't be necessary either.
-                callback = self.asyncio_waiting_data.pop(response.req_id)
-                if callback:
+                callback = self.asyncio_waiting_data.get(response.req_id)
+                if isinstance(callback, ChunkCollector):
+                    can_remove = callback(response)
+                    if can_remove:
+                        del self.asyncio_waiting_data[response.req_id]
+                elif callback:
                     callback(response)
+                    del self.asyncio_waiting_data[response.req_id]
             except Exception:
                 logger.exception("Callback error:")
             with self.lock:
@@ -347,7 +373,7 @@ class DataClient:
                 "RegisterGetCallback() must have exactly 1 Object ID. "
                 f"Actual: {request}")
         datareq = ray_client_pb2.DataRequest(get=request, )
-        self._async_send(datareq, callback)
+        self._async_send(datareq, ChunkCollector(callback=callback))
 
     # TODO: convert PutObject to async
     def PutObject(self, request: ray_client_pb2.PutRequest,

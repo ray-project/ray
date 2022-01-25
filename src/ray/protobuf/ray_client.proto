@@ -293,9 +293,7 @@ service RayletDriver {
   }
   rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
-  rpc GetObject(GetRequest) returns (GetResponse) {
-  }
-  rpc GetObjectChunked(GetRequest) returns (stream GetResponse) {
+  rpc GetObject(GetRequest) returns (stream GetResponse) {
   }
   rpc PutObject(PutRequest) returns (PutResponse) {
   }

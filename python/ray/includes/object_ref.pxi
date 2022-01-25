@@ -238,10 +238,12 @@ cdef class ClientObjectRef(ObjectRef):
         """
         from ray.util.client.client_pickler import loads_from_server
 
-        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse,
+        def deserialize_obj(resp: Union[ray_client_pb2.DataResponse, bytearray,
                                         Exception]) -> None:
             if isinstance(resp, Exception):
                 data = resp
+            elif isinstance(resp, bytearray):
+                data = loads_from_server(resp)
             else:
                 obj = resp.get
                 data = None
