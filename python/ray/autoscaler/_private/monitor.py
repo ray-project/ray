@@ -27,8 +27,7 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
-    DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
+from ray.autoscaler._private.util import format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
@@ -146,7 +145,7 @@ class Monitor:
                 redis_address, password=redis_password)
             (ip, port) = address.split(":")
             # Initialize the gcs stub for getting all node resource usage.
-            gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+            gcs_address = get_gcs_address_from_redis(self.redis)
         else:
             gcs_address = address
             redis_address = None
@@ -333,35 +332,42 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
-            if self.stop_event and self.stop_event.is_set():
-                break
-            self.update_load_metrics()
-            self.update_resource_requests()
-            self.update_event_summary()
-            status = {
-                "load_metrics_report": asdict(self.load_metrics.summary()),
-                "time": time.time(),
-                "monitor_pid": os.getpid()
-            }
+            try:
+                if self.stop_event and self.stop_event.is_set():
+                    break
+                self.update_load_metrics()
+                self.update_resource_requests()
+                self.update_event_summary()
+                status = {
+                    "load_metrics_report": asdict(self.load_metrics.summary()),
+                    "time": time.time(),
+                    "monitor_pid": os.getpid()
+                }
 
-            # Process autoscaling actions
-            if self.autoscaler:
-                # Only used to update the load metrics for the autoscaler.
-                self.autoscaler.update()
-                status["autoscaler_report"] = asdict(self.autoscaler.summary())
+                # Process autoscaling actions
+                if self.autoscaler:
+                    # Only used to update the load metrics for the autoscaler.
+                    self.autoscaler.update()
+                    status["autoscaler_report"] = asdict(
+                        self.autoscaler.summary())
 
-                for msg in self.event_summarizer.summary():
-                    # Need to prefix each line of the message for the lines to
-                    # get pushed to the driver logs.
-                    for line in msg.split("\n"):
-                        logger.info("{}{}".format(
-                            ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
-                self.event_summarizer.clear()
+                    for msg in self.event_summarizer.summary():
+                        # Need to prefix each line of the message for the lines to
+                        # get pushed to the driver logs.
+                        for line in msg.split("\n"):
+                            logger.info("{}{}".format(
+                                ray_constants.LOG_PREFIX_EVENT_SUMMARY, line))
+                    self.event_summarizer.clear()
 
-            as_json = json.dumps(status)
-            if _internal_kv_initialized():
-                _internal_kv_put(
-                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                as_json = json.dumps(status)
+                if _internal_kv_initialized():
+                    _internal_kv_put(
+                        ray_constants.DEBUG_AUTOSCALING_STATUS,
+                        as_json,
+                        overwrite=True)
+            except Exception:
+                logger.exception(
+                    "Monitor: Execution exception. Trying again...")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
@@ -428,7 +434,8 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
+            _internal_kv_put(
+                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         if not use_gcs_for_bootstrap():
             redis_client = ray._private.services.create_redis_client(
                 self.redis_address, password=self.redis_password)
@@ -449,18 +456,22 @@ class Monitor:
             gcs_publisher=gcs_publisher)
 
     def _signal_handler(self, sig, frame):
-        self._handle_failure(f"Terminated with signal {sig}\n" +
-                             "".join(traceback.format_stack(frame)))
+        try:
+            self._handle_failure(f"Terminated with signal {sig}\n" +
+                                 "".join(traceback.format_stack(frame)))
+        except Exception:
+            logger.exception("Monitor: Failure in signal handler.")
         sys.exit(sig + 128)
 
     def run(self):
         # Register signal handlers for autoscaler termination.
+        # Signals will not be received on windows
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         try:
             if _internal_kv_initialized():
                 # Delete any previous autoscaling errors.
-                _internal_kv_del(DEBUG_AUTOSCALING_ERROR)
+                _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
             self._initialize_autoscaler()
             self._run()
         except Exception:

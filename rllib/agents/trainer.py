@@ -11,9 +11,11 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Container, DefaultDict, Dict, List, Optional, \
+    Set, Tuple, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -51,9 +53,9 @@ from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, \
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.pre_checks.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import AgentID, EnvCreator, EnvInfoDict, EnvType, \
+    EpisodeID, PartialTrainerConfigDict, PolicyID, PolicyState, ResultDict, \
+    TensorStructType, TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -672,12 +674,17 @@ class Trainer(Trainable):
         # COMMON_CONFIG in self.setup().
         config = config or {}
 
-        # Trainers allow env ids to be passed directly to the constructor.
-        self._env_id = self._register_if_needed(
+        # Convert `env` provided in config into a string:
+        # - If `env` is a string: `self._env_id` = `env`.
+        # - If `env` is a class: `self._env_id` = `env.__name__` -> Already
+        #   register it with a auto-generated env creator.
+        # - If `env` is None: `self._env_id` is None.
+        self._env_id: Optional[str] = self._register_if_needed(
             env or config.get("env"), config)
+
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Callable[[EnvContext], EnvType] = None
+        self.env_creator: EnvCreator = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -723,8 +730,18 @@ class Trainer(Trainable):
         self._episodes_to_be_collected = []
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
-        self.evaluation_workers = None
-        self.evaluation_metrics = {}
+        self.evaluation_workers: Optional[WorkerSet] = None
+        # Initialize common evaluation_metrics to nan, before they become
+        # available. We want to make sure the metrics are always present
+        # (although their values may be nan), so that Tune does not complain
+        # when we use these as stopping criteria.
+        self.evaluation_metrics = {
+            "evaluation": {
+                "episode_reward_max": np.nan,
+                "episode_reward_min": np.nan,
+                "episode_reward_mean": np.nan,
+            }
+        }
 
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
@@ -741,38 +758,14 @@ class Trainer(Trainable):
         # be a partial config dict with the class' default).
         self.config = self.merge_trainer_configs(
             self.get_default_config(), config, self._allow_unknown_configs)
+        self.config["env"] = self._env_id
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
 
-        # Setup the "env creator" callable.
-        env = self._env_id
-        if env:
-            self.config["env"] = env
-
-            # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env):
-                self.env_creator = _global_registry.get(ENV_CREATOR, env)
-
-            # A class path specifier.
-            elif "." in env:
-
-                def env_creator_from_classpath(env_context):
-                    try:
-                        env_obj = from_config(env, env_context)
-                    except ValueError:
-                        raise EnvError(
-                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
-                    return env_obj
-
-                self.env_creator = env_creator_from_classpath
-            # Try gym/PyBullet/Vizdoom.
-            else:
-                self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=env)
-        # No env -> Env creator always returns None.
-        else:
-            self.env_creator = lambda env_config: None
+        # Setup the self.env_creator callable (to be passed
+        # e.g. to RolloutWorkers' c'tors).
+        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -780,11 +773,6 @@ class Trainer(Trainable):
                                         self.config["seed"])
 
         self.validate_config(self.config)
-        if not callable(self.config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}".format(
-                    self.config["callbacks"]))
         self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
@@ -798,14 +786,21 @@ class Trainer(Trainable):
         self.local_replay_buffer = (
             self._create_local_replay_buffer_if_necessary(self.config))
 
+        # Create a dict, mapping ActorHandles to sets of open remote
+        # requests (object refs). This way, we keep track, of which actors
+        # inside this Trainer (e.g. a remote RolloutWorker) have
+        # already been sent how many (e.g. `sample()`) requests.
+        self.remote_requests_in_flight: \
+            DefaultDict[ActorHandle, Set[ray.ObjectRef]] = defaultdict(set)
+
+        self.workers: Optional[WorkerSet] = None
+        self.train_exec_impl = None
+
         # Deprecated way of implementing Trainer sub-classes (or "templates"
-        # via the soon-to-be deprecated `build_trainer` utility function).
+        # via the `build_trainer` utility function).
         # Instead, sub-classes should override the Trainable's `setup()`
         # method and call super().setup() from within that override at some
         # point.
-        self.workers = None
-        self.train_exec_impl = None
-
         # Old design: Override `Trainer._init` (or use `build_trainer()`, which
         # will do this for you).
         try:
@@ -845,13 +840,11 @@ class Trainer(Trainable):
                     self.workers, self.config,
                     **self._kwargs_for_execution_plan())
 
-            # TODO: Now that workers have been created, update our policy
-            #  specs in the config[multiagent] dict with the correct spaces.
-            #  However, this leads to a problem with the evaluation
-            #  workers' observation one-hot preprocessor in
-            #  `examples/documentation/rllib_in_6sec.py` script.
-            # self.config["multiagent"]["policies"] = \
-            #     self.workers.local_worker().policy_map.policy_specs
+            # Now that workers have been created, update our policies
+            # dict in config[multiagent] (with the correct original/
+            # unpreprocessed spaces).
+            self.config["multiagent"]["policies"] = \
+                self.workers.local_worker().policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -912,7 +905,7 @@ class Trainer(Trainable):
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers = self._make_workers(
+            self.evaluation_workers: WorkerSet = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
@@ -928,7 +921,7 @@ class Trainer(Trainable):
     #  If you don't need the env/workers/config/etc.. setup for you by super,
     #  simply do not call super().setup() from your overridden method.
     def _init(self, config: TrainerConfigDict,
-              env_creator: Callable[[EnvContext], EnvType]) -> None:
+              env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
     @ExperimentalAPI
@@ -1429,6 +1422,13 @@ class Trainer(Trainable):
                 error=False)
             unsquash_action = unsquash_actions
 
+        # `unsquash_action` is None: Use value of config['normalize_actions'].
+        if unsquash_action is None:
+            unsquash_action = self.config["normalize_actions"]
+        # `clip_action` is None: Use value of config['clip_actions'].
+        elif clip_action is None:
+            clip_action = self.config["clip_actions"]
+
         # User provided an input-dict: Assert that `obs`, `prev_a|r`, `state`
         # are all None.
         err_msg = "Provide either `input_dict` OR [`observation`, ...] as " \
@@ -1561,6 +1561,13 @@ class Trainer(Trainable):
                 error=False)
             unsquash_actions = normalize_actions
 
+        # `unsquash_actions` is None: Use value of config['normalize_actions'].
+        if unsquash_actions is None:
+            unsquash_actions = self.config["normalize_actions"]
+        # `clip_actions` is None: Use value of config['clip_actions'].
+        elif clip_actions is None:
+            clip_actions = self.config["clip_actions"]
+
         # Preprocess obs and states.
         state_defined = state is not None
         policy = self.get_policy(policy_id)
@@ -1664,55 +1671,73 @@ class Trainer(Trainable):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+            policies_to_train: Optional[Container[PolicyID]] = None,
             evaluation_workers: bool = True,
+            workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Policy:
         """Adds a new policy to this Trainer.
 
         Args:
-            policy_id (PolicyID): ID of the policy to add.
-            policy_cls (Type[Policy]): The Policy class to use for
+            policy_id: ID of the policy to add.
+            policy_cls: The Policy class to use for
                 constructing the new Policy.
-            observation_space (Optional[gym.spaces.Space]): The observation
-                space of the policy to add.
-            action_space (Optional[gym.spaces.Space]): The action space
-                of the policy to add.
-            config (Optional[PartialTrainerConfigDict]): The config overrides
-                for the policy to add.
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
-                optional (updated) policy mapping function to use from here on.
-                Note that already ongoing episodes will not change their
-                mapping but will use the old mapping till the end of the
-                episode.
-            policies_to_train (Optional[List[PolicyID]]): An optional list of
-                policy IDs to be trained. If None, will keep the existing list
-                in place. Policies, whose IDs are not in the list will not be
-                updated.
-            evaluation_workers (bool): Whether to add the new policy also
+            observation_space: The observation space of the policy to add.
+                If None, try to infer this space from the environment.
+            action_space: The action space of the policy to add.
+                If None, try to infer this space from the environment.
+            config: The config overrides for the policy to add.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on. Note that already ongoing episodes will
+                not change their mapping but will use the old mapping till
+                the end of the episode.
+            policies_to_train: An optional list/set of policy IDs to be
+                trained. If None, will keep the existing list in place.
+                Policies, whose IDs are not in the list will not be updated.
+            evaluation_workers: Whether to add the new policy also
                 to the evaluation WorkerSet.
+            workers: A list of RolloutWorker/ActorHandles (remote
+                RolloutWorkers) to add this policy to. If defined, will only
+                add the given policy to these workers.
 
         Returns:
             The newly added policy (the copy that got added to the local
             worker).
         """
 
+        kwargs = dict(
+            policy_id=policy_id,
+            policy_cls=policy_cls,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config,
+            policy_state=policy_state,
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=list(policies_to_train),
+        )
+
         def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
-            worker.add_policy(
-                policy_id=policy_id,
-                policy_cls=policy_cls,
-                observation_space=observation_space,
-                action_space=action_space,
-                config=config,
-                policy_mapping_fn=policy_mapping_fn,
-                policies_to_train=policies_to_train,
-            )
+            worker.add_policy(**kwargs)
 
-        # Run foreach_worker fn on all workers (incl. evaluation workers).
-        self.workers.foreach_worker(fn)
+        if workers is not None:
+            ray_gets = []
+            for worker in workers:
+                if isinstance(worker, ActorHandle):
+                    ray_gets.append(worker.add_policy.remote(**kwargs))
+                else:
+                    fn(worker)
+            ray.get(ray_gets)
+        else:
+            # Run foreach_worker fn on all workers.
+            self.workers.foreach_worker(fn)
+
+        # Update evaluation workers, if necessary.
         if evaluation_workers and self.evaluation_workers is not None:
             self.evaluation_workers.foreach_worker(fn)
 
@@ -1731,18 +1756,16 @@ class Trainer(Trainable):
         """Removes a new policy from this Trainer.
 
         Args:
-            policy_id (Optional[PolicyID]): ID of the policy to be removed.
-            policy_mapping_fn (Optional[Callable[[AgentID], PolicyID]]): An
-                optional (updated) policy mapping function to use from here on.
-                Note that already ongoing episodes will not change their
-                mapping but will use the old mapping till the end of the
-                episode.
-            policies_to_train (Optional[List[PolicyID]]): An optional list of
-                policy IDs to be trained. If None, will keep the existing list
-                in place. Policies, whose IDs are not in the list will not be
-                updated.
-            evaluation_workers (bool): Whether to also remove the policy from
-                the evaluation WorkerSet.
+            policy_id: ID of the policy to be removed.
+            policy_mapping_fn: An optional (updated) policy mapping function
+                to use from here on. Note that already ongoing episodes will
+                not change their mapping but will use the old mapping till
+                the end of the episode.
+            policies_to_train: An optional list of policy IDs to be trained.
+                If None, will keep the existing list in place. Policies,
+                whose IDs are not in the list will not be updated.
+            evaluation_workers: Whether to also remove the policy from the
+                evaluation WorkerSet.
         """
 
         def fn(worker):
@@ -1848,12 +1871,8 @@ class Trainer(Trainable):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        workers = getattr(self, "workers", None)
-        if workers:
-            workers.stop()
-        # Stop all optimizers.
-        if hasattr(self, "optimizer") and self.optimizer:
-            self.optimizer.stop()
+        if hasattr(self, "workers"):
+            self.workers.stop()
 
     @classmethod
     @override(Trainable)
@@ -1902,11 +1921,46 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
+    def _get_env_creator_from_env_id(
+            self, env_id: Optional[str] = None) -> EnvCreator:
+        """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
+
+        Args:
+            env_id: An already tune registered env ID, a known gym env name,
+                or None (if no env is used).
+
+        Returns:
+        """
+        if env_id:
+            # An already registered env.
+            if _global_registry.contains(ENV_CREATOR, env_id):
+                return _global_registry.get(ENV_CREATOR, env_id)
+
+            # A class path specifier.
+            elif "." in env_id:
+
+                def env_creator_from_classpath(env_context):
+                    try:
+                        env_obj = from_config(env_id, env_context)
+                    except ValueError:
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                    return env_obj
+
+                return env_creator_from_classpath
+            # Try gym/PyBullet/Vizdoom.
+            else:
+                return functools.partial(
+                    gym_env_creator, env_descriptor=env_id)
+        # No env -> Env creator always returns None.
+        else:
+            return lambda env_config: None
+
     @DeveloperAPI
     def _make_workers(
             self,
             *,
-            env_creator: Callable[[EnvContext], EnvType],
+            env_creator: EnvCreator,
             validate_env: Optional[Callable[[EnvType, EnvContext], None]],
             policy_class: Type[Policy],
             config: TrainerConfigDict,
@@ -2121,10 +2175,14 @@ class Trainer(Trainable):
         if config.get("record_env") == "":
             config["record_env"] = True
 
-        # DefaultCallbacks if callbacks - for whatever reason - set to
-        # None.
+        # Use DefaultCallbacks class, if callbacks is None.
         if config["callbacks"] is None:
             config["callbacks"] = DefaultCallbacks
+        # Check, whether given `callbacks` is a callable.
+        if not callable(config["callbacks"]):
+            raise ValueError("`callbacks` must be a callable method that "
+                             "returns a subclass of DefaultCallbacks, got "
+                             f"{config['callbacks']}!")
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
@@ -2232,14 +2290,12 @@ class Trainer(Trainable):
             config["metrics_num_episodes_for_smoothing"] = \
                 config["metrics_smoothing_episodes"]
         if config["min_iter_time_s"] != DEPRECATED_VALUE:
-            # TODO: Warn once all algos use the `training_iteration` method.
-            # deprecation_warning(
-            #     old="min_iter_time_s",
-            #     new="min_time_s_per_reporting",
-            #     error=False,
-            # )
-            config["min_time_s_per_reporting"] = \
-                config["min_iter_time_s"]
+            deprecation_warning(
+                old="min_iter_time_s",
+                new="min_time_s_per_reporting",
+                error=False,
+            )
+            config["min_time_s_per_reporting"] = config["min_iter_time_s"]
 
         if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
@@ -2435,8 +2491,6 @@ class Trainer(Trainable):
         state = {}
         if hasattr(self, "workers"):
             state["worker"] = self.workers.local_worker().save()
-        if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
-            state["optimizer"] = self.optimizer.save()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and \
@@ -2451,14 +2505,11 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state and hasattr(self, "workers"):
+        if hasattr(self, "workers") and "worker" in state:
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        # Restore optimizer data, if necessary.
-        if "optimizer" in state and hasattr(self, "optimizer"):
-            self.optimizer.restore(state["optimizer"])
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
@@ -2525,14 +2576,16 @@ class Trainer(Trainable):
             # Get capacity out of replay_buffer_config.
             capacity = replay_buffer_config["capacity"]
 
+        # Configure prio. replay parameters.
         if config.get("prioritized_replay"):
             prio_args = {
                 "prioritized_replay_alpha": config["prioritized_replay_alpha"],
                 "prioritized_replay_beta": config["prioritized_replay_beta"],
                 "prioritized_replay_eps": config["prioritized_replay_eps"],
             }
+        # Switch off prioritization (alpha=0.0).
         else:
-            prio_args = {}
+            prio_args = {"prioritized_replay_alpha": 0.0}
 
         return MultiAgentReplayBuffer(
             num_shards=1,
@@ -2764,12 +2817,3 @@ class Trainer(Trainable):
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)
-
-    # TODO: `self.optimizer` is no longer created in Trainer ->
-    #  Deprecate this method.
-    @Deprecated(error=False)
-    def collect_metrics(self, selected_workers=None):
-        return self.optimizer.collect_metrics(
-            self.config["metrics_episode_collection_timeout_s"],
-            min_history=self.config["metrics_num_episodes_for_smoothing"],
-            selected_workers=selected_workers)

@@ -25,6 +25,7 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
     const auto &job_table_data = pair.second;
     cached_job_configs_[job_id] =
         std::make_shared<rpc::JobConfig>(job_table_data.config());
+    function_manager_.AddJobReference(job_id);
   }
 }
 
@@ -51,6 +52,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
         runtime_env_manager_.AddURIReference(
             job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
       }
+      function_manager_.AddJobReference(job_id);
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();
       cached_job_configs_[job_id] =
@@ -85,6 +87,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
+    function_manager_.RemoveJobReference(job_id);
     done_callback(status);
   };
 

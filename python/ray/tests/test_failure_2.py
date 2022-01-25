@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
@@ -271,6 +271,9 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
     assert node_ids == warning_node_ids
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Killing process on Windows does not raise a signal")
 def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     # Terminate the autoscaler process.
     from ray.worker import _global_node
@@ -480,11 +483,18 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     gcs_server_pid = gcs_server_process.pid
 
     # TODO(mwtian): make sure logs are delivered after GCS is restarted.
-    os.kill(gcs_server_pid, signal.SIGBUS)
+    if sys.platform == "win32":
+        sig = 9
+    else:
+        sig = signal.SIGBUS
+    os.kill(gcs_server_pid, sig)
     # wait for 30 seconds, for the 1st batch of logs.
     batches = get_log_batch(log_pubsub, 1, timeout=30)
-    assert len(batches) == 1
-    assert batches[0]["pid"] == "gcs_server", batches
+    assert gcs_server_process.poll() is not None
+    if sys.platform != "win32":
+        # Windows signal handler does not run when process is terminated
+        assert len(batches) == 1
+        assert batches[0]["pid"] == "gcs_server", batches
 
 
 def test_list_named_actors_timeout(monkeypatch, shutdown_only):

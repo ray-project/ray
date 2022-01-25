@@ -79,7 +79,7 @@ class BaseEnv:
 
     def to_base_env(
             self,
-            make_env: Callable[[int], EnvType] = None,
+            make_env: Optional[Callable[[int], EnvType]] = None,
             num_envs: int = 1,
             remote_envs: bool = False,
             remote_env_batch_wait_ms: int = 0,
@@ -729,7 +729,12 @@ def convert_to_base_env(
 
     # Given `env` is already a BaseEnv -> Return as is.
     if isinstance(env, (BaseEnv, MultiAgentEnv, VectorEnv, ExternalEnv)):
-        return env.to_base_env()
+        return env.to_base_env(
+            make_env=make_env,
+            num_envs=num_envs,
+            remote_envs=remote_envs,
+            remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+        )
     # `env` is not a BaseEnv yet -> Need to convert/vectorize.
     else:
         # Sub-environments are ray.remote actors:

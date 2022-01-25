@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
     TYPE_CHECKING, Union
 
 import ray
+from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
@@ -43,10 +44,10 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
-    ModelConfigDict, ModelGradients, ModelWeights, \
+from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvCreator, \
+    EnvType, ModelConfigDict, ModelGradients, ModelWeights, \
     MultiAgentPolicyConfigDict, PartialTrainerConfigDict, PolicyID, \
-    SampleBatchType, T
+    PolicyState, SampleBatchType, T
 from ray.util.debug import log_once, disable_log_once_globally, \
     enable_periodic_logging
 from ray.util.iter import ParallelIteratorWorker
@@ -180,7 +181,7 @@ class RolloutWorker(ParallelIteratorWorker):
     def __init__(
             self,
             *,
-            env_creator: Callable[[EnvContext], EnvType],
+            env_creator: EnvCreator,
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
             policy_spec: Optional[Union[type, Dict[PolicyID,
@@ -420,7 +421,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
-        self.env_creator: Callable[[EnvContext], EnvType] = env_creator
+        self.env_creator: EnvCreator = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
@@ -537,16 +538,16 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_sub_env_fn = make_sub_env
         self.spaces = spaces
 
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+        self.policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec,
             self.env,
             spaces=self.spaces,
             policy_config=policy_config)
 
         # List of IDs of those policies, which should be trained.
-        # By default, these are all policies found in the policy_dict.
+        # By default, these are all policies found in `self.policy_dict`.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
-            policy_dict.keys())
+            self.policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
@@ -583,7 +584,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 f"is ignored.")
 
         self._build_policy_map(
-            policy_dict,
+            self.policy_dict,
             policy_config,
             session_creator=tf_session_creator,
             seed=seed)
@@ -1083,6 +1084,7 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[Space] = None,
             action_space: Optional[Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_state: Optional[PolicyState] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, "Episode"],
                                                  PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1096,8 +1098,8 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: The observation space of the policy to add.
             action_space: The action space of the policy to add.
             config: The config overrides for the policy to add.
-            policy_config: The base config of the Trainer object owning this
-                RolloutWorker.
+            policy_state: Optional state dict to apply to the new
+                policy instance, right after its construction.
             policy_mapping_fn: An optional (updated) policy mapping function
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
@@ -1108,10 +1110,14 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Returns:
             The newly added policy.
+
+        Raises:
+            KeyError: If the given `policy_id` already exists in this worker's
+                PolicyMap.
         """
         if policy_id in self.policy_map:
-            raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict = _determine_spaces_for_multi_agent_dict(
+            raise KeyError(f"Policy ID '{policy_id}' already in policy map!")
+        policy_dict_to_add = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
                                       action_space, config or {})
@@ -1120,11 +1126,15 @@ class RolloutWorker(ParallelIteratorWorker):
             spaces=self.spaces,
             policy_config=self.policy_config,
         )
+        self.policy_dict.update(policy_dict_to_add)
         self._build_policy_map(
-            policy_dict,
+            policy_dict_to_add,
             self.policy_config,
             seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
+        # Set the state of the newly created policy.
+        if policy_state:
+            new_policy.set_state(policy_state)
 
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape)
@@ -1386,6 +1396,14 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> # Set `global_vars` (timestep) as well.
             >>> worker.set_weights(weights, {"timestep": 42})
         """
+        # If per-policy weights are object refs, `ray.get()` them first.
+        if weights and isinstance(next(iter(weights.values())), ObjectRef):
+            actual_weights = ray.get(list(weights.values()))
+            weights = {
+                pid: actual_weights[i]
+                for i, pid in enumerate(weights.keys())
+            }
+
         for pid, w in weights.items():
             self.policy_map[pid].set_weights(w)
         if global_vars:

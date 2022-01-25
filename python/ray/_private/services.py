@@ -435,7 +435,7 @@ def remaining_processes_alive():
 
 
 def canonicalize_bootstrap_address(addr: str):
-    """Canonicalizes Ray cluster bootstrap address to ip:port.
+    """Canonicalizes Ray cluster bootstrap address to host:port.
     Reads address from the environment if needed.
 
     This function should be used to process user supplied Ray cluster address,
@@ -447,7 +447,7 @@ def canonicalize_bootstrap_address(addr: str):
     if addr is None or addr == "auto":
         addr = get_ray_address_from_environment()
     try:
-        bootstrap_address = address_to_ip(addr)
+        bootstrap_address = resolve_ip_for_localhost(addr)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
@@ -469,28 +469,27 @@ def extract_ip_port(bootstrap_address: str):
     return ip, port
 
 
-def address_to_ip(address: str):
-    """Convert a hostname to a numerical IP addresses in an address.
-
-    This should be a no-op if address already contains an actual numerical IP
-    address.
+def resolve_ip_for_localhost(address: str):
+    """Convert to a remotely reachable IP if the address is "localhost"
+            or "127.0.0.1". Otherwise do nothing.
 
     Args:
         address: This can be either a string containing a hostname (or an IP
             address) and a port or it can be just an IP address.
 
     Returns:
-        The same address but with the hostname replaced by a numerical IP
-            address.
+        The same address but with the local host replaced by remotely
+            reachable IP.
     """
     if not address:
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
-    ip_address = socket.gethostbyname(address_parts[0])
     # Make sure localhost isn't resolved to the loopback ip
-    if ip_address == "127.0.0.1":
+    if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
         ip_address = get_node_ip_address()
-    return ":".join([ip_address] + address_parts[1:])
+        return ":".join([ip_address] + address_parts[1:])
+    else:
+        return address
 
 
 def node_ip_address_from_perspective(address):
@@ -548,23 +547,23 @@ def create_redis_client(redis_address, password=None):
     """
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
-    else:
+
+    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
         cli = create_redis_client.instances.get(redis_address)
-        if cli is not None:
-            try:
-                cli.ping()
-                return cli
-            except Exception:
-                create_redis_client.instances.pop(redis_address)
+        if cli is None:
+            redis_ip_address, redis_port = extract_ip_port(
+                canonicalize_bootstrap_address(redis_address))
+            cli = redis.StrictRedis(
+                host=redis_ip_address, port=int(redis_port), password=password)
+            create_redis_client.instances[redis_address] = cli
+        try:
+            cli.ping()
+            return cli
+        except Exception:
+            create_redis_client.instances.pop(redis_address)
+            time.sleep(2)
 
-    redis_ip_address, redis_port = extract_ip_port(
-        canonicalize_bootstrap_address(redis_address))
-    # For this command to work, some other client (on the same machine
-    # as Redis) must have run "CONFIG SET protected-mode no".
-    create_redis_client.instances[redis_address] = redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port), password=password)
-
-    return create_redis_client.instances[redis_address]
+    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
 
 def start_ray_process(command,
@@ -1186,32 +1185,30 @@ def _start_redis_instance(executable,
 def start_log_monitor(redis_address,
                       gcs_address,
                       logs_dir,
-                      stdout_file=None,
-                      stderr_file=None,
                       redis_password=None,
                       fate_share=None,
                       max_bytes=0,
-                      backup_count=0):
+                      backup_count=0,
+                      redirect_logging=True):
     """Start a log monitor process.
 
     Args:
         redis_address (str): The address of the Redis instance.
         logs_dir (str): The directory of logging files.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
+        redirect_logging (bool): Whether we should redirect logging to
+            the provided log directory.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
                                         "log_monitor.py")
+
     command = [
         sys.executable, "-u", log_monitor_filepath,
         f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
@@ -1219,8 +1216,23 @@ def start_log_monitor(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}"
     ]
+    if redirect_logging:
+        # Avoid hanging due to fd inheritance.
+        stdout_file = subprocess.DEVNULL
+        stderr_file = subprocess.DEVNULL
+    else:
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_LOG_MONITOR)
+        command.append(f"--logging-format={logging_format}")
+        # Inherit stdout/stderr streams.
+        stdout_file = None
+        stderr_file = None
     if redis_password:
-        command += ["--redis-password", redis_password]
+        command.append(f"--redis-password={redis_password}")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1237,12 +1249,11 @@ def start_dashboard(require_dashboard,
                     temp_dir,
                     logdir,
                     port=None,
-                    stdout_file=None,
-                    stderr_file=None,
                     redis_password=None,
                     fate_share=None,
                     max_bytes=0,
-                    backup_count=0):
+                    backup_count=0,
+                    redirect_logging=True):
     """Start a dashboard process.
 
     Args:
@@ -1257,15 +1268,13 @@ def start_dashboard(require_dashboard,
         logdir (str): The log directory used to generate dashboard log.
         port (str): The port to bind the dashboard web server to.
             Defaults to 8265.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
         max_bytes (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
+        redirect_logging (bool): Whether we should redirect logging to
+            the provided log directory.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1313,6 +1322,7 @@ def start_dashboard(require_dashboard,
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
                                           "dashboard.py")
+
         command = [
             sys.executable, "-u", dashboard_filepath, f"--host={host}",
             f"--port={port}", f"--port-retries={port_retries}",
@@ -1321,8 +1331,24 @@ def start_dashboard(require_dashboard,
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}"
         ]
+
+        if redirect_logging:
+            # Avoid hanging due to fd inheritance.
+            stdout_file = subprocess.DEVNULL
+            stderr_file = subprocess.DEVNULL
+        else:
+            # If not redirecting logging to files, unset log filename.
+            # This will cause log records to go to stderr.
+            command.append("--logging-filename=")
+            # Use stderr log format with the component name as a message prefix.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_DASHBOARD)
+            command.append(f"--logging-format={logging_format}")
+            # Inherit stdout/stderr streams.
+            stdout_file = None
+            stderr_file = None
         if redis_password is not None:
-            command += ["--redis-password", redis_password]
+            command.append(f"--redis-password={redis_password}")
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1354,30 +1380,34 @@ def start_dashboard(require_dashboard,
             # so we need to poll often.
             time.sleep(0.1)
         if dashboard_url is None:
-            dashboard_log = os.path.join(logdir, "dashboard.log")
             returncode_str = (f", return code {dashboard_returncode}"
                               if dashboard_returncode is not None else "")
-            # Read last n lines of dashboard log. The log file may be large.
-            n = 10
-            lines = []
-            try:
-                with open(dashboard_log, "rb") as f:
-                    with mmap.mmap(
-                            f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                        end = mm.size()
-                        for _ in range(n):
-                            sep = mm.rfind(b"\n", 0, end - 1)
-                            if sep == -1:
-                                break
-                            lines.append(mm[sep + 1:end].decode("utf-8"))
-                            end = sep
-                lines.append(f" The last {n} lines of {dashboard_log}:")
-            except Exception as e:
-                raise Exception(f"Failed to read dashbord log: {e}")
+            err_msg = "Failed to start the dashboard" + returncode_str
+            if logdir:
+                dashboard_log = os.path.join(logdir, "dashboard.log")
+                # Read last n lines of dashboard log. The log file may be large.
+                n = 10
+                lines = []
+                try:
+                    with open(dashboard_log, "rb") as f:
+                        with mmap.mmap(
+                                f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                            end = mm.size()
+                            for _ in range(n):
+                                sep = mm.rfind(b"\n", 0, end - 1)
+                                if sep == -1:
+                                    break
+                                lines.append(mm[sep + 1:end].decode("utf-8"))
+                                end = sep
+                    lines.append(f" The last {n} lines of {dashboard_log}:")
+                except Exception as e:
+                    raise Exception(err_msg +
+                                    f"\nFailed to read dashboard log: {e}")
 
-            last_log_str = "\n".join(reversed(lines[-n:]))
-            raise Exception("Failed to start the dashboard"
-                            f"{returncode_str}.{last_log_str}")
+                last_log_str = "\n" + "\n".join(reversed(lines[-n:]))
+                raise Exception(err_msg + last_log_str)
+            else:
+                raise Exception(err_msg)
 
         logger.info("View the Ray dashboard at %s%shttp://%s%s%s",
                     colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
@@ -1566,7 +1596,7 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
-            redis_address,
+            gcs_address if use_gcs_for_bootstrap() else redis_address,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1579,8 +1609,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", gcs_address
+            if use_gcs_for_bootstrap() else redis_address, plasma_store_name,
+            raylet_name, redis_password, session_dir, log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1643,6 +1674,14 @@ def start_raylet(redis_address,
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
         ]
+        if stdout_file is None and stderr_file is None:
+            # If not redirecting logging to files, unset log filename.
+            # This will cause log records to go to stderr.
+            agent_command.append("--logging-filename=")
+            # Use stderr log format with the component name as a message prefix.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT)
+            agent_command.append(f"--logging-format={logging_format}")
 
         if redis_password is not None and len(redis_password) != 0:
             agent_command.append("--redis-password={}".format(redis_password))
@@ -1721,7 +1760,7 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        redis_address,
+        bootstrap_address,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1732,7 +1771,7 @@ def build_java_worker_command(
     """This method assembles the command used to start a Java worker.
 
     Args:
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): Bootstrap address of ray cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1745,8 +1784,8 @@ def build_java_worker_command(
         The command string for starting Java worker.
     """
     pairs = []
-    if redis_address is not None:
-        pairs.append(("ray.address", redis_address))
+    if bootstrap_address is not None:
+        pairs.append(("ray.address", bootstrap_address))
     pairs.append(("ray.raylet.node-manager-port",
                   "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
@@ -1779,14 +1818,14 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(cpp_worker_options, redis_address,
+def build_cpp_worker_command(cpp_worker_options, bootstrap_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
 
     Args:
         cpp_worker_options (list): The command options for CPP worker.
-        redis_address (str): Redis address of GCS.
+        bootstrap_address (str): The bootstrap address of the cluster.
         plasma_store_name (str): The name of the plasma store socket to connect
            to.
         raylet_name (str): The name of the raylet socket to create.
@@ -1803,7 +1842,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={redis_address}",
+        f"--ray_address={bootstrap_address}",
         f"--ray_redis_password={redis_password}",
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
@@ -1905,6 +1944,24 @@ def determine_plasma_store_config(object_store_memory,
                              object_store_memory,
                              ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
+    if sys.platform == "darwin" \
+            and object_store_memory > \
+            ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT \
+            and os.environ.get("RAY_ENABLE_MAC_LARGE_OBJECT_STORE") != "1":
+        raise ValueError(
+            "The configured object store size ({:.4}GiB) exceeds "
+            "the optimal size on Mac ({:.4}GiB). "
+            "This will harm performance! There is a known issue where "
+            "Ray's performance degrades with object store size greater"
+            " than {:.4}GB on a Mac."
+            "To reduce the object store capacity, specify"
+            "`object_store_memory` when calling ray.init() or ray start."
+            "To ignore this warning, "
+            "set RAY_ENABLE_MAC_LARGE_OBJECT_STORE=1.".format(
+                object_store_memory / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30,
+                ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT / 2**30))
+
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
@@ -1999,6 +2056,7 @@ def start_monitor(redis_address,
         ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+
     command = [
         sys.executable,
         "-u",
@@ -2009,6 +2067,15 @@ def start_monitor(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         f"--gcs-address={gcs_address}",
     ]
+
+    if stdout_file is None and stderr_file is None:
+        # If not redirecting logging to files, unset log filename.
+        # This will cause log records to go to stderr.
+        command.append("--logging-filename=")
+        # Use stderr log format with the component name as a message prefix.
+        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+            component=ray_constants.PROCESS_TYPE_MONITOR)
+        command.append(f"--logging-format={logging_format}")
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:

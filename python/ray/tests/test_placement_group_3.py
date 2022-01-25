@@ -20,13 +20,16 @@ from ray.exceptions import RaySystemError
 from ray.util.placement_group import (placement_group, remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
-    redis_client = ray._private.services.create_redis_client(address, "")
-    gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    if gcs_utils.use_gcs_for_bootstrap():
+        gcs_client = gcs_utils.GcsClient(address=address)
+    else:
+        redis_client = ray._private.services.create_redis_client(address, "")
+        gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
@@ -39,14 +42,14 @@ def get_ray_status_output(address):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis", [
         generate_system_config_map(
             num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
-        ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+        ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=200)
     cluster.wait_for_nodes()
 
@@ -64,13 +67,13 @@ def test_create_placement_group_during_gcs_server_restart(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [
+    "ray_start_cluster_head_with_external_redis", [
         generate_system_config_map(
             num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60)
     ],
     indirect=True)
-def test_placement_group_wait_api(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+def test_placement_group_wait_api(ray_start_cluster_head_with_external_redis):
+    cluster = ray_start_cluster_head_with_external_redis
     cluster.add_node(num_cpus=2)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()

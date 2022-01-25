@@ -436,7 +436,6 @@ def main():
     data_save_path = args.data_save_path
     if not os.path.exists(data_save_path):
         os.makedirs(data_save_path, mode=0o777, exist_ok=True)
-    os.chmod(data_save_path, mode=0o777)
 
     # Lazily construct Xarrays
     xarray_filename_pairs = lazy_create_xarray_filename_pairs(test_spec)

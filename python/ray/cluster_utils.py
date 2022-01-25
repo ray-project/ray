@@ -62,7 +62,7 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         subprocess.check_call(["ray", "stop", "--force"])
-        fake_config = tempfile.mktemp()
+        _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
             f.write(json.dumps(self._config))
         cmd = [
@@ -106,7 +106,7 @@ class Cluster:
             initialize_head (bool): Automatically start a Ray cluster
                 by initializing the head node. Defaults to False.
             connect (bool): If `initialize_head=True` and `connect=True`,
-                ray.init will be called with the redis address of this cluster
+                ray.init will be called with the address of this cluster
                 passed in.
             head_node_args (dict): Arguments to be passed into
                 `start_ray_head` via `self.add_node`.

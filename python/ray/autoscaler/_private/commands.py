@@ -52,7 +52,7 @@ from ray.autoscaler._private.cluster_dump import Archive, \
 from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
-import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.util import format_info_string
