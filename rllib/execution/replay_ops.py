@@ -135,6 +135,8 @@ class SimpleReplayBuffer:
         self.replay_batches = []
         self.replay_index = 0
 
+        self.last_added_batches = []
+
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
@@ -145,8 +147,14 @@ class SimpleReplayBuffer:
                 self.replay_index += 1
                 self.replay_index %= self.num_slots
 
+            self.last_added_batches.append(sample_batch)
+
     def replay(self) -> SampleBatchType:
+        self.last_added_batches = []
         return random.choice(self.replay_batches)
+
+    def __len__(self):
+        return len(self.replay_batches)
 
 
 class MixInReplay:

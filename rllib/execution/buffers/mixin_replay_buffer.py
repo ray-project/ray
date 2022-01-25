@@ -4,7 +4,7 @@ import random
 from typing import Optional
 
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
@@ -98,21 +98,26 @@ class MixInMultiAgentReplayBuffer:
                 self.replay_buffers[policy_id].add_batch(sample_batch)
         self.num_added += batch.count
 
-    def replay(self, policy_id: PolicyID) -> Optional[SampleBatchType]:
+    def replay(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> \
+            Optional[SampleBatchType]:
         buffer = self.replay_buffers[policy_id]
-        # If buffer empty or no new samples to mix with replayed ones,
-        # return None.
-        if len(buffer) == 0 or len(buffer.last_added_batches) == 0:
+        # Return None, if:
+        # - Buffer empty or
+        # - `replay_ratio` < 1.0 (new samples required in returned batch)
+        #   and no new samples to mix with replayed ones.
+        if len(buffer) == 0 or (len(buffer.last_added_batches) == 0 and
+                                self.replay_ratio < 1.0):
             return None
 
         # Mix buffer's last added batches with older replayed batches.
         with self.replay_timer:
             output_batches = buffer.last_added_batches.copy()
 
-            # replay ratio = old / [old + new]
+            # Replay ratio = old / [old + new]
             num_new = len(output_batches)
             num_old = 0
-            while random.random() > num_old / (num_old + num_new):
+            while num_old + num_new == 0 or \
+                    random.random() > num_old / (num_old + num_new):
                 num_old += 1
                 output_batches.append(buffer.replay())
             return_batch = SampleBatch.concat_samples(output_batches)
