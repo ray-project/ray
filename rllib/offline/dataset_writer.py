@@ -27,7 +27,7 @@ class DatasetWriter(OutputWriter):
         config = {
             "output"="dataset",
             "output_config"={
-                "type": "json",
+                "format": "json",
                 "path": "/tmp/test_samples/",
                 "max_num_samples_per_file": 100000,
             }
@@ -40,12 +40,12 @@ class DatasetWriter(OutputWriter):
         self.ioctx = ioctx or IOContext()
 
         output_config: Dict = ioctx.output_config
-        assert "type" in output_config, (
+        assert "format" in output_config, (
             "output_config.type must be specified when using Dataset output.")
         assert "path" in output_config, (
             "output_config.path must be specified when using Dataset output.")
 
-        self.type = output_config["type"]
+        self.format = output_config["format"]
         self.path = os.path.abspath(os.path.expanduser(output_config["path"]))
         self.max_num_samples_per_file = (
             output_config["max_num_samples_per_file"]
@@ -66,11 +66,11 @@ class DatasetWriter(OutputWriter):
         if len(self.samples) >= self.max_num_samples_per_file:
             ds = data.from_items(self.samples).repartition(
                 num_blocks=1, shuffle=False)
-            if self.type == "json":
+            if self.format == "json":
                 ds.write_json(self.path, try_create_dir=True)
-            elif self.type == "parquet":
+            elif self.format == "parquet":
                 ds.write_parquet(self.path, try_create_dir=True)
             else:
-                raise ValueError("Unknown output type: ", self.type)
+                raise ValueError("Unknown output type: ", self.format)
             self.samples = []
             logger.debug("Wrote dataset in {}s".format(time.time() - start))

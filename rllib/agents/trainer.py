@@ -441,6 +441,23 @@ COMMON_CONFIG: TrainerConfigDict = {
     # "STRICT_SPREAD": Packs bundles across distinct nodes.
     "placement_strategy": "PACK",
 
+    # TODO(jungong, sven): we can potentially unify all input types
+    #     under input and input_config keys. E.g.
+    #     input: sample
+    #     input_config {
+    #         env: Cartpole-v0
+    #     }
+    #     or:
+    #     input: json_reader
+    #     input_config {
+    #         path: /tmp/
+    #     }
+    #     or:
+    #     input: dataset
+    #     input_config {
+    #         format: parquet
+    #         path: /tmp/
+    #     }
     # === Offline Datasets ===
     # Specify how to generate experiences:
     #  - "sampler": Generate experiences via online (env) simulation (default).

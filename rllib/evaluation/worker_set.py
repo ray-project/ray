@@ -416,30 +416,32 @@ class WorkerSet:
             "Must specify input_config dict if using Dataset input.")
 
         input_config = config["input_config"]
-        if (not input_config.get("type", None) or
+        if (not input_config.get("format", None) or
             not input_config.get("path", None)):
             raise ValueError(
-                "Must specify type and path via input_config key"
+                "Must specify format and path via input_config key"
                 " when using Ray dataset input.")
 
-        type = input_config["type"]
+        format = input_config["format"]
         path = input_config["path"]
-        if type == "json":
+        if format == "json":
             dataset = data.read_json(path)
-        elif type == "parquet":
+        elif format == "parquet":
             dataset = data.read_parquet(path)
         else:
-            raise ValueError("Un-supported Ray dataset type: ", type)
+            raise ValueError("Un-supported Ray dataset format: ", format)
 
+        # Local worker will be responsible for sampling.
         if local_worker and num_workers == 0:
-            # Local worker will be responsible for sampling.
             # Dataset is the only shard we need.
             return dataset, [dataset]
+        # Remote workers are responsible for sampling:
         else:
             # Each remote worker gets 1 shard.
             # The first None shard is for the local worker, which
             # shouldn't be doing rollout work anyways.
-            return dataset, [None] + dataset.split(num_workers, equal=True)
+            return dataset, [None] + dataset.repartition(
+                num_blocks=num_workers, shuffle=False).split(num_workers)
 
     def _make_worker(
             self,

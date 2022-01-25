@@ -19,12 +19,12 @@ class DatasetReader(InputReader):
         config = {
             "input"="dataset",
             "input_config"={
-                "type": "json",
+                "format": "json",
                 "path": "/tmp/sample_batches/",
             }
         }
 
-    path may be a single data file, a directory, or anything
+    `path` may be a single data file, a directory, or anything
         that ray.data.dataset recognizes.
     """
 
