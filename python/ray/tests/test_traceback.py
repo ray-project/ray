@@ -348,8 +348,10 @@ def test_serialization_error_message(shutdown_only):
     def scrub_traceback(ex):
         return re.sub("object at .*> for a", "object at ADDRESS> for a", ex)
 
+    test_prefix = "com_github_ray_project_ray.python.ray.tests."
+
     assert (clean_noqa(expected_output_task) == scrub_traceback(
-        str(excinfo.value)))
+        str(excinfo.value)).replace(test_prefix, ""))
     """
     Test an actor with an unserializable object.
     """
@@ -357,20 +359,20 @@ def test_serialization_error_message(shutdown_only):
         a = A.remote(lock)
         print(a)
     assert (clean_noqa(expected_output_actor) == scrub_traceback(
-        str(excinfo.value)))
+        str(excinfo.value)).replace(test_prefix, ""))
     """
     Test the case where an unserializable object is captured by tasks.
     """
     with pytest.raises(TypeError) as excinfo:
         capture_lock.remote()
-    assert (clean_noqa(expected_capture_output_task) == str(excinfo.value))
+    assert (clean_noqa(expected_capture_output_task) == str(excinfo.value).replace(test_prefix, ""))
     """
     Test the case where an unserializable object is captured by actors.
     """
     with pytest.raises(TypeError) as excinfo:
         b = B.remote()
         print(b)
-    assert (clean_noqa(expected_capture_output_actor) == str(excinfo.value))
+    assert (clean_noqa(expected_capture_output_actor) == str(excinfo.value).replace(test_prefix, ""))
 
 
 if __name__ == "__main__":
