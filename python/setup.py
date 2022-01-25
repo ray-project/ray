@@ -265,21 +265,12 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "attrs",
-        "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
-        "filelock",
-        "grpcio >= 1.28.1",
-        "jsonschema",
-        "msgpack >= 1.0.0, < 2.0.0",
-        "numpy >= 1.16; python_version < '3.9'",
-        "numpy >= 1.19.3; python_version >= '3.9'",
-        "protobuf >= 3.15.3",
-        "pyyaml",
-        "redis >= 3.5.0",
-        "aioredis < 2",
-        "aiosignal",
-        "frozenlist",
+        "attrs", "click >= 7.0", "dataclasses; python_version < '3.7'",
+        "filelock", "grpcio >= 1.28.1", "jsonschema",
+        "msgpack >= 1.0.0, < 2.0.0", "numpy >= 1.16; python_version < '3.9'",
+        "numpy >= 1.19.3; python_version >= '3.9'", "protobuf >= 3.15.3",
+        "pyyaml", "redis >= 3.5.0", "aioredis < 2", "aiosignal", "frozenlist",
+        "requests",
     ]
 
 

@@ -29,7 +29,9 @@ from ray._private.gcs_utils import (
     get_gcs_address_from_redis,
 )
 from ray._private.resource_spec import ResourceSpec
-from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
+from ray._private.utils import (try_to_create_directory, try_to_symlink,
+                                open_log)
+import ray._private.usage_report as ray_usage_lib
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -1096,8 +1098,18 @@ class Node:
         self._internal_kv_put_with_retry(
             b"VERSION_INFO",
             version_info.encode(),
-            namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        )
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER)
+        # Cluster metadata is always recorded, but they are
+        # not reported unless usage report is enabled.
+        # Check usage_stats_head.py for more details.
+        cluster_metadata = ray_usage_lib.get_cluster_metadata()
+        assert self.get_gcs_client().internal_kv_get(
+            ray_usage_lib.CLUSTER_METADATA_KEY,
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER) is None
+        self._internal_kv_put_with_retry(
+            ray_usage_lib.CLUSTER_METADATA_KEY,
+            json.dumps(cluster_metadata).encode(),
+            namespace=ray_constants.KV_NAMESPACE_CLUSTER)
 
     def start_head_processes(self):
         """Start head processes on the node."""
