@@ -297,6 +297,8 @@ def build_eager_tf_policy(
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
+            # If this class runs as a @ray.remote actor, eager mode may not
+            # have been activated yet.
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.framework = config.get("framework", "tfe")

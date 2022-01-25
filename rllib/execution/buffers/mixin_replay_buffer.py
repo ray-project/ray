@@ -4,7 +4,7 @@ import random
 from typing import Optional
 
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
@@ -62,6 +62,10 @@ class MixInMultiAgentReplayBuffer:
         """
         self.capacity = capacity
         self.replay_ratio = replay_ratio
+        self.replay_proportion = None
+        if self.replay_ratio != 1.0:
+            self.replay_proportion = self.replay_ratio / (
+                1.0 - self.replay_ratio)
 
         def new_buffer():
             return SimpleReplayBuffer(num_slots=capacity)
@@ -77,7 +81,7 @@ class MixInMultiAgentReplayBuffer:
         self.num_added = 0
 
         # Last added batch(es).
-        self.last_added_batches = []
+        self.last_added_batches = collections.defaultdict(list)
 
     def add_batch(self, batch: SampleBatchType) -> None:
         """Adds a batch to the appropriate policy's replay buffer.
@@ -96,27 +100,41 @@ class MixInMultiAgentReplayBuffer:
         with self.add_batch_timer:
             for policy_id, sample_batch in batch.policy_batches.items():
                 self.replay_buffers[policy_id].add_batch(sample_batch)
+                self.last_added_batches[policy_id].append(sample_batch)
         self.num_added += batch.count
 
-    def replay(self, policy_id: PolicyID) -> Optional[SampleBatchType]:
+    def replay(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> \
+            Optional[SampleBatchType]:
         buffer = self.replay_buffers[policy_id]
-        # If buffer empty or no new samples to mix with replayed ones,
-        # return None.
-        if len(buffer) == 0 or len(buffer.last_added_batches) == 0:
+        # Return None, if:
+        # - Buffer empty or
+        # - `replay_ratio` < 1.0 (new samples required in returned batch)
+        #   and no new samples to mix with replayed ones.
+        if len(buffer) == 0 or (len(self.last_added_batches[policy_id]) == 0
+                                and self.replay_ratio < 1.0):
             return None
 
         # Mix buffer's last added batches with older replayed batches.
         with self.replay_timer:
-            output_batches = buffer.last_added_batches.copy()
+            output_batches = self.last_added_batches[policy_id].copy()
+            self.last_added_batches[policy_id].clear()
 
-            # replay ratio = old / [old + new]
+            # No replay desired -> Return here.
+            if self.replay_ratio == 0.0:
+                return SampleBatch.concat_samples(output_batches)
+            # Only replay desired -> Return a (replayed) sample from the
+            # buffer.
+            elif self.replay_ratio == 1.0:
+                return buffer.replay()
+
+            # Replay ratio = old / [old + new]
+            # Replay proportion: old / new
             num_new = len(output_batches)
-            num_old = 0
-            while random.random() > num_old / (num_old + num_new):
-                num_old += 1
+            replay_proportion = self.replay_proportion
+            while random.random() < num_new * replay_proportion:
+                replay_proportion -= 1
                 output_batches.append(buffer.replay())
-            return_batch = SampleBatch.concat_samples(output_batches)
-            return return_batch
+            return SampleBatch.concat_samples(output_batches)
 
     def get_host(self) -> str:
         """Returns the computer's network name.

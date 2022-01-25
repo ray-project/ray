@@ -2,11 +2,27 @@ import numpy as np
 
 
 class WindowStat:
+    """Handles/stores incoming datastream and provides window-based statistics.
+
+    Examples:
+        >>> win_stats = WindowStat("level", 3)
+        >>> win_stats.push(5.0)
+        >>> win_stats.push(7.0)
+        >>> win_stats.push(7.0)
+        >>> win_stats.push(10.0)
+        >>> # Expect 8.0 as the mean of the last 3 values: (7+7+10)/3=8.0
+        >>> print(win_stats.mean())
+        ... 8.0
     """
 
-    """
+    def __init__(self, name: str, n: int):
+        """Initializes a WindowStat instance.
 
-    def __init__(self, name, n):
+        Args:
+            name: The name of the stats to collect and return stats for.
+            n: The window size. Statistics will be computed for the last n
+                items received from the stream.
+        """
         # The window-size.
         self.window_size = n
         # The name of the data (used for `self.stats()`).
