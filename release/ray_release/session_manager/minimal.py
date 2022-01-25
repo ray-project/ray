@@ -210,7 +210,7 @@ class MinimalSessionManager(SessionManager):
         if self.cluster_compute_id:
             self.sdk.delete_cluster_compute(self.cluster_compute_id)
 
-    def start_session(self):
+    def start_cluster(self):
         pass
 
     def terminate_cluster(self):

@@ -1,4 +1,5 @@
 import abc
+import time
 from typing import Dict, Any
 
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -13,9 +14,7 @@ class SessionManager(abc.ABC):
         self.project_id = project_id
         self.test_name = test_name
 
-        self.cluster_name = (
-            f"{test_name}_1234"  # Todo
-        )
+        self.cluster_name = f"{test_name}_{int(time.time())}"
         self.cluster_id = None
 
         self.cluster_env = None
@@ -44,7 +43,7 @@ class SessionManager(abc.ABC):
     def delete_configs(self):
         raise NotImplementedError
 
-    def start_session(self):
+    def start_cluster(self):
         raise NotImplementedError
 
     def terminate_cluster(self):

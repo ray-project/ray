@@ -465,4 +465,12 @@ class LiveSessionManagerTest(unittest.TestCase):
         self.session_manager.set_cluster_env(self.cluster_env)
         self.session_manager.set_cluster_compute(self.cluster_compute)
         self.session_manager.build_configs(timeout=1200)
-        self.session_manager.start_session(timeout=1200)
+
+        # Reset, so that we fetch them again and test that code path
+        self.session_manager.cluster_compute_id = None
+        self.session_manager.cluster_env_id = None
+        self.session_manager.cluster_env_build_id = None
+        self.session_manager.build_configs(timeout=1200)
+
+        # Start cluster
+        self.session_manager.start_cluster(timeout=1200)

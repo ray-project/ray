@@ -17,8 +17,8 @@ class FullSessionManager(MinimalSessionManager):
     using SDK.
     """
 
-    def start_session(self, timeout: float = 600.):
-        logger.info(f"Creating session {self.cluster_name}")
+    def start_cluster(self, timeout: float = 600.):
+        logger.info(f"Creating cluster {self.cluster_name}")
         result = self.sdk.create_cluster(
             dict(
                 name=self.cluster_name,
@@ -76,8 +76,28 @@ class FullSessionManager(MinimalSessionManager):
                 f"not available. Please check the cluster startup logs: "
                 f"{anyscale_session_url(self.project_id, self.cluster_id)}")
 
-    def terminate_cluster(self):
+    def terminate_cluster(self, wait: bool = False):
         if self.cluster_id:
             # Just trigger a request. No need to wait until session shutdown.
-            self.sdk.terminate_session(
-                session_id=self.cluster_id, terminate_session_options={})
+            result = self.sdk.terminate_cluster(
+                cluster_id=self.cluster_id, terminate_cluster_options={})
+
+            if not wait:
+                return
+
+            # Only do this when waiting
+            cop_id = result.result.id
+            completed = result.result.completed
+            while not completed:
+                # Sleep 1 sec before next check.
+                time.sleep(1)
+
+                cluster_operation_response = self.sdk.get_cluster_operation(
+                    cop_id, _request_timeout=30)
+                cluster_operation = cluster_operation_response.result
+                completed = cluster_operation.completed
+
+            result = self.sdk.get_cluster(self.cluster_id)
+            while result.result.state != "Terminated":
+                time.sleep(1)
+                result = self.sdk.get_cluster(self.cluster_id)

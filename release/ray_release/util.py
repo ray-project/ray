@@ -22,7 +22,10 @@ def format_link(link: str):
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    return "\033]1339;url='" + link + "'\a\n"
+    if os.environ.get("BUILDKITE_COMMIT"):
+        return "\033]1339;url='" + link + "'\a\n"
+    # Else, no buildkite:
+    return link
 
 
 def anyscale_project_url(project_id: str):
