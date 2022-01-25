@@ -43,7 +43,7 @@ def StandardMetricsReporting(
     output_op = train_op \
         .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
                                         by_steps_trained=by_steps_trained)) \
-        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
+        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"])) \
         .for_each(CollectMetrics(
             workers,
             min_history=config["metrics_num_episodes_for_smoothing"],
