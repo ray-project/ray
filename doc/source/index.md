@@ -39,7 +39,7 @@ For instance, with Ray Core you can easily parallelize your functions using
 ```{link-button} ray-core/walkthrough
 :type: ref
 :text: Get Started with Ray Core
-:classes: btn-outline-info btn-block stretched-link
+:classes: btn-outline-info btn-block
 ```
 ---
 **Run machine learning workflows with <img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">ML**
@@ -56,14 +56,14 @@ and [fast, durable application flows](workflows/concepts.rst).
 ```{link-button} ray-overview/index
 :type: ref
 :text: Get Started with Ray ML
-:classes: btn-outline-info btn-block stretched-link
+:classes: btn-outline-info btn-block
 ```
 
 ---
 **Deploy large-scale workloads with <img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
 ^^^
 With Ray Clusters you can deploy your workloads on [AWS, GCP, Azure](cluster/quickstart) or 
-[on premise](cluster/cloud.html#cluster-private-setup). The [Ray auto-scaler](cluster/sdk.html)
+[on premise](cluster/cloud.html#cluster-private-setup). The [Ray auto-scaler](cluster/sdk)
  and Ray runtime handle the scheduling, distributing, and fault-tolerance needs of your application.
 
 You can also use [Ray Cluster Managers](cluster/deploy) to run Ray on your existing
@@ -75,7 +75,7 @@ or [Slurm](cluster/slurm) clusters.
 ```{link-button} cluster/quickstart
 :type: ref
 :text: Get Started with Ray Clusters
-:classes: btn-outline-info btn-block stretched-link
+:classes: btn-outline-info btn-block
 ```
 ````
 
@@ -86,7 +86,7 @@ As a general-purpose and universal distributed compute framework, you can flexib
 To help you, Ray Core provides a simple, universal API for building distributed applications.
 And Ray's native libraries and tools enable you to run complex ML applications with Ray.
 You can deploy these applications on any of the major cloud providers, including AWS, GCP, and Azure, or run them on your own servers.
-Ray also has a growing [ecosystem of community integrations](ray-overview/ray-libraries), including [Dask](https://docs.ray.io/en/latest/data/dask-on-ray.html), [MARS](https://docs.ray.io/en/latest/data/mars-on-ray.html), [Modin](https://github.com/modin-project/modin), [Horovod](https://horovod.readthedocs.io/en/stable/ray_include.html), [Hugging Face](https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search), [Scikit-learn](ray-ecosystem/integrations/joblib), and others.
+Ray also has a growing [ecosystem of community integrations](ray-overview/ray-libraries), including [Dask](https://docs.ray.io/en/latest/data/dask-on-ray.html), [MARS](https://docs.ray.io/en/latest/data/mars-on-ray.html), [Modin](https://github.com/modin-project/modin), [Horovod](https://horovod.readthedocs.io/en/stable/ray_include.html), [Hugging Face](https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search), [Scikit-learn](ray-more-libs/joblib), [and others](ray-more-libs/index).
 The following figure gives you an overview of the Ray ecosystem.
 
 ![](ray-overview/images/ray_ecosystem_integration_v2.png)
@@ -182,7 +182,7 @@ It assumes familiarity with the key concepts and gives you information about fun
 
 ```{link-button} ray-references/api
 :type: ref
-:text: To the reference guide
+:text: Reference Guides
 :classes: btn-block btn-outline-info stretched-link
 ```
 
@@ -201,7 +201,7 @@ Our developer guides will help you get started.
 
 ```{link-button} ray-contribute/getting-involved
 :type: ref
-:text: To the development guide
+:text: Developer Guides
 :classes: btn-block btn-outline-info stretched-link
 ```
 
