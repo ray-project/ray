@@ -1,5 +1,21 @@
-/* For Algolia*/
-/*#site-navigation { overflow: visible; }*/
+/* For Algolia search box to flow-over horizontally into main content*/
+#site-navigation { overflow-y: visible; }
+
+/* Center the algolia search bar*/
+#search-input {
+    text-align: center;
+}
+.algolia-autocomplete {
+    width: 100%;
+    margin: auto;
+}
+
+/* sphinx-panels overrides the content width to 1140 for large displays.*/
+@media (min-width: 1200px) {
+    .container, .container-lg, .container-md, .container-sm, .container-xl {
+        max-width: 1400px !important;
+    }
+}
 
 /*Extends the docstring signature box.*/
 .rst-content dl:not(.docutils) dt {

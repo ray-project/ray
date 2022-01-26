@@ -24,7 +24,7 @@ class TestDistributedExecution(unittest.TestCase):
             trainer = A2CTrainer(
                 env="CartPole-v0",
                 config={
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "framework": fw,
                 })
             result = trainer.train()
@@ -45,7 +45,7 @@ class TestDistributedExecution(unittest.TestCase):
             trainer = A2CTrainer(
                 env="CartPole-v0",
                 config={
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "framework": fw,
                 })
             res1 = trainer.train()

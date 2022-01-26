@@ -728,6 +728,20 @@ def test_actor_failure_per_type(ray_start_cluster):
     print(exc_info._excinfo[1])
 
 
+def test_utf8_actor_exception(ray_start_regular):
+    @ray.remote
+    class FlakyActor:
+        def __init__(self):
+            raise RuntimeError("你好呀，祝你有个好心情！")
+
+        def ping(self):
+            return True
+
+    actor = FlakyActor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actor.ping.remote())
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

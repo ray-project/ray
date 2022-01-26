@@ -120,7 +120,7 @@ DEFAULT_CONFIG = with_common_config({
     # you're using the Async or Ape-X optimizers.
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 0,
+    "min_time_s_per_reporting": 0,
 })
 # __sphinx_doc_end__
 # yapf: enable
