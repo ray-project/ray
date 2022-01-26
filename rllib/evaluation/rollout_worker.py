@@ -508,6 +508,12 @@ class RolloutWorker(ParallelIteratorWorker):
             # dependency on each other right now, so we would settle on
             # duplicating the random seed setting logic for now.
             _update_env_seed_if_necessary(self.env, seed, worker_index, 0)
+            # Call custom callback function `on_sub_environment_created`.
+            self.callbacks.on_sub_environment_created(
+                worker=self,
+                sub_environment=self.env,
+                env_context=self.env_context,
+            )
 
         def make_sub_env(vector_index):
             # Used to created additional environments during environment
@@ -533,6 +539,12 @@ class RolloutWorker(ParallelIteratorWorker):
             # all the sub-environments if specified.
             _update_env_seed_if_necessary(env, seed, worker_index,
                                           vector_index)
+            # Call custom callback function `on_sub_environment_created`.
+            self.callbacks.on_sub_environment_created(
+                worker=self,
+                sub_environment=env,
+                env_context=env_ctx,
+            )
             return env
 
         self.make_sub_env_fn = make_sub_env
