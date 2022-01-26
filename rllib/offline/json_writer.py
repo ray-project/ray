@@ -18,13 +18,15 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import pack, compression_supported
 from ray.rllib.utils.typing import FileType, SampleBatchType
 from ray.util.ml_utils.json import SafeFallbackEncoder
-from typing import Any, List
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
 WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
+# TODO(jungong) : use DatasetWriter to back JsonWriter, so we reduce
+#     codebase complexity without losing existing functionality.
 @PublicAPI
 class JsonWriter(OutputWriter):
     """Writer object that saves experiences in JSON file chunks."""
@@ -43,6 +45,9 @@ class JsonWriter(OutputWriter):
             max_file_size: max size of single files before rolling over.
             compress_columns: list of sample batch columns to compress.
         """
+        logger.info("You are using JSONWriter. It is recommended to use " +
+                    "DatasetWriter instead.")
+
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns
@@ -106,7 +111,7 @@ def _to_jsonable(v, compress: bool) -> Any:
     return v
 
 
-def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
+def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
     out = {}
     if isinstance(batch, MultiAgentBatch):
         out["type"] = "MultiAgentBatch"
@@ -122,4 +127,9 @@ def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
         out["type"] = "SampleBatch"
         for k, v in batch.items():
             out[k] = _to_jsonable(v, compress=k in compress_columns)
+    return out
+
+
+def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
+    out = _to_json_dict(batch, compress_columns)
     return json.dumps(out, cls=SafeFallbackEncoder)
