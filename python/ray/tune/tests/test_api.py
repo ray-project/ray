@@ -449,7 +449,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testBadParams5(self):
         def f():
-            run_experiments({"foo": {"run": "PPO", "stop": {"asdf": 1}}})
+            run_experiments({"foo": {"run": "__fake", "stop": {"asdf": 1}}})
 
         self.assertRaises(TuneError, f)
 
