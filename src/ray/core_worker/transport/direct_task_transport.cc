@@ -545,24 +545,51 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         scheduling_key_entry.pending_lease_requests.erase(task_id);
 
         if (status.ok()) {
-          if (reply.runtime_env_setup_failed()) {
-            // If the runtime_env failed to be set up, we fail all of the pending
-            // tasks in the queue. This makes an implicit assumption that runtime_env
-            // failures are not transient -- we may consider adding some retries
-            // in the future.
-            auto &task_queue = scheduling_key_entry.task_queue;
-            while (!task_queue.empty()) {
-              auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->FailPendingTask(
-                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
-              task_queue.pop_front();
+          if (reply.canceled()) {
+            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id
+                           << ", canceled type: "
+                           << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
+                                  reply.failure_type());
+            if (reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
+                reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
+              // We need to actively fail all of the pending tasks in the queue when the
+              // placement group was removed or the runtime env failed to be set up. Such
+              // an operation is straightforward for the scenario of placement group
+              // removal as all tasks in the queue are associated with the same placement
+              // group, but in the case of runtime env setup failed, This makes an
+              // implicit assumption that runtime_env failures are not transient -- we may
+              // consider adding some retries in the future.
+              auto &task_queue = scheduling_key_entry.task_queue;
+              while (!task_queue.empty()) {
+                auto &task_spec = task_queue.front();
+                if (reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED) {
+                  RAY_UNUSED(task_finisher_->FailPendingTask(
+                      task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+                } else {
+                  if (task_spec.IsActorCreationTask()) {
+                    RAY_UNUSED(task_finisher_->FailPendingTask(
+                        task_spec.TaskId(),
+                        rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
+                  } else {
+                    RAY_UNUSED(task_finisher_->FailPendingTask(
+                        task_spec.TaskId(),
+                        rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
+                  }
+                }
+                task_queue.pop_front();
+              }
+              if (scheduling_key_entry.CanDelete()) {
+                scheduling_key_entries_.erase(scheduling_key);
+              }
+            } else {
+              RequestNewWorkerIfNeeded(scheduling_key);
             }
-            if (scheduling_key_entry.CanDelete()) {
-              scheduling_key_entries_.erase(scheduling_key);
-            }
-          } else if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled " << task_id;
-            RequestNewWorkerIfNeeded(scheduling_key);
           } else if (reply.rejected()) {
             RAY_LOG(DEBUG) << "Lease rejected " << task_id;
             // It might happen when the first raylet has a stale view

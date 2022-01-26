@@ -27,6 +27,7 @@
     timeout: 600
 
 - name: autoscaling_single_deployment
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl_8_cpu_autoscaling.yaml
@@ -40,6 +41,7 @@
     timeout: 600
 
 - name: autoscaling_multi_deployment
+  team: serve
   cluster:
     app_config: app_config.yaml
     compute_template: compute_tpl_8_cpu_autoscaling.yaml
@@ -68,6 +70,7 @@
     timeout: 600
 
 - name: serve_micro_benchmark_k8s
+  team: serve
   cluster:
     app_config: app_config.yaml
     # 16 CPUS

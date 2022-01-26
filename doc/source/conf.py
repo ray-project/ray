@@ -52,19 +52,12 @@ import ray
 
 # -- General configuration ------------------------------------------------
 
-# If your documentation needs a minimal Sphinx version, state it here.
-# needs_sphinx = '1.0'
-
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
 extensions = [
+    "sphinx_panels",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    # "sphinx_panels",
-    "sphinx_tabs.tabs",
     "sphinx-jsonschema",
     "sphinx_gallery.gen_gallery",
     "sphinxemoji.sphinxemoji",
@@ -255,19 +248,6 @@ html_favicon = "_static/favicon.ico"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-# TODO: this adds algolia search. can activate this once sphinx-tabs has been
-# replaced by sphinx-panels.
-# html_css_files = [
-#     "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css",
-# ]
-#
-# html_js_files = [
-#     (
-#         "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
-#         {"defer": "defer"},
-#     ),
-#     ("docsearch.sbt.js", {"defer": "defer"}),
-# ]
 html_static_path = ["_static"]
 
 # Add any extra paths that contain custom files (such as robots.txt or
@@ -402,7 +382,15 @@ autodoc_member_order = "bysource"
 def setup(app):
     app.connect("html-page-context", update_context)
     # Custom CSS
-    app.add_css_file("css/custom.css")
+    app.add_css_file("css/custom.css", priority=800)
+    app.add_css_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css"
+    )
+    # Custom JS
+    app.add_js_file(
+        "https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.js",
+        defer="defer")
+    app.add_js_file("docsearch.sbt.js", defer="defer")
     # Custom Sphinx directives
     app.add_directive("customgalleryitem", CustomGalleryItemDirective)
     # Custom docstring processor
