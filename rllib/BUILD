@@ -586,7 +586,7 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/test_bandits.py"],
+    srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
 py_test(
@@ -594,7 +594,7 @@ py_test(
     main = "bandits/tests/LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/LinTS_train_wheel_env.py"],
+    srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
 )
 
 py_test(
@@ -602,7 +602,7 @@ py_test(
     main = "bandits/tests/tune_LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/tune_LinTS_train_wheel_env.py"],
+    srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
 )
 
 py_test(
@@ -610,7 +610,7 @@ py_test(
     main = "bandits/tests/tune_LinUCB_train_recommendation.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/tune_LinUCB_train_recommendation.py"],
+    srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
 )
 
 # CQLTrainer
