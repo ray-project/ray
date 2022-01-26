@@ -29,8 +29,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import \
     FAKE_HEAD_NODE_ID
 
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import (add_click_logging_options,
                                                 cli_logger, cf)
@@ -1503,9 +1501,9 @@ def status(address, redis_password):
             redis_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_STATUS)
+        ray_constants.DEBUG_AUTOSCALING_STATUS)
     error = ray.experimental.internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_ERROR)
+        ray_constants.DEBUG_AUTOSCALING_ERROR)
     print(debug_status(status, error))
 
 

@@ -27,8 +27,7 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
-    DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
+from ray.autoscaler._private.util import format_readonly_node_type
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
@@ -363,7 +362,9 @@ class Monitor:
                 as_json = json.dumps(status)
                 if _internal_kv_initialized():
                     _internal_kv_put(
-                        DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                        ray_constants.DEBUG_AUTOSCALING_STATUS,
+                        as_json,
+                        overwrite=True)
             except Exception:
                 logger.exception(
                     "Monitor: Execution exception. Trying again...")
@@ -433,7 +434,8 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
+            _internal_kv_put(
+                ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         if not use_gcs_for_bootstrap():
             redis_client = ray._private.services.create_redis_client(
                 self.redis_address, password=self.redis_password)
@@ -454,8 +456,11 @@ class Monitor:
             gcs_publisher=gcs_publisher)
 
     def _signal_handler(self, sig, frame):
-        self._handle_failure(f"Terminated with signal {sig}\n" +
-                             "".join(traceback.format_stack(frame)))
+        try:
+            self._handle_failure(f"Terminated with signal {sig}\n" +
+                                 "".join(traceback.format_stack(frame)))
+        except Exception:
+            logger.exception("Monitor: Failure in signal handler.")
         sys.exit(sig + 128)
 
     def run(self):
@@ -466,7 +471,7 @@ class Monitor:
         try:
             if _internal_kv_initialized():
                 # Delete any previous autoscaling errors.
-                _internal_kv_del(DEBUG_AUTOSCALING_ERROR)
+                _internal_kv_del(ray_constants.DEBUG_AUTOSCALING_ERROR)
             self._initialize_autoscaler()
             self._run()
         except Exception:
