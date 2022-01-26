@@ -126,13 +126,15 @@ class Cluster:
         self.worker_nodes = set()
         self.redis_address = None
         self.gcs_address = None
+        self._bootstrap_address = None
         if bootstrap_address is not None:
+            self._bootstrap_address = \
+                ray._private.services.canonicalize_bootstrap_address(
+                    bootstrap_address)
             if use_gcs_for_bootstrap():
-                self.gcs_address = bootstrap_address
+                self.gcs_address = self._bootstrap_address
             else:
-                self.redis_address = bootstrap_address
-        # Just for indicating whether the bootstrap address is specified.
-        self._bootstrap_address = bootstrap_address
+                self.redis_address = self._bootstrap_address
         self.connected = False
         # Create a new global state accessor for fetching GCS table.
         self.global_state = ray.state.GlobalState()

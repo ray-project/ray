@@ -1182,6 +1182,8 @@ def wait_for_session_command_to_complete(result,
                                          scd_id: str,
                                          stop_event: multiprocessing.Event,
                                          state_str: str = "CMD_RUN"):
+    logger.info(
+        f"... waiting for session command to complete {scd_id} {state_str}")
     completed = result.result.finished_at is not None
     start_wait = time.time()
     next_report = start_wait + REPORT_S
@@ -1734,8 +1736,7 @@ def run_test_config(
 
                 # Optionally run preparation command
                 if prepare_command:
-                    logger.info(
-                        f"Running preparation command: {prepare_command}")
+                    logger.info(f"Running prepare command: {prepare_command}")
                     if on_k8s:
                         cid = global_command_runner.run_command(
                             session_name, prepare_command, env_vars)
@@ -1757,6 +1758,8 @@ def run_test_config(
                             scd_id=scd_id,
                             stop_event=stop_event,
                             state_str="CMD_PREPARE")
+                    # Wait for side effects of the prepare command to finish.
+                    time.sleep(5)
 
             if test_uses_ray_connect:
                 script_args = test_config["run"].get("args", [])
@@ -1835,7 +1838,7 @@ def run_test_config(
                     }))
 
         except (ReleaseTestTimeoutError, Exception) as e:
-            logger.error(e, exc_info=True)
+            logger.exception("Exception during test run!")
 
             logs = str(e)
             if scd_id is not None:
