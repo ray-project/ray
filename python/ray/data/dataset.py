@@ -44,6 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -233,11 +234,9 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (isinstance(applied, list)
+                        or isinstance(applied, pa.Table)
+                        or isinstance(applied, pd.core.frame.DataFrame)):
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
@@ -406,12 +405,15 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
@@ -920,6 +922,110 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    def _check_and_normalize_agg_on(self,
+                                    on: Optional["AggregateOnTs"],
+                                    skip_cols: Optional[List[str]] = None
+                                    ) -> Optional["AggregateOnTs"]:
+        """Checks whether the provided aggregation `on` arg is valid for this
+        type of dataset, and normalizes the value based on the Dataset type and
+        any provided columns to skip.
+        """
+        if (on is not None
+                and (not isinstance(on, (str, Callable, list)) or
+                     (isinstance(on, list)
+                      and not (all(isinstance(on_, str) for on_ in on)
+                               or all(isinstance(on_, Callable)
+                                      for on_ in on))))):
+            from ray.data.grouped_dataset import AggregateOnTs
+
+            raise TypeError(
+                f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
+
+        if isinstance(on, list) and len(on) == 0:
+            raise ValueError(
+                "When giving a list for `on`, it must be nonempty.")
+
+        try:
+            dataset_format = self._dataset_format()
+        except ValueError:
+            # Dataset is empty/cleared, let downstream ops handle this.
+            return on
+
+        if dataset_format == "arrow" or dataset_format == "pandas":
+            # This should be cached from the ._dataset_format() check, so we
+            # don't fetch and we assert that the schema is not None.
+            schema = self.schema(fetch_if_missing=False)
+            assert schema is not None
+            if len(schema.names) == 0:
+                # Empty dataset, don't validate `on` since we generically
+                # handle empty datasets downstream.
+                return on
+
+            if on is None:
+                # If a null `on` is given for a table Dataset, coerce it to
+                # all columns sans any that we want to skip.
+                if skip_cols is None:
+                    skip_cols = []
+                elif not isinstance(skip_cols, list):
+                    skip_cols = [skip_cols]
+                on = [col for col in schema.names if col not in skip_cols]
+            # Check that column names refer to valid columns.
+            elif isinstance(on, str) and on not in schema.names:
+                raise ValueError(
+                    f"on={on} is not a valid column name: {schema.names}")
+            elif isinstance(on, list) and isinstance(on[0], str):
+                for on_ in on:
+                    if on_ not in schema.names:
+                        raise ValueError(
+                            f"on={on_} is not a valid column name: "
+                            f"{schema.names}")
+        else:
+            if isinstance(on, str) or (isinstance(on, list)
+                                       and isinstance(on[0], str)):
+                raise ValueError(
+                    "Can't aggregate on a column when using a simple Dataset; "
+                    "use a callable `on` argument or use an Arrow or Pandas"
+                    " Dataset instead of a simple Dataset.")
+        return on
+
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset.")
+
+        try:
+            import pyarrow as pa
+            if isinstance(schema, pa.Schema):
+                return "arrow"
+        except ModuleNotFoundError:
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
+
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
+
     def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
@@ -970,10 +1076,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1025,10 +1129,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1080,10 +1182,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
@@ -1135,10 +1235,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1200,10 +1298,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self, key: KeyFn = None,
              descending: bool = False) -> "Dataset[T]":
@@ -2167,10 +2263,10 @@ Dict[str, List[str]]]): The names of the columns
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2466,29 +2562,6 @@ Dict[str, List[str]]]): The names of the columns
         left, right = self._blocks.divide(block_idx)
         return Dataset(left, self._epoch, self._stats), Dataset(
             right, self._epoch, self._stats)
-
-    def _dataset_format(self) -> str:
-        """Determine the format of the dataset. Possible values are: "arrow",
-        "pandas", "simple".
-
-        This may block; if the schema is unknown, this will synchronously fetch
-        the schema for the first block.
-        """
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset.")
-
-        try:
-            import pyarrow as pa
-            if isinstance(schema, pa.Schema):
-                return "arrow"
-        except ModuleNotFoundError:
-            pass
-        return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
                       *args, **kwargs):
