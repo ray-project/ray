@@ -48,7 +48,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 cookies={
                     "anyscale-token": "8325e2bf-cbb6-4b4b-995f-98bfd1419796"
                 },
-                json=json.dumps(self.cluster_metadata))
+                json=self.cluster_metadata)
             r.raise_for_status()
 
             logger.info(f"Status code: {r.status_code}, body: {r.json()}")

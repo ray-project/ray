@@ -64,21 +64,12 @@ CLUSTER_METADATA_KEY = b"CLUSTER_METADATA"
 def get_cluster_metadata():
     """Return a dictionary of cluster metadata that will be reported.
     """
-    # return {
-    #     "_version": _SCHEMA_VERSION,
-    #     "_source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
-    #     "session_id": str(uuid.uuid4()),
-    #     "ray_version": ray.__version__,
-    #     "git_commit": ray.__commit__,
-    #     "python_version": ".".join(map(str, sys.version_info[:3])),
-    #     "os": sys.platform,
-    # }
     return {
         "_version": _SCHEMA_VERSION,
-        "_source": os.getenv("RAY_USAGE_STATS_SOURCE", "e"),
+        "_source": os.getenv("RAY_USAGE_STATS_SOURCE", "OSS"),
         "session_id": str(uuid.uuid4()),
         "ray_version": ray.__version__,
-        "git_commit": "c",
+        "git_commit": ray.__commit__,
         "python_version": ".".join(map(str, sys.version_info[:3])),
         "os": sys.platform,
     }
