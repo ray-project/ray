@@ -27,7 +27,7 @@ from ray.rllib.utils.spaces.space_utils import clip_action, normalize_action
 from ray.rllib.utils.typing import Any, FileType, SampleBatchType
 
 if TYPE_CHECKING:
-    import ray.rllib.evaluation.RolloutWorker
+    from ray.rllib.evaluation import RolloutWorker
 
 logger = logging.getLogger(__name__)
 
