@@ -305,14 +305,6 @@ class PlacementGroupManager:
         self._pgs_for_removal: Dict[PlacementGroup, float] = {}
         self._removal_delay = TUNE_PLACEMENT_GROUP_REMOVAL_DELAY
 
-        # Latest PG staging time to check if still in grace period.
-        self._latest_staging_start_time = time.time()
-
-        # Seconds we wait for a trial to come up before we make blocking calls
-        # to process events
-        self._grace_period = float(
-            os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
-
         self._max_staging = max_staging
 
     def set_max_staging(self, max_staging: int):
@@ -421,10 +413,10 @@ class PlacementGroupManager:
         else:
             # This creates the placement group
             pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
+            logger.info(f"creating pg {pg.ready()} into staging futures")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-        self._latest_staging_start_time = time.time()
 
         return True
 
@@ -448,6 +440,7 @@ class PlacementGroupManager:
                 self.handle_ready_future(ready_fut)
 
     def handle_ready_future(self, ready_fut):
+        logger.info(f"popping {ready_fut}")
         ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
 
         self._staging[ready_pgf].remove(ready_pg)

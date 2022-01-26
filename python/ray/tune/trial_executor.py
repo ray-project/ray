@@ -4,7 +4,6 @@ import logging
 from typing import Dict, List, Optional
 import warnings
 
-from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
 

@@ -671,113 +671,37 @@ class TrialRunner:
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._live_trials)
 
-        def _start_trial(trial: Trial) -> bool:
-            """Helper function to start trial and call callbacks"""
-            with warn_if_slow("start_trial"):
-                if self.trial_executor.start_trial(trial):
-                    self._callbacks.on_trial_start(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
-                    return True
-                return False
-
-        # Single wait of entire tune loop.
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial is not None)
-        if future_result.type == RayTrialExecutor.PG_READY:
-            should_reconcile = False
-            if next_trial is not None:
-                logger.info(f"starting {next_trial}")
-                if not _start_trial(
-                        next_trial) and next_trial.status != Trial.ERROR:
-                    logger.info(
-                        f"try to start another trial, which really shouldn't happen"
-                    )
-                    # Only try to start another trial if previous trial startup
-                    # did not error (e.g. it just didn't start because its
-                    # placement group is not ready, yet).
-                    # Without this clause, this test fails:
-                    # test_trial_runner_pg.py::
-                    # TrialRunnerPlacementGroupHeterogeneousTest::
-                    # testResourceDeadlock
-                    next_trial = self.trial_executor.get_staged_trial()
-                    if next_trial is not None:
-                        # Must be able to start.
-                        assert _start_trial(next_trial)
-                    else:
-                        should_reconcile = True
-            else:
-                should_reconcile = True
-            if should_reconcile:
-                logger.info(f"reconciling {self.get_trials()}")
-                self.trial_executor._pg_manager.reconcile_placement_groups(
+        try:
+            # Single wait of entire tune loop.
+            future_result = self.trial_executor.get_next_future_result(
+                next_trial is not None)
+            if future_result.type == RayTrialExecutor.PG_READY:
+                self._on_pg_ready(next_trial)
+            elif future_result.type == RayTrialExecutor.TIMEOUT:
+                self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials())
-            return
-
-        if future_result.type == RayTrialExecutor.TIMEOUT:
-            self._insufficient_resources_manager.on_no_available_trials(
-                self.get_trials())
-            return
-
-        trial = future_result.trial
-        error_msg = future_result.error_msg
-        if error_msg:
-            one_line_error_msg = f"Trial {trial}: Error processing event."
-            if self._fail_fast == TrialRunner.RAISE:
-                logger.error(one_line_error_msg)
-                raise
             else:
-                logger.exception(one_line_error_msg)
-            self._process_trial_failure(trial, error_msg)
-            return
-
-        if future_result.type == RayTrialExecutor.SAVING_RESULT:
-            with warn_if_slow("process_trial_save") as _profile:
-                self._process_trial_save(trial, future_result.result)
-            with warn_if_slow("callbacks.on_trial_save"):
-                self._callbacks.on_trial_save(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-            if _profile.too_slow and trial.sync_on_checkpoint:
-                # TODO(ujvl): Suggest using cloud checkpointing once
-                #  API has converged.
-
-                msg = ("Consider turning off forced head-worker trial "
-                       "checkpoint syncs by setting sync_on_checkpoint=False"
-                       ". Note that this may result in faulty trial "
-                       "restoration if a failure occurs while the checkpoint "
-                       "is being synced from the worker to the head node.")
-
-                if trial.location.hostname and (trial.location.hostname !=
-                                                get_node_ip_address()):
-                    if log_once("tune_head_worker_checkpoint"):
-                        logger.warning(msg)
-        elif future_result.type == RayTrialExecutor.RESTORING_RESULT:
-            with warn_if_slow("process_trial_restore"):
-                self._process_trial_restore(trial)
-            with warn_if_slow("callbacks.on_trial_restore"):
-                self._callbacks.on_trial_restore(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-        elif future_result.type == RayTrialExecutor.TRAINING_RESULT:
-            training_result = future_result.result
-            if not isinstance(training_result, list):
-                training_result = [training_result]
-            with warn_if_slow("process_trial_result"):
-                self._process_trial_results(trial, training_result)
-        else:
-            raise TuneError(f"Unexpected future type - {future_result.type}")
-
-        # `self._queued_trial_decisions` now contains a final decision
-        # based on all results
-        if trial not in self._cached_trial_decisions:
-            final_decision = self._queued_trial_decisions.pop(
-                trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+                trial = future_result.trial
+                result = future_result.result
+                if future_result.type == RayTrialExecutor.ERROR:
+                    self._on_executor_error(trial, result)
+                elif future_result.type == RayTrialExecutor.RESTORING_RESULT:
+                    self._on_restoring_result(trial)
+                else:
+                    assert future_result.type in (
+                        RayTrialExecutor.SAVING_RESULT,
+                        RayTrialExecutor.TRAINING_RESULT
+                    ), f"Unexpected future type - {future_result.type}"
+                    if future_result.type == RayTrialExecutor.TRAINING_RESULT:
+                        self._on_training_result(trial, result)
+                    else:
+                        self._on_saving_result(trial, result)
+                    self._post_process_on_training_saving_result(trial)
+        except Exception as e:
+            if e is TuneError:
+                raise e
+            else:
+                raise TuneError(traceback.format_exc())
 
         self._stop_experiment_if_needed()
 
@@ -785,6 +709,7 @@ class TrialRunner:
             self.checkpoint()
         except Exception as e:
             logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+        logger.info("incrementing iteration!!")
         self._iteration += 1
 
         if self._server:
@@ -800,6 +725,89 @@ class TrialRunner:
                 iteration=self._iteration, trials=self._trials)
 
         self._reconcile_live_trials()
+
+    def _on_pg_ready(self, next_trial: Optional[Trial]):
+        def _start_trial(trial: Trial) -> bool:
+            """Helper function to start trial and call callbacks"""
+            with warn_if_slow("start_trial"):
+                if self.trial_executor.start_trial(trial):
+                    self._callbacks.on_trial_start(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial)
+                    return True
+                return False
+
+        assert next_trial is not None
+        logger.info(f"starting {next_trial}")
+        if not _start_trial(next_trial) and next_trial.status != Trial.ERROR:
+            # Only try to start another trial if previous trial startup
+            # did not error (e.g. it just didn't start because its
+            # placement group is not ready, yet).
+            # Without this clause, this test fails:
+            # test_trial_runner_pg.py::
+            # TrialRunnerPlacementGroupHeterogeneousTest::
+            # testResourceDeadlock
+            next_trial = self.trial_executor.get_staged_trial()
+            if next_trial is not None:
+                # Must be able to start.
+                assert _start_trial(next_trial)
+            else:
+                logger.info(f"reconciling {self.get_trials()}")
+                self.trial_executor._pg_manager.reconcile_placement_groups(
+                    self.get_trials())
+
+    def _on_saving_result(self, trial, result):
+        with warn_if_slow("process_trial_save") as _profile:
+            self._process_trial_save(trial, result)
+        with warn_if_slow("callbacks.on_trial_save"):
+            self._callbacks.on_trial_save(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+        if _profile.too_slow and trial.sync_on_checkpoint:
+            # TODO(ujvl): Suggest using cloud checkpointing once
+            #  API has converged.
+
+            msg = ("Consider turning off forced head-worker trial "
+                   "checkpoint syncs by setting sync_on_checkpoint=False"
+                   ". Note that this may result in faulty trial "
+                   "restoration if a failure occurs while the checkpoint "
+                   "is being synced from the worker to the head node.")
+
+            if trial.location.hostname and (trial.location.hostname !=
+                                            get_node_ip_address()):
+                if log_once("tune_head_worker_checkpoint"):
+                    logger.warning(msg)
+
+    def _on_restoring_result(self, trial):
+        with warn_if_slow("process_trial_restore"):
+            self._process_trial_restore(trial)
+        with warn_if_slow("callbacks.on_trial_restore"):
+            self._callbacks.on_trial_restore(
+                iteration=self._iteration, trials=self._trials, trial=trial)
+
+    def _on_training_result(self, trial, result):
+        if not isinstance(result, list):
+            result = [result]
+        with warn_if_slow("process_trial_result"):
+            self._process_trial_results(trial, result)
+
+    def _post_process_on_training_saving_result(self, trial):
+        # `self._queued_trial_decisions` now contains a final decision
+        # based on all results
+        if trial not in self._cached_trial_decisions:
+            final_decision = self._queued_trial_decisions.pop(
+                trial.trial_id, None)
+            if final_decision:
+                self._execute_action(trial, final_decision)
+
+    def _on_executor_error(self, trial, result):
+        error_msg = f"Trial {trial}: Error processing event."
+        if self._fail_fast == TrialRunner.RAISE:
+            logger.error(error_msg)
+            raise
+        else:
+            logger.exception(error_msg)
+        self._process_trial_failure(trial, result)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -885,6 +893,7 @@ class TrialRunner:
         return trial
 
     def _process_trial_results(self, trial, results):
+        logger.info(f"process_trial_results {results}")
         with warn_if_slow(
                 "process_trial_results",
                 message="Processing trial results took {duration:.3f} s, "
@@ -964,6 +973,7 @@ class TrialRunner:
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
+            logger.info(f"caching trial decision {trial}")
             # Cache decision to execute on after the save is processed.
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
@@ -1142,6 +1152,10 @@ class TrialRunner:
             trial (Trial): Trial to recover.
             error_msg (str): Error message from prior to invoking this method.
         """
+        self._cached_trial_decisions.pop(trial.trial_id, None)
+        # Resetting this, in case that the trial is in saving status when it crashes.
+        if trial.is_saving:
+            trial.saving_to = None
         if trial.is_restoring:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()

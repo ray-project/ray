@@ -19,11 +19,6 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         _register_all()  # re-register the evicted objects
 
     def tearDown(self):

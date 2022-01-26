@@ -4,17 +4,17 @@ import sys
 import tempfile
 import time
 import unittest
+from typing import Iterable
 from unittest.mock import patch
 from collections import OrderedDict
 
 import ray
 from ray import tune
-from ray.exceptions import RayActorError
 from ray.rllib import _register_all
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, \
     LegacyLoggerCallback
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.ray_trial_executor import RayTrialExecutor, FutureResult
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
@@ -65,27 +65,28 @@ class TestCallback(Callback):
         self.state["experiment_end"] = info
 
 
+# TODO(xwjiang): Move this to a testing util.
 class _MockTrialExecutor(RayTrialExecutor):
     def __init__(self):
         super().__init__()
-        self.next_trial = None
-        self.results = {}
-        self.should_fail_in_fetch_result = False
+        self.next_future_result = None
 
-    def fetch_result(self, trial):
-        if self.should_fail_in_fetch_result:
-            raise RayActorError(
-                "The actor died unexpectedly before finishing this task.")
-        else:
-            return [self.results.get(trial, {})]
+    def start_trial(self, trial: Trial):
+        trial.status = Trial.RUNNING
+        return True
 
-    def get_next_available_trial(self, timeout=None):
-        return self.next_trial or super().get_next_available_trial()
+    def continue_training(self, trial: Trial):
+        pass
+
+    def stage_and_update_status(self, trials: Iterable[Trial]):
+        pass
+
+    def get_next_future_result(self, next_trial_exists: bool):
+        return self.next_future_result
 
 
 class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
 
         ray.init()
         self.tmpdir = tempfile.mkdtemp()
@@ -112,7 +113,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         for t in trials:
             self.trial_runner.add_trial(t)
 
-        self.executor.next_trial = trials[0]
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.PG_READY)
         self.trial_runner.step()
 
         # Trial 1 has been started
@@ -127,7 +129,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
                 "trial_complete", "trial_fail", "experiment_end"
             ]))
 
-        self.executor.next_trial = trials[1]
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.PG_READY)
         self.trial_runner.step()
 
         # Iteration not increased yet
@@ -145,7 +148,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
                         {TRAINING_ITERATION: 0})
 
         # Let the first trial save a checkpoint
-        self.executor.next_trial = trials[0]
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.SAVING_RESULT, trial=trials[0])
         trials[0].saving_to = cp
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_save"]["iteration"], 2)
@@ -154,8 +158,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial send a result
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
-        self.executor.results[trials[1]] = result
-        self.executor.next_trial = trials[1]
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.TRAINING_RESULT,
+            trial=trials[1],
+            result=result)
         self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_result"]["iteration"], 3)
@@ -167,7 +173,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
-        self.executor.results[trials[1]] = trials[1].last_result
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.RESTORING_RESULT, trial=trials[1])
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
         self.assertEqual(
@@ -175,19 +182,22 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the second trial finish
         trials[1].restoring_from = None
-        self.executor.results[trials[1]] = {
-            TRAINING_ITERATION: 2,
-            "metric": 900,
-            "done": True
-        }
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.TRAINING_RESULT,
+            trial=trials[1],
+            result={
+                TRAINING_ITERATION: 2,
+                "metric": 900,
+                "done": True
+            })
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_complete"]["iteration"], 5)
         self.assertEqual(
             self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
-        self.executor.next_trial = trials[0]
-        self.executor.should_fail_in_fetch_result = True
+        self.executor.next_future_result = FutureResult(
+            type=RayTrialExecutor.ERROR, trial=trials[0])
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)
         self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id,

@@ -848,7 +848,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             trial.last_result.get("trial_resources"),
             trial.placement_group_factory)
 
-    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):
         class TestTrainable(Trainable):
             def step(self):
