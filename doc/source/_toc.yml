@@ -5,6 +5,7 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
+      - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
   - caption: Ray ML | Machine Learning
