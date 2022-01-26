@@ -108,7 +108,7 @@ jfieldID java_actor_creation_options_concurrency_groups;
 jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_actor_lifetime_class;
-jfieldID java_actor_lifetime_value;
+jobject STATUS_DETACHED;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -150,7 +150,7 @@ JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
-   if (tempLocalClassRef == nullptr) {
+  if (tempLocalClassRef == nullptr) {
     const std::string shaded_class_prefix = "io/ray/shaded/";
     const auto class_name_str = std::string(class_name);
     const auto this_prefix = class_name_str.substr(0, shaded_class_prefix.size());
@@ -318,7 +318,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_lifetime =
       env->GetFieldID(java_actor_creation_options_class, "lifetime",
-                      "Lio/ray/api/options/ActorLifetime;");    
+                      "Lio/ray/api/options/ActorLifetime;");
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
@@ -336,7 +336,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_actor_creation_options_class, "maxPendingCalls", "I");
 
   java_actor_lifetime_class = LoadClass(env, "io/ray/api/options/ActorLifetime");
-  java_actor_lifetime_value = env->GetFieldID(java_actor_lifetime_class, "value", "I");
+  jfieldID java_actor_lifetime_detached_field = env->GetStaticFieldID(
+      java_actor_lifetime_class, "DETACHED", "Lio/ray/api/options/ActorLifetime;");
+  STATUS_DETACHED = env->GetStaticObjectField(java_actor_lifetime_class,
+                                              java_actor_lifetime_detached_field);
 
   java_concurrency_group_impl_class =
       LoadClass(env, "io/ray/runtime/ConcurrencyGroupImpl");

@@ -115,7 +115,10 @@ scripts/nodes.txt
 **/MNIST_data/
 **/cifar-10-batches-bin/
 
-
+# Generated documentation files
+/doc/_build
+/doc/source/_static/thumbs
+/doc/source/tune/generated_guides/
 
 # User-specific stuff:
 .idea/**/workspace.xml
@@ -166,20 +169,10 @@ dependency-reduced-pom.xml
 # Cpp
 cpp/example/thirdparty/
 
-# streaming/python
-streaming/python/generated/
-streaming/java/streaming-runtime/src/main/java/io/ray/streaming/runtime/generated/
-streaming/build/java
 .clwb
-streaming/**/.settings
-streaming/java/**/target
-streaming/java/**/.classpath
-streaming/java/**/.project
-streaming/java/**/*.log
 
 # pom.xml files generated from pom_template.xml
 java/**/pom.xml
-streaming/java/**/pom.xml
 
 # python virtual env
 venv

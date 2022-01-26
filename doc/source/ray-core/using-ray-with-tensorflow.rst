@@ -1,7 +1,7 @@
 Best Practices: Ray with Tensorflow
 ===================================
 
-This document describes best practices for using the Ray core APIs with TensorFlow. Ray also provides higher-level utilities for working with Tensorflow, such as distributed training APIs (`training tensorflow example`_), Tune for hyperparameter search (:doc:`../ray-tune/examples/tf_mnist_example`), RLlib for reinforcement learning (`RLlib tensorflow example`_).
+This document describes best practices for using the Ray core APIs with TensorFlow. Ray also provides higher-level utilities for working with Tensorflow, such as distributed training APIs (`training tensorflow example`_), Tune for hyperparameter search (:doc:`/tune/examples/tf_mnist_example`), RLlib for reinforcement learning (`RLlib tensorflow example`_).
 
 .. _`training tensorflow example`: tf_distributed_training.html
 .. _`RLlib tensorflow example`: rllib-models.html#tensorflow-models
@@ -64,7 +64,7 @@ at the beginning and then to ship only the weights between the workers.
 Suppose we have a simple network definition (this one is modified from the
 TensorFlow documentation).
 
-.. literalinclude:: _examples/doc_code/tf_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/tf_example.py
    :language: python
    :start-after: __tf_model_start__
    :end-before: __tf_model_end__
@@ -72,14 +72,14 @@ TensorFlow documentation).
 It is strongly recommended you create actors to handle this. To do this, first initialize
 ray and define an Actor class:
 
-.. literalinclude:: _examples/doc_code/tf_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/tf_example.py
    :language: python
    :start-after: __ray_start__
    :end-before: __ray_end__
 
 Then, we can instantiate this actor and train it on the separate process:
 
-.. literalinclude:: _examples/doc_code/tf_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/tf_example.py
    :language: python
    :start-after: __actor_start__
    :end-before: __actor_end__
@@ -89,7 +89,7 @@ We can then use ``set_weights`` and ``get_weights`` to move the weights of the n
 around. This allows us to manipulate weights between different models running in parallel without shipping the actual TensorFlow graphs, which are much more complex Python objects.
 
 
-.. literalinclude:: _examples/doc_code/tf_example.py
+.. literalinclude:: /ray-core/_examples/doc_code/tf_example.py
    :language: python
    :start-after: __weight_average_start__
 
@@ -129,7 +129,7 @@ method.
 The ``TensorFlowVariables`` object provides methods for getting and setting the
 weights as well as collecting all of the variables in the model.
 
-Now we can use these method's to extract the weights, and place them back in the
+Now we can use these methods to extract the weights, and place them back in the
 network as follows.
 
 .. code-block:: python

@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Tests from the doc/examples directory.
+# Tests from the doc directory.
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
@@ -31,7 +31,7 @@ py_test(
 py_test(
     name = "big_data_ingestion",
     size = "small",
-    srcs = ["source/ray-data/_examples/big_data_ingestion.py"],
+    srcs = ["source/data/_examples/big_data_ingestion.py"],
     tags = ["exclusive", "team:core", "py37"]
 )
 
@@ -113,8 +113,8 @@ py_test(
 py_test(
     name = "tune_sklearn",
     size = "medium",
-    main = "source/ray-tune/_tutorials/tune-sklearn.py",
-    srcs = ["source/ray-tune/_tutorials/tune-sklearn.py"],
+    main = "source/tune/_tutorials/tune-sklearn.py",
+    srcs = ["source/tune/_tutorials/tune-sklearn.py"],
     tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test"]
 )
@@ -122,8 +122,8 @@ py_test(
 py_test(
     name = "tune_serve_integration_mnist",
     size = "medium",
-    main = "source/ray-tune/_tutorials/tune-serve-integration-mnist.py",
-    srcs = ["source/ray-tune/_tutorials/tune-serve-integration-mnist.py"],
+    main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
+    srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
     tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test", "--from_scratch", "--day 0"]
 )

@@ -11,8 +11,7 @@ reinforcement learning, and distributed training.
 
 Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -44,7 +43,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
         futures = [c.read.remote() for c in counters]
         print(ray.get(futures)) # [1, 1, 1, 1]
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     First, add the `ray-api <https://mvnrepository.com/artifact/io.ray/ray-api>`__ and `ray-runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`__ dependencies in your project.
 
@@ -112,7 +111,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
           }
         }
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     | Run the following commands to get started:

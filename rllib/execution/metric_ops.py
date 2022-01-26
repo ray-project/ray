@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, Dict, List, Optional
 import time
 
 from ray.actor import ActorHandle
@@ -43,7 +43,7 @@ def StandardMetricsReporting(
     output_op = train_op \
         .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
                                         by_steps_trained=by_steps_trained)) \
-        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
+        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"])) \
         .for_each(CollectMetrics(
             workers,
             min_history=config["metrics_num_episodes_for_smoothing"],
@@ -147,16 +147,19 @@ class OncePerTimeInterval:
         5.00001  # will be greater than 5 seconds
     """
 
-    def __init__(self, delay: int):
-        self.delay = delay
-        self.last_called = 0
+    def __init__(self, delay: Optional[float] = None):
+        self.delay = delay or 0.0
+        self.last_returned_true = 0
 
     def __call__(self, item: Any) -> bool:
+        # No minimum time to wait for -> Return True.
         if self.delay <= 0.0:
             return True
+        # Return True, if time since last returned=True is larger than
+        # `self.delay`.
         now = time.time()
-        if now - self.last_called > self.delay:
-            self.last_called = now
+        if now - self.last_returned_true > self.delay:
+            self.last_returned_true = now
             return True
         return False
 
