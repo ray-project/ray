@@ -30,7 +30,7 @@ py_test(
 
 ### Ray Data
 py_test(
-    name = "quick_start_doc_code",
+    name = "quick_start",
     size = "small",
     srcs = ["source/data/_examples/doc_code/quick_start.py"],
     tags = ["exclusive", "team:ml"]
