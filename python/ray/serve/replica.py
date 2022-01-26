@@ -296,7 +296,7 @@ class RayServeReplica:
 
             sender = ASGIHTTPSender()
             await response(scope=None, receive=mock_receive, send=sender)
-            return sender.build_starlette_response()
+            return sender.build_asgi_response()
         return response
 
     async def invoke_single(self, request_item: Query) -> Any:
