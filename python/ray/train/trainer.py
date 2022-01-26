@@ -308,7 +308,7 @@ class Trainer:
             )
             for intermediate_result in iterator:
                 for callback in callbacks:
-                    callback.handle_result(intermediate_result)
+                    callback.process_results(intermediate_result)
 
             assert iterator.is_finished()
             return iterator.get_final_results()

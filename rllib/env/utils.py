@@ -1,3 +1,4 @@
+import gym
 from gym import wrappers
 import os
 
@@ -7,7 +8,7 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
-def gym_env_creator(env_context: EnvContext, env_descriptor: str):
+def gym_env_creator(env_context: EnvContext, env_descriptor: str) -> gym.Env:
     """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor
@@ -17,20 +18,19 @@ def gym_env_creator(env_context: EnvContext, env_descriptor: str):
     necessary imports and construction logic below.
 
     Args:
-        env_context (EnvContext): The env context object to configure the env.
+        env_context: The env context object to configure the env.
             Note that this is a config dict, plus the properties:
             `worker_index`, `vector_index`, and `remote`.
-        env_descriptor (str): The env descriptor, e.g. CartPole-v0,
+        env_descriptor: The env descriptor, e.g. CartPole-v0,
             MsPacmanNoFrameskip-v4, VizdoomBasic-v0, or
             CartPoleContinuousBulletEnv-v0.
 
     Returns:
-        gym.Env: The actual gym environment object.
+        The actual gym environment object.
 
     Raises:
         gym.error.Error: If the env cannot be constructed.
     """
-    import gym
     # Allow for PyBullet or VizdoomGym envs to be used as well
     # (via string). This allows for doing things like
     # `env=CartPoleContinuousBulletEnv-v0` or
@@ -85,7 +85,9 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         print(f"Setting the path for recording to {path_}")
         wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
             else wrappers.Monitor
-        wrapper_cls = add_mixins(wrapper_cls, [MultiAgentEnv], reversed=True)
+        if isinstance(env, MultiAgentEnv):
+            wrapper_cls = add_mixins(
+                wrapper_cls, [MultiAgentEnv], reversed=True)
         env = wrapper_cls(
             env,
             path_,

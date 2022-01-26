@@ -171,8 +171,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
 # yapf: enable

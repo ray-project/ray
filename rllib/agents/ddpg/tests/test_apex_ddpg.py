@@ -20,7 +20,7 @@ class TestApexDDPG(unittest.TestCase):
         config["num_workers"] = 2
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
-        config["min_iter_time_s"] = 1
+        config["min_time_s_per_reporting"] = 1
         config["learning_starts"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         num_iterations = 1

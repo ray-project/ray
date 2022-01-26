@@ -15,7 +15,6 @@ from libcpp.memory cimport (
     shared_ptr,
     unique_ptr
 )
-
 from ray.includes.common cimport (
     CBuffer,
     CRayObject,
