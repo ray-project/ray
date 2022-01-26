@@ -1,10 +1,11 @@
 from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
+from ray._private.utils import lazy_import
 
 import collections
 import numpy as np
 
 try:
-    import pandas
+    pandas = lazy_import("pandas")
 except ImportError:
     pandas = None
 
