@@ -26,4 +26,5 @@ worker_node_types:
       max_workers: 4
       use_spot: false
       resources:
+        cpu: 0
         gpu: 4
