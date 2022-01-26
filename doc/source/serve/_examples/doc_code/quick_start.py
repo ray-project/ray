@@ -1,3 +1,6 @@
+# flake8: noqa
+# yapf: disable
+
 # __serve_example_begin__
 import requests
 
@@ -34,6 +37,7 @@ BoostingModel.deploy(model)
 
 # Query it!
 sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
-response = requests.get("http://localhost:8000/iris", json=sample_request_input)
+response = requests.get(
+    "http://localhost:8000/iris", json=sample_request_input)
 print(response.text)
 # __serve_example_end__
