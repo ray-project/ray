@@ -2,10 +2,11 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, Type
 
 import starlette.responses
 import starlette.requests
+from starlette.types import Send, ASGIApp
 
 from ray.serve.exceptions import RayServeException
 
@@ -115,29 +116,39 @@ async def receive_http_body(scope, receive, send):
     return b"".join(body_buffer)
 
 
-class ASGIHTTPSender:
-    """Implement the interface for ASGI sender, build Starlette Response"""
+class RawASGIResponse(ASGIApp):
+    """Implement a raw ASGI response interface.
+
+    We have to build this because starlette's base response class is
+    still too smart and perform header inference.
+    """
+
+    def __init__(self, messages):
+        self.messages = messages
+
+    async def __call__(self, _scope, _receive, send):
+        for message in self.messages:
+            await send(message)
+
+    @property
+    def status_code(self):
+        return self.messages[0]["status"]
+
+
+class ASGIHTTPSender(Send):
+    """Implement the interface for ASGI sender to save data from varisous
+    asgi response type (fastapi, starlette, etc.)
+    """
 
     def __init__(self) -> None:
-        self.status_code: Optional[int] = 200
-        self.headers: List[Tuple[bytes, bytes]] = []
-        self.buffer: List[bytes] = []
+        self.messages = []
 
     async def __call__(self, message):
-        if (message["type"] == "http.response.start"):
-            self.status_code = message["status"]
-            self.headers = message["headers"]
-        elif (message["type"] == "http.response.body"):
-            self.buffer.append(message["body"])
-        else:
-            raise ValueError("ASGI type must be one of "
-                             "http.responses.{body,start}.")
+        assert message["type"] in ("http.response.start", "http.response.body")
+        self.messages.append(message)
 
-    def build_starlette_response(self) -> starlette.responses.Response:
-        resp = starlette.responses.Response(
-            b"".join(self.buffer), status_code=self.status_code)
-        resp.raw_headers.extend(self.headers)
-        return resp
+    def build_asgi_response(self) -> RawASGIResponse:
+        return RawASGIResponse(self.messages)
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
