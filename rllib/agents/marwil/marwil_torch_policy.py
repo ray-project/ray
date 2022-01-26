@@ -59,7 +59,10 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
     # A scaled logstd loss term encourages stochasticity, thus
     # alleviate the problem to some extent.
     logstd_coeff = policy.config["bc_logstd_coeff"]
-    logstds = torch.mean(action_dist.log_std, dim=1)
+    if logstd_coeff > 0.0:
+        logstds = torch.mean(action_dist.log_std, dim=1)
+    else:
+        logstds = 0.0
 
     policy.p_loss = -torch.mean(exp_advs * (logprobs + logstd_coeff * logstds))
 

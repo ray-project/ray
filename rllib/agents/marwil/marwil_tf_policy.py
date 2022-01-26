@@ -1,7 +1,6 @@
 import logging
 import gym
 from typing import Optional, Dict
-import sys
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
@@ -148,7 +147,10 @@ class MARWILLoss:
         # A scaled logstd loss term encourages stochasticity, thus
         # alleviate the problem to some extent.
         logstd_coeff = policy.config["bc_logstd_coeff"]
-        logstds = tf.reduce_sum(action_dist.log_std, axis=1)
+        if logstd_coeff > 0.0:
+            logstds = tf.reduce_sum(action_dist.log_std, axis=1)
+        else:
+            logstds = 0.0
 
         self.p_loss = -1.0 * tf.reduce_mean(
             exp_advs * (logprobs + logstd_coeff * logstds))
