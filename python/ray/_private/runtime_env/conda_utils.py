@@ -143,9 +143,7 @@ class ShellCommandException(Exception):
 
 
 def exec_cmd(cmd: List[str],
-             throw_on_error: bool = True,
-             logger: Optional[logging.Logger] = None
-             ) -> Union[int, Tuple[int, str, str]]:
+             throw_on_error: bool = True) -> Union[int, Tuple[int, str, str]]:
     """
     Runs a command as a child process.
 
@@ -176,7 +174,8 @@ def exec_cmd(cmd: List[str],
 
 def exec_cmd_stream_to_logger(cmd: List[str],
                               logger: logging.Logger,
-                              n_lines: int = 10) -> Tuple[int, str]:
+                              n_lines: int = 10,
+                              **kwargs) -> Tuple[int, str]:
     """Runs a command as a child process, streaming output to the logger.
 
     The last n_lines lines of output are also returned (stdout and stderr).
@@ -185,7 +184,8 @@ def exec_cmd_stream_to_logger(cmd: List[str],
         cmd,
         universal_newlines=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        **kwargs)
     last_n_lines = []
     with child.stdout:
         for line in iter(child.stdout.readline, b""):
