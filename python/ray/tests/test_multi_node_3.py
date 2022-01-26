@@ -487,7 +487,6 @@ ray.get(main_wait.release.remote())
 @pytest.fixture
 def redis_proc():
     """Download external redis and start the subprocess."""
-    """/Users/sangbincho/work/ray/python/ray/core/src/ray/thirdparty/redis/src/redis-server"""
     REDIS_SERVER_PATH = "core/src/ray/thirdparty/redis/src/redis-server"
     full_path = Path(ray.__file__).parents[0] / REDIS_SERVER_PATH
     check_call_subprocess(["cp", f"{full_path}", "redis-server"])
