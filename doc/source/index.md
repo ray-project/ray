@@ -38,7 +38,6 @@ It provides libraries for distributed
 [reinforcement learning](rllib/index.rst), 
 [model serving](serve/index.rst), 
 and [more](workflows/concepts.rst). 
-
 +++
 ```{link-button} ray-overview/index
 :type: ref
