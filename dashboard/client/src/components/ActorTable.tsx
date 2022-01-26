@@ -35,6 +35,14 @@ const ActorTable = ({
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
   const actorList = Object.values(actors || {})
+    .map((e) => ({
+      ...e,
+      functionDesc: Object.values(
+        e.taskSpec?.functionDescriptor?.javaFunctionDescriptor ||
+          e.taskSpec?.functionDescriptor?.pythonFunctionDescriptor ||
+          {},
+      ).join(" "),
+    }))
     .filter(filterFunc);
   const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 

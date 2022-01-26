@@ -37,14 +37,18 @@ def actor_table_data_to_dict(message):
         },
         including_default_value_fields=True)
     fields = {
-        "actorId", "jobId", "pid", "address", "state", "name", "numRestarts"
+        "actorId", "jobId", "pid", "address", "state", "name", "numRestarts",
+        "taskSpec"
     }
     light_message = {(k, v) for (k, v) in orig_message.itesm() if k in fields}
-    func_desc = orig_message.get("taskSpec",
-                                 {}).get("functionDescriptor") or {}
-    func_desc = func_desc.get("javaFunctionDescriptor") or func_desc.get(
-        "pythonFunctionDescriptor") or {}
-    light_message["functionDesc"] = func_desc
+    if "taskSpec" in light_message:
+        if "functionDescriptor" in light_message["taskSpec"]:
+            light_message["taskSpec"] = {
+                "functionDescriptor": light_message["taskSpec"][
+                    "functionDescriptor"]
+            }
+        else:
+            light_message.pop("taskSpec")
     return light_message
 
 
