@@ -98,6 +98,8 @@ pip install -q -r requirements.txt
 pip install -q -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
 
+rm -rf "${RELEASE_RESULTS_DIR-/tmp/ray_release_test_artifacts/}" || true
+
 RETRY_NUM=0
 MAX_RETRIES=${MAX_RETRIES-3}
 
@@ -139,8 +141,6 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   esac
 
 done
-
-sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts || true
 
 echo "----------------------------------------"
 echo "e2e test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
