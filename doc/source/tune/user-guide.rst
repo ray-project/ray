@@ -822,7 +822,7 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
     $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 
-.. image:: ../ray-tune-tensorboard.png
+.. image:: images/ray-tune-tensorboard.png
 
 If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
 
@@ -1190,4 +1190,4 @@ There are some environment variables that are mostly relevant for integrated lib
 Further Questions or Issues?
 ----------------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

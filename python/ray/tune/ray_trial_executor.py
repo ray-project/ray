@@ -632,38 +632,6 @@ class RayTrialExecutor(TrialExecutor):
         """Returns the running trials."""
         return list(self._running.values())
 
-    def get_alive_node_ips(self):
-        now = time.time()
-        if now - self._last_ip_refresh < self._refresh_period:
-            return self._last_ip_addresses
-        logger.debug("Checking ips from Ray state.")
-        self._last_ip_refresh = now
-        nodes = ray.state.nodes()
-        ip_addresses = set()
-        for node in nodes:
-            if node["alive"]:
-                ip_addresses.add(node["NodeManagerAddress"])
-        self._last_ip_addresses = ip_addresses
-        return ip_addresses
-
-    def get_current_trial_ips(self):
-        return {t.node_ip for t in self.get_running_trials()}
-
-    def get_next_failed_trial(self) -> Optional[Trial]:
-        """Gets the first trial found to be running on a node presumed dead.
-
-        Returns:
-            A Trial object that is ready for failure processing. None if
-            no failure detected.
-        """
-        if ray.worker._mode() != ray.worker.LOCAL_MODE:
-            live_cluster_ips = self.get_alive_node_ips()
-            if live_cluster_ips - self.get_current_trial_ips():
-                for trial in self.get_running_trials():
-                    if trial.node_ip and trial.node_ip not in live_cluster_ips:
-                        return trial
-        return None
-
     def get_next_available_trial(
             self, timeout: Optional[float] = None) -> Optional[Trial]:
         if not self._running:

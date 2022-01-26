@@ -141,11 +141,11 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
 }
 
 HeartbeatSender::~HeartbeatSender() {
-  heartbeat_runner_.reset();
   heartbeat_io_service_.stop();
   if (heartbeat_thread_->joinable()) {
     heartbeat_thread_->join();
   }
+  heartbeat_runner_.reset();
   heartbeat_thread_.reset();
 }
 
@@ -1627,10 +1627,14 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
-                 << bundle_spec.DebugString();
-  placement_group_resource_manager_->CommitBundle(bundle_spec);
+  std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+  for (int index = 0; index < request.bundle_specs_size(); index++) {
+    bundle_specs.emplace_back(
+        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
+  }
+  RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
+                 << GetDebugStringForBundles(bundle_specs);
+  placement_group_resource_manager_->CommitBundles(bundle_specs);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();

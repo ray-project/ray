@@ -16,7 +16,8 @@ from ray.util.scheduling_strategies import (
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
+def test_load_balancing_under_constrained_memory(enable_mac_large_object_store,
+                                                 ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster

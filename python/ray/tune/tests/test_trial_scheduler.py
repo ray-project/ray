@@ -249,9 +249,6 @@ class _MockTrialExecutor(TrialExecutor):
     def get_next_available_trial(self):
         return None
 
-    def get_next_failed_trial(self):
-        return None
-
     def get_running_trials(self):
         return []
 
@@ -2094,7 +2091,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testAsyncHBSaveRestore(self):
-        tmpfile = tempfile.mktemp()
+        _, tmpfile = tempfile.mkstemp()
 
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean",

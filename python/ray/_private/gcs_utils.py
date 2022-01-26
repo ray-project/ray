@@ -78,6 +78,8 @@ _MAX_MESSAGE_LENGTH = 512 * 1024 * 1024
 _GRPC_KEEPALIVE_TIME_MS = 60 * 1000
 # Keepalive should be replied < 60s
 _GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
+# Max retries to get GCS address from Redis server
+_MAX_GET_GCS_SERVER_ADDRESS_RETRIES = 60
 
 # Also relying on these defaults:
 # grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
@@ -107,10 +109,17 @@ def get_gcs_address_from_redis(redis) -> str:
     Returns:
         GCS address string.
     """
-    gcs_address = redis.get("GcsServerAddress")
-    if gcs_address is None:
-        raise RuntimeError("Failed to look up gcs address through redis")
-    return gcs_address.decode()
+    count = 0
+    while count < _MAX_GET_GCS_SERVER_ADDRESS_RETRIES:
+        gcs_address = redis.get("GcsServerAddress")
+        if gcs_address is None:
+            logger.debug(
+                "Failed to look up gcs address through redis, retrying.")
+            time.sleep(1)
+            count += 1
+            continue
+        return gcs_address.decode()
+    raise RuntimeError("Failed to look up gcs address through redis")
 
 
 def create_gcs_channel(address: str, aio=False):
