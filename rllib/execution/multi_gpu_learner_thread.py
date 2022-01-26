@@ -8,8 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
