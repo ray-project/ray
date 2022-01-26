@@ -364,11 +364,6 @@ message GetPlacementGroupReply {
   PlacementGroupTableData placement_group_table_data = 2;
 }
 
-enum GcsServiceFailureType {
-  RPC_DISCONNECT = 0;
-  GCS_SERVER_RESTART = 1;
-}
-
 message GetAllPlacementGroupRequest {
 }
 

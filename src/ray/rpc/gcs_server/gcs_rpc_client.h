@@ -98,8 +98,7 @@ class Executor {
         callback(status, reply);                                                       \
         delete executor;                                                               \
       } else {                                                                         \
-        gcs_service_failure_detected_(GcsServiceFailureType::RPC_DISCONNECT,           \
-                                      [executor]() { executor->Retry(); });            \
+        gcs_service_failure_detected_([executor]() { executor->Retry(); });            \
       }                                                                                \
     };                                                                                 \
     auto operation = [request, operation_callback,                                     \
@@ -132,10 +131,10 @@ class GcsRpcClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
-  GcsRpcClient(
-      const std::string &address, const int port, ClientCallManager &client_call_manager,
-      std::function<void(GcsServiceFailureType, const std::function<void()> callback)>
-          gcs_service_failure_detected = nullptr)
+  GcsRpcClient(const std::string &address, const int port,
+               ClientCallManager &client_call_manager,
+               std::function<void(const std::function<void()> callback)>
+                   gcs_service_failure_detected = nullptr)
       : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
     Reset(address, port, client_call_manager);
   };
@@ -345,8 +344,7 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
 
  private:
-  std::function<void(GcsServiceFailureType, const std::function<void()> callback)>
-      gcs_service_failure_detected_;
+  std::function<void(const std::function<void()> callback)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

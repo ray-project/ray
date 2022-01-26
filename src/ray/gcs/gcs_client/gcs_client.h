@@ -212,18 +212,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Fire a periodic timer to check if GCS sever address has changed.
   void PeriodicallyCheckGcsServerAddress();
 
-  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
-  /// service failure is detected.
-  ///
-  /// \param type The type of GCS service failure.
-  /// \param failure_handled_callback The callback function to be called after reconnected
-  /// to gcs successfully. \return Returns true if the reconnect request is accepted,
-  /// false if the client is in reconnecting process and the reconnect request is
-  /// rejected.
-  bool GcsServiceFailureDetected(
-      rpc::GcsServiceFailureType type,
-      const std::function<void()> failure_handled_callback = nullptr);
-
   /// Reconnect to GCS RPC server asynchronously.
   ///
   /// \param callback The callback function to be called after reconnected to gcs
@@ -234,7 +222,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   bool ReconnectGcsServerAsync(const std::function<void()> reconnected_callback);
 
   /// Get new Gcs server address and try to ping it.
-  void DoReconnect(absl::Time start) EXCLUSIVE_LOCKS_REQUIRED(reconnect_flag_mutex_);
+  void DoReconnect(absl::Time start) EXCLUSIVE_LOCKS_REQUIRED(reconnect_mutex_);
 
   /// Called when the ping rpc call returns.
   void OnReconnectionFinished(const Status &status, absl::Time start,
@@ -242,6 +230,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Execute all the pending callbacks during reconnection and clear it.
   void ExecuteReconnectedCallbacks();
+
+  void ClearReconnectedCallbacks();
 
   std::shared_ptr<RedisClient> redis_client_;
 
@@ -265,13 +255,12 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Retry interval to reconnect to a GCS server.
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 
-  // Protect the `reconnect_in_progress_` variable.
-  mutable absl::Mutex reconnect_flag_mutex_;
+  mutable absl::Mutex reconnect_mutex_;
 
   // A flag to indicate whether reconnecting to gcs is in progress or not.
   // If false, reconnecting will be triggerd. If true, the current reconnect
   // request should be ignored.
-  std::atomic<bool> reconnect_in_progress_ GUARDED_BY(reconnect_flag_mutex_) = false;
+  bool reconnect_in_progress_ GUARDED_BY(reconnect_mutex_) = false;
 
   // Protect the `callbacks_` list.
   mutable absl::Mutex reconnect_callbacks_mutex_;
