@@ -56,10 +56,10 @@ class TestIMPALA(unittest.TestCase):
         config = impala.DEFAULT_CONFIG.copy()
         config["num_gpus"] = 0
         # Test whether we correctly ignore the "lr" setting.
-        # The first lr should be 0.0005.
+        # The first lr should be 0.05.
         config["lr"] = 0.1
         config["lr_schedule"] = [
-            [0, 0.0005],
+            [0, 0.05],
             [10000, 0.000001],
         ]
         config["num_gpus"] = 0  # Do not use any (fake) GPUs.
@@ -69,18 +69,27 @@ class TestIMPALA(unittest.TestCase):
             return result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
                 LEARNER_STATS_KEY]["cur_lr"]
 
-        for fw in framework_iterator(config, frameworks=("tf", "torch")):
+        for fw in framework_iterator(config):
             trainer = impala.ImpalaTrainer(config=config)
             policy = trainer.get_policy()
 
             try:
                 if fw == "tf":
-                    check(policy.get_session().run(policy.cur_lr), 0.0005)
+                    check(policy.get_session().run(policy.cur_lr), 0.05)
                 else:
-                    check(policy.cur_lr, 0.0005)
+                    check(policy.cur_lr, 0.05)
                 r1 = trainer.train()
                 r2 = trainer.train()
-                assert get_lr(r2) < get_lr(r1), (r1, r2)
+                r3 = trainer.train()
+                # Due to the asynch'ness of IMPALA, learner-stats metrics
+                # could be delayed by one iteration. Do 3 train() calls here
+                # and measure guaranteed decrease in lr between 1st and 3rd.
+                lr1 = get_lr(r1)
+                lr2 = get_lr(r2)
+                lr3 = get_lr(r3)
+                assert lr2 <= lr1, (lr1, lr2)
+                assert lr3 <= lr2, (lr2, lr3)
+                assert lr3 < lr1, (lr1, lr3)
             finally:
                 trainer.stop()
 

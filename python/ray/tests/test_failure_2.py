@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
+from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
