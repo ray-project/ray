@@ -382,62 +382,59 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
                 num_main_policies = self.main_policies
                 num_main_exploiters = self.main_exploiters
-                num_league_exploiters = self.league_exploiters
+                #num_league_exploiters = self.league_exploiters
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
 
-                    # Pick, whether this is ...
-                    type_ = np.random.choice([1, 2])
+                    # Pick, whether this is:
+                    # LE: league-exploiter vs snapshot.
+                    # ME: main-exploiter vs (any) main.
+                    # M: Learning main vs itself.
+                    type_ = np.random.choice(["LE", "ME", "M"])
 
-                    # 1) League exploiter vs any other.
-                    if type_ == 1:
-                        league_exploiter = "league_exploiter_" + str(
-                            np.random.choice(
-                                list(range(num_league_exploiters))))
-                        # This league exploiter is frozen: Play against a
-                        # trainable policy.
-                        if league_exploiter not in trainable_policies:
-                            opponent = np.random.choice(
-                                list(trainable_policies))
-                            print(
-                                f"{league_exploiter} (frozen) vs {opponent} (training)"
-                            )
-                        # League exploiter is trainable: Play against any other
-                        # non-trainable policy.
-                        else:
-                            opponent = np.random.choice(
-                                list(non_trainable_policies))
-                            print(
-                                f"{league_exploiter} (training) vs {opponent} (frozen)"
-                            )
+                    # Learning league exploiter vs a snapshot.
+                    if type_ == "LE":
+                        league_exploiter = np.random.choice([
+                            p for p in trainable_policies
+                            if p.startswith("league_exploiter")
+                        ])
+                        # Play against any non-trainable policy (excluding itself).
+                        opponent = np.random.choice(
+                            list(non_trainable_policies - {league_exploiter}))
+                        print(
+                            f"{league_exploiter} (training) vs {opponent} (frozen)"
+                        )
                         return league_exploiter if \
                             episode.episode_id % 2 == agent_id else opponent
 
-                    # 2) Main exploiter vs main.
-                    else:
-                        main_exploiter = "main_exploiter_" + str(
-                            np.random.choice(list(range(num_main_exploiters))))
-                        # Main exploiter is frozen: Play against a trainable main
-                        # policy.
-                        if main_exploiter not in trainable_policies:
-                            #TODO: Any main, not just idx=0
-                            main = "main_0"
-                            print(
-                                f"{main_exploiter} (frozen) vs {main} (training)"
-                            )
-                        # Main exploiter is trainable: Play against any main.
-                        else:
+                    # Learning main exploiter vs (learning main OR snapshot main).
+                    elif type_ == "ME":
+                        main_exploiter = np.random.choice([
+                            p for p in trainable_policies
+                            if p.startswith("main_exploiter")
+                        ])
+                        # 50% of the time, play against any main.
+                        if np.random.random() < 0.5:
                             main = "main_{}".format(
                                 np.random.choice(
                                     list(range(num_main_policies))))
                             training = "training" if \
                                 main in trainable_policies else "frozen"
-                            print(
-                                f"{main_exploiter} (training) vs {main} ({training})"
-                            )
+                        # 50% of the time, play against the learning main.
+                        else:
+                            main = "main_0"
+                            training = True
+                        print(
+                            f"{main_exploiter} (training) vs {main} ({training})"
+                        )
                         return main_exploiter if \
                             episode.episode_id % 2 == agent_id else main
+
+                    # Main policy: Self-play.
+                    else:
+                        print("main_0 (training) vs main_0 (training)")
+                        return "main_0"
 
                 # Add and initialize the first learning league- and
                 # main-exploiters (copy from `main_0`).
