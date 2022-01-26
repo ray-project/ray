@@ -46,6 +46,13 @@ Flambé is a machine learning experimentation framework built to accelerate the 
 
 GitHub: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
 
+Flower |flower|
+---------------
+
+Flower is a friendly federated learning framework with a unified approach that can federate any workload, any machine learning framework, and any programming language. It can perform multi-machine simulations of federated learning pipelines for different research settings and it enables users to later deploy these pipelines in real-world cross-device or cross-silo environments. Details, code examples, docs, and the Slack community can be found on `flower.dev <https://flower.dev/>`_. 
+
+GitHub: `https://github.com/adap/flower` 
+
 Horovod |horovod|
 -----------------
 
