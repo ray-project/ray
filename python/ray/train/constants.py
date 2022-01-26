@@ -62,4 +62,7 @@ TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
 TRAIN_ENABLE_WORKER_SPREAD_ENV =\
     "TRAIN_ENABLE_WORKER_SPREAD"
 
-PROFILER_KEY = "_train_torch_profiler"
+# Reserved keyword used by the ``TorchWorkerProfiler`` and
+# ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
+# through ``train.report()``
+PYTORCH_PROFILER_KEY = "_train_torch_profiler"
