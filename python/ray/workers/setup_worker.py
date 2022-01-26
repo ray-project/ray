@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.core.generated.common_pb2 import Language
