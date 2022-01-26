@@ -44,6 +44,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.table_block import TableRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
@@ -230,11 +231,9 @@ class Dataset(Generic[T]):
                         "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list) or isinstance(applied, pa.Table):
-                    applied = applied
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = pa.Table.from_pandas(applied)
-                else:
+                if not (isinstance(applied, list)
+                        or isinstance(applied, pa.Table)
+                        or isinstance(applied, pd.core.frame.DataFrame)):
                     raise ValueError("The map batches UDF returned the value "
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
@@ -403,12 +402,15 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
             dataset_format = self._dataset_format()
             if dataset_format == "arrow":
                 builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
             else:
                 builder = SimpleBlockBuilder()
             empty_block = builder.build()
@@ -917,6 +919,18 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
+
     def sum(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute sum over entire dataset.
 
@@ -967,10 +981,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1022,10 +1034,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1077,10 +1087,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Union[KeyFn, List[KeyFn]] = None) -> U:
         """Compute mean over entire dataset.
@@ -1132,10 +1140,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Union[KeyFn, List[KeyFn]] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1197,10 +1203,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self, key: KeyFn = None,
              descending: bool = False) -> "Dataset[T]":
@@ -2157,10 +2161,10 @@ Dict[str, List[str]]]): The names of the columns
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
@@ -2478,6 +2482,9 @@ Dict[str, List[str]]]): The names of the columns
                 return "arrow"
         except ModuleNotFoundError:
             pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
         return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Union[KeyFn, List[KeyFn]],
