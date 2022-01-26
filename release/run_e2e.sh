@@ -144,7 +144,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 done
 
 sudo rm -rf /tmp/ray_release_test_artifacts/* || true
-sudo cp -rf "$RELEASE_RESULTS_DIR"/* /tmp/ray_release_test_artifacts/ || true
+sudo cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
 
 echo "----------------------------------------"
 echo "e2e test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
