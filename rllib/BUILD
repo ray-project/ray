@@ -597,24 +597,24 @@ py_test(
 )
 
 py_test(
-    name = "bandits/tests/lin_ts_train_wheel_env",
-    main = "bandits/tests/LinTS_train_wheel_env.py",
+    name = "agents/bandit/tests/lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
     srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "bandits/tests/tune_lin_ts_train_wheel_env",
-    main = "bandits/tests/tune_LinTS_train_wheel_env.py",
+    name = "bandit/tune_lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/tune_LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
     srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "bandits/tests/tune_lin_ucb_train_recommendation",
-    main = "bandits/tests/tune_LinUCB_train_recommendation.py",
+    name = "bandit/tune_lin_ucb_train_recommendation",
+    main = "agents/bandit/tests/tune_LinUCB_train_recommendation.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
     srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
