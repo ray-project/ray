@@ -30,9 +30,7 @@
 **Build distributed applications with <img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Core**
 ^^^
 Ray Core provides a [simple and flexible API](ray-core/walkthrough.rst) for building and running your distributed applications.
-You can often parallelize single machine code with little to zero code changes.
-
-For instance, with Ray Core you can easily parallelize your functions using 
+You can easily parallelize your functions using 
 [Ray Tasks](ray-core/walkthrough.rst#remote-functions-tasks) or your classes using 
 [Ray Actors](ray-core/actors.rst). 
 +++
