@@ -32,7 +32,7 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
 # Those roles will be always added.
 DEFAULT_SERVICE_ACCOUNT_ROLES = [
     "roles/storage.objectAdmin", "roles/compute.admin",
-    "roles/iam.serviceAccountUser"
+    "roles/iam.serviceAccountUser", "roles/iam.roleViewer"
 ]
 # Those roles will only be added if there are TPU nodes defined in config.
 TPU_SERVICE_ACCOUNT_ROLES = ["roles/tpu.admin"]
