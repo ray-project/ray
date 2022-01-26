@@ -231,7 +231,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
 .. code-block:: python
 
     resp = requests.post(
-        "http://127.0.0.1:8265/api/jobs/submit",
+        "http://127.0.0.1:8265/api/jobs/",
         json={
             "entrypoint": "echo hello",
             "runtime_env": {},
@@ -249,10 +249,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     start = time.time()
     while time.time() - start <= 10:
         resp = requests.get(
-            "http://127.0.0.1:8265/api/jobs/status",
-            params={
-                "job_id": job_id,
-            }
+            "http://127.0.0.1:8265/api/jobs/<job_id>"
         )
         rst = json.loads(resp.text)
         status = rst["job_status"]
@@ -266,10 +263,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
 .. code-block:: python
 
     resp = requests.get(
-        "http://127.0.0.1:8265/api/jobs/logs",
-        params={
-            "job_id": job_id,
-        }
+        "http://127.0.0.1:8265/api/jobs/<job_id>/logs"
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]

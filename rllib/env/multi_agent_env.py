@@ -3,11 +3,10 @@ import logging
 from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
 
 from ray.rllib.env.base_env import BaseEnv
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import ExperimentalAPI, override, PublicAPI, \
     DeveloperAPI
-from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
-    MultiEnvDict
+from ray.rllib.utils.typing import AgentID, EnvCreator, EnvID, EnvType, \
+    MultiAgentDict, MultiEnvDict
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -322,9 +321,8 @@ class MultiAgentEnv(gym.Env):
         return obs_space_check and action_space_check
 
 
-def make_multi_agent(
-        env_name_or_creator: Union[str, Callable[[EnvContext], EnvType]],
-) -> Type["MultiAgentEnv"]:
+def make_multi_agent(env_name_or_creator: Union[str, EnvCreator],
+                     ) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
     Allows you to convert a simple (single-agent) `gym.Env` class

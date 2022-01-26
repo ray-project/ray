@@ -15,8 +15,6 @@ import traceback
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
-from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.node
@@ -1120,7 +1118,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """
     global autoscaler_log_fyi_printed
 
-    if not AUTOSCALER_EVENTS:
+    if not ray_constants.AUTOSCALER_EVENTS:
         return
 
     # Print out autoscaler events only, ignoring other messages.
@@ -1244,7 +1242,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
         if _internal_kv_initialized():
             # Get any autoscaler errors that occurred before the call to
             # subscribe.
-            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            error_message = _internal_kv_get(
+                ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
 
@@ -1299,7 +1298,8 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         if _internal_kv_initialized():
             # Get any autoscaler errors that occurred before the call to
             # subscribe.
-            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            error_message = _internal_kv_get(
+                ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
 
@@ -1521,13 +1521,18 @@ def connect(node,
         job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
+    if not node.should_redirect_logs():
+        # Logging to stderr, so give core worker empty logs directory.
+        logs_dir = ""
+    else:
+        logs_dir = node.get_logs_dir_path()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
-        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
-        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
-        driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid, startup_token)
+        gcs_options, logs_dir, node.node_ip_address, node.node_manager_port,
+        node.raylet_ip_address, (mode == LOCAL_MODE), driver_name,
+        log_stdout_file_path, log_stderr_file_path, serialized_job_config,
+        node.metrics_agent_port, runtime_env_hash, worker_shim_pid,
+        startup_token)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
