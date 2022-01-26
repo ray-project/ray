@@ -98,8 +98,6 @@ pip install -q -r requirements.txt
 pip install -q -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
 
-rm -rf "${RELEASE_RESULTS_DIR-/tmp/ray_release_test_artifacts/}" || true
-
 RETRY_NUM=0
 MAX_RETRIES=${MAX_RETRIES-3}
 
@@ -110,6 +108,8 @@ fi
 
 ALL_EXIT_CODES=()
 while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
+  sudo rm -rf "${RELEASE_RESULTS_DIR-/tmp/ray_release_test_artifacts/}" || true
+
   RETRY_NUM=$((RETRY_NUM + 1))
 
   if [ "$RETRY_NUM" -gt 1 ]; then
