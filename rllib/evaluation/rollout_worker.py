@@ -1210,8 +1210,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 raise ValueError("`policy_mapping_fn` must be a callable!")
 
     @DeveloperAPI
-    def set_is_policy_to_train(self, is_policy_to_train: Union[Container[
-            PolicyID], Callable[[PolicyID, SampleBatchType], bool]]) -> None:
+    def set_is_policy_to_train(
+            self, is_policy_to_train: Union[Container[PolicyID], Callable[
+                [PolicyID, Optional[SampleBatchType]], bool]]) -> None:
         """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
