@@ -30,6 +30,8 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
 }
 
 # Those roles will be always added.
+# NOTE: `serviceAccountUser` allows the head node to create workers with
+# a serviceAccount. `roleViewer` allows the head node to run bootstrap_gcp.
 DEFAULT_SERVICE_ACCOUNT_ROLES = [
     "roles/storage.objectAdmin", "roles/compute.admin",
     "roles/iam.serviceAccountUser", "roles/iam.roleViewer"
