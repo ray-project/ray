@@ -136,13 +136,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void DeleteResource(const std::string &node_name,
                       const std::string &resource_name) override;
 
-  /// Check whether the specific resource exists or not in local node.
-  ///
-  /// \param resource_name: the specific resource name.
-  ///
-  /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(const std::string &resource_name);
-
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const {
     return local_resource_manager_->GetLocalResources();
@@ -172,6 +165,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
+
+  /// Get local node resources; test only.
+  const NodeResources &GetLocalNodeResources() const;
 
  private:
   bool NodeAlive(int64_t node_id) const;
@@ -217,9 +213,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
-  /// Get local node resources; test only.
-  const NodeResources &GetLocalNodeResources() const;
-
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;
@@ -249,6 +242,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, ResourceUsageReportTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
+  FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
 };
 
 }  // end namespace ray
