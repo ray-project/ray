@@ -299,7 +299,7 @@ class WorkerPoolMock : public WorkerPool {
               startup_tokens_by_proc_[it->first],
               // Don't set process to ensure the `RegisterWorker` succeeds below.
               false);
-          RAY_CHECK_OK(RegisterWorker(worker, it->first.GetId(), it->first.GetId(),
+          RAY_CHECK_OK(RegisterWorker(worker, it->first.GetId(),
                                       startup_tokens_by_proc_[it->first],
                                       [](Status, int) {}));
           OnWorkerStarted(worker);
