@@ -90,6 +90,7 @@ done
 
 RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
+RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
@@ -108,8 +109,6 @@ fi
 
 ALL_EXIT_CODES=()
 while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
-  sudo rm -rf "${RELEASE_RESULTS_DIR-/tmp/ray_release_test_artifacts/}" || true
-
   RETRY_NUM=$((RETRY_NUM + 1))
 
   if [ "$RETRY_NUM" -gt 1 ]; then
@@ -120,6 +119,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     echo "----------------------------------------"
     sleep ${SLEEP_TIME}
   fi
+
+  sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
 
   python e2e.py "$@"
   EXIT_CODE=$?
@@ -141,6 +142,9 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   esac
 
 done
+
+sudo rm -rf /tmp/ray_release_test_artifacts/* || true
+sudo cp -rf "$RELEASE_RESULTS_DIR"/* /tmp/ray_release_test_artifacts/ || true
 
 echo "----------------------------------------"
 echo "e2e test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
