@@ -6,8 +6,8 @@ import numpy as np
 import platform
 import os
 import tree  # pip install dm_tree
-from typing import Any, Callable, Container, Dict, List, Optional, Set, \
-    Tuple, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, Container, Dict, List, Optional, Tuple, \
+    Type, TYPE_CHECKING, Union
 
 import ray
 from ray import ObjectRef
@@ -548,15 +548,15 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Set of IDs of those policies, which should be trained. This property
         # is optional and mainly used for backward compatibility.
-        self.policies_to_train: Optional[Set[PolicyID]] = None
+        self.policies_to_train = policies_to_train
         self.is_policy_to_train: Callable[[PolicyID, SampleBatchType], bool]
 
         # By default (None), use the set of all policies found in the
         # policy_dict.
-        if policies_to_train is None:
-            policies_to_train = set(self.policy_dict.keys())
+        if self.policies_to_train is None:
+            self.policies_to_train = set(self.policy_dict.keys())
 
-        self.set_is_policy_to_train(policies_to_train)
+        self.set_is_policy_to_train(self.policies_to_train)
 
         self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
@@ -851,7 +851,7 @@ class RolloutWorker(ParallelIteratorWorker):
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
-                if not self.policies_to_train(pid, samples):
+                if not self.is_policy_to_train(pid, samples):
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -867,7 +867,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 {pid: builders[pid].get(v)
                  for pid, v in to_fetch.items()})
         else:
-            if self.policies_to_train(DEFAULT_POLICY_ID, samples):
+            if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
                 info_out = {
                     DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
                     .learn_on_batch(samples)
@@ -912,7 +912,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Uses the Policy's/ies' compute_gradients method(s) to perform the
         calculations. Skips policies that are not trainable as per
-        `self.policies_to_train`.
+        `self.is_policy_to_train()`.
 
         Args:
             samples: The SampleBatch or MultiAgentBatch to compute gradients
@@ -939,7 +939,7 @@ class RolloutWorker(ParallelIteratorWorker):
             grad_out, info_out = {}, {}
             if self.policy_config.get("framework") == "tf":
                 for pid, batch in samples.policy_batches.items():
-                    if not self.policies_to_train(pid, samples):
+                    if not self.is_policy_to_train(pid, samples):
                         continue
                     policy = self.policy_map[pid]
                     builder = TFRunBuilder(policy.get_session(),
@@ -950,7 +950,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 info_out = {k: builder.get(v) for k, v in info_out.items()}
             else:
                 for pid, batch in samples.policy_batches.items():
-                    if not self.policies_to_train(pid, samples):
+                    if not self.is_policy_to_train(pid, samples):
                         continue
                     grad_out[pid], info_out[pid] = (
                         self.policy_map[pid].compute_gradients(batch))
@@ -992,10 +992,10 @@ class RolloutWorker(ParallelIteratorWorker):
         # Multi-agent case.
         if isinstance(grads, dict):
             for pid, g in grads.items():
-                if self.policies_to_train(pid, None):
+                if self.is_policy_to_train(pid, None):
                     self.policy_map[pid].apply_gradients(g)
         # Grads is a ModelGradients type. Single-agent case.
-        elif self.policies_to_train(DEFAULT_POLICY_ID, None):
+        elif self.is_policy_to_train(DEFAULT_POLICY_ID, None):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
@@ -1212,7 +1212,7 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def set_is_policy_to_train(self, is_policy_to_train: Union[Container[
             PolicyID], Callable[[PolicyID, SampleBatchType], bool]]) -> None:
-        """Sets `self.policies_to_train` to a new set or callable.
+        """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
             is_policy_to_train: A container of policy IDs to be
@@ -1284,12 +1284,13 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         Calls the given function with each (policy, policy_id) tuple.
 
-        Only those policies/IDs will be called on, which can be found in
-        `self.policies_to_train`.
+        Only those policies/IDs will be called on, for which
+        `self.is_policy_to_train()` returns True.
 
         Args:
             func: The function to call with each (policy, policy ID) tuple,
-                for only those policies that are in `self.policies_to_train`.
+                for only those policies that `self.is_policy_to_train`
+                returns True.
 
         Keyword Args:
             kwargs: Additional kwargs to be passed to the call.
@@ -1301,7 +1302,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return [
             func(policy, pid, **kwargs)
             for pid, policy in self.policy_map.items()
-            if self.policies_to_train(pid, None)
+            if self.is_policy_to_train(pid, None)
         ]
 
     @DeveloperAPI
