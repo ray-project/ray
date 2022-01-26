@@ -99,7 +99,7 @@ parts:
       - file: ray-core/examples/overview
         title: "Tutorials and Examples"
 
-  - caption: Ray Cluster | Deployments
+  - caption: Ray Clusters | Deployments
     chapters:
       - file: cluster/quickstart
       - file: cluster/user-guide
