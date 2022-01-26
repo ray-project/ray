@@ -99,7 +99,7 @@ class NodeProvider:
 
         if not find_node_id():
             all_nodes = self.non_terminated_nodes({})
-            ip_fn = self.internal_ip if use_internal_ip else self.external_ip
+            ip_func = self.internal_ip if use_internal_ip else self.external_ip
             ip_cache = self._internal_ip_cache if use_internal_ip \
                 else self._external_ip_cache
             for node_id in all_nodes:
