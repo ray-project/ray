@@ -239,3 +239,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         if not self._job_manager:
             self._job_manager = JobManager()
+
+    @staticmethod
+    def is_minimal_module():
+        return False

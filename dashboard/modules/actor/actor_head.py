@@ -191,7 +191,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        return dashboard_optional_utils.rest_response(
+        return rest_response(
             success=True,
             message="All actors fetched.",
             actors=DataSource.actors)
@@ -230,3 +230,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
 
         await asyncio.gather(self._update_actors())
+
+    @staticmethod
+    def is_minimal_module():
+        return False
