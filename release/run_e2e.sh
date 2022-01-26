@@ -119,6 +119,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     sleep ${SLEEP_TIME}
   fi
 
+  sudo rm -rf /tmp/ray_release_test_artifacts || true
+
   python e2e.py "$@"
   EXIT_CODE=$?
   REASON=$(reason "${EXIT_CODE}")
