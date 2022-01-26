@@ -3,6 +3,8 @@ import pytest
 import subprocess
 import sys
 
+from pathlib import Path
+
 import ray
 import ray.ray_constants as ray_constants
 from ray._private.gcs_utils import use_gcs_for_bootstrap
@@ -485,18 +487,15 @@ ray.get(main_wait.release.remote())
 @pytest.fixture
 def redis_proc():
     """Download external redis and start the subprocess."""
-    wd = os.getcwd()
-    check_call_subprocess(
-        ["wget", "https://download.redis.io/releases/redis-6.2.6.tar.gz"])
-    check_call_subprocess(["tar", "xzf", "redis-6.2.6.tar.gz"])
-    os.chdir("redis-6.2.6")
-    check_call_subprocess(["make"])
-    proc = subprocess.Popen(["./src/redis-server", "--port", "7999"])
+    """/Users/sangbincho/work/ray/python/ray/core/src/ray/thirdparty/redis/src/redis-server"""
+    REDIS_SERVER_PATH = "core/src/ray/thirdparty/redis/src/redis-server"
+    full_path = Path(ray.__file__).parents[0] / REDIS_SERVER_PATH
+    check_call_subprocess(["cp", f"{full_path}", "redis-server"])
+    proc = subprocess.Popen(["./redis-server", "--port", "7999"])
     yield proc
     subprocess.check_call(["ray", "stop"])
     os.kill(proc.pid, 9)
-    os.chdir(wd)
-    subprocess.check_call(["rm", "-rf", "redis-6.2.6.tar.gz", "redis-6.2.6"])
+    subprocess.check_call(["rm", "-rf", "redis-server"])
 
 
 @pytest.mark.skipif(
