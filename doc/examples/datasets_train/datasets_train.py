@@ -1,4 +1,3 @@
-# TODO(matt): Reformat script.
 """
 Big Data Training
 =================
@@ -10,7 +9,7 @@ This notebook includes an example workflow for training a PyTorch deep learning 
 # Imports
 # -------
 #
-# Let's import a few libraries we'll need. 
+# Let's import a few libraries we'll need.
 
 import argparse
 import collections
@@ -65,7 +64,7 @@ def register_mlflow_model(model):
 # ------------------------------
 #
 # With this example, we wanted to make it easy to generate a dataset of arbitrary size
-# to allow you to increase it to your desired scale, depending on what you're trying to 
+# to allow you to increase it to your desired scale, depending on what you're trying to
 # prove out as you prototype with Ray.
 #
 # In particular, you can specify:
@@ -80,7 +79,7 @@ def register_mlflow_model(model):
 
 def make_and_upload_dataset(
         dir_path, num_examples=2_000_000, num_features=20,
-        parquet_file_chunk_size_rows=50_000):
+        parquet_file_chunk_size_rows=50_000, upload_to_s3=False):
 
     import random
     import os
@@ -165,8 +164,9 @@ def make_and_upload_dataset(
         #  first N files rather than write to disk
         # to simulate a user with local copy of subset of data
 
-    # os.system("aws s3 sync ./data s3://cuj-big-data/data")
-    # os.system("aws s3 sync ./inference s3://cuj-big-data/inference")
+    if upload_to_s3:
+        os.system("aws s3 sync ./data s3://cuj-big-data/data")
+        os.system("aws s3 sync ./inference s3://cuj-big-data/inference")
 
 ###############################################################################
 # Reading parquet data from anywhere with Ray Datasets
@@ -195,7 +195,7 @@ def read_dataset(path: str) -> ray.data.Dataset:
 #
 # ``DataPreprocessor``` wrapper class
 # -----------------------------------
-# 
+#
 # This isn't Ray-specific, but it simplifies how we call our preprocessing logic, depending on whether we are training or inferencing.
 #
 # It includes the following methods:
@@ -271,7 +271,7 @@ class DataPreprocessor:
             self.fruits = list(fruit_means.keys())
 
         fruit_one_hots = {
-            fruit: collections.defaultdict(int, fruit=1)
+            fruit: collections.defaultdict(int, **{fruit: 1})
             for fruit in self.fruits
         }
 
@@ -594,11 +594,10 @@ def train_func(config):
 # -------------
 #
 # * ``--dir-path <path>``: where we should store our generated parquet data for reading/writing
-# * ``--use-s3``: should we save to S3?
+# * ``--use-s3``: whether we should also sync written data to s3, read from s3, and write inference results to s3.
 # * ``--smoke-test``: run on a small amount of data / epochs to test
 # * ``--address <address>``: address of Ray cluster. can be ``<ip>:<port>``, or external provider like ``anyscale://<cluster-name>``
 # * ``--num-workers``: training worker count
-# * ``--large-dataset``:  TODO: remove?
 # * ``--use-gpu``: use GPU for training?
 # * ``--mlflow-register-model``: save our trained model to MLflow. Requires that you start an MLflow server. See docs on how to do this.
 
@@ -613,7 +612,7 @@ if __name__ == "__main__":
         "--use-s3",
         action="store_true",
         default=False,
-        help="Use data from s3 for testing.")
+        help="Sync data to S3 and then read from S3.")
     parser.add_argument(
         "--smoke-test",
         action="store_true",
@@ -630,11 +629,6 @@ if __name__ == "__main__":
         default=1,
         type=int,
         help="The number of Ray workers to use for distributed training")
-    parser.add_argument(
-        "--large-dataset",
-        action="store_true",
-        default=False,
-        help="Use 500GB dataset")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -653,16 +647,12 @@ if __name__ == "__main__":
     use_gpu = args.use_gpu
     use_s3 = args.use_s3
     dir_path = args.dir_path
-    large_dataset = args.large_dataset
-
-    if large_dataset:
-        assert use_s3, "--large-dataset requires --use-s3 to be set."
 
     start_time = time.time()
 
     ray.init(address=address)
 
-    make_and_upload_dataset(dir_path)
+    make_and_upload_dataset(dir_path, upload_to_s3=use_s3)
 
     # Setup MLflow.
 
@@ -687,10 +677,9 @@ if __name__ == "__main__":
         bucket = s3_resource.Bucket(BUCKET_NAME)
         count = bucket.objects.filter(Prefix=FOLDER_NAME)
         if len(list(count)) == 0:
-            print("please run `python make_and_upload_dataset.py` first")
+            print("please run `make_and_upload_dataset(upload_to_s3=True)` first")
             sys.exit(1)
-        data_path = ("s3://cuj-big-data/big-data/"
-                     if large_dataset else "s3://cuj-big-data/data/")
+        data_path = "s3://cuj-big-data/data/"
         inference_path = "s3://cuj-big-data/inference/"
         inference_output_path = "s3://cuj-big-data/output/"
     else:
@@ -700,7 +689,7 @@ if __name__ == "__main__":
 
         if len(os.listdir(data_path)) <= 1 or len(
                 os.listdir(inference_path)) <= 1:
-            print("please run `python make_and_upload_dataset.py` first")
+            print("please run `make_and_upload_dataset(upload_to_s3=True)` first")
             sys.exit(1)
 
     if smoke_test:
@@ -741,8 +730,6 @@ if __name__ == "__main__":
     # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
     # logging. Pass these into Trainer, and all results that are
     # reported by ``train.report()`` will be logged to these 2 places.
-    # TODO: TBXLoggerCallback should create nonexistent logdir
-    #       and should also create 1 directory per file.
     tbx_logdir = "./runs"
     os.makedirs(tbx_logdir, exist_ok=True)
     callbacks = [
