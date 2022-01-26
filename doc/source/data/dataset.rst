@@ -141,7 +141,7 @@ Datasource Compatibility Matrices
      - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
      - ✅
    * - Dask Dataframe
-     - `:meth:`ds.to_dask() <ray.data.Dataset.to_dask>`
+     - :meth:`ds.to_dask() <ray.data.Dataset.to_dask>`
      - ✅
    * - Modin Dataframe
      - :meth:`ds.to_modin() <ray.data.Dataset.to_modin>`
