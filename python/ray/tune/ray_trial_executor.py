@@ -99,13 +99,16 @@ class FutureResult:
         self.trial = trial
         self.result = result
 
+    def __repr__(self):
+        return f"[{self.type}] for {self.trial}"
+
 
 @DeveloperAPI
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     # Types of different futures handled by the executor.
-    TIMEOUT = "TIMEOUT"
+    NO_RUNNING_TRIAL_TIMEOUT = "NO_RUNNING_TRIAL_TIMEOUT"
     PG_READY = "PG_READY"
     TRAINING_RESULT = "TRAINING_RESULT"
     SAVING_RESULT = "SAVING_RESULT"
@@ -113,6 +116,7 @@ class RayTrialExecutor(TrialExecutor):
     STOP_RESULT = "STOP_RESULT"  # Internally to executor only.
     # This is to signal to TrialRunner that there is an error.
     ERROR = "ERROR"
+    PUNT = "PUNT"  # punting back to TrialRunner's main event loop.
 
     def __init__(self,
                  reuse_actors: bool = False,
@@ -331,8 +335,7 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._futures[remote] = (RayTrialExecutor.TRAINING_RESULT, trial)
-        logger.info(
-            f"inside of train, len(self._futures) = {len(self._futures)}")
+        logger.info(f"inside of train, self._futures = {self._futures}")
         trial_item = self._find_future(trial)
         assert len(trial_item) < 2, trial_item
 
@@ -761,20 +764,46 @@ class RayTrialExecutor(TrialExecutor):
             yield
 
     def get_next_future_result(self, next_trial_exists: bool) -> FutureResult:
-        """Get the next future result to be handed over to TrialRunner.
+        """Get the next future result to be processed in TrialRunner.
 
-        This is a blocking wait.
+        This is a blocking wait with a timeout. The reason for the timeout is
+        we still want to print status info periodically in TrialRunner for
+        better user experience.
+
+        The handle of `RayTrialExecutor.STOP_RESULT` is purely internal to
+        RayTrialExecutor itself. All the other future results are handled by
+        TrialRunner.
+
+        In the future we may want to do most of the handle of
+        `RayTrialExecutor.RESTORE_RESULT` and `SAVING_RESULT` in
+        RayTrialExecutor itself and only notify TrialRunner to invoke
+        corresponding callbacks. This view is more consistent with our goal
+        of TrialRunner responsible for external facing Trial state transition,
+        while RayTrialExecutor responsible for internal facing transitions,
+        namely, `is_saving`, `is_restoring` etc.
+
+        Also you may notice that the boundary between RayTrialExecutor and
+        PlacementGroupManager right now is really blurred. This will be
+        improved once we move to an ActorPool abstraction.
+
+        `next_trial_exists` means that there is a trial to run - prioritize
+        returning PG_READY in this case. An example of `next_trial_exists`
+        being false is, e.g., synchronous hyperband, although there are pgs
+        ready, the scheduler is holding back scheduling new trials since the
+        whole band of trials is waiting for the slowest trial to finish. In
+        this case, we prioritize handling training result to avoid deadlock
+        situation.
         """
         while True:
             # There could be existing PGs from either `self._cached_actor_pg`
             # or from `self._pg_manager._ready`. If so and if there is indeed
-            # a next trial to run, we return PG_READY future result for trial
+            # a next trial to run, we return `PG_READY` future for trial
             # runner.
             if next_trial_exists:
                 if len(self._cached_actor_pg) > 0:
                     return FutureResult(RayTrialExecutor.PG_READY)
-                # TODO(xwjiang): Expose proper API when we clean up ActorPool
-                #  abstraction.
+                # TODO(xwjiang): Expose proper API when we decide to do
+                #  ActorPool abstraction.
                 for pgf in self._pg_manager._ready.keys():
                     if len(self._pg_manager._ready[pgf]) > 0:
                         return FutureResult(RayTrialExecutor.PG_READY)
@@ -783,24 +812,24 @@ class RayTrialExecutor(TrialExecutor):
             if next_trial_exists:
                 # Only wait for pg explicitly if there is next trial to run.
                 futures_to_wait += self._pg_manager.get_staging_future_list()
-            timeout = None
-            logger.info(f"len(self._futures) == {len(self._futures)}")
-            logger.info(f"next trial exists - {next_trial_exists}")
-            logger.info(
-                f"pg ready - {self._pg_manager.get_staging_future_list()}")
-            if len(self._futures) == 0:
-                # No trial running, could be insufficient resources,
-                # in which case, we want to reduce the timeout and punt
-                # back to the TrialRunner to output a warning msg.
-                # Otherwise, this is a blocking wait.
-                timeout = 5
+            logger.debug(f"get_next_future_result before wait with futures "
+                         f"{futures_to_wait} and "
+                         f"next_trial_exists={next_trial_exists}")
+            # TODO(xwjiang): Is 5 optimal time here? Make it env variable?
             ready_futures, _ = ray.wait(
-                futures_to_wait, num_returns=1, timeout=timeout)
+                futures_to_wait, num_returns=1, timeout=5)
             if len(ready_futures) == 0:
-                # Should handle the case that there is probably
-                # not sufficient resources.
-                # TODO: Move InsufficientResourceManager's logic to TrialExecutor.
-                return FutureResult(RayTrialExecutor.TIMEOUT)
+                if len(self._futures) == 0:
+                    # Should handle the case that there is probably
+                    # not sufficient resources.
+                    # TODO: Move InsufficientResourceManager's logic
+                    #  to TrialExecutor. It is not Runner's responsibility!
+                    return FutureResult(
+                        RayTrialExecutor.NO_RUNNING_TRIAL_TIMEOUT)
+                else:
+                    # Training simply takes long time, return the control back to main
+                    # event loop to print progress info etc.
+                    return FutureResult(RayTrialExecutor.PUNT)
             assert len(ready_futures) == 1
             ready_future = ready_futures[0]
             if ready_future not in self._futures.keys():
@@ -828,16 +857,16 @@ class RayTrialExecutor(TrialExecutor):
                     if result_type in (self.TRAINING_RESULT,
                                        self.SAVING_RESULT,
                                        self.RESTORING_RESULT):
-                        logger.info(
-                            f"Returning {result_type} for "
-                            f"trial {trial_or_pg} with result {future_result}")
+                        logger.debug(f"Returning [{result_type}] for "
+                                     f"trial {trial_or_pg}")
                         return FutureResult(
                             result_type, trial_or_pg, result=future_result)
                     else:
                         raise TuneError(
-                            f"Unexpected future type - {result_type}")
+                            f"Unexpected future type - [{result_type}]")
                 except Exception:
-                    return FutureResult(RayTrialExecutor.ERROR, trial_or_pg)
+                    return FutureResult(RayTrialExecutor.ERROR, trial_or_pg,
+                                        traceback.format_exc())
 
 
 def _to_gb(n_bytes):

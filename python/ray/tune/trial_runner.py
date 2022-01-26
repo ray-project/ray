@@ -677,9 +677,11 @@ class TrialRunner:
                 next_trial is not None)
             if future_result.type == RayTrialExecutor.PG_READY:
                 self._on_pg_ready(next_trial)
-            elif future_result.type == RayTrialExecutor.TIMEOUT:
+            elif future_result.type == RayTrialExecutor.NO_RUNNING_TRIAL_TIMEOUT:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials())
+            elif future_result.type == RayTrialExecutor.PUNT:
+                pass
             else:
                 trial = future_result.trial
                 result = future_result.result
@@ -718,13 +720,14 @@ class TrialRunner:
 
             if self.is_finished():
                 self._server.shutdown()
+
+        self._reconcile_live_trials()
+
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self.get_trials())
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
-
-        self._reconcile_live_trials()
 
     def _on_pg_ready(self, next_trial: Optional[Trial]):
         def _start_trial(trial: Trial) -> bool:
@@ -1166,6 +1169,8 @@ class TrialRunner:
             logger.info(
                 "Trial %s: Attempting to restore "
                 "trial state from last checkpoint.", trial)
+            # TODO(xwjiang): For better consistency, consider not starting
+            #  trials here. Instead rely on requeuing the trial.
             started = self.trial_executor.start_trial(trial)
             if not started:
                 requeue_trial = True

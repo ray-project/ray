@@ -302,6 +302,13 @@ class PlacementGroupManager:
         self._cached_pgs: Dict[PlacementGroup, PlacementGroupFactory] = {}
 
         # Placement groups scheduled for delayed removal.
+        # This is used as a damper to filter out some high frequency change
+        # in resources request.
+        # Only PGs that have never been used go here.
+        # TODO(xwjiang): `self._pgs_for_removal` and `self._unstaged_xxx`
+        #  are really the same now. We should consolidate to using one.
+        #  Also `remove_placement_group` method should just be combined with
+        #  `unstage_unused_xxx`.
         self._pgs_for_removal: Dict[PlacementGroup, float] = {}
         self._removal_delay = TUNE_PLACEMENT_GROUP_REMOVAL_DELAY
 

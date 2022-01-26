@@ -14,7 +14,6 @@ from ray import tune
 from ray._private.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
 from ray.tune.callback import Callback
-from ray.tune.error import TuneError
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import Searcher
 from ray.tune.trial import Trial
@@ -230,7 +229,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
             local_dir=self.logdir,
             verbose=1)
 
-        with self.assertRaises(TuneError):
+        with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback()],

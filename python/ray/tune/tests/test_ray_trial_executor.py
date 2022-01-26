@@ -87,20 +87,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testStartStop(self):
-        trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.stop_trial(trial)
-
-    def testAsyncSave(self):
-        """Tests that saved checkpoint value not immediately set."""
-        trial = Trial("__fake")
+    def _simulate_trial_start(self, trial):
         trials = [trial]
         self.trial_executor.stage_and_update_status(trials)
         future_result = self.trial_executor.get_next_future_result(
@@ -109,11 +96,19 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertTrue(self.trial_executor.start_trial(trial))
         self.assertEqual(Trial.RUNNING, trial.status)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+    def _simulate_getting_result(self, trial):
+        while True:
+            future_result = self.trial_executor.get_next_future_result(
+                next_trial_exists=False)
+            if future_result.type == RayTrialExecutor.TRAINING_RESULT:
+                break
+        if isinstance(future_result.result, list):
+            for r in future_result.result:
+                trial.update_last_result(r)
+        else:
+            trial.update_last_result(future_result.result)
 
+    def _simulate_saving(self, trial):
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
@@ -122,29 +117,31 @@ class RayTrialExecutorTest(unittest.TestCase):
         assert future_result.type == RayTrialExecutor.SAVING_RESULT
         self.process_trial_save(trial, future_result.result)
         self.assertEqual(checkpoint, trial.checkpoint)
+
+    def testStartStop(self):
+        trial = Trial("__fake")
+        self._simulate_trial_start(trial)
+        self.trial_executor.stop_trial(trial)
+
+    def testAsyncSave(self):
+        """Tests that saved checkpoint value not immediately set."""
+        trial = Trial("__fake")
+        self._simulate_trial_start(trial)
+
+        self._simulate_getting_result(trial)
+
+        self._simulate_saving(trial)
+
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
     def testSaveRestore(self):
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+        self._simulate_getting_result(trial)
 
-        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.SAVING_RESULT
-        self.process_trial_save(trial, future_result.result)
+        self._simulate_saving(trial)
 
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
@@ -153,23 +150,12 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
 
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -177,35 +163,16 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testSavePauseResumeErrorRestore(self):
         """Tests that pause checkpoint does not replace restore checkpoint."""
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
+        self._simulate_trial_start(trial)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+        self._simulate_getting_result(trial)
 
         # Save
-        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.assertEqual(checkpoint.storage, Checkpoint.PERSISTENT)
-
-        # Process save result (simulates trial runner)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.SAVING_RESULT
-        self.process_trial_save(trial, future_result.result)
+        self._simulate_saving(trial)
 
         # Train
         self.trial_executor.continue_training(trial)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+        self._simulate_getting_result(trial)
 
         # Pause
         self.trial_executor.pause_trial(trial)
@@ -213,12 +180,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
 
         # Resume
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
         # Error
         trial.set_status(Trial.ERROR)
@@ -238,27 +200,14 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testPauseResume2(self):
         """Tests that pausing works for trials being processed."""
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
+        self._simulate_getting_result(trial)
 
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
 
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
@@ -273,34 +222,17 @@ class RayTrialExecutorTest(unittest.TestCase):
         base = max(result_buffer_length, 1)
 
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+        self._simulate_getting_result(trial)
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
 
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
 
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
 
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=False)
-        assert future_result.type == RayTrialExecutor.TRAINING_RESULT
-        trial.last_result = future_result.result
+        self._simulate_getting_result(trial)
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base * 2)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -317,12 +249,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""
         trial = Trial("__fake")
-        trials = [trial]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
+        self._simulate_trial_start(trial)
         exists = self.trial_executor.reset_trial(trial, {}, "modified_mock")
         self.assertEqual(exists, False)
         self.assertEqual(Trial.RUNNING, trial.status)
@@ -345,11 +272,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             },
         }, "grid_search")
         trial = trials[0]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
+        self._simulate_trial_start(trial)
         exists = self.trial_executor.reset_trial(trial, {"hi": 1},
                                                  "modified_mock")
         self.assertEqual(exists, True)
@@ -382,12 +305,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             },
         }, "grid_search")
         trial = trials[0]
-        self.trial_executor.stage_and_update_status(trials)
-        future_result = self.trial_executor.get_next_future_result(
-            next_trial_exists=True)
-        assert future_result.type == RayTrialExecutor.PG_READY
-        self.assertTrue(self.trial_executor.start_trial(trial))
-        self.assertEqual(Trial.RUNNING, trial.status)
+        self._simulate_trial_start(trial)
         time.sleep(5)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)
@@ -543,8 +461,8 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testForceTrialCleanup(self):
-        self.skipTest("Skipping as force trial cleanup is not applicable"
+    def testTrialCleanup(self):
+        self.skipTest("Skipping as trial cleanup is not applicable"
                       " for local mode.")
 
 

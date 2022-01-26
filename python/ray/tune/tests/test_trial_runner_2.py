@@ -5,7 +5,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 
-from ray.tune import TuneError
+from ray.tune import TuneError, Callback
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.result import DONE
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
@@ -86,12 +86,9 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch save
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process save
-        runner.step()  # Error
+        while not runner.is_finished():
+            runner.step()
+
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 1)
         self.assertEqual(len(searchalg.errored_trials), 1)
@@ -104,6 +101,9 @@ class TrialRunnerTest2(unittest.TestCase):
         runner = TrialRunner(searchalg, scheduler=scheduler)
 
         kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
             "max_failures": 1,
@@ -114,18 +114,15 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch save
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process save
-        runner.step()  # Error (transient), dispatch restore
-        self.assertEqual(trials[0].status, Trial.RUNNING)
+        while not runner.is_finished():
+            runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[0].num_failures, 1)
-        runner.step()  # Process restore
-        self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(len(searchalg.errored_trials), 0)
-        self.assertEqual(len(scheduler.errored_trials), 0)
+        # Notice this is 1 since during recovery, the previously errored trial
+        # is "requeued". This will call scheduler.on_trial_error.
+        # Searcher.on_trial_error is, however, not called in this process.
+        self.assertEqual(len(scheduler.errored_trials), 1)
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -142,20 +139,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch save
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process save
-        runner.step()  # Error (transient), dispatch restore
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[0].num_failures, 1)
-        runner.step()  # Process restore
-        runner.step()  # Error (transient), dispatch restore
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[0].num_failures, 2)
-        runner.step()  # Process restore
-        runner.step()  # Error (terminal)
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
 
@@ -175,13 +160,12 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch save
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process save
-        runner.step()  # Error
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
+        # Somehow with `fail_fast=True`, if one errors out, the others are
+        # then stopped with `TERMINATED` status.
+        self.assertEqual(trials[1].status, Trial.TERMINATED)
         self.assertRaises(TuneError, lambda: runner.step())
 
     def testFailFastRaise(self):
@@ -200,13 +184,14 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch save
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process save
         with self.assertRaises(Exception):
-            runner.step()  # Error
+            while not runner.is_finished():
+                runner.step()
+
+        # Not critical checks. Only to showcase the difference
+        # with none raise type FailFast.
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -243,35 +228,63 @@ class TrialRunnerTest2(unittest.TestCase):
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner()
+
+        # Helper class to control runner.step() count.
+        class TrialResultObserver(Callback):
+            def __init__(self):
+                self._counter = 0
+                self._last_counter = 0
+
+            def reset(self):
+                self._last_counter = self._counter
+
+            def just_received_a_result(self):
+                if self._last_counter == self._counter:
+                    return False
+                else:
+                    self._last_counter = self._counter
+                    return True
+
+            def on_trial_result(self, **kwargs):
+                self._counter += 1
+
+        observer = TrialResultObserver()
+        runner = TrialRunner(callbacks=[observer])
         kwargs = {
+            "stopping_criterion": {
+                "training_iteration": 2
+            },
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
-        runner.trial_executor.stop_trial(trials[0])
-        kwargs["restore_path"] = trials[0].checkpoint.value
+        while not runner.is_finished():
+            runner.step()
 
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+        kwargs["restore_path"] = trials[0].checkpoint.value
+        kwargs.pop("stopping_criterion")
         kwargs.pop("checkpoint_freq")  # No checkpointing for next trial
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial, dispatch restore
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-        runner.step()  # Process restore
-        runner.step()  # Process result
+        observer.reset()
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        runner.step()  # Process restore
+
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
+
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
@@ -290,12 +303,9 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result
-        runner.step()  # Process result, dispatch save
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(trials[0].last_result[DONE], True)
-        runner.step()  # Process save
         self.assertEqual(trials[0].has_checkpoint(), True)
 
     def testResultDone(self):
@@ -311,11 +321,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()
-        self.assertNotEqual(trials[0].last_result[DONE], True)
-        runner.step()
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(trials[0].last_result[DONE], True)
 
     def testPauseThenResume(self):
