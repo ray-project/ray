@@ -601,18 +601,11 @@ def init_log_pubsub():
     return s
 
 
-def get_log_message(subscriber,
-                    num: int = 1e6,
-                    timeout: float = 20,
-                    job_id: Optional[str] = None,
-                    matcher=None) -> List[str]:
-    """Gets log lines through GCS / Redis subscriber.
-
-    Returns maximum `num` lines of log messages, within `timeout`.
-
-    If `job_id` or `match` is specified, only returns log lines from `job_id`
-    or when `matcher` is true.
-    """
+def get_log_data(subscriber,
+                 num: int = 1e6,
+                 timeout: float = 20,
+                 job_id: Optional[str] = None,
+                 matcher=None) -> List[str]:
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
@@ -632,9 +625,34 @@ def get_log_message(subscriber,
             continue
         if matcher and all(not matcher(line) for line in logs_data["lines"]):
             continue
-        msgs.extend(logs_data["lines"])
-
+        msgs.append(logs_data)
     return msgs
+
+
+def get_log_message(subscriber,
+                    num: int = 1e6,
+                    timeout: float = 20,
+                    job_id: Optional[str] = None,
+                    matcher=None) -> List[str]:
+    """Gets log lines through GCS / Redis subscriber.
+
+    Returns maximum `num` lines of log messages, within `timeout`.
+
+    If `job_id` or `match` is specified, only returns log lines from `job_id`
+    or when `matcher` is true.
+    """
+    msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
+    return [msg["lines"] for msg in msgs]
+
+
+def get_log_sources(subscriber,
+                    num: int = 1e6,
+                    timeout: float = 20,
+                    job_id: Optional[str] = None,
+                    matcher=None):
+    """Get the source of all log messages"""
+    msgs = get_log_data(subscriber, num, timeout, job_id, matcher)
+    return {msg["pid"] for msg in msgs}
 
 
 def get_log_batch(subscriber,

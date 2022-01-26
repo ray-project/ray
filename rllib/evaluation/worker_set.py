@@ -5,18 +5,20 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
+from ray import data
 from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput, D4RLReader
+    ShuffledInput, D4RLReader, DatasetReader, DatasetWriter
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import EnvCreator, EnvType, PolicyID, \
+    TrainerConfigDict
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -37,7 +39,7 @@ class WorkerSet:
     def __init__(
             self,
             *,
-            env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
+            env_creator: Optional[EnvCreator] = None,
             validate_env: Optional[Callable[[EnvType], None]] = None,
             policy_class: Optional[Type[Policy]] = None,
             trainer_config: Optional[TrainerConfigDict] = None,
@@ -84,6 +86,15 @@ class WorkerSet:
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
+
+            if trainer_config["input"] == "dataset":
+                # Create the set of dataset readers to be shared by all the
+                # rollout workers.
+                self._ds, self._ds_shards = self._get_dataset_and_shards(
+                    trainer_config, num_workers, local_worker)
+            else:
+                self._ds = None
+                self._ds_shards = None
 
             # Create a number of @ray.remote workers.
             self._remote_workers = []
@@ -397,11 +408,47 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
+    def _get_dataset_and_shards(self, config: TrainerConfigDict,
+                                num_workers: int, local_worker: bool)\
+            -> (ray.data.dataset.Dataset,
+                List[ray.data.dataset.Dataset]):
+        assert config["input"] == "dataset"
+        assert "input_config" in config, (
+            "Must specify input_config dict if using Dataset input.")
+
+        input_config = config["input_config"]
+        if (not input_config.get("format", None)
+                or not input_config.get("path", None)):
+            raise ValueError(
+                "Must specify format and path via input_config key"
+                " when using Ray dataset input.")
+
+        format = input_config["format"]
+        path = input_config["path"]
+        if format == "json":
+            dataset = data.read_json(path)
+        elif format == "parquet":
+            dataset = data.read_parquet(path)
+        else:
+            raise ValueError("Un-supported Ray dataset format: ", format)
+
+        # Local worker will be responsible for sampling.
+        if local_worker and num_workers == 0:
+            # Dataset is the only shard we need.
+            return dataset, [dataset]
+        # Remote workers are responsible for sampling:
+        else:
+            # Each remote worker gets 1 shard.
+            # The first None shard is for the local worker, which
+            # shouldn't be doing rollout work anyways.
+            return dataset, [None] + dataset.repartition(
+                num_blocks=num_workers, shuffle=False).split(num_workers)
+
     def _make_worker(
             self,
             *,
             cls: Callable,
-            env_creator: Callable[[EnvContext], EnvType],
+            env_creator: EnvCreator,
             validate_env: Optional[Callable[[EnvType], None]],
             policy_cls: Type[Policy],
             worker_index: int,
@@ -433,6 +480,12 @@ class WorkerSet:
             input_creator = config["input"]
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
+        elif config["input"] == "dataset":
+            # Input dataset shards should have already been prepared.
+            # We just need to take the proper shard here.
+            input_creator = (
+                lambda ioctx: DatasetReader(ioctx, self._ds_shards[worker_index])
+            )
         elif isinstance(config["input"], dict):
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
@@ -455,6 +508,10 @@ class WorkerSet:
             output_creator = config["output"]
         elif config["output"] is None:
             output_creator = (lambda ioctx: NoopOutput())
+        elif config["output"] == "dataset":
+            output_creator = (lambda ioctx: DatasetWriter(
+                ioctx,
+                compress_columns=config["output_compress_columns"]))
         elif config["output"] == "logdir":
             output_creator = (lambda ioctx: JsonWriter(
                 ioctx.log_dir,

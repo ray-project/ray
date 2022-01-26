@@ -2148,8 +2148,8 @@ cdef class CoreWorker:
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
-            job_id.native(), error_type.encode("ascii"),
-            error_message.encode("ascii"), timestamp))
+            job_id.native(), error_type.encode("utf-8"),
+            error_message.encode("utf-8"), timestamp))
 
     def get_job_config(self):
         cdef CJobConfig c_job_config

@@ -10,41 +10,37 @@ Setup the driver
 
 We need to set :ref:`code_search_path` in your driver.
 
-.. tabs::
-
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
       ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/code"))
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: bash
 
-      java -classpath <classpath> \
-        -Dray.address=<address> \
-        -Dray.job.code-search-path=/path/to/code/ \
-        <classname> <args>
+        java -classpath <classpath> \
+            -Dray.address=<address> \
+            -Dray.job.code-search-path=/path/to/code/ \
+            <classname> <args>
 
 You may want to include multiple directories to load both Python and Java code for workers, if they are placed in different directories.
 
-.. tabs::
-
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
       ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/jars:/path/to/pys"))
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: bash
 
-      java -classpath <classpath> \
-        -Dray.address=<address> \
-        -Dray.job.code-search-path=/path/to/jars:/path/to/pys \
-        <classname> <args>
+        java -classpath <classpath> \
+            -Dray.address=<address> \
+            -Dray.job.code-search-path=/path/to/jars:/path/to/pys \
+            <classname> <args>
 
 Python calling Java
 -------------------

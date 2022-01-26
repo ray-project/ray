@@ -33,6 +33,9 @@ def test_raydp_roundtrip(spark_on_ray_small):
     assert values == rows_2
 
 
+@pytest.mark.skipif(
+    ray._private.gcs_utils.use_gcs_for_bootstrap(),
+    reason="raydp need to be updated to work without redis.")
 def test_raydp_to_spark(spark_on_ray_small):
     spark = spark_on_ray_small
     n = 5

@@ -62,7 +62,7 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         subprocess.check_call(["ray", "stop", "--force"])
-        fake_config = tempfile.mktemp()
+        _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
             f.write(json.dumps(self._config))
         cmd = [

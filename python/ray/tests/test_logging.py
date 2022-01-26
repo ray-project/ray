@@ -9,7 +9,8 @@ import pytest
 import ray
 from ray import ray_constants
 from ray._private.test_utils import (get_log_batch, wait_for_condition,
-                                     init_log_pubsub, get_log_message)
+                                     init_log_pubsub, get_log_message,
+                                     run_string_as_driver)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -273,33 +274,78 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     assert msgs.pop() == "done"
 
 
-def test_log_redirect_to_stdout(shutdown_only):
-    os.environ["GLOG_logtostderr"] = "1"
-    ray.init()
+def test_log_redirect_to_stderr(shutdown_only, capfd):
 
-    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
-    session_path = Path(session_dir)
-    log_dir_path = session_path / "logs"
+    log_components = {
+        ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
+        ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "Dashboard agent grpc address",
+        ray_constants.PROCESS_TYPE_GCS_SERVER: "Loading job table data",
+        # No log monitor output if all components are writing to stderr.
+        ray_constants.PROCESS_TYPE_LOG_MONITOR: "",
+        ray_constants.PROCESS_TYPE_MONITOR: "Starting monitor using ray installation",
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER: "worker server started",
+        ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER: "driver server started",
+        # TODO(Clark): Add coverage for Ray Client.
+        # ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "Starting Ray Client server",
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER: "",
+        ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
+        # No reaper process run (kernel fate-sharing).
+        ray_constants.PROCESS_TYPE_REAPER: "",
+        ray_constants.PROCESS_TYPE_REDIS_SERVER: (
+            "oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo"),
+        # No reporter process run.
+        ray_constants.PROCESS_TYPE_REPORTER: "",
+        # No web UI process run.
+        ray_constants.PROCESS_TYPE_WEB_UI: "",
+        # Unused.
+        ray_constants.PROCESS_TYPE_WORKER: "",
+    }
 
-    log_components = [
-        ray_constants.PROCESS_TYPE_RAYLET,
-        ray_constants.PROCESS_TYPE_GCS_SERVER,
-    ]
+    script = """
+import os
+from pathlib import Path
 
-    # Run the basic workload.
-    @ray.remote
-    def f():
-        for i in range(10):
-            print(f"test {i}")
+import ray
 
-    ray.get(f.remote())
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init()
 
-    paths = list(log_dir_path.iterdir())
+session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+session_path = Path(session_dir)
+log_dir_path = session_path / "logs"
 
-    for component in log_components:
-        for path in paths:
-            filename = path.stem
-            assert component not in filename
+# Run the basic workload.
+@ray.remote
+def f():
+    for i in range(10):
+        print(f"test {{i}}")
+
+ray.get(f.remote())
+
+log_component_names = {}
+
+# Confirm that no log files are created for any of the components.
+paths = list(path.stem for path in log_dir_path.iterdir())
+assert set(log_component_names).isdisjoint(set(paths)), paths
+""".format(str(list(log_components.keys())))
+    stderr = run_string_as_driver(script)
+
+    # Make sure that the expected startup log records for each of the
+    # components appears in the stderr stream.
+    # stderr = capfd.readouterr().err
+    for component, canonical_record in log_components.items():
+        if not canonical_record:
+            # Process not run or doesn't generate logs; skip.
+            continue
+        assert canonical_record in stderr, stderr
+        if component == ray_constants.PROCESS_TYPE_REDIS_SERVER:
+            # Redis doesn't expose hooks for custom log formats, so we aren't able to
+            # inject the Redis server component name into the log records.
+            continue
+        # NOTE: We do a prefix match instead of including the enclosing right
+        # parentheses since some components, like the core driver and worker, add a
+        # unique ID suffix.
+        assert f"({component}" in stderr, stderr
 
 
 def test_segfault_stack_trace(ray_start_cluster, capsys):
