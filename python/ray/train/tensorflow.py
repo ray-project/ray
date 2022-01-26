@@ -11,6 +11,8 @@ from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
 
+import tensorflow as tf
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,3 +81,19 @@ class TensorflowBackend(Backend):
             worker_group.execute(shutdown_session)
         worker_group.add_workers(len(failed_worker_indexes))
         self.on_start(worker_group, backend_config)
+
+
+def prepare_dataset_shard(tf_dataset_shard: tf.data.Dataset):
+    """ A utility function that disables Tensorflow autosharding
+    since the dataset has already been sharded.
+
+    Args:
+        tf_dataset_shard (tf.data.Dataset): A TensorFlow Dataset.
+
+    Returns:
+        A TensorFlow Dataset with autosharding turned off.
+    """
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = \
+        tf.data.experimental.AutoShardPolicy.OFF
+    return tf_dataset_shard.with_options(options)
