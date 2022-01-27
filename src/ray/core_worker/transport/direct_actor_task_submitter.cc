@@ -89,33 +89,28 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   }
 
   if (task_queued) {
-    io_service_.post(
-        [task_spec, send_pos, this]() mutable {
-          // We must release the lock before resolving the task dependencies since
-          // the callback may get called in the same call stack.
-          auto actor_id = task_spec.ActorId();
-          resolver_.ResolveDependencies(
-              task_spec, [this, send_pos, actor_id](Status status) {
-                absl::MutexLock lock(&mu_);
-                auto queue = client_queues_.find(actor_id);
-                RAY_CHECK(queue != client_queues_.end());
-                auto &actor_submit_queue = queue->second.actor_submit_queue;
-                // Only dispatch tasks if the submitted task is still queued. The task
-                // may have been dequeued if the actor has since failed.
-                if (actor_submit_queue->Contains(send_pos)) {
-                  if (status.ok()) {
-                    actor_submit_queue->MarkDependencyResolved(send_pos);
-                    SendPendingTasks(actor_id);
-                  } else {
-                    auto task_id = actor_submit_queue->Get(send_pos).first.TaskId();
-                    actor_submit_queue->MarkDependencyFailed(send_pos);
-                    task_finisher_.FailOrRetryPendingTask(
-                        task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
-                  }
-                }
-              });
-        },
-        "CoreWorkerDirectActorTaskSubmitter::SubmitTask");
+    // We must release the lock before resolving the task dependencies since
+    // the callback may get called in the same call stack.
+    resolver_.ResolveDependencies(
+        task_spec, [this, send_pos, actor_id](Status status) {
+          absl::MutexLock lock(&mu_);
+          auto queue = client_queues_.find(actor_id);
+          RAY_CHECK(queue != client_queues_.end());
+          auto &actor_submit_queue = queue->second.actor_submit_queue;
+          // Only dispatch tasks if the submitted task is still queued. The task
+          // may have been dequeued if the actor has since failed.
+          if (actor_submit_queue->Contains(send_pos)) {
+            if (status.ok()) {
+              actor_submit_queue->MarkDependencyResolved(send_pos);
+              SendPendingTasks(actor_id);
+            } else {
+              auto task_id = actor_submit_queue->Get(send_pos).first.TaskId();
+              actor_submit_queue->MarkDependencyFailed(send_pos);
+              task_finisher_.FailOrRetryPendingTask(
+                  task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+            }
+          }
+    });
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_.MarkTaskCanceled(task_id);

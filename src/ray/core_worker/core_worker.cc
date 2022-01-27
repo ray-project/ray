@@ -1833,7 +1833,11 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
+    io_service_.post(
+        [this, task_spec]() {
+          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
+        },
+        "CoreWorker.SubmitActorTask");
   }
   return {std::move(returned_refs)};
 }
