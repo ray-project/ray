@@ -1,21 +1,22 @@
 """ Example of using LinUCB on a recommendation environment with parametric
     actions. """
 
+from matplotlib import pyplot as plt
 import os
+import pandas as pd
 import time
 
-from matplotlib import pyplot as plt
-import pandas as pd
-
 from ray import tune
-from ray.rllib.contrib.bandits.agents.lin_ucb import UCB_CONFIG
-from ray.rllib.contrib.bandits.envs import ParametricItemRecoEnv
+from ray.rllib.examples.env.bandit_envs_recommender_system import \
+    ParametricItemRecoEnv
 
 if __name__ == "__main__":
     # Temp fix to avoid OMP conflict
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
-    UCB_CONFIG["env"] = ParametricItemRecoEnv
+    config = {
+        "env": ParametricItemRecoEnv,
+    }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
@@ -25,8 +26,8 @@ if __name__ == "__main__":
 
     start_time = time.time()
     analysis = tune.run(
-        "contrib/LinUCB",
-        config=UCB_CONFIG,
+        "BanditLinUCB",
+        config=config,
         stop={"training_iteration": training_iterations},
         num_samples=2,
         checkpoint_at_end=False)
