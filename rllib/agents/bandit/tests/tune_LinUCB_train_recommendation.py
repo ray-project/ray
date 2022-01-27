@@ -24,7 +24,7 @@ if __name__ == "__main__":
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 100
+    training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
