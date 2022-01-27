@@ -1433,7 +1433,7 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
 }
 
 TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
-  const NodeResources &node_resources = scheduler_->GetLocalNodeResources();
+  const NodeResources &node_resources = scheduler_->GetLocalNodeResources(id_.Binary());
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
 

@@ -51,6 +51,7 @@ class ClusterResourceSchedulerInterface {
                               const std::string &resource_name) = 0;
 
   /// Return local resources in human-readable string form.
-  virtual std::string GetLocalResourceViewString() const = 0;
+  virtual std::string GetNodeResourceViewString(
+      const std::string &node_id_string) const = 0;
 };
 }  // namespace ray

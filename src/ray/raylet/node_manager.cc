@@ -760,7 +760,7 @@ void NodeManager::WarnResourceDeadlock() {
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << "\n"
         << "Available resources on this node: "
-        << cluster_resource_scheduler_->GetLocalResourceViewString()
+        << cluster_resource_scheduler_->GetNodeResourceViewString(self_node_id_.Binary())
         << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
@@ -1593,7 +1593,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
                      << " actor_id = " << actor_id
                      << ", normal_task_resources = " << normal_task_resources.ToString()
                      << ", local_resoruce_view = "
-                     << cluster_resource_scheduler_->GetLocalResourceViewString();
+                     << cluster_resource_scheduler_->GetNodeResourceViewString(
+                            self_node_id_.Binary());
       auto resources_data = reply->mutable_resources_data();
       resources_data->set_node_id(self_node_id_.Binary());
       resources_data->set_resources_normal_task_changed(true);

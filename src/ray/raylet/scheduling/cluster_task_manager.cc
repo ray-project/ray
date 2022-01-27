@@ -1500,8 +1500,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
 
 bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
-  return cluster_resource_scheduler_->IsLocallySchedulable(
-      spec.GetRequiredResources().GetResourceMap());
+  return cluster_resource_scheduler_->IsSchedulableOnNode(
+      self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
