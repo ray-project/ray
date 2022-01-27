@@ -178,6 +178,10 @@ LightGBM is a high-performance gradient boosting library for classification and 
     :class: inline-figure
     :height: 30
 
+.. |flower| image:: ../images/flower.png
+    :class: inline-figure
+    :height: 30
+
 .. |mars| image:: ../images/mars.png
     :class: inline-figure
     :height: 30
