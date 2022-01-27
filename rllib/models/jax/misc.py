@@ -38,7 +38,7 @@ class SlimFC:
 
         # By default, use Glorot unform initializer.
         if initializer is None:
-            initializer = flax.nn.initializers.xavier_uniform()
+            initializer = nn.initializers.xavier_uniform()
 
         self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
         _, self.prng_key = jax.random.split(self.prng_key)
