@@ -488,14 +488,11 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
-  return false;
-  /*
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   return it->second.max_pending_calls > 0 &&
          it->second.cur_pending_calls >= it->second.max_pending_calls;
-  */
 }
 
 std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
