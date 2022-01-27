@@ -26,6 +26,17 @@ def job_manager(shared_ray_instance):
     yield JobManager()
 
 
+@pytest.fixture
+def change_ray_address():
+    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+
+    prev_address = os.environ.get("RAY_ADDRESS")
+    os.environ["RAY_ADDRESS"] = f"http://{ip}:{port}"
+    yield
+    os.environ["RAY_ADDRESS"] = prev_address
+
+
 def _driver_script_path(file_name: str) -> str:
     return os.path.join(
         os.path.dirname(__file__), "subprocess_driver_scripts", file_name)
@@ -574,6 +585,25 @@ while True:
     wait_for_condition(lambda: "STREAMED" in job_manager.get_job_logs(job_id))
 
     job_manager.stop_job(job_id)
+
+
+def test_redis_address(job_manager, change_ray_address):
+    """Ensure we always use redis address in job manager  even though ray
+    cluster might be started with http://ip:{dashboard_port} from previous
+    runs.
+    """
+    print_ray_address_cmd = ("python -c\""
+                             "import os;"
+                             "import ray;"
+                             "ray.init();"
+                             "print('SUCCESS!');"
+                             "\"")
+
+    job_id = job_manager.submit_job(entrypoint=print_ray_address_cmd)
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+    assert "SUCCESS!" in job_manager.get_job_logs(job_id)
 
 
 if __name__ == "__main__":
