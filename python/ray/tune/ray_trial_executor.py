@@ -363,8 +363,6 @@ class RayTrialExecutor(TrialExecutor):
             self._staged_trials.remove(trial)
 
         if not trial.is_restoring:
-            logger.info(
-                "=================start training!!====================")
             self._train(trial)
         return True
 

@@ -420,7 +420,6 @@ class PlacementGroupManager:
         else:
             # This creates the placement group
             pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
-            logger.info(f"creating pg {pg.ready()} into staging futures")
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
@@ -447,7 +446,6 @@ class PlacementGroupManager:
                 self.handle_ready_future(ready_fut)
 
     def handle_ready_future(self, ready_fut):
-        logger.info(f"popping {ready_fut}")
         ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
 
         self._staging[ready_pgf].remove(ready_pg)
