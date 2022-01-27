@@ -15,8 +15,6 @@ import traceback
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 # Ray modules
-from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.node
@@ -56,7 +54,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray._private.function_manager import FunctionActorManager
+from ray._private.function_manager import FunctionActorManager, \
+    make_function_table_key
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
@@ -390,31 +389,24 @@ class Worker:
 
             function_to_run_id = hashlib.shake_128(pickled_function).digest(
                 ray_constants.ID_SIZE)
-            key = b"FunctionsToRun:" + function_to_run_id
+            key = make_function_table_key(
+                b"FunctionsToRun", self.current_job_id, function_to_run_id)
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
-            # Check if the function has already been put into redis.
-            function_exported = self.gcs_client.internal_kv_put(
-                b"Lock:" + key, b"1", False,
-                ray_constants.KV_NAMESPACE_FUNCTION_TABLE) == 0
-            if function_exported is True:
-                # In this case, the function has already been exported, so
-                # we don't need to export it again.
-                return
 
             check_oversized_function(pickled_function, function.__name__,
                                      "function", self)
 
             # Run the function on all workers.
-            self.gcs_client.internal_kv_put(
-                key,
-                pickle.dumps({
-                    "job_id": self.current_job_id.binary(),
-                    "function_id": function_to_run_id,
-                    "function": pickled_function,
-                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            self.function_actor_manager.export_key(key)
+            if self.gcs_client.internal_kv_put(
+                    key,
+                    pickle.dumps({
+                        "job_id": self.current_job_id.binary(),
+                        "function_id": function_to_run_id,
+                        "function": pickled_function,
+                    }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE) != 0:
+                self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
@@ -448,7 +440,14 @@ class Worker:
             # been received with no break in between. If this number grows
             # continually, then the worker is probably not able to process the
             # log messages as rapidly as they are coming in.
+            # This is meaningful only for Redis subscriber.
             num_consecutive_messages_received = 0
+            # Number of messages received from the last polling. When the batch
+            # size exceeds 100 and keeps increasing, the worker and the user
+            # probably will not be able to consume the log messages as rapidly
+            # as they are coming in.
+            # This is meaningful only for GCS subscriber.
+            last_polling_batch_size = 0
             job_id_hex = self.current_job_id.hex()
             while True:
                 # Exit if we received a signal that we should stop.
@@ -459,13 +458,23 @@ class Worker:
                     msg = subscriber.poll()
                 else:
                     msg = subscriber.get_message()
+                # GCS subscriber only returns None on unavailability.
+                # Redis subscriber returns None when there is no new message.
                 if msg is None:
                     num_consecutive_messages_received = 0
+                    last_polling_batch_size = 0
                     self.threads_stopped.wait(timeout=0.01)
                     continue
-                num_consecutive_messages_received += 1
-                if (num_consecutive_messages_received % 100 == 0
-                        and num_consecutive_messages_received > 0):
+
+                if self.gcs_pubsub_enabled:
+                    lagging = (100 <= last_polling_batch_size <
+                               subscriber.last_batch_size)
+                    last_polling_batch_size = subscriber.last_batch_size
+                else:
+                    num_consecutive_messages_received += 1
+                    lagging = (num_consecutive_messages_received % 100 == 0
+                               and num_consecutive_messages_received > 0)
+                if lagging:
                     logger.warning(
                         "The driver may not be able to keep up with the "
                         "stdout/stderr of the workers. To avoid forwarding "
@@ -1103,7 +1112,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """
     global autoscaler_log_fyi_printed
 
-    if not AUTOSCALER_EVENTS:
+    if not ray_constants.AUTOSCALER_EVENTS:
         return
 
     # Print out autoscaler events only, ignoring other messages.
@@ -1227,7 +1236,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
         if _internal_kv_initialized():
             # Get any autoscaler errors that occurred before the call to
             # subscribe.
-            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            error_message = _internal_kv_get(
+                ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
 
@@ -1282,7 +1292,8 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         if _internal_kv_initialized():
             # Get any autoscaler errors that occurred before the call to
             # subscribe.
-            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            error_message = _internal_kv_get(
+                ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
 
@@ -1504,13 +1515,18 @@ def connect(node,
         job_config.set_runtime_env(runtime_env)
 
     serialized_job_config = job_config.serialize()
+    if not node.should_redirect_logs():
+        # Logging to stderr, so give core worker empty logs directory.
+        logs_dir = ""
+    else:
+        logs_dir = node.get_logs_dir_path()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
-        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
-        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
-        driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port, runtime_env_hash,
-        worker_shim_pid, startup_token)
+        gcs_options, logs_dir, node.node_ip_address, node.node_manager_port,
+        node.raylet_ip_address, (mode == LOCAL_MODE), driver_name,
+        log_stdout_file_path, log_stderr_file_path, serialized_job_config,
+        node.metrics_agent_port, runtime_env_hash, worker_shim_pid,
+        startup_token)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

@@ -17,7 +17,7 @@ A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
         "rollout_fragment_length": 20,
-        "min_iter_time_s": 10,
+        "min_time_s_per_reporting": 10,
         "sample_async": False,
 
         # A2C supports microbatching, in which we accumulate gradients over

@@ -47,6 +47,22 @@ class TestAPPO(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
+    def test_appo_compilation_use_kl_loss(self):
+        """Test whether an APPOTrainer can be built with kl_loss enabled."""
+        config = ppo.appo.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 1
+        config["use_kl_loss"] = True
+        num_iterations = 2
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
+            trainer.stop()
+
     def test_appo_two_tf_optimizers(self):
         config = ppo.appo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
@@ -81,7 +97,7 @@ class TestAPPO(unittest.TestCase):
         config["timesteps_per_iteration"] = 20
         # 0 metrics reporting delay, this makes sure timestep,
         # which entropy coeff depends on, is updated after each worker rollout.
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         # Initial lr, doesn't really matter because of the schedule below.
         config["entropy_coeff"] = 0.01
         schedule = [

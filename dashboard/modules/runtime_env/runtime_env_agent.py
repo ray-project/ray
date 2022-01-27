@@ -253,3 +253,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
             self, server)
+
+    @staticmethod
+    def is_minimal_module():
+        return True

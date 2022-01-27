@@ -94,6 +94,9 @@ class AutoscalingConfigTest(unittest.TestCase):
                 if "fake_multi_node" in config_path:
                     # not supported with ray up
                     continue
+                if "kuberay" in config_path:
+                    # not supported with ray up
+                    continue
                 with open(config_path) as f:
                     config = yaml.safe_load(f)
                 config = prepare_config(config)
@@ -263,6 +266,16 @@ class AutoscalingConfigTest(unittest.TestCase):
             faulty_config[field] = "This field shouldn't be in here."
             with pytest.raises(ClickException):
                 prepare_config(faulty_config)
+
+        too_many_workers_config = copy.deepcopy(base_config)
+
+        # More workers requested than the three available ips.
+        too_many_workers_config["max_workers"] = 10
+        too_many_workers_config["min_workers"] = 10
+        prepared_config = prepare_config(too_many_workers_config)
+
+        # Check that worker config numbers were clipped to 3.
+        assert prepared_config == expected_prepared
 
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \

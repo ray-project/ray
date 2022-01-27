@@ -38,7 +38,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "target_network_update_freq": 500000,
         "timesteps_per_iteration": 25000,
         "worker_side_prioritization": True,
-        "min_iter_time_s": 30,
+        "min_time_s_per_reporting": 30,
     },
     _allow_unknown_configs=True,
 )
