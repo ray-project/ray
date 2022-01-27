@@ -56,7 +56,8 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
 )
-from ray._private.function_manager import FunctionActorManager
+from ray._private.function_manager import FunctionActorManager, \
+    make_function_table_key
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
@@ -390,8 +391,8 @@ class Worker:
 
             function_to_run_id = hashlib.shake_128(pickled_function).digest(
                 ray_constants.ID_SIZE)
-            key = b"FunctionsToRun:" + self.current_job_id.hex().encode(
-            ) + b":" + function_to_run_id
+            key = make_function_table_key(
+                b"FunctionsToRun", self.current_job_id, function_to_run_id)
             # First run the function on the driver.
             # We always run the task locally.
             function({"worker": self})
