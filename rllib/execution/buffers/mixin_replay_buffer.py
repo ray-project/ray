@@ -116,8 +116,8 @@ class MixInMultiAgentReplayBuffer:
 
         # Mix buffer's last added batches with older replayed batches.
         with self.replay_timer:
-            output_batches = self.last_added_batches[policy_id].copy()
-            self.last_added_batches[policy_id].clear()
+            output_batches = self.last_added_batches[policy_id]
+            self.last_added_batches[policy_id] = []
 
             # No replay desired -> Return here.
             if self.replay_ratio == 0.0:
