@@ -169,7 +169,7 @@ class MetaUpdate:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        self.workers.local_worker().foreach_trainable_policy(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()

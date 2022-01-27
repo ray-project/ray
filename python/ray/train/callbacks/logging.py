@@ -1,112 +1,90 @@
-import os
-from typing import Iterable, List, Optional, Dict, Set, Tuple, Union
-import abc
-import warnings
-import logging
-import numpy as np
 import json
+import logging
+import os
+import warnings
 from pathlib import Path
+from typing import List, Optional, Dict, Set, Tuple, Union
 
-from ray.util.debug import log_once
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.json import SafeFallbackEncoder
+import numpy as np
+
 from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor, \
+    ExcludedKeysResultsPreprocessor
+from ray.train.callbacks.results_preprocessors.preprocessor import \
+    SequentialResultsPreprocessor
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                  TIME_TOTAL_S, TIMESTAMP, PID,
                                  TRAIN_CHECKPOINT_SUBDIR)
+from ray.util.debug import log_once
+from ray.util.ml_utils.dict import flatten_dict
+from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
 
-class TrainingLogdirCallback(TrainingCallback, abc.ABC):
-    """Abstract Train callback class with logging directory."""
+class TrainCallbackLogdirManager():
+    """Sets up a logging directory for a callback.
 
-    def start_training(self, logdir: str, config: Dict, **info):
-        if self._logdir:
-            logdir_path = Path(self._logdir)
-        else:
-            logdir_path = Path(logdir)
+    The path of the ``logdir`` can be set during initialization. Otherwise, the
+    ``default_logdir`` will be used when ``setup_logdir`` is called.
 
-        if not logdir_path.is_dir():
-            raise ValueError(f"logdir '{logdir_path}' must be a directory.")
-
-        self._logdir_path = logdir_path
-
-    @property
-    def logdir(self) -> Optional[Path]:
-        """Path to currently used logging directory."""
-        if not hasattr(self, "_logdir_path"):
-            return Path(self._logdir)
-        return Path(self._logdir_path)
-
-
-class TrainingSingleFileLoggingCallback(TrainingLogdirCallback, abc.ABC):
-    """Abstract Train logging callback class.
+    ``setup_logdir`` is expected to be called from
+    ``TrainingCallback.start_training``, with a default ``logdir``.
 
     Args:
-        logdir (Optional[str]): Path to directory where the results file
-            should be. If None, will be set by the Trainer.
-        filename (Optional[str]): Filename in logdir to save results to.
-        workers_to_log (int|List[int]|None): Worker indices to log.
-            If None, will log all workers. By default, will log the
-            worker with index 0.
+        logdir (Optional[str|Path]): The path of the logdir to use.
+            If None is passed in, the logdir will use the ``default_logdir``
+            when ``setup_logdir`` is called.
+        create_logdir (bool): Whether to create the logdir if it does not
+            already exist.
+
+    Attributes:
+        logdir_path (Path): The path of the logdir. The default logdir will
+            not be available until ``setup_logdir`` is called.
     """
 
-    # Defining it like this ensures it will be overwritten
-    # in a subclass - otherwise an exception will be raised
-    _default_filename: Union[str, Path]
-
     def __init__(self,
-                 logdir: Optional[str] = None,
-                 filename: Optional[str] = None,
-                 workers_to_log: Optional[Union[int, List[int]]] = 0) -> None:
-        self._logdir = logdir
-        self._filename = filename
-        self._workers_to_log = self._validate_workers_to_log(workers_to_log)
-        self._log_path = None
+                 logdir: Optional[Union[str, Path]] = None,
+                 create_logdir: bool = True):
+        self._default_logdir = None
+        self._logdir = Path(logdir) if logdir else None
+        self._create_logdir = create_logdir
 
-    def _validate_workers_to_log(self, workers_to_log) -> List[int]:
-        if isinstance(workers_to_log, int):
-            workers_to_log = [workers_to_log]
+    def setup_logdir(self, default_logdir: str) -> Path:
+        """Sets up the logdir.
 
-        if workers_to_log is not None:
-            if not isinstance(workers_to_log, Iterable):
-                raise TypeError("workers_to_log must be an Iterable, got "
-                                f"{type(workers_to_log)}.")
-            if not all(isinstance(worker, int) for worker in workers_to_log):
-                raise TypeError(
-                    "All elements of workers_to_log must be integers.")
-            if len(workers_to_log) < 1:
-                raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
-        return workers_to_log
+        The directory will be created if it does not exist and
+         ``create_logdir`` is set to True.
 
-    def _create_log_path(self, logdir_path: Path, filename: Path) -> Path:
-        if not filename:
-            raise ValueError("filename cannot be None or empty.")
-        return logdir_path.joinpath(Path(filename))
+        Args:
+            default_logdir (str): The default logdir to use, only if the
+            ``TrainCallbackLogdirManager`` was not initialized with a ``logdir``.
 
-    def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        Returns:
+            The path of the logdir.
+        """
+        self._default_logdir = Path(default_logdir)
 
-        if not self._filename:
-            filename = self._default_filename
-        else:
-            filename = self._filename
+        if self._create_logdir:
+            self.logdir_path.mkdir(parents=True, exist_ok=True)
 
-        self._log_path = self._create_log_path(self.logdir, filename)
+        if not self.logdir_path.is_dir():
+            raise ValueError(
+                f"logdir '{self.logdir_path}' must be a directory.")
+
+        return self.logdir_path
 
     @property
-    def log_path(self) -> Optional[Path]:
-        """Path to the log file.
+    def logdir_path(self) -> Path:
+        if self._logdir:
+            return self._logdir
+        if self._default_logdir:
+            return self._default_logdir
+        raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
-        Will be None before `start_training` is called for the first time.
-        """
-        return self._log_path
 
-
-class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
+class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
 
     Args:
@@ -120,64 +98,40 @@ class JsonLoggerCallback(TrainingSingleFileLoggingCallback):
 
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
+    def __init__(self,
+                 logdir: Optional[str] = None,
+                 filename: Optional[str] = None,
+                 workers_to_log: Optional[Union[int, List[int]]] = 0):
+        self._filename = filename
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self.results_preprocessor = IndexedResultsPreprocessor(
+            indices=workers_to_log)
+
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         # Create a JSON file with an empty list
         # that will be latter appended to
-        with open(self._log_path, "w") as f:
+        with open(self.log_path, "w") as f:
             json.dump([], f, cls=SafeFallbackEncoder)
 
     def handle_result(self, results: List[Dict], **info):
-        if self._workers_to_log is None or results is None:
-            results_to_log = results
-        else:
-            results_to_log = [
-                result for i, result in enumerate(results)
-                if i in self._workers_to_log
-            ]
-        with open(self._log_path, "r+") as f:
+        with open(self.log_path, "r+") as f:
             loaded_results = json.load(f)
             f.seek(0)
-            json.dump(
-                loaded_results + [results_to_log], f, cls=SafeFallbackEncoder)
+            json.dump(loaded_results + [results], f, cls=SafeFallbackEncoder)
+
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path
+
+    @property
+    def log_path(self) -> Path:
+        filename = self._filename or JsonLoggerCallback._default_filename
+        return self.logdir.joinpath(filename)
 
 
-class TrainingSingleWorkerLoggingCallback(TrainingLogdirCallback, abc.ABC):
-    """Abstract Train logging callback class.
-
-    Allows only for single-worker logging.
-
-    Args:
-        logdir (Optional[str]): Path to directory where the results file
-            should be. If None, will be set by the Trainer.
-        worker_to_log (int): Worker index to log. By default, will log the
-            worker with index 0.
-    """
-
-    def __init__(self, logdir: Optional[str] = None,
-                 worker_to_log: int = 0) -> None:
-        self._logdir = logdir
-        self._workers_to_log = self._validate_worker_to_log(worker_to_log)
-        self._log_path = None
-
-    def _validate_worker_to_log(self, worker_to_log) -> int:
-        if isinstance(worker_to_log, Iterable):
-            worker_to_log = list(worker_to_log)
-            if len(worker_to_log) > 1:
-                raise ValueError(
-                    f"{self.__class__.__name__} only supports logging "
-                    "from a single worker.")
-            elif len(worker_to_log) < 1:
-                raise ValueError(
-                    "At least one worker must be specified in workers_to_log.")
-            worker_to_log = worker_to_log[0]
-        if not isinstance(worker_to_log, int):
-            raise TypeError("workers_to_log must be an integer.")
-        return worker_to_log
-
-
-class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
+class MLflowLoggerCallback(TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
     MLflow (https://mlflow.org) Tracking is an open source library for
@@ -225,7 +179,9 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
                  save_artifact: bool = False,
                  logdir: Optional[str] = None,
                  worker_to_log: int = 0):
-        super().__init__(logdir=logdir, worker_to_log=worker_to_log)
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self.results_preprocessor = IndexedResultsPreprocessor(
+            indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
@@ -237,7 +193,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir, config=config, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         tracking_uri = self.tracking_uri or os.path.join(
             str(self.logdir), "mlruns")
@@ -255,7 +211,7 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util.log_params(params_to_log=config)
 
     def handle_result(self, results: List[Dict], **info):
-        result = results[self._workers_to_log]
+        result = results[0]
 
         self.mlflow_util.log_metrics(
             metrics_to_log=result, step=result[TRAINING_ITERATION])
@@ -266,8 +222,12 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
             self.mlflow_util.save_artifacts(dir=str(checkpoint_dir))
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path
 
-class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
+
+class TBXLoggerCallback(TrainingCallback):
     """Logs Train results in TensorboardX format.
 
     Args:
@@ -279,10 +239,21 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
 
     VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
                                         np.int32, np.int64)
-    IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
+    IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
+
+    def __init__(self, logdir: Optional[str] = None,
+                 worker_to_log: int = 0) -> None:
+        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+
+        results_preprocessors = [
+            IndexedResultsPreprocessor(indices=worker_to_log),
+            ExcludedKeysResultsPreprocessor(excluded_keys=self.IGNORE_KEYS)
+        ]
+        self.results_preprocessor = SequentialResultsPreprocessor(
+            results_preprocessors)
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir=logdir, **info)
+        self._logdir_manager.setup_logdir(default_logdir=logdir)
 
         try:
             from tensorboardX import SummaryWriter
@@ -292,12 +263,12 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
                     "pip install 'tensorboardX' to see TensorBoard files.")
             raise
 
-        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
+        self._file_writer = SummaryWriter(str(self.logdir), flush_secs=30)
 
     def handle_result(self, results: List[Dict], **info):
-        result = results[self._workers_to_log]
-        step = result[TRAINING_ITERATION]
-        result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}
+        result = results[0]
+        # Use TRAINING_ITERATION for step but remove it so it is not logged.
+        step = result.pop(TRAINING_ITERATION)
         flat_result = flatten_dict(result, delimiter="/")
         path = ["ray", "train"]
 
@@ -332,3 +303,7 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
 
     def finish_training(self, error: bool = False, **info):
         self._file_writer.close()
+
+    @property
+    def logdir(self) -> Path:
+        return self._logdir_manager.logdir_path

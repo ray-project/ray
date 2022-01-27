@@ -40,44 +40,17 @@ void NormalSchedulingQueue::Add(
     std::function<void(rpc::SendReplyCallback)> accept_request,
     std::function<void(rpc::SendReplyCallback)> reject_request,
     rpc::SendReplyCallback send_reply_callback, const std::string &concurrency_group_name,
-    const FunctionDescriptor &function_descriptor,
-    std::function<void(rpc::SendReplyCallback)> steal_request, TaskID task_id,
+    const FunctionDescriptor &function_descriptor, TaskID task_id,
     const std::vector<rpc::ObjectReference> &dependencies) {
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
   // Create a InboundRequest object for the new task, and add it to the queue.
 
-  pending_normal_tasks_.push_back(InboundRequest(
-      std::move(accept_request), std::move(reject_request), std::move(steal_request),
-      std::move(send_reply_callback), task_id, dependencies.size() > 0,
-      /*concurrency_group_name=*/"", function_descriptor));
-}
-
-/// Steal up to max_tasks tasks by removing them from the queue and responding to the
-/// owner.
-size_t NormalSchedulingQueue::Steal(rpc::StealTasksReply *reply) {
-  size_t tasks_stolen = 0;
-
-  absl::MutexLock lock(&mu_);
-
-  if (pending_normal_tasks_.size() <= 1) {
-    RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
-    return tasks_stolen;
-  }
-
-  size_t half = pending_normal_tasks_.size() / 2;
-
-  for (tasks_stolen = 0; tasks_stolen < half; tasks_stolen++) {
-    RAY_CHECK(!pending_normal_tasks_.empty());
-    InboundRequest tail = pending_normal_tasks_.back();
-    pending_normal_tasks_.pop_back();
-    int stolen_task_ids = reply->stolen_tasks_ids_size();
-    tail.Steal(reply);
-    RAY_CHECK(reply->stolen_tasks_ids_size() == stolen_task_ids + 1);
-  }
-
-  return tasks_stolen;
+  pending_normal_tasks_.push_back(
+      InboundRequest(std::move(accept_request), std::move(reject_request),
+                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
+                     /*concurrency_group_name=*/"", function_descriptor));
 }
 
 // Search for an InboundRequest associated with the task that we are trying to cancel.

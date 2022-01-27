@@ -14,32 +14,23 @@ import sys
 import pytest
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition
 
 
 def _test_task_and_actor(capsys):
     @ray.remote
     def f():
-        pass
+        return 1
 
-    with pytest.raises(RuntimeEnvSetupError):
-        ray.get(f.options(runtime_env={"pip": ["requests"]}).remote())
-
-    def stderr_checker():
-        captured = capsys.readouterr()
-        return "ray[default]" in captured.err
-
-    wait_for_condition(stderr_checker)
+    # with pytest.raises(RuntimeEnvSetupError):
+    assert ray.get(f.options(runtime_env={"pip": ["requests"]}).remote()) == 1
 
     @ray.remote
     class A:
         def task(self):
-            pass
+            return 1
 
-    A.options(runtime_env={"pip": ["requests"]}).remote()
-
-    wait_for_condition(stderr_checker)
+    a = A.options(runtime_env={"pip": ["requests"]}).remote()
+    assert ray.get(a.task.remote()) == 1
 
 
 @pytest.mark.skipif(
@@ -72,20 +63,13 @@ def test_task_actor(shutdown_only, capsys):
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.")
 def test_ray_init(shutdown_only, capsys):
-    with pytest.raises(RuntimeEnvSetupError):
-        ray.init(runtime_env={"pip": ["requests"]})
+    ray.init(runtime_env={"pip": ["requests"]})
 
-        @ray.remote
-        def f():
-            pass
+    @ray.remote
+    def f():
+        return 1
 
-        ray.get(f.remote())
-
-    def stderr_checker():
-        captured = capsys.readouterr()
-        return "ray[default]" in captured.err
-
-    wait_for_condition(stderr_checker)
+    assert ray.get(f.remote()) == 1
 
 
 @pytest.mark.skipif(
@@ -98,9 +82,7 @@ def test_ray_init(shutdown_only, capsys):
     ["ray start --head --ray-client-server-port 25552 --port 0"],
     indirect=True)
 def test_ray_client_init(call_ray_start):
-    with pytest.raises(ConnectionAbortedError) as excinfo:
-        ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
-    assert "ray[default]" in str(excinfo.value)
+    ray.init("ray://localhost:25552", runtime_env={"pip": ["requests"]})
 
 
 if __name__ == "__main__":

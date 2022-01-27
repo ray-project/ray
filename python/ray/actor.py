@@ -713,13 +713,15 @@ class ActorClass:
                     f"ray.get_actor('{name}', namespace='{namespace}')")
 
         if lifetime is None:
-            detached = False
+            detached = None
         elif lifetime == "detached":
             detached = True
+        elif lifetime == "non_detached":
+            detached = False
         else:
             raise ValueError(
-                "actor `lifetime` argument must be either `None` or 'detached'"
-            )
+                "actor `lifetime` argument must be one of 'detached', "
+                "'non_detached' and 'None'.")
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the

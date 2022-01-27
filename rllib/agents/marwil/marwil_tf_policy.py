@@ -96,10 +96,8 @@ class MARWILLoss:
     def __init__(self, policy: Policy, value_estimates: TensorType,
                  action_dist: ActionDistribution, train_batch: SampleBatch,
                  vf_loss_coeff: float, beta: float):
-
         # L = - A * log\pi_\theta(a|s)
         logprobs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
-
         if beta != 0.0:
             cumulative_rewards = train_batch[Postprocessing.ADVANTAGES]
             # Advantage Estimation.
@@ -143,7 +141,19 @@ class MARWILLoss:
             self.v_loss = tf.constant(0.0)
             exp_advs = 1.0
 
-        self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
+        # logprob loss alone tends to push action distributions to
+        # have very low entropy, resulting in worse performance for
+        # unfamiliar situations.
+        # A scaled logstd loss term encourages stochasticity, thus
+        # alleviate the problem to some extent.
+        logstd_coeff = policy.config["bc_logstd_coeff"]
+        if logstd_coeff > 0.0:
+            logstds = tf.reduce_sum(action_dist.log_std, axis=1)
+        else:
+            logstds = 0.0
+
+        self.p_loss = -1.0 * tf.reduce_mean(
+            exp_advs * (logprobs + logstd_coeff * logstds))
 
         self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
 

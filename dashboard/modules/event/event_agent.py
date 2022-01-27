@@ -15,7 +15,6 @@ from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
 
 
 class EventAgent(dashboard_utils.DashboardAgentModule):
@@ -90,3 +89,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
             source_types=event_consts.EVENT_AGENT_MONITOR_SOURCE_TYPES)
         # Start reporting events.
         await self.report_events()
+
+    @staticmethod
+    def is_minimal_module():
+        return False

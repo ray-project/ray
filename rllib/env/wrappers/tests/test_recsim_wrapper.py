@@ -24,7 +24,9 @@ class TestRecSimWrapper(unittest.TestCase):
         self.assertIsInstance(env.action_space, gym.spaces.Discrete)
         env.reset()
         action = env.action_space.sample()
-        env.step(action)
+        self.assertTrue(env.action_space.contains(action))
+        new_obs, _, _, _ = env.step(action)
+        self.assertTrue(env.observation_space.contains(new_obs))
 
     def test_double_action_space_conversion_raises_exception(self):
         env = InterestEvolutionRecSimEnv({

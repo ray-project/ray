@@ -113,9 +113,9 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
         return multi_action
 
 
-def rllib_gym_wrapper(recsim_gym_env: gym.Env,
-                      convert_to_discrete_action_space: bool = False
-                      ) -> gym.Env:
+def recsim_gym_wrapper(recsim_gym_env: gym.Env,
+                       convert_to_discrete_action_space: bool = False
+                       ) -> gym.Env:
     """Makes sure a RecSim gym.Env can ba handled by RLlib.
 
     In RecSim's observation spaces, the "doc" field is a dictionary keyed by
@@ -207,7 +207,7 @@ def make_recsim_env(
 
             # Fix observation space and - if necessary - convert to discrete
             # action space (from multi-discrete).
-            self.env = rllib_gym_wrapper(
+            self.env = recsim_gym_wrapper(
                 gym_env, env_ctx["convert_to_discrete_action_space"])
             self.observation_space = self.env.observation_space
             self.action_space = self.env.action_space

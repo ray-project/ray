@@ -136,7 +136,7 @@ class CheckpointManagerTest(unittest.TestCase):
 
         tmpfiles = []
         for i in range(3):
-            tmpfile = tempfile.mktemp()
+            _, tmpfile = tempfile.mkstemp()
             with open(tmpfile, "wt") as fp:
                 fp.write("")
             tmpfiles.append(tmpfile)

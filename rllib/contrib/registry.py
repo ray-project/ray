@@ -20,25 +20,23 @@ def _import_alphazero():
 
 
 def _import_bandit_lints():
-    from ray.rllib.agents.bandits.lin_ts import BanditLinTSTrainer, \
-        DEFAULT_CONFIG
+    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
 
     @Deprecated(old="contrib/LinTS", new="BanditLinTS", error=True)
     class _DeprecatedBandit(BanditLinTSTrainer):
         pass
 
-    return _DeprecatedBandit, DEFAULT_CONFIG
+    return _DeprecatedBandit, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.agents.bandits.lin_ucb import BanditLinUCBTrainer, \
-        DEFAULT_CONFIG
+    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
 
     @Deprecated(old="contrib/LinUCB", new="BanditLinUCB", error=True)
     class _DeprecatedBandit(BanditLinUCBTrainer):
         pass
 
-    return _DeprecatedBandit, DEFAULT_CONFIG
+    return _DeprecatedBandit, BanditLinUCBTrainer.get_default_config()
 
 
 CONTRIBUTED_ALGORITHMS = {

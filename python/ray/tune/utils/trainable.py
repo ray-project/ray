@@ -1,16 +1,14 @@
-from typing import Dict, Any
-
 import glob
 import inspect
 import io
 import logging
-import shutil
-
-import pandas as pd
-import ray.cloudpickle as pickle
 import os
+import pandas as pd
+import shutil
+from typing import Any, Dict, Union
 
 import ray
+import ray.cloudpickle as pickle
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
 from ray.util import placement_group
@@ -21,7 +19,22 @@ logger = logging.getLogger(__name__)
 
 class TrainableUtil:
     @staticmethod
-    def process_checkpoint(checkpoint, parent_dir, trainable_state):
+    def process_checkpoint(checkpoint: Union[Dict, str], parent_dir: str,
+                           trainable_state: Dict) -> str:
+        """Creates checkpoint file structure and writes metadata
+        under `parent_dir`.
+
+        The file structure could either look like:
+        - checkpoint_00000 (returned path)
+        -- .is_checkpoint
+        -- .tune_metadata
+        -- xxx.pkl (or whatever user specifies in their Trainable)
+        Or,
+        - checkpoint_00000
+        -- .is_checkpoint
+        -- checkpoint (returned path)
+        -- checkpoint.tune_metadata
+        """
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
             if not checkpoint.startswith(parent_dir):
@@ -99,6 +112,20 @@ class TrainableUtil:
                 "Checkpoint directory not found for {}".format(
                     checkpoint_path))
         return os.path.normpath(checkpoint_dir)
+
+    @staticmethod
+    def find_rel_checkpoint_dir(logdir, checkpoint_path):
+        """Returns the (relative) directory name of the checkpoint.
+
+        Note, the assumption here is `logdir` should be the prefix of
+        `checkpoint_path`.
+        For example, returns `checkpoint00000/`.
+        """
+        assert checkpoint_path.startswith(
+            logdir), "expecting `logdir` to be a prefix of `checkpoint_path`"
+        rel_path = os.path.relpath(checkpoint_path, logdir)
+        tokens = rel_path.split(os.sep)
+        return os.path.join(tokens[0], "")
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):

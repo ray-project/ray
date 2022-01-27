@@ -81,7 +81,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_a2c_fake_gpus",
+    name = "learning_tests_cartpole_a2c_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -126,15 +126,22 @@ py_test(
 
 # APPO
 py_test(
-    name = "learning_tests_cartpole_appo",
+    name = "learning_tests_cartpole_appo_no_vtrace",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/ppo/cartpole-appo.yaml",
-        "tuned_examples/ppo/cartpole-appo-vtrace.yaml"
-    ],
+    data = ["tuned_examples/ppo/cartpole-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_appo_vtrace",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/cartpole-appo-vtrace.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
@@ -151,7 +158,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_frozenlake_appo",
+    name = "learning_tests_frozenlake_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",
@@ -161,7 +168,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_appo_fake_gpus",
+    name = "learning_tests_cartpole_appo_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -208,7 +215,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_pendulum_ddpg_fake_gpus",
+    name = "learning_tests_pendulum_ddpg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
     size = "large",
@@ -263,7 +270,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_dqn_fake_gpus",
+    name = "learning_tests_cartpole_dqn_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -286,7 +293,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_simpleq_fake_gpus",
+    name = "learning_tests_cartpole_simpleq_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "medium",
@@ -318,7 +325,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_impala_fake_gpus",
+    name = "learning_tests_cartpole_impala_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -352,7 +359,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_pg_fake_gpus",
+    name = "learning_tests_cartpole_pg_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -403,7 +410,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_cartpole_ppo_fake_gpus",
+    name = "learning_tests_cartpole_ppo_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
     size = "large",
@@ -455,7 +462,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_stateless_cartpole_r2d2_fake_gpus",
+    name = "learning_tests_stateless_cartpole_r2d2_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "fake_gpus"],
     size = "large",
@@ -506,7 +513,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_pendulum_sac_fake_gpus",
+    name = "learning_tests_pendulum_sac_fake_gpus",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "fake_gpus"],
     size = "large",
@@ -586,31 +593,31 @@ py_test(
     name = "test_bandits",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/test_bandits.py"],
+    srcs = ["agents/bandit/tests/test_bandits.py"],
 )
 
 py_test(
-    name = "bandits/tests/lin_ts_train_wheel_env",
-    main = "bandits/tests/LinTS_train_wheel_env.py",
+    name = "agents/bandit/tests/lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/LinTS_train_wheel_env.py"],
+    srcs = ["agents/bandit/tests/LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "bandits/tests/tune_lin_ts_train_wheel_env",
-    main = "bandits/tests/tune_LinTS_train_wheel_env.py",
+    name = "bandit/tune_lin_ts_train_wheel_env",
+    main = "agents/bandit/tests/tune_LinTS_train_wheel_env.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/tune_LinTS_train_wheel_env.py"],
+    srcs = ["agents/bandit/tests/tune_LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "bandits/tests/tune_lin_ucb_train_recommendation",
-    main = "bandits/tests/tune_LinUCB_train_recommendation.py",
+    name = "bandit/tune_lin_ucb_train_recommendation",
+    main = "agents/bandit/tests/tune_LinUCB_train_recommendation.py",
     tags = ["team:ml", "trainers_dir"],
     size = "small",
-    srcs = ["agents/bandits/tests/tune_LinUCB_train_recommendation.py"],
+    srcs = ["agents/bandit/tests/tune_LinUCB_train_recommendation.py"],
 )
 
 # CQLTrainer
@@ -877,7 +884,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_time_s_per_reporting\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -960,7 +967,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_reporting\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -974,7 +981,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_time_s_per_reporting\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
         "--ray-num-cpus", "4",
         ]
 )

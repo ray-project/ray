@@ -39,8 +39,8 @@ DEFAULT_CONFIG = with_common_config({
     "entropy_coeff": 0.01,
     # Entropy coefficient schedule
     "entropy_coeff_schedule": None,
-    # Min time per iteration
-    "min_iter_time_s": 5,
+    # Min time per reporting
+    "min_time_s_per_reporting": 5,
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,

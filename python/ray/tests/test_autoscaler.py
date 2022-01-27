@@ -3304,6 +3304,17 @@ MemAvailable:   33000000 kB
         assert head_node_config["max_workers"] == 0
 
 
+def test_import():
+    """This test ensures that all the autoscaler imports work as expected to
+    prevent errors such as #19840.
+    """
+    import ray  # noqa
+    ray.autoscaler.sdk.request_resources  # noqa
+    import ray.autoscaler  # noqa
+    import ray.autoscaler.sdk  # noqa
+    from ray.autoscaler.sdk import request_resources  # noqa
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
