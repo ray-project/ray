@@ -2,7 +2,8 @@ import gym
 import logging
 import importlib.util
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
+    Union
 
 import ray
 from ray import data
@@ -15,10 +16,11 @@ from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import EnvCreator, EnvType, PolicyID, \
-    TrainerConfigDict
+    SampleBatchType, TrainerConfigDict
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -232,6 +234,18 @@ class WorkerSet:
                 w.__ray_terminate__.remote()
 
     @DeveloperAPI
+    def is_policy_to_train(self,
+                           policy_id: PolicyID,
+                           batch: Optional[SampleBatchType] = None) -> bool:
+        """Whether given PolicyID (optionally inside some batch) is trainable.
+        """
+        local_worker = self.local_worker()
+        if local_worker:
+            return local_worker.is_policy_to_train(policy_id, batch)
+        else:
+            raise NotImplementedError
+
+    @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
         """Calls the given function with each worker instance as arg.
 
@@ -308,21 +322,14 @@ class WorkerSet:
         return results
 
     @DeveloperAPI
-    def trainable_policies(self) -> List[PolicyID]:
-        """Returns the list of trainable policy ids."""
-        if self.local_worker() is not None:
-            return self.local_worker().policies_to_train
-        else:
-            raise NotImplementedError
-
-    @DeveloperAPI
-    def foreach_trainable_policy(
+    def foreach_policy_to_train(
             self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
             func: A function - taking a Policy and its ID - that is
-                called on all workers' Policies in `worker.policies_to_train`.
+                called on all workers' Policies, for which
+                `worker.is_policy_to_train()` returns True.
 
         Returns:
             List[any]: The list of n return values of all
@@ -330,12 +337,11 @@ class WorkerSet:
         """
         results = []
         if self.local_worker() is not None:
-            results = self.local_worker().foreach_trainable_policy(func)
+            results = self.local_worker().foreach_policy_to_train(func)
         ray_gets = []
         for worker in self.remote_workers():
             ray_gets.append(
-                worker.apply.remote(
-                    lambda w: w.foreach_trainable_policy(func)))
+                worker.apply.remote(lambda w: w.foreach_policy_to_train(func)))
         remote_results = ray.get(ray_gets)
         for r in remote_results:
             results.extend(r)
@@ -597,3 +603,19 @@ class WorkerSet:
         )
 
         return worker
+
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
+    def foreach_trainable_policy(self, func):
+        return self.foreach_policy_to_train(func)
+
+    @Deprecated(
+        new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=False)
+    def trainable_policies(self):
+        local_worker = self.local_worker()
+        if local_worker is not None:
+            return [
+                local_worker.is_policy_to_train(pid, None)
+                for pid in local_worker.policy_map.keys()
+            ]
+        else:
+            raise NotImplementedError
