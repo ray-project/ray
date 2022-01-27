@@ -15,7 +15,7 @@ In particular, we will show you:
 * How to scale the pipeline from ingesting 100MiB data to
   500GiB data.
 
-.. image:: ../../data/dataset-repeat-2.svg
+.. image:: ../images/dataset-repeat-2.svg
     :align: center
 
 """

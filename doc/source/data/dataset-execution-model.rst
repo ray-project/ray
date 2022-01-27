@@ -8,7 +8,7 @@ Reading Data
 
 Datasets uses Ray tasks to read data from remote storage. When reading from a file-based datasource (e.g., S3, GCS), it creates a number of read tasks equal to the specified read parallelism (200 by default). One or more files will be assigned to each read task. Each read task reads its assigned files and produces one or more output blocks (Ray objects):
 
-.. image:: dataset-read.svg
+.. image:: images/dataset-read.svg
    :width: 650px
    :align: center
 
@@ -32,7 +32,7 @@ Dataset Transforms
 
 Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
 
-.. image:: dataset-map.svg
+.. image:: images/dataset-map.svg
    :width: 650px
    :align: center
 
@@ -46,7 +46,7 @@ Certain operations like ``.sort`` and ``.groupby`` require data blocks to be par
 
 You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
 
-.. image:: dataset-shuffle.svg
+.. image:: images/dataset-shuffle.svg
    :width: 650px
    :align: center
 
@@ -72,7 +72,7 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 
 **Object Spilling**: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
 
-.. image:: dataset-spill.svg
+.. image:: images/dataset-spill.svg
    :width: 650px
    :align: center
 

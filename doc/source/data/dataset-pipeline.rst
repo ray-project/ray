@@ -193,7 +193,7 @@ Ignoring the output, the above script has three separate stages: loading, prepro
 ..
   https://docs.google.com/drawings/d/1UMRcpbxIsBRwD8G7hR3IW6DPa9rRSkd05isg9pAEx0I/edit
 
-.. image:: dataset-pipeline-1.svg
+.. image:: images/dataset-pipeline-1.svg
 
 Enabling Pipelining
 ~~~~~~~~~~~~~~~~~~~
@@ -214,14 +214,14 @@ We can optimize this by *pipelining* the execution of the dataset with the ``.wi
 
 Here we specified ``blocks_per_window=2``, which means that the Dataset is split into smaller sub-Datasets of two blocks each. Each transformation or *stage* of the pipeline is operating over these two-block Datasets in parallel. This means batch inference processing can start as soon as two blocks are read and preprocessed, greatly reducing the GPU idle time:
 
-.. image:: dataset-pipeline-2.svg
+.. image:: images/dataset-pipeline-2.svg
 
 Tuning Parallelism
 ~~~~~~~~~~~~~~~~~~
 
 Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
 
-.. image:: dataset-pipeline-3.svg
+.. image:: images/dataset-pipeline-3.svg
 
 .. _dataset-pipeline-per-epoch-shuffle:
 
@@ -267,7 +267,7 @@ For example, in the following pipeline, the datasource read only occurs once. Ho
 
 **Pipeline**:
 
-.. image:: dataset-repeat-1.svg
+.. image:: images/dataset-repeat-1.svg
 
 Splitting pipelines for distributed ingest
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -298,7 +298,7 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 
 **Pipeline**:
 
-.. image:: dataset-repeat-2.svg
+.. image:: images/dataset-repeat-2.svg
 
 .. _dataset-pipeline-ray-train:
 

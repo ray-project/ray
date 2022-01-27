@@ -15,7 +15,7 @@ Datasets are the standard way to load and exchange data in Ray libraries and app
 They provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``,
 and are compatible with a variety of file formats, data sources, and distributed frameworks.
 
-.. image:: dataset.svg
+.. image:: images/dataset.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
@@ -30,7 +30,7 @@ Compared to other loading solutions, Datasets are more flexible (e.g., can expre
 Ray Data is not intended as a replacement for more general data processing systems.
 Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
 
-.. image:: dataset-loading-1.png
+.. image:: images/dataset-loading-1.png
    :width: 650px
    :align: center
 
@@ -40,7 +40,7 @@ Its utility is as the last-mile bridge from ETL pipeline outputs to distributed 
 Ray-integrated DataFrame libraries can also be seamlessly used with Ray Data, to enable running a full data to
 ML pipeline completely within Ray without requiring data to be materialized to external storage:
 
-.. image:: dataset-loading-2.png
+.. image:: images/dataset-loading-2.png
    :width: 650px
    :align: center
 
@@ -57,7 +57,7 @@ Beyond data loading, Ray Data simplifies general purpose parallel GPU/CPU comput
 Ray Data provides a higher level API for Ray tasks and actors in such embarrassingly parallel compute situations,
 internally handling operations like batching, pipelining, and memory management.
 
-.. image:: dataset-compute-1.png
+.. image:: images/dataset-compute-1.png
    :width: 500px
    :align: center
 
@@ -77,7 +77,7 @@ Having multiple blocks in a dataset allows for parallel transformation and inges
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
-.. image:: dataset-arch.svg
+.. image:: images/dataset-arch.svg
 
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
@@ -297,6 +297,7 @@ This is a common pattern useful for loading and splitting data between distribut
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
 
+------------------
 Custom Datasources
 ------------------
 
