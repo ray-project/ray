@@ -670,7 +670,7 @@ class TrialRunner:
 
         return next_trial
 
-    def _wait_and_handle_event(self, next_trial):
+    def _wait_and_handle_event(self, next_trial: Optional[Trial]):
         try:
             # Single wait of entire tune loop.
             future_result = self.trial_executor.get_next_future_result(
@@ -722,7 +722,7 @@ class TrialRunner:
 
         next_trial = self._do_pre_wait_work()
 
-        self._wait_and_handle_event()
+        self._wait_and_handle_event(next_trial)
 
         self._stop_experiment_if_needed()
 
