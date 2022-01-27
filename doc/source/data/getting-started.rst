@@ -226,7 +226,7 @@ This is a common pattern useful for loading and splitting data between distribut
     # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
     #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
 
-    ray.get([w.train.remote(s) for s in shards])
+    ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
     # -> [650, 650, ...]
 
 
