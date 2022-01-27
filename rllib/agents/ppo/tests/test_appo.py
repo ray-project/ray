@@ -48,17 +48,14 @@ class TestAPPO(unittest.TestCase):
             trainer.stop()
 
     def test_appo_compilation_use_kl_loss(self):
-        """Test whether an APPOTrainer can be built with both frameworks."""
+        """Test whether an APPOTrainer can be built with kl_loss enabled."""
         config = ppo.appo.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["use_kl_loss"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config, with_eager_tracing=True):
-            print("w/ v-trace")
-            _config = config.copy()
-            _config["vtrace"] = True
-            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
+            trainer = ppo.APPOTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 check_train_results(results)
