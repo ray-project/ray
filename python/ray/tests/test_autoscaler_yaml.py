@@ -267,6 +267,16 @@ class AutoscalingConfigTest(unittest.TestCase):
             with pytest.raises(ClickException):
                 prepare_config(faulty_config)
 
+        too_many_workers_config = copy.deepcopy(base_config)
+
+        # More workers requested than the three available ips.
+        too_many_workers_config["max_workers"] = 10
+        too_many_workers_config["min_workers"] = 10
+        prepared_config = prepare_config(too_many_workers_config)
+
+        # Check that worker config numbers were clipped to 3.
+        assert prepared_config == expected_prepared
+
     def testValidateNetworkConfig(self):
         web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
             "master/python/ray/autoscaler/aws/example-full.yaml"

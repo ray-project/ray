@@ -230,3 +230,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         # Forever loop the collection process
         await self.collect()
+
+    @staticmethod
+    def is_minimal_module():
+        return False

@@ -22,8 +22,8 @@ from ray._private.test_utils import (
     format_web_url, wait_for_condition, wait_until_server_available,
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray._private.gcs_pubsub import gcs_pubsub_enabled
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
-                                          DEBUG_AUTOSCALING_ERROR)
+from ray.ray_constants import (DEBUG_AUTOSCALING_STATUS_LEGACY,
+                               DEBUG_AUTOSCALING_ERROR)
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils

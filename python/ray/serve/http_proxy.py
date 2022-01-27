@@ -17,7 +17,8 @@ from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
+from ray.serve.http_util import (HTTPRequestWrapper, RawASGIResponse,
+                                 receive_http_body, Response)
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
@@ -107,7 +108,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             error_message, status_code=500).send(scope, receive, send)
         return "500"
 
-    if isinstance(result, starlette.responses.Response):
+    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
         return str(result.status_code)
     else:

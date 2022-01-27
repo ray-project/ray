@@ -176,6 +176,8 @@ def function_entry_num(job_id):
         len(_internal_kv_list(b"RemoteFunction:" + job_id,
                               namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
         len(_internal_kv_list(b"ActorClass:" + job_id,
+                              namespace=KV_NAMESPACE_FUNCTION_TABLE)) + \
+        len(_internal_kv_list(b"FunctionsToRun:" + job_id,
                               namespace=KV_NAMESPACE_FUNCTION_TABLE))
 
 
