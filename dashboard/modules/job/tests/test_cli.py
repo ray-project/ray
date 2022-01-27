@@ -90,14 +90,12 @@ class TestSubmit:
             ["submit", "--address=arg_addr", "--", "echo hello"])
         assert mock_sdk_client.called_with("arg_addr")
         assert result.exit_code == 0
-
         # Test passing address via env var.
         with set_env_var("RAY_ADDRESS", "env_addr"):
             result = runner.invoke(job_cli_group,
                                    ["submit", "--", "echo hello"])
             assert result.exit_code == 0
             assert mock_sdk_client.called_with("env_addr")
-
         # Test passing no address.
         result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
         assert result.exit_code == 1

@@ -657,7 +657,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                     request._receive,
                     sender,
                 )
-                return sender.build_starlette_response()
+                return sender.build_asgi_response()
 
             # NOTE: __del__ must be async so that we can run asgi shutdown
             # in the same event loop.

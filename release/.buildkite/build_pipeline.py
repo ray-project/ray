@@ -151,8 +151,9 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_nodes",
         "scheduling_test_many_0s_tasks_single_node",
         "scheduling_test_many_0s_tasks_many_nodes",
-        "scheduling_test_many_5s_tasks_single_node",
-        "scheduling_test_many_5s_tasks_many_nodes",
+        # Reenable these two once we got right setup
+        # "scheduling_test_many_5s_tasks_single_node",
+        # "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 

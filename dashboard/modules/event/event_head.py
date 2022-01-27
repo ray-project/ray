@@ -85,3 +85,7 @@ class EventHead(dashboard_utils.DashboardHeadModule,
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
             source_types=event_consts.EVENT_HEAD_MONITOR_SOURCE_TYPES)
+
+    @staticmethod
+    def is_minimal_module():
+        return False

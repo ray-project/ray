@@ -195,7 +195,8 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
-        os.environ["WANDB_START_METHOD"] = "fork"
+        # Since we're running in a separate process already, use threads.
+        os.environ["WANDB_START_METHOD"] = "thread"
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
@@ -350,7 +351,7 @@ class WandbLoggerCallback(LoggerCallback):
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
-            resume=True,
+            resume=False,
             reinit=True,
             allow_val_change=True,
             group=wandb_group,
@@ -566,7 +567,12 @@ class WandbTrainableMixin:
             config=_config)
         wandb_init_kwargs.update(wandb_config)
 
-        os.environ["WANDB_START_METHOD"] = "fork"
+        # On windows, we can't fork
+        if os.name == "nt":
+            os.environ["WANDB_START_METHOD"] = "thread"
+        else:
+            os.environ["WANDB_START_METHOD"] = "fork"
+
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):

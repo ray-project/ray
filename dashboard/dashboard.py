@@ -203,6 +203,13 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--minimal",
+        action="store_true",
+        help=(
+            "Minimal dashboard only contains a subset of features that don't "
+            "require additional dependencies installed when ray is installed "
+            "by `pip install ray[default]`."))
 
     args = parser.parse_args()
 

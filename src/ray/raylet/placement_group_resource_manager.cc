@@ -62,8 +62,9 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   }
 
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
-      bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
+  bool allocated =
+      cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+          bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
 
   if (!allocated) {
     return false;
@@ -137,15 +138,16 @@ void NewPlacementGroupResourceManager::CommitBundle(
     if (original_resource_name != kBundle_ResourceLabel) {
       const auto &instances =
           task_resource_instances.Get(original_resource_name, string_id_map);
-      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
+      cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+          resource_name, instances);
     } else {
-      cluster_resource_scheduler_->AddLocalResourceInstances(resource_name,
-                                                             {resource.second});
+      cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
+          resource_name, {resource.second});
     }
   }
-  cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
   update_resources_(
-      cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
+      cluster_resource_scheduler_->GetLocalResourceManager().GetResourceTotals(
+          /*resource_name_filter*/ resources));
 }
 
 void NewPlacementGroupResourceManager::CommitBundles(
@@ -171,23 +173,26 @@ void NewPlacementGroupResourceManager::ReturnBundle(
 
   // Return original resources to resource allocator `ClusterResourceScheduler`.
   auto original_resources = it->second->resources_;
-  cluster_resource_scheduler_->ReleaseWorkerResources(original_resources);
+  cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+      original_resources);
 
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   auto resource_instances = std::make_shared<TaskResourceInstances>();
-  cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
-                                                          resource_instances);
+  cluster_resource_scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(
+      placement_group_resources, resource_instances);
 
   std::vector<std::string> deleted;
   for (const auto &resource : placement_group_resources) {
-    if (cluster_resource_scheduler_->IsAvailableResourceEmpty(resource.first)) {
+    if (cluster_resource_scheduler_->GetLocalResourceManager().IsAvailableResourceEmpty(
+            resource.first)) {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
                      << "] is empty, Will delete it from local resource";
       // Delete local resource if available resource is empty when return bundle, or there
       // will be resource leak.
-      cluster_resource_scheduler_->DeleteLocalResource(resource.first);
+      cluster_resource_scheduler_->GetLocalResourceManager().DeleteLocalResource(
+          resource.first);
       deleted.push_back(resource.first);
     } else {
       RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
