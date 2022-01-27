@@ -6,8 +6,8 @@ import numpy as np
 import platform
 import os
 import tree  # pip install dm_tree
-from typing import Any, Callable, Container, Dict, List, Optional, Tuple, \
-    Type, TYPE_CHECKING, Union
+from typing import Any, Callable, Container, Dict, List, Optional, Set, \
+    Tuple, Type, TYPE_CHECKING, Union
 
 import ray
 from ray import ObjectRef
@@ -34,7 +34,8 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
+    ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
@@ -1237,6 +1238,28 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.is_policy_to_train = is_policy_to_train
 
+    @ExperimentalAPI
+    def get_policies_to_train(
+            self, batch: Optional[SampleBatchType] = None) -> Set[PolicyID]:
+        """Returns all policies-to-train, given an optional batch.
+
+        Loops through all policies currently in `self.policy_map` and checks
+        the return value of `self.is_policy_to_train(pid, batch)`.
+
+        Args:
+            batch: An optional SampleBatchType for the
+                `self.is_policy_to_train(pid, [batch]?)` check.
+
+        Returns:
+            The set of currently trainable policy IDs, given the optional
+            `batch`.
+        """
+        return {
+            pid
+            for pid in self.policy_map.keys()
+            if self.is_policy_to_train(pid, batch)
+        }
+
     @DeveloperAPI
     def for_policy(self,
                    func: Callable[[Policy, Optional[Any]], T],
@@ -1391,7 +1414,7 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def get_weights(
             self,
-            policies: Optional[List[PolicyID]] = None,
+            policies: Optional[Container[PolicyID]] = None,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 

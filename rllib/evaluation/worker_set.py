@@ -328,7 +328,8 @@ class WorkerSet:
 
         Args:
             func: A function - taking a Policy and its ID - that is
-                called on all workers' Policies in `worker.policies_to_train`.
+                called on all workers' Policies, for which
+                `worker.is_policy_to_train()` returns True.
 
         Returns:
             List[any]: The list of n return values of all

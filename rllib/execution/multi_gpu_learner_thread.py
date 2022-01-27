@@ -209,7 +209,7 @@ class _MultiGPULoaderThread(threading.Thread):
         # Load the batch into the idle stack.
         with self.load_timer:
             for pid in policy_map.keys():
-                if pid not in s.local_worker.policies_to_train:
+                if not s.local_worker.is_policy_to_train(pid, batch):
                     continue
                 policy = policy_map[pid]
                 policy.load_batch_into_buffer(

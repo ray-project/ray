@@ -1702,7 +1702,7 @@ class Trainer(Trainable):
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
             policies_to_train: Optional[Union[Container[PolicyID], Callable[
-                [PolicyID, SampleBatchType], bool]]] = None,
+                [PolicyID, Optional[SampleBatchType]], bool]]] = None,
             evaluation_workers: bool = True,
             workers: Optional[List[Union[RolloutWorker, ActorHandle]]] = None,
     ) -> Policy:
@@ -1782,7 +1782,7 @@ class Trainer(Trainable):
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
             policies_to_train: Optional[Union[Set[PolicyID], Callable[
-                [PolicyID, SampleBatchType], bool]]] = None,
+                [PolicyID, Optional[SampleBatchType]], bool]]] = None,
             evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
