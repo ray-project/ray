@@ -1160,8 +1160,10 @@ def check_dashboard_dependencies_installed() -> bool:
 
 def lazy_import(name):
     if name in sys.modules:
-        return
+        return sys.modules[name]
     spec = importlib.util.find_spec(name)
+    if not spec:
+        raise ModuleNotFoundError(f"No module named '{name}'", name=name)
     loader = importlib.util.LazyLoader(spec.loader)
     spec.loader = loader
     module = importlib.util.module_from_spec(spec)
