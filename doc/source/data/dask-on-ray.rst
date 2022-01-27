@@ -1,7 +1,8 @@
-Dask on Ray
-===========
-
 .. _dask-on-ray:
+
+Using Dask on Ray
+=================
+
 
 `Dask <https://dask.org/>`__ is a Python parallel computing library geared towards scaling analytics and
 scientific computing workloads. It provides `big data collections
