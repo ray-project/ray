@@ -17,18 +17,17 @@ Java demo code in this documentation can be found `here <https://github.com/ray-
 Installation
 ------------
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
     Note: To run your Ray Java application, you need to install Ray Python with `pip install -U ray` first. (For Ray Java snapshot versions, install nightly Ray Python wheels.) The versions of Ray Java and Ray Python must match.
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     To run this walkthrough, install Ray with ``pip install -U ray[cpp]``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
 
@@ -41,42 +40,47 @@ You can start Ray on a single machine by adding this to your code.
 
   In recent versions of Ray (>=1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    import ray
+    .. code-block:: python
 
-    # Start Ray. If you're connecting to an existing cluster, you would use
-    # ray.init(address=<cluster-address>) instead.
-    ray.init()
+        import ray
 
-    ...
+        # Start Ray. If you're connecting to an existing cluster, you would use
+        # ray.init(address=<cluster-address>) instead.
+        ray.init()
 
-  .. code-tab:: java
-
-    import io.ray.api.Ray;
-
-    public class MyRayApp {
-
-      public static void main(String[] args) {
-        // Start Ray runtime. If you're connecting to an existing cluster, you can set
-        // the `-Dray.address=<cluster-address>` java system property.
-        Ray.init();
         ...
-      }
-    }
 
-  .. code-tab:: c++
+.. tabbed:: Java
 
-    // Run `ray cpp --show-library-path` to find headers and libraries.
-    #include <ray/api.h>
+    .. code-block:: java
 
-    int main(int argc, char **argv) {
-      // Start Ray runtime. If you're connecting to an existing cluster, you can set
-      // the `RAY_ADDRESS` env var.
-      ray::Init();
-      ...
-    }
+        import io.ray.api.Ray;
+
+        public class MyRayApp {
+
+            public static void main(String[] args) {
+                // Start Ray runtime. If you're connecting to an existing cluster, you can set
+                // the `-Dray.address=<cluster-address>` java system property.
+                Ray.init();
+                ...
+            }
+        }
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Run `ray cpp --show-library-path` to find headers and libraries.
+        #include <ray/api.h>
+
+        int main(int argc, char **argv) {
+            // Start Ray runtime. If you're connecting to an existing cluster, you can set
+            // the `RAY_ADDRESS` env var.
+            ray::Init();
+            ...
+        }
 
 
 Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
@@ -90,8 +94,7 @@ Remote functions (Tasks)
 
 Ray enables arbitrary functions to be executed asynchronously. These asynchronous Ray functions are called "remote functions". Here is an example.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code:: python
 
@@ -126,9 +129,9 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 
     See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
-    .. code:: java
+    .. code-block:: java
 
       public class MyRayApp {
         // A regular Java static method.
@@ -159,9 +162,9 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
         Ray.task(MyRayApp::slowFunction).remote();
       }
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
-    .. code:: c++
+    .. code-block:: c++
 
       // A regular C++ function.
       int MyFunction() {
@@ -198,49 +201,54 @@ Passing object refs to remote functions
 
 **Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular object**. For example, take this function:
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    @ray.remote
-    def function_with_an_argument(value):
-        return value + 1
+    .. code-block:: python
+
+        @ray.remote
+        def function_with_an_argument(value):
+            return value + 1
 
 
-    obj_ref1 = my_function.remote()
-    assert ray.get(obj_ref1) == 1
+        obj_ref1 = my_function.remote()
+        assert ray.get(obj_ref1) == 1
 
-    # You can pass an object ref as an argument to another Ray remote function.
-    obj_ref2 = function_with_an_argument.remote(obj_ref1)
-    assert ray.get(obj_ref2) == 2
+        # You can pass an object ref as an argument to another Ray remote function.
+        obj_ref2 = function_with_an_argument.remote(obj_ref1)
+        assert ray.get(obj_ref2) == 2
 
-  .. code-tab:: java
+.. tabbed:: Java
 
-    public class MyRayApp {
-      public static int functionWithAnArgument(int value) {
-        return value + 1;
-      }
-    }
+    .. code-block:: java
 
-    ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
-    Assert.assertTrue(objRef1.get() == 1);
+        public class MyRayApp {
+            public static int functionWithAnArgument(int value) {
+                return value + 1;
+            }
+        }
 
-    // You can pass an object ref as an argument to another Ray remote function.
-    ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
-    Assert.assertTrue(objRef2.get() == 2);
+        ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
+        Assert.assertTrue(objRef1.get() == 1);
 
-  .. code-tab:: c++
+        // You can pass an object ref as an argument to another Ray remote function.
+        ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
+        Assert.assertTrue(objRef2.get() == 2);
 
-    static int FunctionWithAnArgument(int value) {
-      return value + 1;
-    }
-    RAY_REMOTE(FunctionWithAnArgument);
+.. tabbed:: C++
 
-    auto obj_ref1 = ray::Task(MyFunction).Remote();
-    assert(*obj_ref1.Get() == 1);
+    .. code-block:: c++
 
-    // You can pass an object ref as an argument to another Ray remote function.
-    auto obj_ref2 = ray::Task(FunctionWithAnArgument).Remote(obj_ref1);
-    assert(*obj_ref2.Get() == 2);
+        static int FunctionWithAnArgument(int value) {
+            return value + 1;
+        }
+        RAY_REMOTE(FunctionWithAnArgument);
+
+        auto obj_ref1 = ray::Task(MyFunction).Remote();
+        assert(*obj_ref1.Get() == 1);
+
+        // You can pass an object ref as an argument to another Ray remote function.
+        auto obj_ref2 = ray::Task(FunctionWithAnArgument).Remote(obj_ref1);
+        assert(*obj_ref2.Get() == 2);
 
 Note the following behaviors:
 
@@ -260,45 +268,52 @@ one task may require a GPU). Ray will automatically
 detect the available GPUs and CPUs on the machine. However, you can override
 this default behavior by passing in specific resources.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
-    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})``
+    .. code-block:: python
 
-  .. group-tab:: Java
+        ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})
+
+.. tabbed:: Java
 
     Set Java system property: ``-Dray.resources=CPU:8,GPU:4,Custom:2``.
 
 
-  .. code-tab:: c++
+.. tabbed:: C++
+    .. code-block:: c++
 
-    RayConfig config;
-    config.num_cpus = 8;
-    config.num_gpus = 4;
-    config.resources = {{"Custom", 2}};
-    ray::Init(config);
+        RayConfig config;
+        config.num_cpus = 8;
+        config.num_gpus = 4;
+        config.resources = {{"Custom", 2}};
+        ray::Init(config);
 
 Ray also allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
 The task will only run on a machine if there are enough resources
 available to execute the task.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    # Specify required resources.
-    @ray.remote(num_cpus=4, num_gpus=2)
-    def my_function():
-        return 1
+    .. code-block:: python
 
-  .. code-tab:: java
+        # Specify required resources.
+        @ray.remote(num_cpus=4, num_gpus=2)
+        def my_function():
+            return 1
 
-    // Specify required resources.
-    Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 4.0).remote();
+.. tabbed:: Java
 
-  .. code-tab:: c++
+    .. code-block:: java
 
-    // Specify required resources.
-    ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 4.0).Remote();
+        // Specify required resources.
+        Ray.task(MyRayApp::myFunction).setResource("CPU", 1.0).setResource("GPU", 4.0).remote();
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Specify required resources.
+        ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 4.0).Remote();
 
 .. note::
 
@@ -318,28 +333,33 @@ resources.
 
 Below are more examples of resource specifications:
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    # Ray also supports fractional resource requirements.
-    @ray.remote(num_gpus=0.5)
-    def h():
-        return 1
+    .. code-block:: python
 
-    # Ray support custom resources too.
-    @ray.remote(resources={'Custom': 1})
-    def f():
-        return 1
+        # Ray also supports fractional resource requirements.
+        @ray.remote(num_gpus=0.5)
+        def h():
+            return 1
 
-  .. code-tab:: java
+        # Ray support custom resources too.
+        @ray.remote(resources={'Custom': 1})
+        def f():
+            return 1
 
-    // Ray aslo supports fractional and custom resources.
-    Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1.0).remote();
+.. tabbed:: Java
 
-  .. code-tab:: c++
+    .. code-block:: java
 
-    // Ray aslo supports fractional and custom resources.
-    ray::Task(MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
+        // Ray aslo supports fractional and custom resources.
+        Ray.task(MyRayApp::myFunction).setResource("GPU", 0.5).setResource("Custom", 1.0).remote();
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Ray aslo supports fractional and custom resources.
+        ray::Task(MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
 
 .. tip::
 
@@ -349,8 +369,7 @@ Below are more examples of resource specifications:
 Multiple returns
 ~~~~~~~~~~~~~~~~
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     Python remote functions can return multiple object refs.
 
@@ -362,19 +381,18 @@ Multiple returns
 
       a, b, c = return_multiple.remote()
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     Java remote functions doesn't support returning multiple objects.
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     C++ remote functions doesn't support returning multiple objects.
 
 Cancelling tasks
 ~~~~~~~~~~~~~~~~
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref. Remote actor functions can be stopped by killing the actor using the ``ray.kill`` interface.
 
@@ -394,11 +412,11 @@ Cancelling tasks
       except TaskCancelledError:
           print("Object reference was cancelled.")
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     Task cancellation hasn't been implemented in Java yet.
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     Task cancellation hasn't been implemented in C++ yet.
 
@@ -418,20 +436,22 @@ Object refs can be created in multiple ways.
   1. They are returned by remote function calls.
   2. They are returned by ``put`` (:ref:`docstring <ray-put-ref>`).
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
+  .. code-block:: python
 
     # Put an object in Ray's object store.
     y = 1
     object_ref = ray.put(y)
 
-  .. code-tab:: java
+.. tabbed:: Java
+  .. code-block:: java
 
     // Put an object in Ray's object store.
     int y = 1;
     ObjectRef<Integer> objectRef = Ray.put(y);
 
-  .. code-tab:: c++
+.. tabbed:: C++
+  .. code-block:: c++
 
     // Put an object in Ray's object store.
     int y = 1;
@@ -450,8 +470,7 @@ Fetching Results
 You can use the ``get`` method (:ref:`docstring <ray-get-ref>`) to fetch the result of a remote object from an object ref.
 If the current node's object store does not contain the object, the object is downloaded.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     If the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
     or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
@@ -479,7 +498,7 @@ If the current node's object store does not contain the object, the object is do
       except GetTimeoutError:
           print("`get` timed out.")
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -507,7 +526,7 @@ If the current node's object store does not contain the object, the object is do
       Assert.assertThrows(RayTimeoutException.class, 
         () -> Ray.get(Ray.task(MyRayApp::slowFunction).remote(), 3000));
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -530,18 +549,20 @@ After launching a number of tasks, you may want to know which ones have
 finished executing. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
 works as follows.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
+  .. code-block:: python
 
     ready_refs, remaining_refs = ray.wait(object_refs, num_returns=1, timeout=None)
 
-  .. code-tab:: java
+.. tabbed:: Java
+  .. code-block:: java
 
     WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/0, /*timeoutMs=*/1000);
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
 
-  .. code-tab:: c++
+.. tabbed:: C++
+  .. code-block:: c++
 
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
@@ -556,9 +577,7 @@ Remote Classes (Actors)
 
 Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker.
 
-.. tabs::
-
-  .. group-tab:: Python
+.. tabbed:: Python
 
     The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
 
@@ -576,7 +595,7 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
       # Create an actor from this class.
       counter = Counter.remote()
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     ``Ray.actor`` is used to create actors from regular Java classes.
 
@@ -599,7 +618,7 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
       // as the argument.
       ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     ``ray::Actor`` is used to create actors from regular C++ classes.
 
@@ -637,23 +656,28 @@ Specifying required resources
 You can specify resource requirements in actors too (see the `Actors section
 <actors.html>`__ for more details.)
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    # Specify required resources for an actor.
-    @ray.remote(num_cpus=2, num_gpus=0.5)
-    class Actor(object):
-        pass
+    .. code-block:: python
 
-  .. code-tab:: java
+        # Specify required resources for an actor.
+        @ray.remote(num_cpus=2, num_gpus=0.5)
+        class Actor(object):
+            pass
 
-    // Specify required resources for an actor.
-    Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
+.. tabbed:: Java
 
-  .. code-tab:: c++
+    .. code-block:: java
 
-    // Specify required resources for an actor.
-    ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
+        // Specify required resources for an actor.
+        Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Specify required resources for an actor.
+        ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
 
 
 Calling the actor
@@ -663,99 +687,109 @@ We can interact with the actor by calling its methods with the ``remote``
 operator. We can then call ``get`` on the object ref to retrieve the actual
 value.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    # Call the actor.
-    obj_ref = counter.increment.remote()
-    assert ray.get(obj_ref) == 1
+    .. code-block:: python
 
-  .. code-tab:: java
+        # Call the actor.
+        obj_ref = counter.increment.remote()
+        assert ray.get(obj_ref) == 1
 
-    // Call the actor.
-    ObjectRef<Integer> objectRef = counter.task(&Counter::increment).remote();
-    Assert.assertTrue(objectRef.get() == 1);
+.. tabbed:: Java
 
-  .. code-tab:: c++
+    .. code-block:: java
 
-    // Call the actor.
-    auto object_ref = counter.Task(&Counter::increment).Remote();
-    assert(*object_ref.Get() == 1);
+        // Call the actor.
+        ObjectRef<Integer> objectRef = counter.task(&Counter::increment).remote();
+        Assert.assertTrue(objectRef.get() == 1);
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // Call the actor.
+        auto object_ref = counter.Task(&Counter::increment).Remote();
+        assert(*object_ref.Get() == 1);
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
 
-.. tabs::
-  .. code-tab:: python
+.. tabbed:: Python
 
-    # Create ten Counter actors.
-    counters = [Counter.remote() for _ in range(10)]
+    .. code-block:: python
 
-    # Increment each Counter once and get the results. These tasks all happen in
-    # parallel.
-    results = ray.get([c.increment.remote() for c in counters])
-    print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        # Create ten Counter actors.
+        counters = [Counter.remote() for _ in range(10)]
 
-    # Increment the first Counter five times. These tasks are executed serially
-    # and share state.
-    results = ray.get([counters[0].increment.remote() for _ in range(5)])
-    print(results)  # prints [2, 3, 4, 5, 6]
+        # Increment each Counter once and get the results. These tasks all happen in
+        # parallel.
+        results = ray.get([c.increment.remote() for c in counters])
+        print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
-  .. code-tab:: java
+        # Increment the first Counter five times. These tasks are executed serially
+        # and share state.
+        results = ray.get([counters[0].increment.remote() for _ in range(5)])
+        print(results)  # prints [2, 3, 4, 5, 6]
 
-    // Create ten Counter actors.
-    List<ActorHandle<Counter>> counters = new ArrayList<>();
-    for (int i = 0; i < 10; i++) {
-      counters.add(Ray.actor(Counter::new).remote());
-    }
+.. tabbed:: Java
 
-    // Increment each Counter once and get the results. These tasks all happen in
-    // parallel.
-    List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
-    for (ActorHandle<Counter> counterActor : counters) {
-      objectRefs.add(counterActor.task(Counter::increment).remote());
-    }
-    // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-    System.out.println(Ray.get(objectRefs));
+    .. code-block:: java
 
-    // Increment the first Counter five times. These tasks are executed serially
-    // and share state.
-    objectRefs = new ArrayList<>();
-    for (int i = 0; i < 5; i++) {
-      objectRefs.add(counters.get(0).task(Counter::increment).remote());
-    }
-    // prints [2, 3, 4, 5, 6]
-    System.out.println(Ray.get(objectRefs));
+        // Create ten Counter actors.
+        List<ActorHandle<Counter>> counters = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            counters.add(Ray.actor(Counter::new).remote());
+        }
 
-  .. code-tab:: c++
+        // Increment each Counter once and get the results. These tasks all happen in
+        // parallel.
+        List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
+        for (ActorHandle<Counter> counterActor : counters) {
+            objectRefs.add(counterActor.task(Counter::increment).remote());
+        }
+        // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        System.out.println(Ray.get(objectRefs));
 
-    // Create ten Counter actors.
-    std::vector<ray::ActorHandle<Counter>> counters;
-    for (int i = 0; i < 10; i++) {
-      counters.emplace_back(ray::Actor(CreateCounter).Remote());
-    }
+        // Increment the first Counter five times. These tasks are executed serially
+        // and share state.
+        objectRefs = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            objectRefs.add(counters.get(0).task(Counter::increment).remote());
+        }
+        // prints [2, 3, 4, 5, 6]
+        System.out.println(Ray.get(objectRefs));
 
-    // Increment each Counter once and get the results. These tasks all happen in
-    // parallel.
-    std::vector<ray::ObjectRef<int>> object_refs;
-    for (ray::ActorHandle<Counter> counter_actor : counters) {
-      object_refs.emplace_back(counter_actor.Task(&Counter::Increment).Remote());
-    }
-    // prints 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-    auto results = ray::Get(object_refs);
-    for (const auto &result : results) {
-      std::cout << *result;
-    }
+.. tabbed:: C++
 
-    // Increment the first Counter five times. These tasks are executed serially
-    // and share state.
-    object_refs.clear();
-    for (int i = 0; i < 5; i++) {
-      object_refs.emplace_back(counters[0].Task(&Counter::Increment).Remote());
-    }
-    // prints 2, 3, 4, 5, 6
-    results = ray::Get(object_refs);
-    for (const auto &result : results) {
-      std::cout << *result;
-    }
+    .. code-block:: c++
+
+        // Create ten Counter actors.
+        std::vector<ray::ActorHandle<Counter>> counters;
+        for (int i = 0; i < 10; i++) {
+            counters.emplace_back(ray::Actor(CreateCounter).Remote());
+        }
+
+        // Increment each Counter once and get the results. These tasks all happen in
+        // parallel.
+        std::vector<ray::ObjectRef<int>> object_refs;
+        for (ray::ActorHandle<Counter> counter_actor : counters) {
+            object_refs.emplace_back(counter_actor.Task(&Counter::Increment).Remote());
+        }
+        // prints 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+        auto results = ray::Get(object_refs);
+        for (const auto &result : results) {
+            std::cout << *result;
+        }
+
+        // Increment the first Counter five times. These tasks are executed serially
+        // and share state.
+        object_refs.clear();
+        for (int i = 0; i < 5; i++) {
+            object_refs.emplace_back(counters[0].Task(&Counter::Increment).Remote());
+        }
+        // prints 2, 3, 4, 5, 6
+        results = ray::Get(object_refs);
+        for (const auto &result : results) {
+            std::cout << *result;
+        }
 
 To learn more about Ray Actors, see the `Actors section <actors.html>`__.

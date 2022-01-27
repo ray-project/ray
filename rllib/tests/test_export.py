@@ -20,7 +20,7 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_iter_time_s": 1,
+        "min_time_s_per_reporting": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },

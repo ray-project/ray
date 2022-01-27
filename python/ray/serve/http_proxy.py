@@ -17,7 +17,8 @@ from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
+from ray.serve.http_util import (HTTPRequestWrapper, RawASGIResponse,
+                                 receive_http_body, Response)
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
@@ -107,7 +108,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             error_message, status_code=500).send(scope, receive, send)
         return "500"
 
-    if isinstance(result, starlette.responses.Response):
+    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
         return str(result.status_code)
     else:
@@ -275,17 +276,21 @@ class HTTPProxy:
         """
 
         assert scope["type"] == "http"
-        route_path = scope["path"]
-        self.request_counter.inc(tags={"route": scope["path"]})
 
-        if scope["path"] == "/-/routes":
+        # only use the non-root part of the path for routing
+        root_path = scope["root_path"]
+        route_path = scope["path"][len(root_path):]
+
+        self.request_counter.inc(tags={"route": route_path})
+
+        if route_path == "/-/routes":
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
-        route_prefix, handle = self.prefix_router.match_route(scope["path"])
+        route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(tags={
-                "route": scope["path"],
+                "route": route_path,
                 "error_code": "404"
             })
             return await self._not_found(scope, receive, send)
@@ -295,8 +300,8 @@ class HTTPProxy:
         # changed without restarting the replicas.
         if route_prefix != "/":
             assert not route_prefix.endswith("/")
-            scope["path"] = scope["path"].replace(route_prefix, "", 1)
-            scope["root_path"] = route_prefix
+            scope["path"] = route_path.replace(route_prefix, "", 1)
+            scope["root_path"] = root_path + route_prefix
 
         status_code = await _send_request_to_handle(handle, scope, receive,
                                                     send)
@@ -314,6 +319,7 @@ class HTTPProxyActor:
     def __init__(self,
                  host: str,
                  port: int,
+                 root_path: str,
                  controller_name: str,
                  controller_namespace: str,
                  http_middlewares: Optional[List[
@@ -323,6 +329,7 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
+        self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
@@ -382,6 +389,7 @@ Please make sure your http-host and http-port are specified correctly.""")
             self.wrapped_app,
             host=self.host,
             port=self.port,
+            root_path=self.root_path,
             lifespan="off",
             access_log=False)
         server = uvicorn.Server(config=config)

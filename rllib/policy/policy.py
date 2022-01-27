@@ -6,8 +6,11 @@ import logging
 import numpy as np
 import platform
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
+    TYPE_CHECKING, Union
 
+import ray
+from ray.actor import ActorHandle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -22,7 +25,7 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     get_dummy_batch_for_space, unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
-    T, TensorType, TensorStructType, TrainerConfigDict, Tuple, Union
+    PolicyID, PolicyState, T, TensorType, TensorStructType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -451,6 +454,36 @@ class Policy(metaclass=ABCMeta):
         self.apply_gradients(grads)
         return grad_info
 
+    @ExperimentalAPI
+    def learn_on_batch_from_replay_buffer(
+            self, replay_actor: ActorHandle,
+            policy_id: PolicyID) -> Dict[str, TensorType]:
+        """Samples a batch from given replay actor and performs an update.
+
+        Args:
+            replay_actor: The replay buffer actor to sample from.
+            policy_id: The ID of this policy.
+
+        Returns:
+            Dictionary of extra metadata from `compute_gradients()`.
+        """
+        # Sample a batch from the given replay actor.
+        # Note that for better performance (less data sent through the
+        # network), this policy should be co-located on the same node
+        # as `replay_actor`. Such a co-location step is usually done during
+        # the Trainer's `setup()` phase.
+        batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
+        if batch is None:
+            return {}
+
+        # Send to own learn_on_batch method for updating.
+        # TODO: hack w/ `hasattr`
+        if hasattr(self, "devices") and len(self.devices) > 1:
+            self.load_batch_into_buffer(batch, buffer_index=0)
+            return self.learn_on_loaded_batch(offset=0, buffer_index=0)
+        else:
+            return self.learn_on_batch(batch)
+
     @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch,
                                buffer_index: int = 0) -> int:
@@ -606,7 +639,7 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+    def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
@@ -626,10 +659,7 @@ class Policy(metaclass=ABCMeta):
         return state
 
     @DeveloperAPI
-    def set_state(
-            self,
-            state: Union[Dict[str, TensorType], List[TensorType]],
-    ) -> None:
+    def set_state(self, state: PolicyState) -> None:
         """Restores the entire current state of this Policy from `state`.
 
         Args:

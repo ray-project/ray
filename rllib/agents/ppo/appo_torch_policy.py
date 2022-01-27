@@ -267,7 +267,8 @@ def stats(policy: Policy, train_batch: SampleBatch):
         stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict["kl"] = policy.get_tower_stats("mean_kl_loss")
+        stats_dict["kl"] = torch.mean(
+            torch.stack(policy.get_tower_stats("mean_kl_loss")))
         stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict

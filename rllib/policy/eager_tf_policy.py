@@ -19,6 +19,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -296,7 +297,10 @@ def build_eager_tf_policy(
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
-            assert tf.executing_eagerly()
+            # If this class runs as a @ray.remote actor, eager mode may not
+            # have been activated yet.
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
 
@@ -600,7 +604,10 @@ def build_eager_tf_policy(
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
             postprocessed_batch.set_training(True)
             stats = self._learn_on_batch_helper(postprocessed_batch)
-            stats.update({"custom_metrics": learn_stats})
+            stats.update({
+                "custom_metrics": learn_stats,
+                NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+            })
             return convert_to_numpy(stats)
 
         @override(Policy)

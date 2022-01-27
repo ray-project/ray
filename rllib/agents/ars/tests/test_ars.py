@@ -22,7 +22,8 @@ class TestARS(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = None
         config["noise_size"] = 2500000
-        # Test eval workers ("normal" Trainer eval WorkerSet, unusual for ARS).
+        # Test eval workers ("normal" WorkerSet, unlike ARS' list of
+        # RolloutWorkers used for collecting train batches).
         config["evaluation_interval"] = 1
         config["evaluation_num_workers"] = 1
 

@@ -26,6 +26,14 @@ def env_bool(key, default):
     return default
 
 
+# Whether event logging to driver is enabled. Set to 0 to disable.
+AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
+
+# Internal kv keys for storing monitor debug status.
+DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
+DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -177,6 +185,15 @@ LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
 
 LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
+
+LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
+# Logging format when logging stderr. This should be formatted with the
+# component before setting the formatter, e.g. via
+#   format = LOGGER_FORMAT_STDERR.format(component="dashboard")
+#   handler.setFormatter(logging.Formatter(format))
+LOGGER_FORMAT_STDERR = (
+    "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
+)
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
