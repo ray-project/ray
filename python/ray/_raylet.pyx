@@ -195,7 +195,7 @@ cdef RayObjectsToDataMetadataPairs(
 
 
 cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
-                        skip_adding_local_ref=False):
+                        skip_adding_local_ref):
     result = []
     for i in range(object_refs.size()):
         result.append(ObjectRef(
@@ -367,15 +367,15 @@ cdef prepare_args_and_increment_put_refs(
         CoreWorker core_worker,
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
-        c_vector[CObjectID] *put_arg_ids):
+        c_vector[CObjectID] *incremented_put_arg_ids):
     try:
         prepare_args_internal(core_worker, language, args, args_vector,
-                              function_descriptor, put_arg_ids)
+                              function_descriptor, incremented_put_arg_ids)
     except Exception as e:
         # An error occurred during arg serialization. We must remove the
         # initial local ref for all args that were successfully put into the
         # local plasma store. These objects will then get released.
-        for put_arg_id in dereference(put_arg_ids):
+        for put_arg_id in dereference(incremented_put_arg_ids):
             CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                 put_arg_id)
         raise e
@@ -384,7 +384,7 @@ cdef prepare_args_internal(
         CoreWorker core_worker,
         Language language, args,
         c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor,
-        c_vector[CObjectID] *put_arg_ids):
+        c_vector[CObjectID] *incremented_put_arg_ids):
     cdef:
         size_t size
         int64_t put_threshold
@@ -466,7 +466,7 @@ cdef prepare_args_internal(
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             put_arg_call_site
                         )))
-                put_arg_ids.push_back(put_id)
+                incremented_put_arg_ids.push_back(put_id)
 
 
 cdef raise_if_dependency_failed(arg):
@@ -628,7 +628,7 @@ cdef execute_task(
                     args, kwargs = [], {}
                 else:
                     metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                    object_refs = VectorToObjectRefs(c_arg_refs)
+                    object_refs = VectorToObjectRefs(c_arg_refs, skip_adding_local_ref=False)
 
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
@@ -884,7 +884,7 @@ cdef c_vector[c_string] spill_objects_handler(
         c_vector[c_string] owner_addresses
 
     with gil:
-        object_refs = VectorToObjectRefs(object_refs_to_spill)
+        object_refs = VectorToObjectRefs(object_refs_to_spill, skip_adding_local_ref=False)
         for i in range(object_refs_to_spill.size()):
             owner_addresses.push_back(
                     object_refs_to_spill[i].owner_address()
@@ -920,7 +920,7 @@ cdef int64_t restore_spilled_objects_handler(
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
-        object_refs = VectorToObjectRefs(object_refs_to_restore)
+        object_refs = VectorToObjectRefs(object_refs_to_restore, skip_adding_local_ref=False)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
@@ -1501,7 +1501,7 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
-            c_vector[CObjectID] put_arg_ids
+            c_vector[CObjectID] incremented_put_arg_ids
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -1511,7 +1511,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
+                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1525,7 +1525,12 @@ cdef class CoreWorker:
                 c_scheduling_strategy,
                 debugger_breakpoint)
 
-            for put_arg_id in put_arg_ids:
+            # These arguments were serialized and put into the local object
+            # store during task submission. The backend increments their local
+            # ref count initially to ensure that they remain in scope until we
+            # add to their submitted task ref count. Now that the task has
+            # been submitted, it's safe to remove the initial local ref.
+            for put_arg_id in incremented_put_arg_ids:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
@@ -1561,7 +1566,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
-            c_vector[CObjectID] put_arg_ids
+            c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
 
         self.python_scheduling_strategy_to_c(
@@ -1573,7 +1578,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
+                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
@@ -1600,7 +1605,12 @@ cdef class CoreWorker:
                     extension_data,
                     &c_actor_id)
 
-            for put_arg_id in put_arg_ids:
+            # These arguments were serialized and put into the local object
+            # store during task submission. The backend increments their local
+            # ref count initially to ensure that they remain in scope until we
+            # add to their submitted task ref count. Now that the task has
+            # been submitted, it's safe to remove the initial local ref.
+            for put_arg_id in incremented_put_arg_ids:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
@@ -1685,7 +1695,7 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             optional[c_vector[CObjectReference]] return_refs
-            c_vector[CObjectID] put_arg_ids
+            c_vector[CObjectID] incremented_put_arg_ids
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -1693,7 +1703,7 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &put_arg_ids)
+                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1704,7 +1714,12 @@ cdef class CoreWorker:
                 args_vector,
                 CTaskOptions(
                     name, num_returns, c_resources, concurrency_group_name))
-            for put_arg_id in put_arg_ids:
+            # These arguments were serialized and put into the local object
+            # store during task submission. The backend increments their local
+            # ref count initially to ensure that they remain in scope until we
+            # add to their submitted task ref count. Now that the task has
+            # been submitted, it's safe to remove the initial local ref.
+            for put_arg_id in incremented_put_arg_ids:
                 CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
                     put_arg_id)
 
