@@ -28,6 +28,14 @@ py_test(
              "--cpus-per-actor-inference 1"]
 )
 
+### Ray Data
+py_test(
+    name = "quick_start",
+    size = "small",
+    srcs = ["source/data/_examples/doc_code/quick_start.py"],
+    tags = ["exclusive", "team:ml"]
+)
+
 py_test(
     name = "big_data_ingestion",
     size = "small",
