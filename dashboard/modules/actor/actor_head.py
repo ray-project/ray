@@ -40,8 +40,10 @@ def actor_table_data_to_dict(message):
         "actorId", "jobId", "pid", "address", "state", "name", "numRestarts",
         "taskSpec"
     }
-    light_message = {(k, v) for (k, v) in orig_message.itesm() if k in fields}
+    light_message = {k: v for (k, v) in orig_message.itesm() if k in fields}
     if "taskSpec" in light_message:
+        actor_class = actor_classname_from_task_spec(light_message["taskSpec"])
+        light_message["actorClass"] = actor_class
         if "functionDescriptor" in light_message["taskSpec"]:
             light_message["taskSpec"] = {
                 "functionDescriptor": light_message["taskSpec"][
@@ -76,13 +78,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             self._stubs[node_id] = stub
 
     async def _update_actors(self):
-        # TODO(fyrestone): Refactor code for updating actor / node / job.
-
-        def _process_actor_table_data(data):
-            actor_class = actor_classname_from_task_spec(
-                data.get("taskSpec", {}))
-            data["actorClass"] = actor_class
-
         # Get all actor info.
         while True:
             try:
@@ -94,7 +89,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     actors = {}
                     for message in reply.actor_table_data:
                         actor_table_data = actor_table_data_to_dict(message)
-                        _process_actor_table_data(actor_table_data)
                         actors[actor_table_data["actorId"]] = actor_table_data
                     # Update actors.
                     DataSource.actors.reset(actors)
@@ -127,7 +121,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
         def process_actor_data_from_pubsub(actor_id, actor_table_data):
             actor_table_data = actor_table_data_to_dict(actor_table_data)
-            _process_actor_table_data(actor_table_data)
             # If actor is not new registered but updated, we only update
             # states related fields.
             if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
