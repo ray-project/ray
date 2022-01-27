@@ -36,6 +36,10 @@ def actor_table_data_to_dict(message):
             "sourceActorId", "placementGroupId"
         },
         including_default_value_fields=True)
+    # The complete schema for actor table is here:
+    #     src/ray/protobuf/gcs.proto
+    # It is super big and for dashboard, we don't need that much information.
+    # Only preserve the necessary ones here for memory usage.
     fields = {
         "actorId", "jobId", "pid", "address", "state", "name", "numRestarts",
         "taskSpec"
