@@ -628,7 +628,9 @@ cdef execute_task(
                     args, kwargs = [], {}
                 else:
                     metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                    object_refs = VectorToObjectRefs(c_arg_refs, skip_adding_local_ref=False)
+                    object_refs = VectorToObjectRefs(
+                            c_arg_refs,
+                            skip_adding_local_ref=False)
 
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
@@ -884,7 +886,9 @@ cdef c_vector[c_string] spill_objects_handler(
         c_vector[c_string] owner_addresses
 
     with gil:
-        object_refs = VectorToObjectRefs(object_refs_to_spill, skip_adding_local_ref=False)
+        object_refs = VectorToObjectRefs(
+                object_refs_to_spill,
+                skip_adding_local_ref=False)
         for i in range(object_refs_to_spill.size()):
             owner_addresses.push_back(
                     object_refs_to_spill[i].owner_address()
@@ -920,7 +924,9 @@ cdef int64_t restore_spilled_objects_handler(
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
-        object_refs = VectorToObjectRefs(object_refs_to_restore, skip_adding_local_ref=False)
+        object_refs = VectorToObjectRefs(
+                object_refs_to_restore,
+                skip_adding_local_ref=False)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
@@ -1511,7 +1517,8 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
+                self, language, args, &args_vector, function_descriptor,
+                &incremented_put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1578,7 +1585,8 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
+                self, language, args, &args_vector, function_descriptor,
+                &incremented_put_arg_ids)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
@@ -1703,7 +1711,8 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
-                self, language, args, &args_vector, function_descriptor, &incremented_put_arg_ids)
+                self, language, args, &args_vector, function_descriptor,
+                &incremented_put_arg_ids)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:

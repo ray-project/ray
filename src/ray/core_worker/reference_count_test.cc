@@ -346,7 +346,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
-    rc_.AddOwnedObject(outer_id, {inner_id}, address_, "", 0, false, /*add_local_ref=*/true);
+    rc_.AddOwnedObject(outer_id, {inner_id}, address_, "", 0, false,
+                       /*add_local_ref=*/true);
   }
 
   void GetSerializedObjectId(const ObjectID outer_id, const ObjectID &inner_id,
@@ -593,8 +594,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   // locality data.
   int64_t object_size = 100;
   rc->AddOwnedObject(obj1, {}, address, "file2.py:42", object_size, false,
-                     /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node1));
+                     /*add_local_ref=*/true, absl::optional<NodeID>(node1));
   auto locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_TRUE(locality_data_obj1.has_value());
   ASSERT_EQ(locality_data_obj1->object_size, object_size);
@@ -656,8 +656,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
   // Fetching locality data for an object that doesn't have an object size defined
   // should return a null optional.
   rc->AddOwnedObject(obj2, {}, address, "file2.py:43", -1, false,
-      /*add_local_ref=*/true,
-                     absl::optional<NodeID>(node2));
+                     /*add_local_ref=*/true, absl::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
   ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
 
@@ -1659,7 +1658,8 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   // Phase 3 -- foreign owner gets ref removed information.
   //
   // Emulate ref removed callback.
-  foreign_owner->rc_.AddOwnedObject(inner_id, {}, foreign_owner->address_, "", 0, false, /*add_local_ref=*/false);
+  foreign_owner->rc_.AddOwnedObject(inner_id, {}, foreign_owner->address_, "", 0, false,
+                                    /*add_local_ref=*/false);
   foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
 
   // Foreign owner waits on owner.
@@ -2649,9 +2649,11 @@ TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
   // Owner owns a nested object ref, borrower is using the outer ObjectRef.
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(outer_id, {}, owner->address_, "", 0, false, /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(outer_id, {}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
-  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false, /*add_local_ref=*/true);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/true);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
 
@@ -2690,9 +2692,12 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID middle_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false, /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false, /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false, /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
   ASSERT_TRUE(owner->rc_.HasReference(middle_id));
@@ -2738,9 +2743,12 @@ TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
   ObjectID outer_id = ObjectID::FromRandom();
   ObjectID middle_id = ObjectID::FromRandom();
   ObjectID inner_id = ObjectID::FromRandom();
-  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false, /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false, /*add_local_ref=*/false);
-  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false, /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
+  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false,
+                            /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower1->address_);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
   ASSERT_TRUE(owner->rc_.HasReference(middle_id));
