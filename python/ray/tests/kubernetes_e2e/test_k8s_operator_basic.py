@@ -44,7 +44,7 @@ def client_connect_to_k8s(port="10001"):
     # Wait a bit for the port-forwarding connection to be
     # established.
     time.sleep(10)
-    ray.client(f"127.0.0.1:{port}").connect()
+    ray.init(f"ray://127.0.0.1:{port}")
     try:
         yield proc
     finally:
