@@ -640,21 +640,18 @@ class TrialRunner:
                                                      for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
-    def step(self):
-        """Runs one step of the trial event loop.
+    def _do_pre_wait_work(self) -> Optional[Trial]:
+        """Work within a single step before entering single wait.
 
-        Callers should typically run this method repeatedly in a loop. They
-        may inspect or modify the runner's state in between calls to step().
+        Roughly:
+        - Adding suggested trials to the live queue of trials
+            (they start as PENDING trials).
+        - Staging the pending trials (requesting the resources from Core).
+
+        Returns:
+            next_trial: Trial
         """
         self._updated_queue = False
-
-        if self.is_finished():
-            raise TuneError("Called step when all trials finished?")
-        with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self.get_trials())
-        with warn_if_slow("callbacks.on_step_begin"):
-            self._callbacks.on_step_begin(
-                iteration=self._iteration, trials=self._trials)
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
@@ -671,6 +668,9 @@ class TrialRunner:
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._live_trials)
 
+        return next_trial
+
+    def _wait_and_handle_event(self, next_trial):
         try:
             # Single wait of entire tune loop.
             future_result = self.trial_executor.get_next_future_result(
@@ -704,6 +704,25 @@ class TrialRunner:
                 raise e
             else:
                 raise TuneError(traceback.format_exc())
+
+    def step(self):
+        """Runs one step of the trial event loop.
+
+        Callers should typically run this method repeatedly in a loop. They
+        may inspect or modify the runner's state in between calls to step().
+        """
+
+        if self.is_finished():
+            raise TuneError("Called step when all trials finished?")
+        with warn_if_slow("on_step_begin"):
+            self.trial_executor.on_step_begin(self.get_trials())
+        with warn_if_slow("callbacks.on_step_begin"):
+            self._callbacks.on_step_begin(
+                iteration=self._iteration, trials=self._trials)
+
+        next_trial = self._do_pre_wait_work()
+
+        self._wait_and_handle_event()
 
         self._stop_experiment_if_needed()
 

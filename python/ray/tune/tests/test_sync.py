@@ -15,6 +15,7 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
+from ray.tune import TuneError
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
 from ray.tune.sync_client import NOOP
@@ -120,7 +121,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterProperString(self):
         """Tests that invalid commands throw.."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TuneError):
             # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(syncer="ls {target}")
             [trial] = tune.run(
@@ -133,7 +134,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 sync_config=sync_config,
             ).trials
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TuneError):
             # This raises ValueError because logger is init in safe zone.
             sync_config = tune.SyncConfig(syncer="ls {source}")
             [trial] = tune.run(
