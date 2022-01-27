@@ -8,8 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
-    LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -166,15 +165,12 @@ class MultiGPULearnerThread(LearnerThread):
                     policy.get_num_samples_loaded_into_buffer(buffer_idx)
 
             self.learner_info = learner_info_builder.finalize()
-            learner_stats = {
-                pid: self.learner_info[pid][LEARNER_STATS_KEY]
-                for pid in self.learner_info.keys()
-            }
 
         if released:
             self.idle_tower_stacks.put(buffer_idx)
 
-        self.outqueue.put((get_num_samples_loaded_into_buffer, learner_stats))
+        self.outqueue.put((get_num_samples_loaded_into_buffer,
+                           self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
