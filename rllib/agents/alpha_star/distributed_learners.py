@@ -11,13 +11,15 @@ from ray.rllib.utils.typing import PolicyID
 
 class DistributedLearners:
     """Container class for n learning @ray.remote-turned policies."""
-    def __init__(self,
-                 config,
-                 max_num_policies: int,
-                 replay_actor_class: Type[ActorHandle],
-                 replay_actor_args: List[Any],
-                 num_learner_shards: Union[str, int] = "auto",
-                 ):
+
+    def __init__(
+            self,
+            config,
+            max_num_policies: int,
+            replay_actor_class: Type[ActorHandle],
+            replay_actor_args: List[Any],
+            num_learner_shards: Union[str, int] = "auto",
+    ):
         """Initializes a DistributedLearners instance.
 
         Args:

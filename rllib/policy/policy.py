@@ -485,34 +485,6 @@ class Policy(metaclass=ABCMeta):
             return self.learn_on_batch(batch)
 
     @DeveloperAPI
-    def learn_on_batch_from_replay_buffer(
-            self, replay_actor: ActorHandle,
-            policy_id: PolicyID) -> Dict[str, TensorType]:
-        """Samples a batch from given replay actor and performs an update.
-
-        Args:
-            replay_actor: The replay buffer actor to sample from.
-            policy_id: The ID of this policy.
-
-        Returns:
-            Dictionary of extra metadata from `compute_gradients()`.
-        """
-        # Sample a batch from the given replay actor.
-        # For better performance, make sure the replay actor is co-located
-        #  with this policy (on the same node).
-        batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
-        if batch is None:
-            return {}
-
-        # Send to own learn_on_batch method for updating.
-        # TODO: hack w/ `hasattr`
-        if hasattr(self, "devices") and len(self.devices) > 1:
-            self.load_batch_into_buffer(batch, buffer_index=0)
-            return self.learn_on_loaded_batch(offset=0, buffer_index=0)
-        else:
-            return self.learn_on_batch(batch)
-
-    @DeveloperAPI
     def load_batch_into_buffer(self, batch: SampleBatch,
                                buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
