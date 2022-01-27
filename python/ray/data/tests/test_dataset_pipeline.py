@@ -123,6 +123,7 @@ def test_pipeline_is_parallel(shutdown_only):
             return self.max_in_progress
 
     tracker = ParallelismTracker.remote()
+
     def sleep(x):
         ray.get(tracker.inc.remote())
         time.sleep(0.1)

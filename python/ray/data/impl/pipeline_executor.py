@@ -1,7 +1,6 @@
-import asyncio
 from typing import Any, Callable, List, Optional, TYPE_CHECKING
 import time
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
 
 import ray
 from ray.data.context import DatasetContext
@@ -14,12 +13,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-try:
-    create_task = asyncio.create_task
-except AttributeError:
-    create_task = asyncio.ensure_future
-
-async def pipeline_stage(fn: Callable[[], Dataset[T]],
+def pipeline_stage(fn: Callable[[], Dataset[T]],
                    context: DatasetContext) -> Dataset[T]:
     DatasetContext._set_current(context)
     try:
@@ -35,10 +29,9 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
-        self._stages[0] = create_task(pipeline_stage(
-                        next(self._iter), DatasetContext.get_current()))
-        self._pending = set([self._stages[0]])
-        self._ready = set()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            self._stages[0] = pool.submit(lambda: pipeline_stage(
+                            next(self._iter), DatasetContext.get_current()))
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -57,65 +50,53 @@ class PipelineExecutor:
         return self
 
     def __next__(self):
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as pool:
-            output = pool.submit(lambda: loop.run_until_complete(self._next()))
-        output = output.result()
-        if isinstance(output, Exception):
-            raise output
-        return output
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            output = None
+            start = time.perf_counter()
 
-    async def _next(self):
-        output = None
-        start = time.perf_counter()
+            while output is None:
+                if all(s is None for s in self._stages):
+                    raise StopIteration
 
-        while output is None:
-            if all(s is None for s in self._stages):
-                return StopIteration()
+                # Wait for any completed stages.
+                pending = [f for f in self._stages if f is not None]
+                ready, _ = concurrent.futures.wait(pending, timeout=0.1)
 
-            # Wait for any completed stages.
-            if self._pending:
-                ready, self._pending = await asyncio.wait(self._pending, timeout=0.1)
-                self._ready.update(ready)
+                # Bubble elements down the pipeline as they become ready.
+                for i in range(len(self._stages))[::-1]:
+                    is_last = i + 1 >= len(self._stages)
+                    next_slot_free = is_last or self._stages[i + 1] is None
+                    if not next_slot_free:
+                        continue
 
-            # Bubble elements down the pipeline as they become ready.
-            for i in range(len(self._stages))[::-1]:
-                is_last = i + 1 >= len(self._stages)
-                next_slot_free = is_last or self._stages[i + 1] is None
-                if not next_slot_free:
-                    continue
+                    slot_ready = self._stages[i] in ready
+                    if not slot_ready:
+                        continue
 
-                print(self._stages[i])
-                slot_ready = self._stages[i] in self._ready
-                if not slot_ready:
-                    continue
+                    # Bubble.
+                    result = self._stages[i].result()
+                    if self._bars:
+                        self._bars[i].update(1)
+                    self._stages[i] = None
+                    if is_last:
+                        output = result
+                    else:
+                        fn = self._pipeline._stages[i]
+                        self._stages[i + 1] = pool.submit(lambda: pipeline_stage(
+                            lambda: fn(result), DatasetContext.get_current()))
 
-                # Bubble.
-                self._ready.remove(self._stages[i])
-                result = await self._stages[i]
-                if self._bars:
-                    self._bars[i].update(1)
-                self._stages[i] = None
-                if is_last:
-                    output = result
-                else:
-                    fn = self._pipeline._stages[i]
-                    self._stages[i + 1] = create_task(pipeline_stage(
-                        lambda: fn(result), DatasetContext.get_current()))
-                    self._pending.add(self._stages[i + 1])
+                # Pull a new element for the initial slot if possible.
+                if self._stages[0] is None:
+                    try:
+                        self._stages[0] = pool.submit(lambda: pipeline_stage(
+                            next(self._iter), DatasetContext.get_current()))
+                    except StopIteration:
+                        pass
 
-            # Pull a new element for the initial slot if possible.
-            if self._stages[0] is None:
-                try:
-                    self._stages[0] = create_task(pipeline_stage(
-                        next(self._iter), DatasetContext.get_current()))
-                    self._pending.add(self._stages[0])
-                except StopIteration:
-                    pass
-
-        self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
-        self._pipeline._stats.add(output._stats)
-        return output
+            self._pipeline._stats.wait_time_s.append(time.perf_counter() -
+                                                     start)
+            self._pipeline._stats.add(output._stats)
+            return output
 
 
 @ray.remote(num_cpus=0, placement_group=None)
