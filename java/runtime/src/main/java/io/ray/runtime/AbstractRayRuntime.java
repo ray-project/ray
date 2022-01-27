@@ -79,7 +79,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return new ObjectRefImpl<T>(
         objectId,
         (Class<T>) (obj == null ? Object.class : obj.getClass()),
-        /*skip_adding_local_ref=*/ true);
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -94,7 +94,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return new ObjectRefImpl<T>(
         objectId,
         (Class<T>) (obj == null ? Object.class : obj.getClass()),
-        /*skip_adding_local_ref=*/ true);
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -301,7 +301,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skip_adding_local_ref=*/ true);
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 
@@ -323,7 +323,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skip_adding_local_ref=*/ true);
+      return new ObjectRefImpl(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
     }
   }
 

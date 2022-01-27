@@ -32,16 +32,16 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private Class<T> type;
 
-  public ObjectRefImpl(ObjectId id, Class<T> type, boolean skip_adding_local_ref) {
+  public ObjectRefImpl(ObjectId id, Class<T> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = type;
-    if (!skip_adding_local_ref) {
+    if (!skipAddingLocalRef) {
       addLocalReference();
     }
   }
 
   public ObjectRefImpl(ObjectId id, Class<T> type) {
-    this(id, type, /*skip_adding_local_ref=*/ false);
+    this(id, type, /*skipAddingLocalRef=*/ false);
   }
 
   public ObjectRefImpl() {}
