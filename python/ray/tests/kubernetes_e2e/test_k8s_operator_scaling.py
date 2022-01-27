@@ -30,7 +30,6 @@ from test_k8s_operator_basic import NAMESPACE
 
 
 def submit_scaling_job(num_actors):
-
     @ray.remote(num_cpus=1)
     class A:
         def __init__(self, index):
