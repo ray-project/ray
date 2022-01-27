@@ -1,12 +1,42 @@
 .. _datasets-ml-preprocessing:
 
-Dataset ML Preprocessing
-========================
+==============================
+Loading and Processing ML Data
+==============================
+
+Datasets in Ray Data are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+
+Ray Data is not intended as a replacement for more general data processing systems.
+Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
+
+.. image:: images/dataset-loading-1.png
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
+
+Ray-integrated DataFrame libraries can also be seamlessly used with Ray Data, to enable running a full data to
+ML pipeline completely within Ray without requiring data to be materialized to external storage:
+
+.. image:: images/dataset-loading-2.png
+   :width: 650px
+   :align: center
+
+See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Ray Data as the
+last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more
+Ray Data ML use cases and benchmarks.
+
+
+--------------------
+Preprocessing for ML
+--------------------
 
 Datasets supports data preprocessing transformations commonly performed just before model training and model inference, which we refer to as **last-mile preprocessing**. These transformations are carried out via a few key operations: mapping, groupbys + aggregations, and random shuffling.
 
 Mapping
--------
+=======
 
 Many common preprocessing transformations, such as:
 
@@ -41,8 +71,8 @@ can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.m
     # represented as Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
 
-Groupbys and aggregations
--------------------------
+Group-bys and aggregations
+==========================
 
 Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Just like other transformations, grouped/global aggregations are executed *eagerly* and block until the aggregation has been computed.
 
@@ -123,7 +153,7 @@ These aggregations can be combined with batch mapping to transform a dataset usi
     # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
 Random shuffle
---------------
+==============
 
 Randomly shuffling data is an important part of training machine learning models: it decorrelates samples, preventing overfitting and improving generalization. For many models, even between-epoch shuffling can drastically improve the precision gain per step/epoch. Datasets has a hyper-scalable distributed random shuffle that allows you to realize the model accuracy benefits of per-epoch shuffling without sacrificing training throughput, even at large data scales and even when doing distributed data-parallel training across multiple GPUs/nodes.
 
@@ -170,4 +200,3 @@ Randomly shuffling data is an important part of training machine learning models
     # -> DatasetPipeline(num_windows=10, num_stages=2)
 
 See the `large-scale ML ingest example <examples/big_data_ingestion.html>`__ for an end-to-end example of per-epoch shuffled data loading for distributed training.
-

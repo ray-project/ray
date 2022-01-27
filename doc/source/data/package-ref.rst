@@ -1,8 +1,11 @@
+.. _data_api:
+
 Ray Data API
 ============
 
-Creating a Dataset
-------------------
+Creating Datasets
+-----------------
+
 .. autofunction:: ray.data.range
 .. autofunction:: ray.data.range_arrow
 .. autofunction:: ray.data.range_tensor
