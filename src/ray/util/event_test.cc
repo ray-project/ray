@@ -225,7 +225,7 @@ TEST_F(EventTest, TestBasic) {
   CheckEventDetail(result[3], "", "", "", "GCS", "FATAL", "", "");
 }
 
-TEST_F(EventTest, TestAddCustomFields) {
+TEST_F(EventTest, TestUpdateCustomFields) {
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
 
   RayEventContext::Instance().SetEventContext(
@@ -237,7 +237,7 @@ TEST_F(EventTest, TestAddCustomFields) {
 
   // Replace the value of existing key: "job_id"
   // Insert new item of key: "task_id"
-  RayEventContext::Instance().AddCustomFields(
+  RayEventContext::Instance().UpdateCustomFields(
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 2"}, {"task_id", "task 2"}}));
   RAY_EVENT(ERROR, "label 2") << "send message 2 "
@@ -315,7 +315,7 @@ TEST_F(EventTest, TestMultiThreadContextCopy) {
   std::thread private_thread_2 = std::thread(std::bind([&]() {
     ray::RayEventContext::Instance().SetSourceType(
         rpc::Event_SourceType::Event_SourceType_RAYLET);
-    ray::RayEventContext::Instance().AddCustomField("job_id", "job 1");
+    ray::RayEventContext::Instance().UpdateCustomField("job_id", "job 1");
     RAY_EVENT(INFO, "label 2") << "send message 2";
   }));
 

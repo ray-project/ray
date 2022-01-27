@@ -141,11 +141,12 @@ class RayEventContext final {
   void ResetEventContext();
 
   // If the key already exists, replace the value. Otherwise, insert a new item.
-  void AddCustomField(const std::string &key, const std::string &value);
+  void UpdateCustomField(const std::string &key, const std::string &value);
 
-  // Add the `custom_fields` into the existing items.
+  // Update the `custom_fields` into the existing items.
   // If the key already exists, replace the value. Otherwise, insert a new item.
-  void AddCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
+  void UpdateCustomFields(
+      const std::unordered_map<std::string, std::string> &custom_fields);
 
   inline void SetSourceType(rpc::Event_SourceType source_type) {
     source_type_ = source_type;

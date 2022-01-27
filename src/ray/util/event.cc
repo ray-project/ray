@@ -175,12 +175,12 @@ void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
     const std::unordered_map<std::string, std::string> &custom_fields) {
   SetSourceType(source_type);
-  AddCustomFields(custom_fields);
+  UpdateCustomFields(custom_fields);
 
   if (!global_context_started_setting_.fetch_or(1)) {
     global_context_ = std::make_unique<RayEventContext>();
     global_context_->SetSourceType(source_type);
-    global_context_->AddCustomFields(custom_fields);
+    global_context_->UpdateCustomFields(custom_fields);
     global_context_finished_setting_ = true;
   }
 }
@@ -192,13 +192,14 @@ void RayEventContext::ResetEventContext() {
   global_context_finished_setting_ = false;
 }
 
-void RayEventContext::AddCustomField(const std::string &key, const std::string &value) {
+void RayEventContext::UpdateCustomField(const std::string &key,
+                                        const std::string &value) {
   // This method should be used while source type has been set.
   RAY_CHECK(GetInitialzed());
   custom_fields_[key] = value;
 }
 
-void RayEventContext::AddCustomFields(
+void RayEventContext::UpdateCustomFields(
     const std::unordered_map<std::string, std::string> &custom_fields) {
   // This method should be used while source type has been set.
   RAY_CHECK(GetInitialzed());
