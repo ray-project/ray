@@ -136,11 +136,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void DeleteResource(const std::string &node_name,
                       const std::string &resource_name) override;
 
-  /// Return local resources.
-  NodeResourceInstances GetLocalResources() const {
-    return local_resource_manager_->GetLocalResources();
-  };
-
   /// Return local resources in human-readable string form.
   std::string GetLocalResourceViewString() const override;
 
