@@ -42,7 +42,7 @@ def actor_table_data_to_dict(message):
     # Only preserve the necessary ones here for memory usage.
     fields = {
         "actorId", "jobId", "pid", "address", "state", "name", "numRestarts",
-        "taskSpec"
+        "taskSpec", "timestamp", "numExecutedTasks",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     if "taskSpec" in light_message:
