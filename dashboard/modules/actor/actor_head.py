@@ -40,7 +40,7 @@ def actor_table_data_to_dict(message):
         "actorId", "jobId", "pid", "address", "state", "name", "numRestarts",
         "taskSpec"
     }
-    light_message = {k: v for (k, v) in orig_message.itesm() if k in fields}
+    light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     if "taskSpec" in light_message:
         actor_class = actor_classname_from_task_spec(light_message["taskSpec"])
         light_message["actorClass"] = actor_class
