@@ -15,4 +15,4 @@ post_build_cmds:
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Upgrade the Ray Lightning version, otherwise it will be cached in the Anyscale Docker image.
   - echo {{ env["TIMESTAMP"] }}
-  - pip install -U ray-lightning
+  - pip3 install -U ray-lightning
