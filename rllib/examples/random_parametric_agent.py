@@ -69,7 +69,7 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
 
     # Collect batches for the trainable policies.
     rollouts = rollouts.for_each(
-        SelectExperiences(workers.trainable_policies()))
+        SelectExperiences(local_worker=workers.local_worker()))
 
     # Return training metrics.
     return StandardMetricsReporting(rollouts, workers, config)

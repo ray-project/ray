@@ -14,7 +14,7 @@ from ray.tune.registry import register_env, register_input, \
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader, InputReader, \
-    ShuffledInput
+    ShuffledInput, DatasetWriter
 from ray.rllib.offline.json_writer import _to_json
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -258,6 +258,22 @@ class JsonIOTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir)
         ray.shutdown()
+
+    def test_write_dataset(self):
+        ioctx = IOContext(
+            self.test_dir, {
+                "output": "dataset",
+                "output_config": {
+                    "format": "json",
+                    "path": self.test_dir,
+                    "max_num_samples_per_file": 2,
+                },
+            }, 0, None)
+        writer = DatasetWriter(ioctx, compress_columns=["obs"])
+        self.assertEqual(len(os.listdir(self.test_dir)), 0)
+        writer.write(SAMPLES)
+        writer.write(SAMPLES)
+        self.assertEqual(len(os.listdir(self.test_dir)), 1)
 
     def test_write_simple(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
