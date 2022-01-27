@@ -164,7 +164,9 @@ def read_datasource(datasource: Datasource[T],
         Dataset holding the data read from the datasource.
     """
 
-    read_tasks = datasource.prepare_read(parallelism, **read_args)
+    prepare_read = cached_remote_fn(prepare_read)
+    read_tasks = ray.get(
+        prepare_read.remote(datasource, parallelism, **read_args))
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
