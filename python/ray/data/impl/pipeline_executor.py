@@ -13,9 +13,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-def pipeline_stage(fn: Callable[[], Dataset[T]],
-                   context: DatasetContext) -> Dataset[T]:
-    DatasetContext._set_current(context)
+def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
         return fn()
@@ -29,9 +27,10 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            self._stages[0] = pool.submit(lambda: pipeline_stage(
-                            next(self._iter), DatasetContext.get_current()))
+        self._pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(self._stages))
+        self._stages[0] = self._pool.submit(
+            lambda: pipeline_stage(next(self._iter)))
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -50,53 +49,51 @@ class PipelineExecutor:
         return self
 
     def __next__(self):
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            output = None
-            start = time.perf_counter()
+        output = None
+        start = time.perf_counter()
 
-            while output is None:
-                if all(s is None for s in self._stages):
-                    raise StopIteration
+        while output is None:
+            if all(s is None for s in self._stages):
+                raise StopIteration
 
-                # Wait for any completed stages.
-                pending = [f for f in self._stages if f is not None]
-                ready, _ = concurrent.futures.wait(pending, timeout=0.1)
+            # Wait for any completed stages.
+            pending = [f for f in self._stages if f is not None]
+            ready, _ = concurrent.futures.wait(pending, timeout=0.1)
 
-                # Bubble elements down the pipeline as they become ready.
-                for i in range(len(self._stages))[::-1]:
-                    is_last = i + 1 >= len(self._stages)
-                    next_slot_free = is_last or self._stages[i + 1] is None
-                    if not next_slot_free:
-                        continue
+            # Bubble elements down the pipeline as they become ready.
+            for i in range(len(self._stages))[::-1]:
+                is_last = i + 1 >= len(self._stages)
+                next_slot_free = is_last or self._stages[i + 1] is None
+                if not next_slot_free:
+                    continue
 
-                    slot_ready = self._stages[i] in ready
-                    if not slot_ready:
-                        continue
+                slot_ready = self._stages[i] in ready
+                if not slot_ready:
+                    continue
 
-                    # Bubble.
-                    result = self._stages[i].result()
-                    if self._bars:
-                        self._bars[i].update(1)
-                    self._stages[i] = None
-                    if is_last:
-                        output = result
-                    else:
-                        fn = self._pipeline._stages[i]
-                        self._stages[i + 1] = pool.submit(lambda: pipeline_stage(
-                            lambda: fn(result), DatasetContext.get_current()))
+                # Bubble.
+                result = self._stages[i].result()
+                if self._bars:
+                    self._bars[i].update(1)
+                self._stages[i] = None
+                if is_last:
+                    output = result
+                else:
+                    fn = self._pipeline._stages[i]
+                    self._stages[i + 1] = self._pool.submit(
+                        lambda: pipeline_stage(lambda: fn(result)))
 
-                # Pull a new element for the initial slot if possible.
-                if self._stages[0] is None:
-                    try:
-                        self._stages[0] = pool.submit(lambda: pipeline_stage(
-                            next(self._iter), DatasetContext.get_current()))
-                    except StopIteration:
-                        pass
+            # Pull a new element for the initial slot if possible.
+            if self._stages[0] is None:
+                try:
+                    self._stages[0] = self._pool.submit(
+                        lambda: pipeline_stage(next(self._iter)))
+                except StopIteration:
+                    pass
 
-            self._pipeline._stats.wait_time_s.append(time.perf_counter() -
-                                                     start)
-            self._pipeline._stats.add(output._stats)
-            return output
+        self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
+        self._pipeline._stats.add(output._stats)
+        return output
 
 
 @ray.remote(num_cpus=0, placement_group=None)
