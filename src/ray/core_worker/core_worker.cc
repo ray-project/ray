@@ -1778,7 +1778,7 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
 std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
-  absl::ReleasableMutexLock lock(&actor_task_mutex_);
+  //absl::ReleasableMutexLock lock(&actor_task_mutex_);
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
@@ -1828,7 +1828,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     /// submit another task when executing the current task locally, which
     /// cause deadlock. The code call chain is:
     /// SubmitActorTask -> python user code -> actor.xx.remote() -> SubmitActorTask
-    lock.Release();
+    //lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
     returned_refs = task_manager_->AddPendingTask(
