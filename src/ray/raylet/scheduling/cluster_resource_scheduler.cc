@@ -319,8 +319,10 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
   }
 }
 
-const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
-  const auto &node_it = nodes_.find(local_node_id_);
+const NodeResources &ClusterResourceScheduler::GetNodeResources(
+    const std::string &node_name) const {
+  int64_t node_id = string_to_int_map_.Get(node_name);
+  const auto &node_it = nodes_.find(node_id);
   RAY_CHECK(node_it != nodes_.end());
   return node_it->second.GetLocalView();
 }
@@ -415,8 +417,10 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   return buffer.str();
 }
 
-std::string ClusterResourceScheduler::GetLocalResourceViewString() const {
-  const auto &node_it = nodes_.find(local_node_id_);
+std::string ClusterResourceScheduler::GetNodeResourceViewString(
+    const std::string &node_name) const {
+  int64_t node_id = string_to_int_map_.Get(node_name);
+  const auto &node_it = nodes_.find(node_id);
   RAY_CHECK(node_it != nodes_.end());
   return node_it->second.GetLocalView().DictString(string_to_int_map_);
 }
@@ -445,11 +449,12 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
   return SubtractRemoteNodeAvailableResources(node_id, resource_request);
 }
 
-bool ClusterResourceScheduler::IsLocallySchedulable(
-    const absl::flat_hash_map<std::string, double> &shape) {
+bool ClusterResourceScheduler::IsSchedulableOnNode(
+    const std::string &node_name, const absl::flat_hash_map<std::string, double> &shape) {
+  int64_t node_id = string_to_int_map_.Get(node_name);
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources());
+  return IsSchedulable(resource_request, node_id, GetNodeResources(node_name));
 }
 
 }  // namespace ray

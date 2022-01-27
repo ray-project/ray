@@ -35,7 +35,8 @@ class MockClusterResourceSchedulerInterface : public ClusterResourceSchedulerInt
   MOCK_METHOD(ray::gcs::NodeResourceInfoAccessor::ResourceMap, GetResourceTotals,
               (const absl::flat_hash_map<std::string, double> &resource_map_filter),
               (const, override));
-  MOCK_METHOD(std::string, GetLocalResourceViewString, (), (const, override));
+  MOCK_METHOD(std::string, GetNodeResourceViewString, (const std::string &node_id_string),
+              (const, override));
 };
 
 }  // namespace ray

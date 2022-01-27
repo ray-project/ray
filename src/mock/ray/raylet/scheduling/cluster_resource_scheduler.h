@@ -28,7 +28,8 @@ class MockClusterResourceScheduler : public ClusterResourceScheduler {
   MOCK_METHOD(void, DeleteResource,
               (const std::string &node_name, const std::string &resource_name),
               (override));
-  MOCK_METHOD(std::string, GetLocalResourceViewString, (), (const, override));
+  MOCK_METHOD(std::string, GetNodeResourceViewString, (const std::string &node_name),
+              (const, override));
   MOCK_METHOD(void, FillResourceUsage, (rpc::ResourcesData & resources_data), (override));
   MOCK_METHOD(ray::gcs::NodeResourceInfoAccessor::ResourceMap, GetResourceTotals,
               (const absl::flat_hash_map<std::string, double> &resource_map_filter),

@@ -150,7 +150,8 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
-    node_info.set_node_id(NodeID::FromRandom().Binary());
+    node_name = NodeID::FromRandom().Binary();
+    node_info.set_node_id(node_name);
     ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
         .WillByDefault(::testing::Return(&node_info));
   }
@@ -190,6 +191,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     }
   }
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::string node_name;
   rpc::GcsNodeInfo node_info;
 };
 
@@ -398,8 +400,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
   absl::flat_hash_map<std::string, double> initial_resources = {
       {ray::kCPU_ResourceLabel, 1}, {"custom", 1}};
-  ClusterResourceScheduler resource_scheduler(
-      NodeID::FromRandom().Binary(), initial_resources, *gcs_client_, nullptr, nullptr);
+  std::string name = NodeID::FromRandom().Binary();
+  ClusterResourceScheduler resource_scheduler(name, initial_resources, *gcs_client_,
+                                              nullptr, nullptr);
 
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       ray::kCPU_ResourceLabel, {0, 1, 1});
@@ -407,11 +410,11 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
                                                                          {0, 1, 1});
 
   const auto &predefined_resources =
-      resource_scheduler.GetLocalNodeResources().predefined_resources;
+      resource_scheduler.GetNodeResources(name).predefined_resources;
   ASSERT_EQ(predefined_resources[CPU].total.Double(), 3);
 
   const auto &custom_resources =
-      resource_scheduler.GetLocalNodeResources().custom_resources;
+      resource_scheduler.GetNodeResources(name).custom_resources;
   auto resource_id = resource_scheduler.string_to_int_map_.Get("custom");
   ASSERT_EQ(custom_resources.find(resource_id)->second.total.Double(), 3);
 }

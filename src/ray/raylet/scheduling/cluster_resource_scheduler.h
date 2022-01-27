@@ -35,6 +35,9 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace raylet {
+class ClusterTaskManagerTest; 
+}
 
 using rpc::HeartbeatTableData;
 
@@ -61,11 +64,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
-
-  void AddOrUpdateNode(
-      const std::string &node_id,
-      const absl::flat_hash_map<std::string, double> &resource_map_total,
-      const absl::flat_hash_map<std::string, double> &resource_map_available);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
@@ -137,7 +135,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                       const std::string &resource_name) override;
 
   /// Return local resources in human-readable string form.
-  std::string GetLocalResourceViewString() const override;
+  std::string GetNodeResourceViewString(const std::string &node_name) const override;
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
@@ -153,16 +151,17 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
-  /// Check whether a task request is schedulable on a the local node. A node is
+  /// Check whether a task request is schedulable on a given node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
+  /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
-  bool IsLocallySchedulable(const absl::flat_hash_map<std::string, double> &shape);
+  bool IsSchedulableOnNode(const std::string &node_name,
+                           const absl::flat_hash_map<std::string, double> &shape);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
 
-  /// Get local node resources; test only.
-  const NodeResources &GetLocalNodeResources() const;
+  const NodeResources &GetNodeResources(const std::string &node_name) const;
 
  private:
   bool NodeAlive(int64_t node_id) const;
@@ -183,6 +182,11 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
   void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
+
+  void AddOrUpdateNode(
+      const std::string &node_id,
+      const absl::flat_hash_map<std::string, double> &resource_map_total,
+      const absl::flat_hash_map<std::string, double> &resource_map_available);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -226,18 +230,25 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   gcs::GcsClient *gcs_client_;
 
   friend class ClusterResourceSchedulerTest;
+  friend class raylet::ClusterTaskManagerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest,
               UpdateLocalAvailableResourcesFromResourceInstancesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, ResourceUsageReportTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, DeadNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask);
   FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, DirtyLocalViewTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
 };
 
 }  // end namespace ray
