@@ -1,17 +1,19 @@
 """ Example of using LinUCB on a recommendation environment with parametric
     actions. """
 
+from matplotlib import pyplot as plt
 import os
+import pandas as pd
 import time
 
-from matplotlib import pyplot as plt
-import pandas as pd
-
+import ray
 from ray import tune
 from ray.rllib.examples.env.bandit_envs_recommender_system import \
     ParametricItemRecoEnv
 
 if __name__ == "__main__":
+    ray.init(num_cpus=6)
+
     # Temp fix to avoid OMP conflict
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 

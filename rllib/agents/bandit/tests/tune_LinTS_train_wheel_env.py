@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import time
 
+import ray
 from ray import tune
 from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
 from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
@@ -30,6 +31,8 @@ def plot_model_weights(means, covs, ax):
 
 
 if __name__ == "__main__":
+    ray.init(num_cpus=2)
+
     config = {
         "env": WheelBanditEnv,
     }
@@ -67,7 +70,7 @@ if __name__ == "__main__":
 
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
-    trainer = BanditLinTSTrainer()
+    trainer = BanditLinTSTrainer(config=config)
     trainer.restore(trial.checkpoint.value)
 
     # Get model to plot arm weights distribution
