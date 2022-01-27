@@ -564,9 +564,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1052,12 +1051,10 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // We now imitate worker process crashing while core worker initializing.
 
   // 1. we register both workers.
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(),
-                                            worker_pool_->GetStartupToken(proc),
-                                            [](Status, int) {}));
-  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(),
-                                            worker_pool_->GetStartupToken(proc),
-                                            [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker1, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker2, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
   // PushWorker.
@@ -1101,9 +1098,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushWorker(worker);
@@ -1193,9 +1189,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushSpillWorker(worker);
@@ -1205,9 +1200,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     auto [proc, token] = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushRestoreWorker(worker);
@@ -1250,9 +1244,8 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(),
-                                              worker_pool_->GetStartupToken(proc),
-                                              [](Status, int) {}));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(
+        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
     worker_pool_->PushWorker(worker);
