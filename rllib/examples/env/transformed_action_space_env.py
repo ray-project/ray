@@ -11,9 +11,6 @@ class ActionTransform(gym.ActionWrapper):
                                                    env.action_space.shape,
                                                    env.action_space.dtype)
 
-    def reverse_action(self, action):
-        action
-
     def action(self, action):
         return (action - self._low) / (self._high - self._low) * (
             self.env.action_space.high -
