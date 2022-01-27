@@ -64,6 +64,16 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
             results.append(len(sample))
         self.assertAlmostEqual(np.mean(results), 3.0, delta=0.1)
 
+        # If we insert-1x and replay n times, expect roughly return batches of
+        # len 1.5 (replay_ratio=0.33 -> 33% replayed samples -> 1 new and 0.5 old
+        # samples on average in each returned value).
+        results = []
+        for _ in range(100):
+            buffer.add_batch(batch)
+            sample = buffer.replay()
+            results.append(len(sample))
+        self.assertAlmostEqual(np.mean(results), 1.5, delta=0.1)
+
         # 90% replay ratio.
         buffer = MixInMultiAgentReplayBuffer(
             capacity=self.capacity, replay_ratio=0.9)

@@ -468,8 +468,10 @@ class Policy(metaclass=ABCMeta):
             Dictionary of extra metadata from `compute_gradients()`.
         """
         # Sample a batch from the given replay actor.
-        # For better performance, make sure the replay actor is co-located
-        #  with this policy (on the same node).
+        # Note that for better performance (less data sent through the
+        # network), this policy should be co-located on the same node
+        # as `replay_actor`. Such a co-location step is usually done during
+        # the Trainer's `setup()` phase.
         batch = ray.get(replay_actor.replay.remote(policy_id=policy_id))
         if batch is None:
             return {}
