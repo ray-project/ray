@@ -179,32 +179,6 @@ class CoreWorkerDirectTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
-  /// Find the optimal victim (if there is any) for stealing work
-  ///
-  /// \param[in] scheduling_key The SchedulingKey of the thief.
-  /// \param[in] victim_addr The pointer to a variable that the function will fill with
-  /// the address of the victim, if one is found \param[out] A boolean indicating whether
-  /// we found a suitable victim or not
-  bool FindOptimalVictimForStealing(const SchedulingKey &scheduling_key,
-                                    rpc::WorkerAddress thief_addr,
-                                    rpc::Address *victim_raw_addr)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Look for workers with a surplus of tasks in flight, and, if it is possible,
-  /// steal some of those tasks and submit them to the current worker. If no tasks
-  /// are available for stealing, return the worker to the Raylet.
-  ///
-  /// \param[in] thief_addr The address of the worker that has finished its own work,
-  ///                       and is ready for stealing.
-  /// \param[in] was_error Whether the last task failed to be submitted to the worker.
-  /// \param[in] scheduling_key The scheduling class of the worker.
-  /// \param[in] assigned_resources Resource ids previously assigned to the worker.
-  void StealTasksOrReturnWorker(
-      const rpc::WorkerAddress &thief_addr, bool was_error,
-      const SchedulingKey &scheduling_key,
-      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
@@ -270,14 +244,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
   /// (3) The number of tasks that are currently in flight to the worker
-  /// (4) A boolean that indicates whether we have launched a StealTasks request, and we
-  /// are waiting for the stolen tasks (5) The resources assigned to the worker (6) The
-  /// SchedulingKey assigned to tasks that will be sent to the worker
+  /// (5) The resources assigned to the worker
+  /// (6) The SchedulingKey assigned to tasks that will be sent to the worker
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
     uint32_t tasks_in_flight = 0;
-    bool currently_stealing = false;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
 
@@ -296,26 +268,6 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether the pipeline to the worker associated with a LeaseEntry is full.
     inline bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
       return tasks_in_flight == max_tasks_in_flight_per_worker;
-    }
-
-    // Check whether the worker is a thief who is in the process of stealing tasks.
-    // Knowing whether a thief is currently stealing is important to prevent the thief
-    // from initiating another StealTasks request or from being returned to the raylet
-    // until stealing has completed.
-    inline bool WorkerIsStealing() const { return currently_stealing; }
-
-    // Once stealing has begun, updated the thief's currently_stealing flag to reflect the
-    // new state.
-    inline void SetWorkerIsStealing() {
-      RAY_CHECK(!currently_stealing);
-      currently_stealing = true;
-    }
-
-    // Once stealing has completed, updated the thief's currently_stealing flag to reflect
-    // the new state.
-    inline void SetWorkerDoneStealing() {
-      RAY_CHECK(currently_stealing);
-      currently_stealing = false;
     }
   };
 
@@ -356,24 +308,10 @@ class CoreWorkerDirectTaskSubmitter {
              (active_workers.size() * max_tasks_in_flight_per_worker);
     }
 
-    // Check whether there exists at least one task that can be stolen
-    inline bool StealableTasks() const {
-      // TODO: Make this function more accurate without introducing excessive
-      // inefficiencies. Currently, there is one scenario where this function can return
-      // false even if there are stealable tasks. This happens if the number of tasks in
-      // flight is less or equal to the number of active workers (so the condition below
-      // evaluates to FALSE), but some workers have more than 1 task queued, while others
-      // have none.
-
-      // If any worker has more than one task in flight, then that task can be stolen.
-      return total_tasks_in_flight > active_workers.size();
-    }
-
     // Get the current backlog size for this scheduling key
     [[nodiscard]] inline int64_t BacklogSize() const {
       if (task_queue.size() < pending_lease_requests.size()) {
-        // During work stealing we may have more pending lease requests than the number of
-        // queued tasks
+        // This can happen if worker is reused.
         return 0;
       }
 

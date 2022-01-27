@@ -212,3 +212,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = \
             gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
                 self._dashboard_head.aiogrpc_gcs_channel)
+
+    @staticmethod
+    def is_minimal_module():
+        return False

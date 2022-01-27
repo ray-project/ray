@@ -39,8 +39,7 @@ Starting a placement group
 
 Ray placement group can be created via the ``ray.util.placement_group`` (Python) or ``PlacementGroups.createPlacementGroup`` (Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -60,7 +59,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       pg = placement_group([bundle1, bundle2], strategy="STRICT_PACK")
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -80,7 +79,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
       PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -100,8 +99,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` (Python)
 
 Placement groups are atomically created - meaning that if there exists a bundle that cannot fit in any of the current nodes, then the entire placement group will not be ready.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -114,7 +112,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       # You can look at placement group states using this API.
       print(placement_group_table(pg))
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -128,7 +126,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
         System.out.println(group);
       }
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -200,8 +198,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
 
-  .. tabs::
-    .. group-tab:: Python
+  .. tabbed:: Python
 
       .. code-block:: python
 
@@ -223,7 +220,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         # Will be scheduled because 2 cpus are reserved by the placement group.
         f.options(placement_group=pg).remote()
 
-    .. group-tab:: Java
+  .. tabbed:: Java
 
       .. code-block:: java
 
@@ -267,7 +264,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
           .remote();
         Assert.assertEquals(obj.get(), "pong");
 
-    .. group-tab:: C++
+  .. tabbed:: C++
 
       .. code-block:: c++
 
@@ -323,8 +320,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
   print a warning about infeasible tasks.
 
-  .. tabs::
-    .. group-tab:: Python
+  .. tabbed:: Python
 
       .. code-block:: python
 
@@ -340,7 +336,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         # Wait until placement group is created.
         ray.get(pg.ready())
 
-    .. group-tab:: Java
+  .. tabbed:: Java
 
       .. code-block:: java
 
@@ -364,7 +360,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
-    .. group-tab:: C++
+  .. tabbed:: C++
 
       .. code-block:: c++
 
@@ -383,8 +379,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -415,7 +410,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
           placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -451,7 +446,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
           .remote().get();
       }
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -498,8 +493,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
   In order to fully utilize resources pre-reserved by the placement group,
   Ray automatically schedules children tasks/actors to the same placement group as its parent.
 
-  .. tabs::
-    .. group-tab:: Python
+  .. tabbed:: Python
 
       .. code-block:: python
 
@@ -529,14 +523,13 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
             # scheduled with the parent's placement group.
             ray.get(child.options(placement_group=None).remote())
 
-    .. group-tab:: Java
+  .. tabbed:: Java
 
       It's not implemented for Java APIs yet.
 
 You can remove a placement group at any time to free its allocated resources.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -559,7 +552,7 @@ You can remove a placement group at any time to free its allocated resources.
 
       ray.shutdown()
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -568,7 +561,7 @@ You can remove a placement group at any time to free its allocated resources.
       PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(placementGroup.getId());
       Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -588,8 +581,7 @@ access a placement group launched by another driver.
 Note that the placement group will still be destroyed if it's lifetime isn't `detached`.
 See :ref:`placement-group-lifetimes` for more details.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -606,7 +598,7 @@ See :ref:`placement-group-lifetimes` for more details.
       # Retrieve a placement group with a global name.
       pg = ray.util.get_placement_group("global_name")
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     .. code-block:: java
 
@@ -630,7 +622,7 @@ See :ref:`placement-group-lifetimes` for more details.
       PlacementGroup group = PlacementGroups.getPlacementGroup("global_name");
       Assert.assertNotNull(group);
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     .. code-block:: c++
 
@@ -673,8 +665,7 @@ See :ref:`placement-group-lifetimes` for more details.
 Placement Group Lifetimes
 -------------------------
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
     By default, the lifetimes of placement groups are not detached and will be destroyed
     when the driver is terminated (but, if it is created from a detached actor, it is 
@@ -702,7 +693,7 @@ Placement Group Lifetimes
     the name without specifying ``lifetime="detached"``, then the placement group can
     only be retrieved as long as the original driver is still running.
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     The lifetime argument is not implemented for Java APIs yet.
 

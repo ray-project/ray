@@ -73,49 +73,49 @@ Datasource Compatibility Matrices
      - Read API
      - Status
    * - CSV File Format
-     - ``ray.data.read_csv()``
+     - :func:`ray.data.read_csv()`
      - ✅
    * - JSON File Format
-     - ``ray.data.read_json()``
+     - :func:`ray.data.read_json()`
      - ✅
    * - Parquet File Format
-     - ``ray.data.read_parquet()``
+     - :func:`ray.data.read_parquet()`
      - ✅
    * - Numpy File Format
-     - ``ray.data.read_numpy()``
+     - :func:`ray.data.read_numpy()`
      - ✅
    * - Text Files
-     - ``ray.data.read_text()``
+     - :func:`ray.data.read_text()`
      - ✅
    * - Binary Files
-     - ``ray.data.read_binary_files()``
+     - :func:`ray.data.read_binary_files()`
      - ✅
    * - Python Objects
-     - ``ray.data.from_items()``
+     - :func:`ray.data.from_items()`
      - ✅
    * - Spark Dataframe
-     - ``ray.data.from_spark()``
+     - :func:`ray.data.from_spark()`
      - ✅
    * - Dask Dataframe
-     - ``ray.data.from_dask()``
+     - :func:`ray.data.from_dask()`
      - ✅
    * - Modin Dataframe
-     - ``ray.data.from_modin()``
+     - :func:`ray.data.from_modin()`
      - ✅
    * - MARS Dataframe
-     - ``ray.data.from_mars()``
+     - :func:`ray.data.from_mars()`
      - (todo)
    * - Pandas Dataframe Objects
-     - ``ray.data.from_pandas()``
+     - :func:`ray.data.from_pandas()`
      - ✅
    * - NumPy ndarray Objects
-     - ``ray.data.from_numpy()``
+     - :func:`ray.data.from_numpy()`
      - ✅
    * - Arrow Table Objects
-     - ``ray.data.from_arrow()``
+     - :func:`ray.data.from_arrow()`
      - ✅
    * - Custom Datasource
-     - ``ray.data.read_datasource()``
+     - :func:`ray.data.read_datasource()`
      - ✅
 
 
@@ -126,55 +126,55 @@ Datasource Compatibility Matrices
      - Dataset API
      - Status
    * - CSV File Format
-     - ``ds.write_csv()``
+     - :meth:`ds.write_csv() <ray.data.Dataset.write_csv>`
      - ✅
    * - JSON File Format
-     - ``ds.write_json()``
+     - :meth:`ds.write_json() <ray.data.Dataset.write_json>`
      - ✅
    * - Parquet File Format
-     - ``ds.write_parquet()``
+     - :meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`
      - ✅
    * - Numpy File Format
-     - ``ds.write_numpy()``
+     - :meth:`ds.write_numpy() <ray.data.Dataset.write_numpy>`
      - ✅
    * - Spark Dataframe
-     - ``ds.to_spark()``
+     - :meth:`ds.to_spark() <ray.data.Dataset.to_spark>`
      - ✅
    * - Dask Dataframe
-     - ``ds.to_dask()``
+     - :meth:`ds.to_dask() <ray.data.Dataset.to_dask>`
      - ✅
    * - Modin Dataframe
-     - ``ds.to_modin()``
+     - :meth:`ds.to_modin() <ray.data.Dataset.to_modin>`
      - ✅
    * - MARS Dataframe
-     - ``ds.to_mars()``
+     - :meth:`ds.to_mars() <ray.data.Dataset.to_mars>`
      - (todo)
    * - Arrow Table Objects
-     - ``ds.to_arrow_refs()``
+     - :meth:`ds.to_arrow_refs() <ray.data.Dataset.to_arrow_refs>`
      - ✅
    * - Arrow Table Iterator
-     - ``ds.iter_batches(batch_format="pyarrow")``
+     - :meth:`ds.iter_batches(batch_format="pyarrow") <ray.data.Dataset.iter_batches>`
      - ✅
    * - Single Pandas Dataframe
-     - ``ds.to_pandas()``
+     - :meth:`ds.to_pandas() <ray.data.Dataset.to_pandas>`
      - ✅
    * - Pandas Dataframe Objects
-     - ``ds.to_pandas_refs()``
+     - :meth:`ds.to_pandas_refs() <ray.data.Dataset.to_pandas_refs>`
      - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy_refs()``
+     - :meth:`ds.to_numpy_refs() <ray.data.Dataset.to_numpy_refs>`
      - ✅
    * - Pandas Dataframe Iterator
-     - ``ds.iter_batches(batch_format="pandas")``
+     - :meth:`ds.iter_batches(batch_format="pandas") <ray.data.Dataset.iter_batches>`
      - ✅
    * - PyTorch Iterable Dataset
-     - ``ds.to_torch()``
+     - :meth:`ds.to_torch() <ray.data.Dataset.to_torch>`
      - ✅
    * - TensorFlow Iterable Dataset
-     - ``ds.to_tf()``
+     - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
      - ✅
    * - Custom Datasource
-     - ``ds.write_datasource()``
+     - :meth:`ds.write_datasource() <ray.data.Dataset.write_datasource>`
      - ✅
 
 

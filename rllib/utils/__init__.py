@@ -57,7 +57,7 @@ def force_list(elements=None, to_tuple=False):
     if to_tuple is True:
         ctor = tuple
     return ctor() if elements is None else ctor(elements) \
-        if type(elements) in [list, tuple] else ctor([elements])
+        if type(elements) in [list, set, tuple] else ctor([elements])
 
 
 class NullContextManager(contextlib.AbstractContextManager):

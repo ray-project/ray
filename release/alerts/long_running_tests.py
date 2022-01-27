@@ -21,15 +21,15 @@ def handle_result(created_on: datetime.datetime, category: str,
             "object_spilling_shuffle",
     ]:
         # Core tests
-        target_update_diff = 120
+        target_update_diff = 300
 
     elif test_name in ["apex", "impala", "many_ppo", "pbt"]:
         # Tune/RLLib style tests
-        target_update_diff = 360
+        target_update_diff = 480
     elif test_name in ["serve", "serve_failure"]:
         # Serve tests have workload logs every five minutes.
-        # Leave up to 60 seconds overhead.
-        target_update_diff = 360
+        # Leave up to 180 seconds overhead.
+        target_update_diff = 480
     else:
         return None
 

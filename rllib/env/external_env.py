@@ -190,7 +190,7 @@ class ExternalEnv(threading.Thread):
 
     def to_base_env(
             self,
-            make_env: Callable[[int], EnvType] = None,
+            make_env: Optional[Callable[[int], EnvType]] = None,
             num_envs: int = 1,
             remote_envs: bool = False,
             remote_env_batch_wait_ms: int = 0,

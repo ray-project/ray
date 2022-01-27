@@ -33,7 +33,6 @@ def train_one_step(trainer, train_batch) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
-    policies = local_worker.policies_to_train
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
@@ -43,10 +42,10 @@ def train_one_step(trainer, train_batch) -> Dict:
         # train batch and loop through train batch `num_sgd_iter` times.
         if num_sgd_iter > 1 or sgd_minibatch_size > 0:
             info = do_minibatch_sgd(
-                train_batch,
-                {pid: local_worker.get_policy(pid)
-                 for pid in policies}, local_worker, num_sgd_iter,
-                sgd_minibatch_size, [])
+                train_batch, {
+                    pid: local_worker.get_policy(pid)
+                    for pid in local_worker.get_policies_to_train(train_batch)
+                }, local_worker, num_sgd_iter, sgd_minibatch_size, [])
         # Single update step using train batch.
         else:
             info = local_worker.learn_on_batch(train_batch)
@@ -63,7 +62,6 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
-    policies = local_worker.policies_to_train
     num_sgd_iter = config.get("sgd_num_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size",
                                     config["train_batch_size"])
@@ -88,7 +86,7 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
         num_loaded_samples = {}
         for policy_id, batch in train_batch.policy_batches.items():
             # Not a policy-to-train.
-            if policy_id not in policies:
+            if not local_worker.is_policy_to_train(policy_id, train_batch):
                 continue
 
             # Decompress SampleBatch, in case some columns are compressed.
@@ -143,7 +141,9 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     # workers.
     if workers.remote_workers():
         with trainer._timers[WORKER_UPDATE_TIMER]:
-            weights = ray.put(workers.local_worker().get_weights(policies))
+            weights = ray.put(
+                local_worker.get_weights(
+                    local_worker.get_policies_to_train(train_batch)))
             for e in workers.remote_workers():
                 e.set_weights.remote(weights)
 
@@ -182,21 +182,20 @@ class TrainOneStep:
         _check_sample_batch_type(batch)
         metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
+        lw = self.local_worker
         with learn_timer:
             # Subsample minibatches (size=`sgd_minibatch_size`) from the
             # train batch and loop through train batch `num_sgd_iter` times.
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
-                lw = self.workers.local_worker()
                 learner_info = do_minibatch_sgd(
                     batch, {
                         pid: lw.get_policy(pid)
                         for pid in self.policies
-                        or self.local_worker.policies_to_train
+                        or lw.get_policies_to_train(batch)
                     }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
             # Single update step using train batch.
             else:
-                learner_info = \
-                    self.workers.local_worker().learn_on_batch(batch)
+                learner_info = lw.learn_on_batch(batch)
 
             metrics.info[LEARNER_INFO] = learner_info
             learn_timer.push_units_processed(batch.count)
@@ -209,12 +208,13 @@ class TrainOneStep:
         # workers.
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = ray.put(self.workers.local_worker().get_weights(
-                    self.policies or self.local_worker.policies_to_train))
+                weights = ray.put(
+                    lw.get_weights(
+                        self.policies or lw.get_policies_to_train(batch)))
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
         # Also update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(_get_global_vars())
+        lw.set_global_vars(_get_global_vars())
         return batch, learner_info
 
 
@@ -291,7 +291,8 @@ class MultiGPUTrainOneStep:
             num_loaded_samples = {}
             for policy_id, batch in samples.policy_batches.items():
                 # Not a policy-to-train.
-                if policy_id not in self.local_worker.policies_to_train:
+                if not self.local_worker.is_policy_to_train(
+                        policy_id, samples):
                     continue
 
                 # Decompress SampleBatch, in case some columns are compressed.
@@ -348,7 +349,7 @@ class MultiGPUTrainOneStep:
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
                 weights = ray.put(self.workers.local_worker().get_weights(
-                    self.local_worker.policies_to_train))
+                    self.local_worker.get_policies_to_train()))
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights, _get_global_vars())
 
@@ -433,17 +434,19 @@ class ApplyGradients:
 
         apply_timer = metrics.timers[APPLY_GRADS_TIMER]
         with apply_timer:
-            self.workers.local_worker().apply_gradients(gradients)
+            self.local_worker.apply_gradients(gradients)
             apply_timer.push_units_processed(count)
 
         # Also update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(_get_global_vars())
+        self.local_worker.set_global_vars(_get_global_vars())
 
         if self.update_all:
             if self.workers.remote_workers():
                 with metrics.timers[WORKER_UPDATE_TIMER]:
-                    weights = ray.put(self.workers.local_worker().get_weights(
-                        self.policies or self.local_worker.policies_to_train))
+                    weights = ray.put(
+                        self.local_worker.get_weights(
+                            self.policies
+                            or self.local_worker.get_policies_to_train()))
                     for e in self.workers.remote_workers():
                         e.set_weights.remote(weights, _get_global_vars())
         else:
@@ -453,8 +456,8 @@ class ApplyGradients:
                     "update_all=False, `current_actor` must be set "
                     "in the iterator context.")
             with metrics.timers[WORKER_UPDATE_TIMER]:
-                weights = self.workers.local_worker().get_weights(
-                    self.policies or self.local_worker.policies_to_train)
+                weights = self.local_worker.get_weights(
+                    self.policies or self.local_worker.get_policies_to_train())
                 metrics.current_actor.set_weights.remote(
                     weights, _get_global_vars())
 
@@ -524,8 +527,9 @@ class UpdateTargetNetwork:
         cur_ts = metrics.counters[self.metric]
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update > self.target_update_freq:
-            to_update = self.policies or self.local_worker.policies_to_train
-            self.workers.local_worker().foreach_trainable_policy(
-                lambda p, p_id: p_id in to_update and p.update_target())
+            to_update = self.policies or self.local_worker.get_policies_to_train(
+            )
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, pid: pid in to_update and p.update_target())
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts

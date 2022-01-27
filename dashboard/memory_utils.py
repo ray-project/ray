@@ -340,7 +340,11 @@ def track_reference_size(group):
         "ACTOR_HANDLE": "total_actor_handles"
     }
     for entry in group["entries"]:
-        d[table_name[entry["reference_type"]]] += entry["object_size"]
+        size = entry["object_size"]
+        if size == -1:
+            # size not recorded
+            size = 0
+        d[table_name[entry["reference_type"]]] += size
     return d
 
 
@@ -390,8 +394,8 @@ def memory_summary(state,
         "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type",
         "Object Ref"
     ]
-    object_ref_string = "{:<8} | {:<3} | {:<4} | {:<9} \
-| {:<4} | {:<14} | {:<10}\n"
+    object_ref_string = "{:<13} | {:<8} | {:<7} | {:<9} \
+| {:<8} | {:<14} | {:<10}\n"
 
     if size > line_wrap_threshold and line_wrap:
         object_ref_string = "{:<15}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
