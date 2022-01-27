@@ -62,7 +62,7 @@ class TestAlphaStar(unittest.TestCase):
 
         config[
             "win_rate_threshold_for_new_snapshot"] = 0.6  #TEST: 0.8 or 0.9 are good values
-        config["keep_new_snapshot_training_prob"] = 0.3
+        #config["keep_new_snapshot_training_prob"] = 0.0
 
         #config["num_sgd_iter"] = 5#TEST
         config["grad_clip"] = 10.0

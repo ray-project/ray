@@ -24,6 +24,7 @@ from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, \
     LEARN_ON_BATCH_TIMER, NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED, \
     NUM_ENV_STEPS_SAMPLED, NUM_TARGET_UPDATES, \
     SAMPLE_TIMER, SYNCH_WORKER_WEIGHTS_TIMER, TARGET_NET_UPDATE_TIMER
+from ray.rllib.utils.numpy import softmax
 from ray.rllib.utils.typing import PartialTrainerConfigDict,\
     PolicyID, PolicyState, TrainerConfigDict, ResultDict
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -54,13 +55,24 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "win_rate_threshold_for_new_snapshot": 0.9,
         # If we took a new snapshot of any given policy, what's the probability
         # that this snapshot will continue to be trainable (rather than become
-        # frozen/non-trainable)?
-        "keep_new_snapshot_training_prob": 0.3,
+        # frozen/non-trainable)? By default, only keep those policies trainable
+        # that have been trainable from the very beginning.
+        "keep_new_snapshot_training_prob": 0.0,
+        # Probabilities of different match-types:
+        # LE: Learning league_exploiter vs any.
+        # ME: Learning main exploiter vs any main.
+        # M: Main self-play (p=1.0 - LE - ME).
+        "prob_league_exploiter_match": 0.33,
+        "prob_main_exploiter_match": 0.33,
+        # Only for ME matches: Prob to play against learning
+        # main (vs a snapshot main).
+        "prob_main_exploiter_playing_against_learning_main": 0.5,
+
         # The maximum number of trainable policies for this Trainer.
         # Each trainable policy will exist as a independent remote actor, co-locate
         # with a replay buffer. This is besides its existence inside
         # the RolloutWorkers for training and evaluation.
-        "max_num_policies_to_train": 10,
+        "max_num_policies_to_train": 11,
 
         # Basic "multiagent" setup for league-building AlphaStar:
         # Start with "main_0" (the policy we would like to use in the very end),
@@ -75,17 +87,29 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             "policies": {
                 # Our main policy, we'd like to optimize.
                 "main_0": PolicySpec(),
-                # Initial main exploiter (random).
+                # Initial main exploiters (1 of these is a random policy).
                 "main_exploiter_0": PolicySpec(policy_class=RandomPolicy),
-                # Initial league exploiter (random).
+                "main_exploiter_1": PolicySpec(),
+                "main_exploiter_2": PolicySpec(),
+                "main_exploiter_3": PolicySpec(),
+                "main_exploiter_4": PolicySpec(),
+                # Initial league exploiter (1 of these is a random policy).
                 "league_exploiter_0": PolicySpec(policy_class=RandomPolicy),
+                "league_exploiter_1": PolicySpec(),
+                "league_exploiter_2": PolicySpec(),
+                "league_exploiter_3": PolicySpec(),
+                "league_exploiter_4": PolicySpec(),
             },
             "policy_mapping_fn":
                 (lambda aid, ep, worker, **kw: "main_0" if
                  ep.episode_id % 2 == aid else "main_exploiter_0"),
-            # At first, only train main_0 (until good enough to win against
-            # random).
-            "policies_to_train": ["main_0"],
+            # Train all non-random policies that exist at beginning.
+            "policies_to_train": [
+                "main_0", "main_exploiter_1", "main_exploiter_2",
+                "main_exploiter_3", "main_exploiter_4", "league_exploiter_1",
+                "league_exploiter_2", "league_exploiter_3",
+                "league_exploiter_4",
+            ],
         },
 
         # Reporting interval.
@@ -232,7 +256,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         #   shards, instead of here (to the driver).
         with self._timers[SAMPLE_TIMER]:
             sample_results = asynchronous_parallel_requests(
-                trainer=self,
+                remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers()
                 or [self.workers.local_worker()],
                 ray_wait_timeout_s=0.01,
@@ -254,7 +278,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
                 pol_actors.append(pol_actor)
                 args.append([repl_actor, pid])
             train_results = asynchronous_parallel_requests(
-                trainer=self,
+                remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=pol_actors,
                 ray_wait_timeout_s=0.1,
                 max_remote_requests_in_flight_per_actor=2,
@@ -299,7 +323,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
         else:
             hist_stats = result["hist_stats"]
 
-        trainable_policies = set(self.workers.local_worker().policies_to_train)
+        trainable_policies = self.workers.local_worker().get_policies_to_train()
         non_trainable_policies = \
             set(self.workers.local_worker().policy_map.keys()) - \
             trainable_policies
@@ -333,56 +357,69 @@ class AlphaStarTrainer(appo.APPOTrainer):
             # If win rate is good enough -> Snapshot current policy and decide,
             # whether to freeze the new snapshot or not.
             if win_rate >= self.config["win_rate_threshold_for_new_snapshot"]:
-                initializing_first_exploiters = False
+                #initializing_first_exploiters = False
 
                 is_main = re.match("^main(_\\d+)?$", policy_id)
 
                 # First time, main manages a decent win-rate against random:
                 # Add league_exploiter_0 and main_exploiter_0 to the mix.
-                if is_main and self.main_policies == 1:
-                    new_pol_id = "main_1"
-                    self.main_policies += 1
-                    initializing_first_exploiters = True
-                    trainable_policies.add(new_pol_id)
+                #if is_main and self.main_policies == 1:
+                #    new_pol_id = "main_1"
+                #    self.main_policies += 1
+                #    initializing_first_exploiters = True
+                #    trainable_policies.add(new_pol_id)
 
-                    trainable_policies.add("league_exploiter_1")
+                #    trainable_policies.add("league_exploiter_1")
+                #    self.league_exploiters += 1
+
+                #    trainable_policies.add("main_exploiter_1")
+                #    self.main_exploiters += 1
+
+                #    print(f"initializing actual league ({new_pol_id} + "
+                #          "1st learning league-/main-exploiters).")
+                #else:
+                # Probability that the new snapshot is trainable.
+                keep_training_p = \
+                    self.config["keep_new_snapshot_training_prob"]
+                # For main, new snapshots are never trainable, for all others
+                # use `config.keep_new_snapshot_training_prob` (default: 0.0!).
+                keep_training = False if is_main else np.random.choice(
+                    [True, False],
+                    p=[keep_training_p, 1.0 - keep_training_p])
+                # New league-exploiter policy.
+                if policy_id.startswith("league_ex"):
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{self.league_exploiters}", policy_id)
                     self.league_exploiters += 1
-
-                    trainable_policies.add("main_exploiter_1")
+                # New main-exploiter policy.
+                elif policy_id.startswith("main_ex"):
+                    new_pol_id = re.sub(
+                        "_\\d+$", f"_{self.main_exploiters}", policy_id)
                     self.main_exploiters += 1
-
-                    print(f"initializing actual league ({new_pol_id} + "
-                          "1st learning league-/main-exploiters).")
+                # New main policy snapshot.
                 else:
-                    keep_training_p = self.config[
-                        "keep_new_snapshot_training_prob"]
-                    keep_training = False if is_main else np.random.choice(
-                        [True, False],
-                        p=[keep_training_p, 1.0 - keep_training_p])
-                    if policy_id.startswith("league"):
-                        new_pol_id = re.sub(
-                            "_\\d+$", f"_{self.league_exploiters}", policy_id)
-                        self.league_exploiters += 1
-                    elif policy_id.startswith("main_ex"):
-                        new_pol_id = re.sub(
-                            "_\\d+$", f"_{self.main_exploiters}", policy_id)
-                        self.main_exploiters += 1
-                    else:
-                        new_pol_id = re.sub("_\\d+$", f"_{self.main_policies}",
-                                            policy_id)
-                        self.main_policies += 1
+                    new_pol_id = re.sub("_\\d+$", f"_{self.main_policies}",
+                                        policy_id)
+                    self.main_policies += 1
 
-                    if keep_training:
-                        trainable_policies.add(new_pol_id)
-                    else:
-                        non_trainable_policies.add(new_pol_id)
+                if keep_training:
+                    trainable_policies.add(new_pol_id)
+                else:
+                    non_trainable_policies.add(new_pol_id)
 
-                    print(f"adding new opponents to the mix ({new_pol_id}; "
-                          f"trainable={keep_training}).")
+                print(f"adding new opponents to the mix ({new_pol_id}; "
+                      f"trainable={keep_training}).")
 
                 num_main_policies = self.main_policies
-                num_main_exploiters = self.main_exploiters
-                #num_league_exploiters = self.league_exploiters
+                #num_main_exploiters = self.main_exploiters
+                probs_match_types = [
+                    self.config["prob_league_exploiter_match"],
+                    self.config["prob_main_exploiter_match"],
+                    1.0 - self.config["prob_league_exploiter_match"] -
+                    self.config["prob_main_exploiter_match"]
+                ]
+                prob_playing_learning_main = \
+                    self.config["prob_main_exploiter_playing_against_learning_main"]
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, worker, **kwargs):
@@ -391,17 +428,22 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     # LE: league-exploiter vs snapshot.
                     # ME: main-exploiter vs (any) main.
                     # M: Learning main vs itself.
-                    type_ = np.random.choice(["LE", "ME", "M"])
+                    type_ = np.random.choice(["LE", "ME", "M"],
+                                             p=probs_match_types)
 
                     # Learning league exploiter vs a snapshot.
+                    # Opponent snapshots should be selected based on a win-rate-
+                    # derived probability.
                     if type_ == "LE":
                         league_exploiter = np.random.choice([
                             p for p in trainable_policies
-                            if p.startswith("league_exploiter")
+                            if p.startswith("league_ex")
                         ])
                         # Play against any non-trainable policy (excluding itself).
-                        opponent = np.random.choice(
-                            list(non_trainable_policies - {league_exploiter}))
+                        all_opponents = list(non_trainable_policies)
+                        probs = softmax(
+                            [worker.win_rates[pid] for pid in all_opponents])
+                        opponent = np.random.choice(all_opponents, p=probs)
                         print(
                             f"{league_exploiter} (training) vs {opponent} (frozen)"
                         )
@@ -412,19 +454,28 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     elif type_ == "ME":
                         main_exploiter = np.random.choice([
                             p for p in trainable_policies
-                            if p.startswith("main_exploiter")
+                            if p.startswith("main_ex")
                         ])
-                        # 50% of the time, play against any main.
-                        if np.random.random() < 0.5:
-                            main = "main_{}".format(
-                                np.random.choice(
-                                    list(range(num_main_policies))))
-                            training = "training" if \
-                                main in trainable_policies else "frozen"
-                        # 50% of the time, play against the learning main.
-                        else:
+                        # n% of the time, play against the learning main.
+                        # Also always play againt learning main if no
+                        # non-learning mains have been created yet.
+                        if num_main_policies == 1 or \
+                                (np.random.random() <
+                                 prob_playing_learning_main):
                             main = "main_0"
-                            training = True
+                            training = "training"
+                        # 100-n% of the time, play against a non-learning
+                        # main. Opponent main snapshots should be selected
+                        # based on a win-rate-derived probability.
+                        else:
+                            all_opponents = [
+                                f"main_{p}"
+                                for p in list(range(1, num_main_policies))
+                            ]
+                            probs = softmax(
+                                [worker.win_rates[pid] for pid in all_opponents])
+                            main = np.random.choice(all_opponents, p=probs)
+                            training = "frozen"
                         print(
                             f"{main_exploiter} (training) vs {main} ({training})"
                         )
@@ -438,25 +489,25 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
                 # Add and initialize the first learning league- and
                 # main-exploiters (copy from `main_0`).
-                if initializing_first_exploiters:
-                    main_state = self.get_policy("main_0").get_state()
+                #if initializing_first_exploiters:
+                #    main_state = self.get_policy("main_0").get_state()
 
-                    # Add/initialize `league_exploiter_1`.
-                    self.add_policy(
-                        policy_id="league_exploiter_1",
-                        policy_cls=type(self.get_policy("main_0")),
-                        policy_state=main_state,
-                        policy_mapping_fn=policy_mapping_fn,
-                        policies_to_train=trainable_policies,
-                    )
-                    # Add/initialize `main_exploiter_1`.
-                    self.add_policy(
-                        policy_id="main_exploiter_1",
-                        policy_cls=type(self.get_policy("main_0")),
-                        policy_state=main_state,
-                        policy_mapping_fn=policy_mapping_fn,
-                        policies_to_train=trainable_policies,
-                    )
+                #    # Add/initialize `league_exploiter_1`.
+                #    self.add_policy(
+                #        policy_id="league_exploiter_1",
+                #        policy_cls=type(self.get_policy("main_0")),
+                #        policy_state=main_state,
+                #        policy_mapping_fn=policy_mapping_fn,
+                #        policies_to_train=trainable_policies,
+                #    )
+                #    # Add/initialize `main_exploiter_1`.
+                #    self.add_policy(
+                #        policy_id="main_exploiter_1",
+                #        policy_cls=type(self.get_policy("main_0")),
+                #        policy_state=main_state,
+                #        policy_mapping_fn=policy_mapping_fn,
+                #        policies_to_train=trainable_policies,
+                #    )
 
                 # Add and set the weights of the new polic(y/ies).
                 state = self.get_policy(policy_id).get_state()
