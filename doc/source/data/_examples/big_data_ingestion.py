@@ -1,5 +1,8 @@
 # flake8: noqa: E501
 """
+
+.. _data_ml_ingest_example:
+
 Example: Large-scale ML Ingest
 =================================================
 

@@ -934,7 +934,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
@@ -1004,10 +1004,10 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
 All operations after this conversion will be executed in a pipelined fashion.
 
-See :ref:`dataset-pipeline` for more semantics on pipelining.
+See :ref:`dataset-pipeline-api` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++
