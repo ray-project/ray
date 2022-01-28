@@ -99,4 +99,10 @@ def test_owner_assign_when_put(ray_start_cluster, actor_resources):
     time.sleep(2)
     with pytest.raises(ray.exceptions.RayTaskError) as error:
         ray.get(borrower.get_object.remote(object_ref), timeout=2)
-    assert "ObjectLostError" in error.value.args[1]
+    assert "OwnerDiedError" in error.value.args[1]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
