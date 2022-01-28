@@ -1700,7 +1700,8 @@ class Dataset(Generic[T]):
 
         # Prepare write in a remote task so that in Ray client mode, we aren't
         # attempting metadata resolution from the client machine.
-        do_write = cached_remote_fn(_do_write)
+        do_write = cached_remote_fn(
+            _do_write, retry_exceptions=False, num_cpus=0)
         write_results: List[ObjectRef[WriteResult]] = ray.get(
             do_write.remote(datasource, ctx, blocks, metadata, **write_args))
 

@@ -167,7 +167,8 @@ def read_datasource(datasource: Datasource[T],
     # Prepare read in a remote task so that in Ray client mode, we aren't
     # attempting metadata resolution from the client machine.
     ctx = DatasetContext.get_current()
-    prepare_read = cached_remote_fn(_prepare_read)
+    prepare_read = cached_remote_fn(
+        _prepare_read, retry_exceptions=False, num_cpus=0)
     read_tasks = ray.get(
         prepare_read.remote(datasource, ctx, parallelism, **read_args))
 
