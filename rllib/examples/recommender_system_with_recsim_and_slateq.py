@@ -124,7 +124,7 @@ def main():
         "exploration_config": {
             "epsilon_timesteps": 500000,#TODO
         },
-        "target_network_update_freq": 5000,TODO
+        "target_network_update_freq": 5000,#TODO
     }
 
     # Perform a test run on the env with a random agent to see, what
