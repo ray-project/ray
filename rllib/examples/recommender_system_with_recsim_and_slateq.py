@@ -114,7 +114,7 @@ def main():
                 else InterestExplorationRecSimEnv
                 if args.env == "interest-exploration" else
                 LongTermSatisfactionRecSimEnv),
-        "hiddens": [256, 256],#TEST
+        "hiddens": [256, 256, 256],#TEST
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
@@ -122,14 +122,15 @@ def main():
         "lr_q_model": 0.003,
         "rollout_fragment_length": 4,
         "exploration_config": {
-            "epsilon_timesteps": 10000,#500000,#TODO
+            "epsilon_timesteps": 500000,#TODO
         },
-        "target_network_update_freq": 800,#5000,TODO
+        "target_network_update_freq": 5000,TODO
     }
 
     # Perform a test run on the env with a random agent to see, what
     # the random baseline reward is.
     if args.random_test_episodes:
+        print(f"Running {args.random_test_episodes} to get a random agent's baseline reward ...")
         env = config["env"](config=env_config)
         env.reset()
         num_episodes = 0
