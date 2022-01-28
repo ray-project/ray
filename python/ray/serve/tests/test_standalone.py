@@ -310,6 +310,32 @@ def test_http_root_url(ray_shutdown):
     ray.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_path(ray_shutdown):
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    port = new_port()
+    root_path = "/serve"
+    serve.start(http_options=dict(root_path=root_path, port=port))
+    hello.deploy()
+
+    # check whether url is prefixed correctly
+    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
+
+    # check routing works as expected
+    resp = requests.get(hello.url)
+    assert resp.status_code == 200
+    assert resp.text == "hello"
+
+    # check advertized routes are prefixed correctly
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
+    assert resp.status_code == 200
+    assert resp.json() == {"/hello": "hello"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
@@ -605,6 +631,41 @@ def test_snapshot_always_written_to_internal_kv(
     hello_deployment = list(snapshot.values())[0]
     assert hello_deployment["name"] == "hello"
     assert hello_deployment["status"] == "RUNNING"
+
+
+def test_serve_start_different_http_checkpoint_options_warning(caplog):
+    import logging
+    from tempfile import mkstemp
+    from ray.serve.utils import logger
+    from ray._private.services import new_port
+
+    caplog.set_level(logging.WARNING, logger="ray.serve")
+
+    warning_msg = []
+
+    class WarningHandler(logging.Handler):
+        def emit(self, record):
+            warning_msg.append(self.format(record))
+
+    logger.addHandler(WarningHandler())
+
+    ray.init(namespace="serve-test")
+    serve.start(detached=True)
+
+    # create a different config
+    test_http = dict(host="127.1.1.8", port=new_port())
+    _, tmp_path = mkstemp()
+    test_ckpt = f"file://{tmp_path}"
+
+    serve.start(
+        detached=True, http_options=test_http, _checkpoint_path=test_ckpt)
+
+    for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
+        for test_msg in test_config:
+            assert test_msg in msg
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

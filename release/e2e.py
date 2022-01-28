@@ -2125,13 +2125,22 @@ def run_test_config(
                     f"{out_dir}")
 
         try:
-            shutil.rmtree(out_dir, ignore_errors=True)
-            shutil.copytree(temp_dir, out_dir)
-            logger.info(f"Dir contents: {os.listdir(out_dir)}")
-        except Exception as e:
-            logger.error(
-                f"Ran into error when copying results dir to persistent "
-                f"location: {str(e)}")
+            shutil.rmtree(out_dir)
+        except Exception:
+            logger.exception(
+                f"Ran into error when clearing the destination dir: {out_dir}")
+
+        try:
+            # Use distutils.dir_util.copy_tree() instead of shutil.cptree(),
+            # which allows existing output directory.
+            from distutils.dir_util import copy_tree
+            copy_tree(temp_dir, out_dir)
+        except Exception:
+            logger.exception(
+                "Ran into error when copying results dir to persistent "
+                f"location: {out_dir}")
+
+        logger.info(f"Dir contents: {os.listdir(out_dir)}")
 
     return result
 
@@ -2312,7 +2321,7 @@ if __name__ == "__main__":
         "--report",
         action="store_true",
         default=False,
-        help="Do not report any results or upload to S3")
+        help="Whether to report results and upload to S3")
     parser.add_argument(
         "--kick-off-only",
         action="store_true",

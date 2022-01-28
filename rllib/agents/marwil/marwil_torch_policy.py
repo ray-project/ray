@@ -41,18 +41,28 @@ def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
         policy._moving_average_sqd_adv_norm.add_(
             rate * (adv_squared_mean - policy._moving_average_sqd_adv_norm))
         # Exponentially weighted advantages.
-        exp_advs = torch.exp(
-            policy.config["beta"] *
-            (adv /
-             (1e-8 + torch.pow(policy._moving_average_sqd_adv_norm, 0.5))))
-        policy.p_loss = -torch.mean(exp_advs.detach() * logprobs)
+        exp_advs = torch.exp(policy.config["beta"] * (adv / (1e-8 + torch.pow(
+            policy._moving_average_sqd_adv_norm, 0.5)))).detach()
         # Value loss.
         policy.v_loss = 0.5 * adv_squared_mean
     else:
         # Policy loss (simple BC loss term).
-        policy.p_loss = -1.0 * torch.mean(logprobs)
+        exp_advs = 1.0
         # Value loss.
         policy.v_loss = 0.0
+
+    # logprob loss alone tends to push action distributions to
+    # have very low entropy, resulting in worse performance for
+    # unfamiliar situations.
+    # A scaled logstd loss term encourages stochasticity, thus
+    # alleviate the problem to some extent.
+    logstd_coeff = policy.config["bc_logstd_coeff"]
+    if logstd_coeff > 0.0:
+        logstds = torch.mean(action_dist.log_std, dim=1)
+    else:
+        logstds = 0.0
+
+    policy.p_loss = -torch.mean(exp_advs * (logprobs + logstd_coeff * logstds))
 
     # Combine both losses.
     policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \

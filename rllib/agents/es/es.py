@@ -228,28 +228,42 @@ class ESTrainer(Trainer):
                 "`NoFilter` for ES!")
 
     @override(Trainer)
-    def _init(self, config, env_creator):
-        self.validate_config(config)
-        env_context = EnvContext(config["env_config"] or {}, worker_index=0)
-        env = env_creator(env_context)
-        self._policy_class = get_policy_class(config)
+    def setup(self, config):
+        # Setup our config: Merge the user-supplied config (which could
+        # be a partial config dict with the class' default).
+        self.config = self.merge_trainer_configs(
+            self.get_default_config(), config, self._allow_unknown_configs)
+
+        # Call super's validation method.
+        self.validate_config(self.config)
+
+        # Generate `self.env_creator` callable to create an env instance.
+        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
+        # Generate the local env.
+        env_context = EnvContext(
+            self.config["env_config"] or {}, worker_index=0)
+        env = self.env_creator(env_context)
+
+        self.callbacks = self.config["callbacks"]()
+
+        self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
             obs_space=env.observation_space,
             action_space=env.action_space,
-            config=config)
-        self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
-        self.report_length = config["report_length"]
+            config=self.config)
+        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
+        self.report_length = self.config["report_length"]
 
         # Create the shared noise table.
         logger.info("Creating shared noise table.")
-        noise_id = create_shared_noise.remote(config["noise_size"])
+        noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
         logger.info("Creating actors.")
-        self._workers = [
-            Worker.remote(config, {}, env_creator, noise_id, idx + 1)
-            for idx in range(config["num_workers"])
+        self.workers = [
+            Worker.remote(self.config, {}, self.env_creator, noise_id, idx + 1)
+            for idx in range(self.config["num_workers"])
         ]
 
         self.episodes_so_far = 0
@@ -333,7 +347,7 @@ class ESTrainer(Trainer):
         # Now sync the filters
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.observation_filter
-        }, self._workers)
+        }, self.workers)
 
         info = {
             "weights_norm": np.square(theta).sum(),
@@ -375,7 +389,7 @@ class ESTrainer(Trainer):
     @override(Trainer)
     def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
-        for w in self._workers:
+        for w in self.workers:
             w.__ray_terminate__.remote()
 
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
@@ -386,7 +400,7 @@ class ESTrainer(Trainer):
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
             rollout_ids = [
-                worker.do_rollouts.remote(theta_id) for worker in self._workers
+                worker.do_rollouts.remote(theta_id) for worker in self.workers
             ]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
@@ -413,4 +427,4 @@ class ESTrainer(Trainer):
         self.policy.observation_filter = state["filter"]
         FilterManager.synchronize({
             DEFAULT_POLICY_ID: self.policy.observation_filter
-        }, self._workers)
+        }, self.workers)

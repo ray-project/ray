@@ -34,7 +34,7 @@ class TestReproducibility(unittest.TestCase):
                 register_env("PickLargest", env_creator)
                 config = {
                     "seed": 666 if trial in [0, 1] else 999,
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "timesteps_per_iteration": 100,
                     "framework": fw,
                 }

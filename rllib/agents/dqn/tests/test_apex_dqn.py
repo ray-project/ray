@@ -24,7 +24,7 @@ class TestApexDQN(unittest.TestCase):
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
-        config["min_iter_time_s"] = 1
+        config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
         for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
@@ -41,7 +41,7 @@ class TestApexDQN(unittest.TestCase):
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
-        config["min_iter_time_s"] = 1
+        config["min_time_s_per_reporting"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
 
         for _ in framework_iterator(config, with_eager_tracing=True):
@@ -81,7 +81,7 @@ class TestApexDQN(unittest.TestCase):
         config["timesteps_per_iteration"] = 10
         # 0 metrics reporting delay, this makes sure timestep,
         # which lr depends on, is updated after each worker rollout.
-        config["min_iter_time_s"] = 0
+        config["min_time_s_per_reporting"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         # This makes sure learning schedule is checked every 10 timesteps.
         config["optimizer"]["max_weight_sync_delay"] = 10

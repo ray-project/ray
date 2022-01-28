@@ -113,8 +113,6 @@
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
-  stable: false
-
 - name: many_actors_redis_ha
   team: core
   cluster:
@@ -129,8 +127,6 @@
   app_env_vars:
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
-
-  stable: false
 
 - name: many_nodes_redis_ha
   team: core
@@ -147,8 +143,6 @@
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
-  stable: false
-
 - name: many_pgs_redis_ha
   team: core
   cluster:
@@ -164,8 +158,6 @@
     RAY_gcs_grpc_based_pubsub: "1"
     RAY_gcs_storage: "memory"
 
-  stable: false
-
 - name: scheduling_test_many_0s_tasks_single_node
   team: core
   cluster:
@@ -176,7 +168,6 @@
     timeout: 3600
     prepare: python distributed/wait_cluster.py --num-nodes=32
     script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
-  stable: false
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   team: core
@@ -188,7 +179,6 @@
     timeout: 3600
     prepare: python distributed/wait_cluster.py --num-nodes=32
     script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1 --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
-  stable: false
 
 - name: scheduling_test_many_5s_tasks_single_node
   team: core

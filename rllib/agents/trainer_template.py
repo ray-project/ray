@@ -8,7 +8,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
+from ray.rllib.utils.typing import EnvCreator, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 from ray.tune.logger import Logger
 
@@ -113,8 +113,7 @@ def build_trainer(
                     override_all_subkeys_if_type_changes
             Trainer.setup(self, config)
 
-        def _init(self, config: TrainerConfigDict,
-                  env_creator: Callable[[EnvConfigDict], EnvType]):
+        def _init(self, config: TrainerConfigDict, env_creator: EnvCreator):
 
             # No `get_policy_class` function.
             if get_policy_class is None:

@@ -37,14 +37,13 @@ def _import_ars():
 
 
 def _import_bandit_lints():
-    from ray.rllib.agents.bandits.lin_ts import BanditLinTSTrainer, DEFAULT_CONFIG
-    return BanditLinTSTrainer, DEFAULT_CONFIG
+    from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
-    from ray.rllib.agents.bandits.lin_ucb import BanditLinUCBTrainer, \
-        DEFAULT_CONFIG
-    return BanditLinUCBTrainer, DEFAULT_CONFIG
+    from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
+    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
 
 
 def _import_bc():

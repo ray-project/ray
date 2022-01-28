@@ -356,7 +356,8 @@ def test_pull_bundles_pinning(ray_start_cluster):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-def test_pull_bundles_admission_control_dynamic(ray_start_cluster):
+def test_pull_bundles_admission_control_dynamic(enable_mac_large_object_store,
+                                                ray_start_cluster):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
     # dynamically by concurrent workers.

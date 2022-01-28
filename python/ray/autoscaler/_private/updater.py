@@ -15,7 +15,7 @@ from ray.autoscaler._private.command_runner import \
     ProcessRunnerError
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
-import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private import subprocess_output_util as cmd_output_util
 from ray.autoscaler._private.constants import \
      RESOURCES_ENVIRONMENT_VARIABLE
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
