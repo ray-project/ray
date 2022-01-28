@@ -111,7 +111,6 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_runtime_env(shutdown_only):
     ray.init(
         job_config=ray.job_config.JobConfig(
