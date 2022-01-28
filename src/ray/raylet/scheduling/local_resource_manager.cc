@@ -653,7 +653,7 @@ std::string LocalResourceManager::SerializedTaskResourceInstances(
   return buffer.str();
 }
 
-void LocalResourceManager::ResetResources(
+void LocalResourceManager::ResetLastReportResourceUsage(
     std::shared_ptr<SchedulingResources> replacement) {
   last_report_resources_ = std::make_unique<NodeResources>(ResourceMapToNodeResources(
       resource_name_to_id_, replacement->GetTotalResources().GetResourceMap(),
