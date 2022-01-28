@@ -22,14 +22,32 @@ class TestBandits(unittest.TestCase):
         config = {
             # Use a simple bandit friendly env.
             "env": SimpleContextualBandit,
-            # Run locally.
-            "num_workers": 0,
         }
 
         num_iterations = 5
 
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = bandit.BanditLinTSTrainer(config=config)
+            results = None
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            # Force good learning behavior (this is a very simple env).
+            self.assertTrue(results["episode_reward_mean"] == 10.0)
+
+    def test_bandit_lin_ucb_compilation(self):
+        """Test whether a BanditLinUCBTrainer can be built on all frameworks.
+        """
+        config = {
+            # Use a simple bandit friendly env.
+            "env": SimpleContextualBandit,
+        }
+
+        num_iterations = 5
+
+        for _ in framework_iterator(config, frameworks="torch"):
+            trainer = bandit.BanditLinUCBTrainer(config=config)
             results = None
             for i in range(num_iterations):
                 results = trainer.train()
