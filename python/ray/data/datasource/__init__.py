@@ -1,6 +1,6 @@
-from ray.data.datasource.datasource import (Datasource, RangeDatasource,
-                                            DummyOutputDatasource, ReadTask,
-                                            RandomIntRowDatasource)
+from ray.data.datasource.datasource import (
+    Datasource, RangeDatasource, DummyOutputDatasource, ReadTask,
+    RandomIntRowDatasource, WriteResult)
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
@@ -23,6 +23,7 @@ __all__ = [
     "RandomIntRowDatasource",
     "DummyOutputDatasource",
     "ReadTask",
+    "WriteResult",
     "BlockWritePathProvider",
     "DefaultBlockWritePathProvider",
 ]

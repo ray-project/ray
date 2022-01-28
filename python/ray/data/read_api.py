@@ -164,9 +164,12 @@ def read_datasource(datasource: Datasource[T],
         Dataset holding the data read from the datasource.
     """
 
-    prepare_read = cached_remote_fn(prepare_read)
+    # Prepare read in a remote task so that in Ray client mode, we aren't
+    # attempting metadata resolution from the client machine.
+    prepare_read = cached_remote_fn(_prepare_read)
     read_tasks = ray.get(
         prepare_read.remote(datasource, parallelism, **read_args))
+
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
@@ -713,3 +716,8 @@ def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
     stats = BlockExecStats.builder()
     return BlockAccessor.for_block(table).get_metadata(
         input_files=None, exec_stats=stats.build())
+
+
+def _prepare_read(ds: Datasource, parallelism: int,
+                  **kwargs) -> List[ReadTask]:
+    return ds.prepare_read(parallelism, **kwargs)
