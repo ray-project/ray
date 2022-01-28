@@ -112,6 +112,7 @@ class HTTPState:
                 ).remote(
                     self._config.host,
                     self._config.port,
+                    self._config.root_path,
                     controller_name=self._controller_name,
                     controller_namespace=self._controller_namespace,
                     http_middlewares=self._config.middlewares)

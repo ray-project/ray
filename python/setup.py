@@ -199,11 +199,8 @@ if setup_spec.type == SetupType.RAY:
         ],
         "default": [
             "aiohttp >= 3.7",
-            "aiosignal",
             "aiohttp_cors",
-            "aioredis < 2",
             "colorful",
-            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
@@ -270,6 +267,9 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
+        "aioredis < 2",
+        "aiosignal",
+        "frozenlist",
     ]
 
 

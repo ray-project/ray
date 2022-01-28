@@ -18,6 +18,10 @@ class TestAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
 
+    @staticmethod
+    def is_minimal_module():
+        return False
+
     @routes.get("/test/http_get_from_agent")
     async def get_url(self, req) -> aiohttp.web.Response:
         url = req.query.get("url")

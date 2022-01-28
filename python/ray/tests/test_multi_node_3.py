@@ -3,6 +3,8 @@ import pytest
 import subprocess
 import sys
 
+from pathlib import Path
+
 import ray
 import ray.ray_constants as ray_constants
 from ray._private.gcs_utils import use_gcs_for_bootstrap
@@ -11,7 +13,7 @@ from ray._private.utils import detect_fate_sharing_support
 from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    kill_process_by_name, Semaphore)
+    kill_process_by_name, Semaphore, check_call_subprocess)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -480,6 +482,30 @@ ray.get(main_wait.release.remote())
     assert driver1_out_split[1][-1] == "2", driver1_out_split
     assert driver2_out_split[0][-1] == "3", driver2_out_split
     assert driver2_out_split[1][-1] == "4", driver2_out_split
+
+
+@pytest.fixture
+def redis_proc():
+    """Download external redis and start the subprocess."""
+    REDIS_SERVER_PATH = "core/src/ray/thirdparty/redis/src/redis-server"
+    full_path = Path(ray.__file__).parents[0] / REDIS_SERVER_PATH
+    check_call_subprocess(["cp", f"{full_path}", "redis-server"])
+    proc = subprocess.Popen(["./redis-server", "--port", "7999"])
+    yield proc
+    subprocess.check_call(["ray", "stop"])
+    os.kill(proc.pid, 9)
+    subprocess.check_call(["rm", "-rf", "redis-server"])
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=("Feature not supported Windows because Redis "
+            "is not officially supported by Windows. "
+            "(There cannot be external Redis in Windows)"))
+def test_ray_stop_should_not_kill_external_redis(redis_proc):
+    check_call_ray(["start", "--head"])
+    subprocess.check_call(["ray", "stop"])
+    assert redis_proc.poll() is None
 
 
 if __name__ == "__main__":

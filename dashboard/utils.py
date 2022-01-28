@@ -18,7 +18,8 @@ import aiosignal  # noqa: F401
 from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401
 
-from ray._private.utils import binary_to_hex
+from ray._private.utils import (binary_to_hex,
+                                check_dashboard_dependencies_installed)
 
 try:
     create_task = asyncio.create_task
@@ -44,6 +45,15 @@ class DashboardAgentModule(abc.ABC):
         :param server: Asyncio GRPC server.
         """
 
+    @staticmethod
+    @abc.abstractclassmethod
+    def is_minimal_module():
+        """
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additonal
+        dependencies.
+        """
+
 
 class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
@@ -59,6 +69,15 @@ class DashboardHeadModule(abc.ABC):
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
         :param server: Asyncio GRPC server.
+        """
+
+    @staticmethod
+    @abc.abstractclassmethod
+    def is_minimal_module():
+        """
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additonal
+        dependencies.
         """
 
 
@@ -78,15 +97,36 @@ def get_all_modules(module_type):
     """
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
+    should_only_load_minimal_modules = (
+        not check_dashboard_dependencies_installed())
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
             ray.dashboard.modules.__path__,
             ray.dashboard.modules.__name__ + "."):
-        importlib.import_module(name)
-    return [
-        m for m in module_type.__subclasses__()
-        if getattr(m, "__ray_dashboard_module_enable__", True)
-    ]
+        try:
+            importlib.import_module(name)
+        except ModuleNotFoundError as e:
+            logger.info(f"Module {name} cannot be loaded because "
+                        "we cannot import all dependencies. Download "
+                        "`pip install ray[default]` for the full "
+                        f"dashboard functionality. Error: {e}")
+            if not should_only_load_minimal_modules:
+                logger.info(
+                    "Although `pip install ray[default] is downloaded, "
+                    "module couldn't be imported`")
+                raise e
+
+    imported_modules = []
+    # module_type.__subclasses__() should contain modules that
+    # we could successfully import.
+    for m in module_type.__subclasses__():
+        if not getattr(m, "__ray_dashboard_module_enable__", True):
+            continue
+        if should_only_load_minimal_modules and not m.is_minimal_module():
+            continue
+        imported_modules.append(m)
+    logger.info(f"Available modules: {imported_modules}")
+    return imported_modules
 
 
 def to_posix_time(dt):

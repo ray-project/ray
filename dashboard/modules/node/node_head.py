@@ -342,3 +342,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         await asyncio.gather(self._update_nodes(), self._update_node_stats(),
                              self._update_log_info(),
                              self._update_error_info())
+
+    @staticmethod
+    def is_minimal_module():
+        return False
