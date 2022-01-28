@@ -27,10 +27,22 @@ class _MockTrainer(Trainer):
     def default_resource_request(cls, config):
         return None
 
-    def _init(self, config, env_creator):
+    @override(Trainer)
+    def setup(self, config):
+        # Setup our config: Merge the user-supplied config (which could
+        # be a partial config dict with the class' default).
+        self.config = self.merge_trainer_configs(
+            self.get_default_config(), config, self._allow_unknown_configs)
+        self.config["env"] = self._env_id
+
+        self.validate_config(self.config)
+        self.callbacks = self.config["callbacks"]()
+
+        # Add needed properties.
         self.info = None
         self.restored = False
 
+    @override(Trainer)
     def step(self):
         if self.config["mock_error"] and self.iteration == 1 \
                 and (self.config["persistent_error"] or not self.restored):
@@ -45,19 +57,23 @@ class _MockTrainer(Trainer):
                 result.update({tune_result.SHOULD_CHECKPOINT: True})
         return result
 
+    @override(Trainer)
     def save_checkpoint(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "mock_agent.pkl")
         with open(path, "wb") as f:
             pickle.dump(self.info, f)
         return path
 
+    @override(Trainer)
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as f:
             info = pickle.load(f)
         self.info = info
         self.restored = True
 
+    @override(Trainer)
     def _register_if_needed(self, env_object, config):
+        # No env to register.
         pass
 
     def set_info(self, info):

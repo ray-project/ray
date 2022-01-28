@@ -4,6 +4,7 @@ import numpy as np
 import requests
 import pytest
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 import ray
 from ray.exceptions import GetTimeoutError
@@ -162,6 +163,23 @@ def test_handle_cache_out_of_scope(serve_instance):
 
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
+
+
+def test_uvicorn_duplicate_headers(serve_instance):
+    # https://github.com/ray-project/ray/issues/21876
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        @app.get("/")
+        def func(self):
+            return JSONResponse({"a": "b"})
+
+    A.deploy()
+    resp = requests.get("http://127.0.0.1:8000/A")
+    # If the header duplicated, it will be "9, 9"
+    assert resp.headers["content-length"] == "9"
 
 
 if __name__ == "__main__":

@@ -587,9 +587,10 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastResourceUsage(
+  cluster_resource_scheduler_->GetLocalResourceManager().UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(resources_data);
+  cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
+      resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
@@ -1572,8 +1573,8 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // up repeatedly starting the worker, then killing it because it idles for
     // too long. The downside is that we will be slower to schedule tasks that
     // could use a fraction of a CPU.
-    int64_t available_cpus =
-        static_cast<int64_t>(cluster_resource_scheduler_->GetLocalAvailableCpus());
+    int64_t available_cpus = static_cast<int64_t>(
+        cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
@@ -1627,10 +1628,14 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
-                 << bundle_spec.DebugString();
-  placement_group_resource_manager_->CommitBundle(bundle_spec);
+  std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
+  for (int index = 0; index < request.bundle_specs_size(); index++) {
+    bundle_specs.emplace_back(
+        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
+  }
+  RAY_LOG(DEBUG) << "Request to commit resources for bundles: "
+                 << GetDebugStringForBundles(bundle_specs);
+  placement_group_resource_manager_->CommitBundles(bundle_specs);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   cluster_task_manager_->ScheduleAndDispatchTasks();

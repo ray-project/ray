@@ -389,7 +389,7 @@ def fetch_remote_directory_content(
         local_dir: str,
 ):
     def _pack(dir: str):
-        tmpfile = tempfile.mktemp()
+        _, tmpfile = tempfile.mkstemp()
         with tarfile.open(tmpfile, "w:gz") as tar:
             tar.add(dir, arcname="")
 
@@ -399,7 +399,7 @@ def fetch_remote_directory_content(
         return stream
 
     def _unpack(stream: str, dir: str):
-        tmpfile = tempfile.mktemp()
+        _, tmpfile = tempfile.mkstemp()
 
         with open(tmpfile, "wb") as f:
             f.write(stream)
