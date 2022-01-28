@@ -53,24 +53,24 @@ class PipProcessor:
                  runtime_env: RuntimeEnv,
                  context: RuntimeEnvContext,
                  logger: Optional[logging.Logger] = default_logger):
-        logger.debug(f"Setting up pip for runtime_env: {runtime_env}")
+        logger.debug("Setting up pip for runtime_env: %s", runtime_env)
         self._pip_resources_dir = pip_resources_dir
         self._runtime_env = runtime_env
         self._context = context
         self._logger = logger
 
     @staticmethod
-    def _is_in_virtualenv():
+    def _is_in_virtualenv() -> bool:
         return (hasattr(sys, "real_prefix")
                 or (hasattr(sys, "base_prefix")
                     and sys.base_prefix != sys.prefix))
 
     @staticmethod
-    def _get_current_python():
+    def _get_current_python() -> str:
         return sys.executable
 
     @staticmethod
-    def _get_virtualenv_python(virtualenv_path: str):
+    def _get_virtualenv_python(virtualenv_path: str) -> str:
         return os.path.join(virtualenv_path, "bin/python")
 
     @staticmethod
@@ -126,7 +126,7 @@ class PipProcessor:
             "--reset-app-data", "--no-periodic-update",
             "--system-site-packages", "--no-download", virtualenv_path
         ]
-        logger.info(f"Creating virtualenv at {virtualenv_path}")
+        logger.info("Creating virtualenv at %s", virtualenv_path)
         exit_code, output = exec_cmd_stream_to_logger(
             create_venv_cmd, logger, cwd=cwd, env={})
         if exit_code != 0:
@@ -147,7 +147,7 @@ class PipProcessor:
             "install",
             "--disable-pip-version-check",
         ] + pip_packages
-        logger.info(f"Installing python requirements to {virtualenv_path}")
+        logger.info("Installing python requirements to %s", virtualenv_path)
         exit_code, output = exec_cmd_stream_to_logger(
             pip_install_cmd, logger, cwd=cwd, env={})
         if exit_code != 0:
@@ -189,7 +189,7 @@ class PipManager:
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-        logger.info(f"Got request to delete URI {uri}")
+        logger.info("Got request to delete URI %s", uri)
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError("PipManager can only delete URIs with protocol "
@@ -201,7 +201,7 @@ class PipManager:
             successful = True
         except OSError:
             successful = False
-            logger.warning(f"Error when deleting pip env {pip_env_path}.")
+            logger.warning("Error when deleting pip env %s.", pip_env_path)
         return successful
 
     def setup(self,
@@ -211,7 +211,6 @@ class PipManager:
         if not runtime_env.has_pip():
             return
 
-        logger.debug(f"Setting up pip for runtime_env: {runtime_env}")
         pip_processor = PipProcessor(self._pip_resources_dir, runtime_env,
                                      context, logger)
         pip_processor.run()
