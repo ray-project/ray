@@ -713,7 +713,17 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
   plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
     main_service_->post(
         [this, available_memory]() {
-          pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+          int64_t pull_memory_limit = available_memory;
+          int64_t memory_capacity = plasma::plasma_store_runner->GetMemoryCapacity();
+          int64_t pull_threshold =
+              RayConfig::instance().max_object_pull_fraction() * memory_capacity;
+          // We will only pull up to this many objects. Note that ray.get is
+          // not subjected to this limit because we will always try to fulfill
+          // all concurrent ray.get requests.
+          if (pull_threshold < pull_memory_limit) {
+            pull_memory_limit = pull_threshold;
+          }
+          pull_manager_->UpdatePullsBasedOnAvailableMemory(pull_memory_limit);
         },
         "ObjectManager.UpdateAvailableMemory");
   });

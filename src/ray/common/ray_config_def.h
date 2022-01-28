@@ -436,6 +436,10 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
+/// Maximum amount of memory that will be used to pull objects for ray.wait and
+/// task args (including both running and queued tasks).
+RAY_CONFIG(float, max_object_pull_fraction, 1.0)
+
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
