@@ -10,6 +10,7 @@ configured via the --env option:
 
 import argparse
 from datetime import datetime
+import numpy as np
 
 import ray
 from ray import tune
@@ -48,6 +49,12 @@ parser.add_argument(
           ", ".join(ALL_SLATEQ_STRATEGIES) + ". "
           "Default value: QL. Ignored when using Tune."),
 )
+parser.add_argument(
+    "--random-test-episodes",
+    type=int,
+    default=0,
+    help="The number of test episodes to run with a random agent to figure out "
+    "up front what the random baseline reward is.")
 parser.add_argument(
     "--use-tune",
     action="store_true",
@@ -119,6 +126,27 @@ def main():
         },
         "target_network_update_freq": 800,#5000,TODO
     }
+
+    # Perform a test run on the env with a random agent to see, what
+    # the random baseline reward is.
+    if args.random_test_episodes:
+        env = config["env"](config=env_config)
+        env.reset()
+        num_episodes = 0
+        episode_rewards = []
+        episode_reward = 0.0
+        while num_episodes < args.random_test_episodes:
+            action = env.action_space.sample()
+            _, r, d, _ = env.step(action)
+            episode_reward += r
+            if d:
+                num_episodes += 1
+                episode_rewards.append(episode_reward)
+                #print(f"R={episode_reward}")
+                episode_reward = 0.0
+                env.reset()
+        print(f"Ran {args.random_test_episodes} episodes with a random agent reaching a mean episode return of {np.mean(episode_rewards)}")
+        #quit()
 
     if args.use_tune:
         stop = {
