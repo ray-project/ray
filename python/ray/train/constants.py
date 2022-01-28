@@ -66,3 +66,8 @@ TRAIN_ENABLE_WORKER_SPREAD_ENV =\
 # ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
 # through ``train.report()``
 PYTORCH_PROFILER_KEY = "_train_torch_profiler"
+
+# Reserved keys used across all Callbacks.
+# By default these will be filtered out from ``train.report()``.
+# See ``TrainingCallback._preprocess_results`` for more details.
+ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}

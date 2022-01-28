@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Union
 from torch.profiler import profile
 
 from ray import train
-from ray.train import TrainingCallback
+from ray.train.callbacks import TrainingCallback
 from ray.train.callbacks.logging import TrainCallbackLogdirManager
 from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
@@ -50,7 +50,6 @@ class TorchWorkerProfiler():
 
         logger.debug(f"Writing worker trace to {trace_path}.")
         p.export_chrome_trace(str(trace_path))
-
         self.profiler_trace_filenames.append(trace_filename)
 
     def get_and_clear_profile_traces(self):

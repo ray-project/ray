@@ -3,17 +3,13 @@ from typing import List, Dict
 
 from ray.train.callbacks.results_preprocessors import ResultsPreprocessor, \
     ExcludedKeysResultsPreprocessor, SequentialResultsPreprocessor
-from ray.train.constants import PYTORCH_PROFILER_KEY
+from ray.train.constants import ALL_RESERVED_KEYS
 
 
 class TrainingCallback(abc.ABC):
     """Abstract Train callback class."""
 
     results_preprocessor: ResultsPreprocessor = None
-    # Reserved keys used by across all Callbacks.
-    # By default these will be filtered out from ``train.report()``.
-    # See ``_preprocess_results`` for more details.
-    ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}
     # Reserved keys used by this specific Callback.
     # This should be set in a Callback class implementation so that the keys
     # are not filtered out. See ``_preprocess_results`` for more details.
@@ -53,7 +49,7 @@ class TrainingCallback(abc.ABC):
         This will:
 
         * Exclude all keys that are present in ``self.ALL_RESERVED_KEYS`` but
-          not ``RESERVED_KEYS``
+          not ``self.RESERVED_KEYS``
         * Execute ``self.results_preprocessor`` if defined.
 
         Args:
@@ -64,8 +60,7 @@ class TrainingCallback(abc.ABC):
             The preprocessed results.
 
         """
-        results_to_exclude = self.ALL_RESERVED_KEYS.difference(
-            self.RESERVED_KEYS)
+        results_to_exclude = ALL_RESERVED_KEYS.difference(self.RESERVED_KEYS)
         system_preprocessor = ExcludedKeysResultsPreprocessor(
             results_to_exclude)
         if self.results_preprocessor:
