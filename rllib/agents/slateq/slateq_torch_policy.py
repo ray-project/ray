@@ -157,6 +157,7 @@ def build_slateq_losses(policy: Policy, model: ModelV2,
         with torch.no_grad():
             _, next_q_values = policy.target_models[model].choose_slate(
                 next_user, next_doc)
+        next_q_values = next_q_values.detach()
         next_q_values[dones.bool()] = 0.0
     else:
         raise ValueError(learning_strategy)

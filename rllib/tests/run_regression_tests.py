@@ -114,7 +114,7 @@ if __name__ == "__main__":
             else:
                 try:
                     trials = run_experiments(
-                        experiments, resume=False, verbose=2)
+                        experiments, resume=False, verbose=3)
                 finally:
                     ray.shutdown()
                     _register_all()

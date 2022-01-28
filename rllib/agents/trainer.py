@@ -1977,7 +1977,8 @@ class Trainer(Trainable):
                 def env_creator_from_classpath(env_context):
                     try:
                         env_obj = from_config(env_id, env_context)
-                    except ValueError:
+                    except ValueError as e:
+                        raise e
                         raise EnvError(
                             ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
                     return env_obj

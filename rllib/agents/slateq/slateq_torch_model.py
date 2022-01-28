@@ -56,7 +56,7 @@ class QValueModel(nn.Module):
 
 
 class UserChoiceModel(nn.Module):
-    r"""The user choice model for SlateQ
+    """The user choice model for SlateQ
 
     This class implements a multinomial logit model for predicting user clicks.
 
@@ -97,7 +97,7 @@ class UserChoiceModel(nn.Module):
 
 
 class SlateQModel(TorchModelV2, nn.Module):
-    """The SlateQ model class
+    """The SlateQ model class.
 
     It includes both the user choice model and the Q-value model.
     """

@@ -14,18 +14,18 @@ long-term-satisfaction-recsim-env-slateq:
                 # Each step, sample 100 documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
-                resample_documents: false
-                num_candidates: 100
+                resample_documents: true
+                num_candidates: 25
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
-                slate_size: 4
+                slate_size: 2
                 # Should the action space be purely Discrete? Useful for algos that
                 # don't support MultiDiscrete (e.g. DQN).
                 # SlateQ handles MultiDiscrete action spaces.
                 convert_to_discrete_action_space: false
                 seed: 42
 
-        hiddens: [256, 256, 256]
+        hiddens: [256, 256]
 
         num_workers: 0
         num_gpus: 0
