@@ -1,7 +1,11 @@
 """Using an RLlib-ready RecSim environment and the SlateQ algorithm
 for solving recommendation system problems.
 
-This example
+This example supports three different RecSim (RLlib-ready) environments,
+configured via the --env option:
+- "long-term-satisfaction"
+- "interest-exploration"
+- "interest-evolution"
 """
 
 import argparse
