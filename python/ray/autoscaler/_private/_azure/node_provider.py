@@ -48,6 +48,7 @@ class AzureNodeProvider(NodeProvider):
     appear immediately once started by ``create_node``, and transition
     immediately to terminated when ``terminate_node`` is called.
     """
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         subscription_id = provider_config["subscription_id"]
@@ -188,8 +189,9 @@ class AzureNodeProvider(NodeProvider):
                 client=self.compute_client.virtual_machines,
                 function_name="start")
             for node_id in reuse_nodes:
-                start(resource_group_name=resource_group,
-                      vm_name=node_id).wait()
+                start(
+                    resource_group_name=resource_group,
+                    vm_name=node_id).wait()
                 self.set_node_tags(node_id, tags)
             count -= len(reuse_nodes)
 
@@ -239,9 +241,10 @@ class AzureNodeProvider(NodeProvider):
         create_or_update = get_azure_sdk_function(
             client=self.resource_client.deployments,
             function_name="create_or_update")
-        create_or_update(resource_group_name=resource_group,
-                         deployment_name="ray-vm-{}".format(name_tag),
-                         parameters=parameters).wait()
+        create_or_update(
+            resource_group_name=resource_group,
+            deployment_name="ray-vm-{}".format(name_tag),
+            parameters=parameters).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):
@@ -251,9 +254,10 @@ class AzureNodeProvider(NodeProvider):
         update = get_azure_sdk_function(
             client=self.compute_client.virtual_machines,
             function_name="update")
-        update(resource_group_name=self.provider_config["resource_group"],
-               vm_name=node_id,
-               parameters={"tags": node_tags})
+        update(
+            resource_group_name=self.provider_config["resource_group"],
+            vm_name=node_id,
+            parameters={"tags": node_tags})
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
@@ -292,8 +296,9 @@ class AzureNodeProvider(NodeProvider):
                 delete = get_azure_sdk_function(
                     client=self.compute_client.virtual_machines,
                     function_name="delete")
-                delete(resource_group_name=resource_group,
-                       vm_name=node_id).wait()
+                delete(
+                    resource_group_name=resource_group,
+                    vm_name=node_id).wait()
             except Exception as e:
                 logger.warning("Failed to delete VM: {}".format(e))
 
@@ -302,8 +307,9 @@ class AzureNodeProvider(NodeProvider):
                 delete = get_azure_sdk_function(
                     client=self.network_client.network_interfaces,
                     function_name="delete")
-                delete(resource_group_name=resource_group,
-                       network_interface_name=metadata["nic_name"])
+                delete(
+                    resource_group_name=resource_group,
+                    network_interface_name=metadata["nic_name"])
             except Exception as e:
                 logger.warning("Failed to delete nic: {}".format(e))
 
@@ -313,8 +319,9 @@ class AzureNodeProvider(NodeProvider):
                     delete = get_azure_sdk_function(
                         client=self.network_client.public_ip_addresses,
                         function_name="delete")
-                    delete(resource_group_name=resource_group,
-                           public_ip_address_name=metadata["public_ip_name"])
+                    delete(
+                        resource_group_name=resource_group,
+                        public_ip_address_name=metadata["public_ip_name"])
                 except Exception as e:
                     logger.warning("Failed to delete public ip: {}".format(e))
 
