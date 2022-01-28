@@ -2250,30 +2250,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/deterministic_training_tf",
+    name = "examples/deterministic_training_ppo_tf",
     main = "examples/deterministic_training.py",
     tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=3", "--framework=tf", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
-    name = "examples/deterministic_training_tf2",
+    name = "examples/deterministic_training_ppo_tf2",
     main = "examples/deterministic_training.py",
     tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=3", "--framework=tf2", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
 )
 
 py_test(
-    name = "examples/deterministic_training_torch",
+    name = "examples/deterministic_training_ppo_torch",
     main = "examples/deterministic_training.py",
     tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=3", "--framework=torch", "--num-gpus-trainer=1", "--num-gpus-per-worker=1"]
+)
+
+py_test(
+    name = "examples/deterministic_training_dqn_tf2",
+    main = "examples/deterministic_training.py",
+    tags = ["team:ml", "multi_gpu"],
+    size = "medium",
+    srcs = ["examples/deterministic_training.py"],
+    args = ["--as-test", "--stop-iters=10", "--framework=tf2", "--num-workers=0", "--num-gpus-trainer=1"]
 )
 
 py_test(
