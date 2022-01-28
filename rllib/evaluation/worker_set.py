@@ -9,9 +9,17 @@ from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput, D4RLReader, DatasetReader, DatasetWriter, \
-    get_dataset_and_shards
+from ray.rllib.offline import (
+    NoopOutput,
+    JsonReader,
+    MixedInput,
+    JsonWriter,
+    ShuffledInput,
+    D4RLReader,
+    DatasetReader,
+    DatasetWriter,
+    get_dataset_and_shards,
+)
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -99,7 +107,8 @@ class WorkerSet:
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
                 self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers, local_worker)
+                    trainer_config, num_workers, local_worker
+                )
             else:
                 self._ds = None
                 self._ds_shards = None

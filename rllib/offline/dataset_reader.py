@@ -7,7 +7,7 @@ from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, TrainerConfigDict
-from typing import Dict, List
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -16,41 +16,43 @@ DEFAULT_NUM_CPUS_PER_TASK = 0.5
 
 def get_resource_bundles(config: TrainerConfigDict):
     input_config = config.get("input_config", {})
-    parallelism = input_config.get(
-        "parallelism", config.get("num_workers", 1))
+    parallelism = input_config.get("parallelism", config.get("num_workers", 1))
     cpus_per_task = input_config.get(
-        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK)
+        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
+    )
     return [{"CPU": math.ceil(parallelism * cpus_per_task)}]
 
 
-def get_dataset_and_shards(config: TrainerConfigDict,
-                           num_workers: int, local_worker: bool) \
-        -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
+def get_dataset_and_shards(
+    config: TrainerConfigDict, num_workers: int, local_worker: bool
+) -> (ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]):
     assert config["input"] == "dataset"
-    assert "input_config" in config, (
-        "Must specify input_config dict if using Dataset input.")
+    assert (
+        "input_config" in config
+    ), "Must specify input_config dict if using Dataset input."
 
     input_config = config["input_config"]
-    if (not input_config.get("format", None)
-            or not input_config.get("path", None)):
+    if not input_config.get("format", None) or not input_config.get("path", None):
         raise ValueError(
             "Must specify format and path via input_config key"
-            " when using Ray dataset input.")
+            " when using Ray dataset input."
+        )
 
     parallelism = input_config.get("parallelism", num_workers)
     cpus_per_task = input_config.get(
-        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK)
+        "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
+    )
 
     format = input_config["format"]
     path = input_config["path"]
     if format == "json":
         dataset = ray.data.read_json(
-            path, parallelism=parallelism,
-            ray_remote_args={"num_cpus": cpus_per_task})
+            path, parallelism=parallelism, ray_remote_args={"num_cpus": cpus_per_task}
+        )
     elif format == "parquet":
         dataset = ray.data.read_parquet(
-            path, parallelism=parallelism,
-            ray_remote_args={"num_cpus": cpus_per_task})
+            path, parallelism=parallelism, ray_remote_args={"num_cpus": cpus_per_task}
+        )
     else:
         raise ValueError("Un-supported Ray dataset format: ", format)
 
@@ -64,7 +66,8 @@ def get_dataset_and_shards(config: TrainerConfigDict,
         # The first None shard is for the local worker, which
         # shouldn't be doing rollout work anyways.
         return dataset, [None] + dataset.repartition(
-            num_blocks=num_workers, shuffle=False).split(num_workers)
+            num_blocks=num_workers, shuffle=False
+        ).split(num_workers)
 
 
 @PublicAPI

@@ -1,6 +1,5 @@
 from ray.rllib.offline.d4rl_reader import D4RLReader
-from ray.rllib.offline.dataset_reader import DatasetReader, \
-    get_dataset_and_shards
+from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
 from ray.rllib.offline.dataset_writer import DatasetWriter
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.input_reader import InputReader

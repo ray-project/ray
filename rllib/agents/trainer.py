@@ -2053,20 +2053,31 @@ class Trainer(Trainable):
                     # RolloutWorkers.
                     "CPU": cf["num_cpus_per_worker"],
                     "GPU": cf["num_gpus_per_worker"],
-                } for _ in range(cf["num_workers"])
-            ] + ([
-                {
-                    # Evaluation workers.
-                    # Note: The local eval worker is located on the driver CPU.
-                    "CPU": eval_cf.get("num_cpus_per_worker",
-                                       cf["num_cpus_per_worker"]),
-                    "GPU": eval_cf.get("num_gpus_per_worker",
-                                       cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"])
-            ] if cf["evaluation_interval"] else []) +
+                }
+                for _ in range(cf["num_workers"])
+            ]
+            + (
+                [
+                    {
+                        # Evaluation workers.
+                        # Note: The local eval worker is located on the driver CPU.
+                        "CPU": eval_cf.get(
+                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                        ),
+                        "GPU": eval_cf.get(
+                            "num_gpus_per_worker", cf["num_gpus_per_worker"]
+                        ),
+                    }
+                    for _ in range(cf["evaluation_num_workers"])
+                ]
+                if cf["evaluation_interval"]
+                else []
+            )
+            +
             # In case our I/O reader/writer requires conmpute resources.
             get_offline_io_resource_bundles(cf),
-            strategy=config.get("placement_strategy", "PACK"))
+            strategy=config.get("placement_strategy", "PACK"),
+        )
 
     @DeveloperAPI
     def _before_evaluate(self):
