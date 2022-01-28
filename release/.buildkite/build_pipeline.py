@@ -61,8 +61,6 @@ CORE_NIGHTLY_TESTS = {
         "non_streaming_shuffle_100gb",
         "non_streaming_shuffle_50gb_large_partition",
         "non_streaming_shuffle_50gb",
-        "dask_on_ray_10gb_sort",
-        "dask_on_ray_100gb_sort",
         SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
         SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
@@ -78,9 +76,7 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
-        "dask_on_ray_1tb_sort",
         SmokeTest("threaded_actors_stress_test"),
-        "placement_group_performance_test",
         "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
@@ -135,7 +131,6 @@ CORE_DAILY_TESTS = {
         "k8s_threaded_actors_stress_test",
         "stress_test_many_tasks",
         "stress_test_dead_actors",
-        "many_nodes_actor_test",
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_dask_on_ray_large_scale_test_no_spilling",
@@ -149,11 +144,6 @@ CORE_SCALABILITY_TESTS_DAILY = {
         "many_tasks",
         "many_pgs",
         "many_nodes",
-        "scheduling_test_many_0s_tasks_single_node",
-        "scheduling_test_many_0s_tasks_many_nodes",
-        # Reenable these two once we got right setup
-        # "scheduling_test_many_5s_tasks_single_node",
-        # "scheduling_test_many_5s_tasks_many_nodes",
     ],
 }
 
@@ -163,6 +153,23 @@ CORE_REDIS_HA_TESTS_DAILY = {
         "many_tasks_redis_ha",
         "many_pgs_redis_ha",
         "many_nodes_redis_ha",
+    ],
+}
+
+CORE_SCHEDULING_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "scheduling_test_many_0s_tasks_single_node",
+        "scheduling_test_many_0s_tasks_many_nodes",
+        # Reenable these two once we got right setup
+        # "scheduling_test_many_5s_tasks_single_node",
+        # "scheduling_test_many_5s_tasks_many_nodes",
+    ],
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "many_nodes_actor_test",
+        "dask_on_ray_10gb_sort",
+        "dask_on_ray_100gb_sort",
+        "dask_on_ray_1tb_sort",
+        "placement_group_performance_test",
     ],
 }
 
@@ -293,6 +300,7 @@ SUITES = {
         **NIGHTLY_TESTS,
         **USER_TESTS
     },
+    "core-scheduling-daily": CORE_SCHEDULING_DAILY,
     "weekly": WEEKLY_TESTS,
 }
 
