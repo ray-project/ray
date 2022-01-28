@@ -1695,10 +1695,15 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
+        ctx = DatasetContext.get_current()
         blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
+
+        # Prepare write in a remote task so that in Ray client mode, we aren't
+        # attempting metadata resolution from the client machine.
         do_write = cached_remote_fn(_do_write)
         write_results: List[ObjectRef[WriteResult]] = ray.get(
-            do_write.remote(datasource, blocks, metadata, **write_args))
+            do_write.remote(datasource, ctx, blocks, metadata, **write_args))
+
         progress = ProgressBar("Write Progress", len(write_results))
         try:
             progress.block_until_complete(write_results)
@@ -2657,6 +2662,8 @@ def _split_block(
     return b0, m0, b1, m1
 
 
-def _do_write(ds: Datasource, blocks: List[Block], meta: List[BlockMetadata],
+def _do_write(ds: Datasource, ctx: DatasetContext, blocks: List[Block],
+              meta: List[BlockMetadata],
               **write_args) -> List[ObjectRef[WriteResult]]:
+    DatasetContext._set_current(ctx)
     return ds.do_write(blocks, meta, **write_args)
