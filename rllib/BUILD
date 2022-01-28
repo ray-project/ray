@@ -2282,7 +2282,16 @@ py_test(
     tags = ["team:ml", "multi_gpu"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=10", "--framework=tf2", "--num-workers=0", "--num-gpus-trainer=1"]
+    args = ["--as-test", "--run=DQN", "--stop-iters=10", "--framework=tf2", "--num-workers=0", "--num-gpus-trainer=1"]
+)
+
+py_test(
+    name = "examples/deterministic_training_sac_torch",
+    main = "examples/deterministic_training.py",
+    tags = ["team:ml", "multi_gpu"],
+    size = "medium",
+    srcs = ["examples/deterministic_training.py"],
+    args = ["--as-test", "--run=SAC", "--stop-iters=10", "--framework=tf", "--num-workers=0", "--num-gpus-trainer=1"]
 )
 
 py_test(
