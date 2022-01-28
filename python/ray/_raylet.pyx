@@ -1486,14 +1486,14 @@ cdef class CoreWorker:
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
             # https://github.com/ray-project/ray/pull/12803
-            check_status(CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
                     serialized_runtime_env),
                 max_retries, retry_exceptions,
                 c_scheduling_strategy,
-                debugger_breakpoint, &return_refs))
+                debugger_breakpoint)
 
             return VectorToObjectRefs(return_refs)
 

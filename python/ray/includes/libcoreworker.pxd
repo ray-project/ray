@@ -104,15 +104,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
-        CRayStatus SubmitTask(
+        c_vector[CObjectReference] SubmitTask(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
             int max_retries,
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
-            c_string debugger_breakpoint,
-            c_vector[CObjectReference] *returned_refs)
+            c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
