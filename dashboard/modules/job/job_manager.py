@@ -206,12 +206,13 @@ class JobSupervisor:
                 "runtime_env": self._runtime_env,
                 "metadata": self._metadata,
             })
-            # Always set RAY_ADDRESS as redis address for job submission.
-            # In case of local development, prevent user from re-using
-            # http://{address}:{dashboard_port} to interact with jobs SDK.
+            # Always set RAY_ADDRESS as find_bootstrap_address address for
+            # job submission. In case of local development, prevent user from
+            # re-using http://{address}:{dashboard_port} to interact with
+            # jobs SDK.
             os.environ[
                 ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE] = \
-                ray._private.services.find_redis_address().pop()
+                ray._private.services.find_bootstrap_address().pop()
 
             # Set PYTHONUNBUFFERED=1 to stream logs during the job instead of
             # only streaming them upon completion of the job.

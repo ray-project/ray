@@ -18,23 +18,16 @@ TEST_NAMESPACE = "jobs_test_namespace"
 
 @pytest.fixture(scope="session")
 def shared_ray_instance():
+    # Remove ray address for test ray cluster in case we have
+    # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
+    # submissions.
+    del os.environ["RAY_ADDRESS"]
     yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
 
 
 @pytest.fixture
 def job_manager(shared_ray_instance):
     yield JobManager()
-
-
-@pytest.fixture
-def change_ray_address():
-    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
-    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
-
-    prev_address = os.environ.get("RAY_ADDRESS")
-    os.environ["RAY_ADDRESS"] = f"http://{ip}:{port}"
-    yield
-    os.environ["RAY_ADDRESS"] = prev_address
 
 
 def _driver_script_path(file_name: str) -> str:
@@ -587,11 +580,15 @@ while True:
     job_manager.stop_job(job_id)
 
 
-def test_redis_address(job_manager, change_ray_address):
-    """Ensure we always use redis address in job manager  even though ray
+def test_boostrap_address(job_manager, monkeypatch):
+    """Ensure we always use boostrap address in job manager  even though ray
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
+    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+
+    monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
     print_ray_address_cmd = ("python -c\""
                              "import os;"
                              "import ray;"
